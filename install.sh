@@ -16697,6 +16697,11 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
 }
 
 standalone_preserve_snapshot() { # $1 = core, $2 = config path
+    # Carbon H-11(4): a previous snapshot's /tmp dir is orphaned once
+    # this function overwrites ABOX_PRESERVE_DIR below. Reap it first
+    # (diagnostics copy, then remove) so a failed earlier deploy cannot
+    # leave a plaintext preserve.json behind.
+    standalone_preserve_cleanup
     ABOX_PRESERVE_FILE=''
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     local cfg="$2" pat='' out='' n=0 tmpd=''
@@ -16736,19 +16741,49 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     return 0
 }
 
+# Carbon H-11(4): reap a stale/failed preserve dir. A preserve.json
+# holds plaintext inbound secrets (SS passwords, Reality private
+# keys); it must never survive in /tmp after a failed restore or a
+# deployment rollback. The file is first copied to the diagnostics
+# dir (mode 600) for forensics, then the /tmp dir is removed either
+# way: losing the diagnostic copy is acceptable, leaving the secret
+# in /tmp is not. Only paths under /tmp/A-Box-preserve.* are ever
+# touched. ABOX_PRESERVE_DIAG_DIR overrides the diagnostics dir
+# (test seam). Sets ABOX_PRESERVE_DIAG_SAVED to the saved copy path.
+standalone_preserve_cleanup() {
+    local _diag_dir="${ABOX_PRESERVE_DIAG_DIR:-/etc/ddr/diagnostics}" _ts=''
+    ABOX_PRESERVE_DIAG_SAVED=''
+    if [[ -n "${ABOX_PRESERVE_DIR:-}" && "${ABOX_PRESERVE_DIR}" == /tmp/A-Box-preserve.* ]]; then
+        if [[ -f "${ABOX_PRESERVE_DIR}/preserve.json" && ! -L "${ABOX_PRESERVE_DIR}/preserve.json" ]]; then
+            mkdir -p -- "$_diag_dir" 2>/dev/null || true
+            _ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || printf 'unknown')-$$
+            if cp -a -- "${ABOX_PRESERVE_DIR}/preserve.json" "$_diag_dir/preserve-${_ts}.json" 2>/dev/null && chmod 600 -- "$_diag_dir/preserve-${_ts}.json" 2>/dev/null; then
+                ABOX_PRESERVE_DIAG_SAVED="$_diag_dir/preserve-${_ts}.json"
+            else
+                rm -f -- "$_diag_dir/preserve-${_ts}.json" 2>/dev/null || true
+                msg "${YELLOW}[!] preserve diagnostics copy failed; removing plaintext preserve dir without a saved copy.${NC}" >&2 || true
+            fi
+        fi
+        rm -rf -- "$ABOX_PRESERVE_DIR" 2>/dev/null || true
+    fi
+    ABOX_PRESERVE_FILE=''
+    ABOX_PRESERVE_DIR=''
+}
+
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
     local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0 tmpd=''
     if ! command -v jq >/dev/null 2>&1; then
         msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'jq')${NC}"
+        standalone_preserve_cleanup
         return 1
     fi
-    tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX) || { msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
+    tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX) || { msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; standalone_preserve_cleanup; return 1; }
     bak="$tmpd/bak.json"
     merged="$tmpd/new.json"
     keepf="$tmpd/keep.json"
-    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; return 1; }
+    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; standalone_preserve_cleanup; return 1; }
     for attempt in full nost; do
         if [[ "$attempt" == nost ]]; then
             jq '[.[] | select(.tag != "shadowtls-in")]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
@@ -16774,7 +16809,11 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                    elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
                    else ["tcp"] end)
               elif (.protocol // null) != null then
-                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+                # Carbon H-11(3): an Xray socks inbound listens on UDP
+                # exactly when settings.udp is true; ["tcp"] misses the
+                # UDP conflict. (The sing-box type branch below stays
+                # ["tcp"] for socks/mixed until upstream docs settle it.)
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end) else ["tcp"] end)
               # R14-F05-02: a sing-box shadowsocks inbound with no
               # .network listens on tcp+udp by default; ["tcp"]
               # would miss UDP conflicts.
@@ -16841,7 +16880,13 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             | [$keep[0][] | select(
                 (.tag as $t | ($cur_tags | index($t)) == null)
                 and ((binding) as $b | $b == null or ([$cur_bindings[] | select(bindings_conflict($b; .))] | length == 0))
-              )] as $add
+              )] as $add1
+            # Carbon H-11(2): a port-less inbound is only a detour
+            # target (e.g. shadowtls-ss); keep it only when its detour
+            # source survived into $add1, otherwise it is an orphan
+            # that inflates the added count and serves nothing.
+            | ([$add1[] | .detour // empty] | unique) as $dt
+            | [$add1[] | select(if (binding) == null then (.tag as $t | ($dt | index($t)) != null) else true end)] as $add
             | .inbounds = ($cur + $add)' "$bak" > "$merged" 2>/dev/null || continue
         jq empty "$merged" >/dev/null 2>&1 || continue
         install_file_atomically "$merged" "$cfg" 600 || continue
@@ -16863,14 +16908,73 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
+        # Carbon H-11(1): the deploy wiped the firewall rules before
+        # this restore and pre_install_setup only re-opens the main
+        # protocol ports. Re-open the ports of the inbounds this
+        # restore just added, before the service starts. allowPort
+        # dies on failure, so it runs in a subshell; any failure
+        # restores $bak and fails the restore (check-fail semantics).
+        # Port enumeration mirrors core_expected_listen_ports: Xray
+        # socks is tcp+udp exactly when settings.udp is true, SS
+        # follows settings.network, the rest follow transport_set.
+        if (( added > 0 )); then
+            local _fw_ports='' _fw_failed=0 _fw_spec='' _fw_proto='' _fw_port=''
+            _fw_ports=$(jq -r --slurpfile bak "$bak" '
+            def transports:
+              if (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
+                 elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
+                 elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.streamSettings.network // null) != null then
+                   (.streamSettings.network | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"] elif . == "kcp" or . == "quic" then ["udp"] elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"] else ["tcp"] end)
+                 else ["tcp"] end)
+              elif (.type // null) != null then
+                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
+                 elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 else ["tcp"] end)
+              else ["tcp"] end;
+            [.inbounds[]? | select(.tag as $t | (($bak[0].inbounds // []) | map(.tag) | index($t)) == null)
+             | select(.tag != "api")
+             | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1"))
+             | select((.port // .listen_port) != null)
+             | (transports) as $trs
+             | ((.port // .listen_port) | tostring | split(",")) as $ps
+             | $ps[] as $p | $trs[] | "\(.)/\($p)"] | unique | .[]' "$cfg" 2>/dev/null) || _fw_failed=1
+            if (( _fw_failed == 0 )); then
+                while IFS= read -r _fw_spec; do
+                    [[ -n "$_fw_spec" ]] || continue
+                    _fw_proto="${_fw_spec%%/*}"; _fw_port="${_fw_spec#*/}"
+                    ( allowPort "$_fw_port" "$_fw_proto" ) || _fw_failed=1
+                done <<< "$_fw_ports"
+            fi
+            if (( _fw_failed == 0 )); then
+                ( save_firewall_rules ) || _fw_failed=1
+            fi
+            if (( _fw_failed == 1 )); then
+                if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
+                    msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
+                    rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"
+                    standalone_preserve_cleanup
+                    return 1
+                else
+                    msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'rollback')${NC}"
+                    standalone_preserve_cleanup
+                    msg "${YELLOW}[!] backup preserved: $bak ; preserve diagnostics: ${ABOX_PRESERVE_DIAG_SAVED:-unavailable}${NC}"
+                    return 1
+                fi
+            fi
+        fi
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
             rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"
+            standalone_preserve_cleanup
             return 1
         else
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'rollback')${NC}"
-            msg "${YELLOW}[!] backup preserved: $bak ; preserve preserved: $ABOX_PRESERVE_FILE${NC}"
+            standalone_preserve_cleanup
+            msg "${YELLOW}[!] backup preserved: $bak ; preserve diagnostics: ${ABOX_PRESERVE_DIAG_SAVED:-unavailable}${NC}"
             return 1
         fi
     fi
@@ -18926,6 +19030,29 @@ forget_native_firewall_rule() {
     return 0
 }
 
+# M-12(2): Hy2 HTTP-01 shares the A-Box 80/tcp opening with Wallos:
+# both are recorded under the same "A-Box-80-tcp" comment, so refusing
+# a Wallos opening (or rolling a Wallos rule back) would also delete
+# the port Hy2 ACME renewal needs. Keep 80/tcp while Hy2 HTTP-01 is
+# enabled and its certificate still needs renewal: no cert on disk
+# yet (HTTP-01 must be able to run to obtain one), unreadable, or
+# expiring within the 30-day renewal window. A cert valid beyond the
+# window does not need the port right now.
+hy2_http01_port_still_needed() {
+    local cert=''
+    hy2_http01_enabled || return 1
+    for cert in /etc/hysteria/server.crt /etc/sing-box/hy2.crt; do
+        [[ -f "$cert" && ! -L "$cert" ]] || continue
+        command -v openssl >/dev/null 2>&1 || return 0
+        if openssl x509 -in "$cert" -noout -checkend 2592000 2>/dev/null; then
+            return 1
+        else
+            return 0
+        fi
+    done
+    return 0
+}
+
 remove_abox_native_firewall_rule() {
     local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record _backend _spec _proto _scope _zone _extra
     local _target_scope='' _target_zone='' _scope_given=0 _zone_given=0
@@ -18940,6 +19067,13 @@ remove_abox_native_firewall_rule() {
     if (( _zone_given == 1 )) && [[ -n "$_target_zone" ]] && [[ ! "$_target_zone" =~ ^[A-Za-z0-9_.:@+-]+$ ]]; then return 1; fi
     spec=$(normalize_port_spec "$raw_spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+    # M-12(2): never delete the shared 80/tcp opening while Hy2
+    # HTTP-01 renewal still needs it; report success (the port stays
+    # open, which is what the renewal wants).
+    if [[ "$spec" == 80 && "$proto" == tcp ]] && hy2_http01_port_still_needed; then
+        msg "${YELLOW}[!] Keeping 80/tcp: still needed by Hy2 HTTP-01 certificate renewal.${NC}" >&2
+        return 0
+    fi
     backend=$(firewall_backend) || return 1
     case "$backend" in
         ufw)
@@ -26547,6 +26681,10 @@ deployment_transaction_rollback_inner() {
     ABOX_DEPLOY_TX_BACKUP_DIR=''
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    # Carbon H-11(4): a deploy that reached rollback may have left a
+    # preserve snapshot behind; reap it now that the pre-operation
+    # state is restored (diagnostics copy first, then remove).
+    standalone_preserve_cleanup
     return 0
 }
 
@@ -34494,7 +34632,7 @@ abox_caddy_owned() {
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
-    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au=''
+    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au='' _argo_state_moved=0 _argo_f=''
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
         chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
@@ -34521,6 +34659,7 @@ do_cleanup() {
     else
         remove_owned_auxiliary_path /etc/sysctl.d/99-A-Box-tune.conf || die "$(tr_msg cu_sysctl)"
         remove_owned_auxiliary_path /etc/security/limits.d/A-Box.conf || die "$(tr_msg cu_limits)"
+        remove_owned_auxiliary_path /etc/modules-load.d/A-Box-bbr.conf || die 'Failed to remove the A-Box BBR module-load config.'
     fi
     remove_all_abox_cron_blocks || die "$(tr_msg cl_cron)"
     remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg cl_f2b_jail)"
@@ -34571,9 +34710,13 @@ do_cleanup() {
     path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'
     rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
 
-    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
+    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local /etc/fail2ban/action.d/A-Box-wallos-dockeruser.conf; do
         if [[ -f "$_wf" ]] && grep -Fxq '# Managed by A-Box' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
+    # M-12(3): /usr/local/bin/wgcf is intentionally NOT removed here:
+    # no A-Box ownership marker exists for it, so deleting it could
+    # destroy a foreign binary. Removal waits for an unmarked-binary
+    # ownership rule (see arbitration).
     # S-UNINSTALL-01: decide caddy ownership BEFORE wallos_https_teardown
     # deletes the front unit the legacy rule needs as evidence. The
     # binary itself is removed below, after the front is down.
@@ -34607,6 +34750,7 @@ do_cleanup() {
         # a pre-existing /usr/local/bin/sb is out of scope and left alone.
         local _wipe_script_copy=''
         local _wipe_copy_failed=0
+        local _wipe_shortcut_failed=0
         if [[ "${1:-}" == wipe ]]; then
             if [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]]; then
                 _wipe_script_copy="$ABOX_DIR/A-Box.sh"
@@ -34617,6 +34761,18 @@ do_cleanup() {
                 cp -- "$_wipe_script_copy" "$uninstall_tx_dir/wipe-keep-A-Box.sh" 2>/dev/null || { _wipe_copy_failed=1; _wipe_script_copy=''; }
             else
                 _wipe_script_copy=''
+            fi
+            # M-12(3): stash the shortcut state alongside the script so
+            # setup_shortcut below re-installs the same command names.
+            # The state files live under ABOX_DIR and would otherwise be
+            # destroyed with it. A missing state file is fine (fresh
+            # install); a present-but-uncopyable one aborts like the
+            # script copy below.
+            if [[ -f "$(shortcut_state_path)" && ! -L "$(shortcut_state_path)" ]]; then
+                cp -- "$(shortcut_state_path)" "$uninstall_tx_dir/wipe-keep-shortcut" 2>/dev/null || _wipe_shortcut_failed=1
+            fi
+            if [[ -f "$(shortcut_migrate_path)" && ! -L "$(shortcut_migrate_path)" ]]; then
+                cp -- "$(shortcut_migrate_path)" "$uninstall_tx_dir/wipe-keep-shortcut-migrate" 2>/dev/null || _wipe_shortcut_failed=1
             fi
         else
             local _sc_path='' _sc_rc=0
@@ -34632,6 +34788,7 @@ do_cleanup() {
         # R12C10-02: a selected keep-script whose copy failed must abort
         # before ABOX_DIR is destroyed; otherwise the wipe promise is lost.
         if (( _wipe_copy_failed == 1 )); then die 'Wipe keep-script copy failed; aborting before ABOX_DIR is destroyed.'; fi
+        if (( _wipe_shortcut_failed == 1 )); then die 'Wipe shortcut-state copy failed; aborting before ABOX_DIR is destroyed.'; fi
         # Do not destroy ABOX_DIR until managed Swap has been removed successfully.
         # The ownership marker is required for a safe retry when /etc/fstab or swapoff fails.
         if ! remove_abox_swap; then
@@ -34640,6 +34797,17 @@ do_cleanup() {
         fi
         wallos_stack_teardown purge-data || die 'Wallos stack teardown (purge-data) failed; aborting cleanup before ABOX_DIR is deleted.'
         path_tree_has_mountpoint "$ABOX_DIR" && die "$(tr_msg cu_mount)"
+        # M-12(3): when Argo removal failed, its token/state were kept
+        # above for retry; move them into the transaction dir before
+        # ABOX_DIR is destroyed, so the retry still has them.
+        if (( _argo_rm_failed == 1 )) && [[ -n "$uninstall_tx_dir" ]]; then
+            install -d -m 700 "$uninstall_tx_dir/argo-retry" 2>/dev/null || true
+            for _argo_f in .argo-token .extra-uuids .traffic-pair-state .desired_state .traffic-block-state .argo-state .routing-state .abox-cloudflared-owned; do
+                if [[ -f "$ABOX_DIR/$_argo_f" && ! -L "$ABOX_DIR/$_argo_f" ]]; then
+                    cp -a -- "$ABOX_DIR/$_argo_f" "$uninstall_tx_dir/argo-retry/$_argo_f" 2>/dev/null && _argo_state_moved=1 || true
+                fi
+            done
+        fi
         # Keep the deployment transaction active until the final data-directory
         # deletion has been confirmed. If rm/race/permission errors occur, the
         # transaction hook must still be able to restore the pre-uninstall backup.
@@ -34652,11 +34820,24 @@ do_cleanup() {
             else
                 msg "${YELLOW}[!] $(tr_msg cu_wipe_noscript)${NC}"
             fi
+            # M-12(3): restore the stashed shortcut state (mode 600,
+            # like shortcut_write_state writes it) so setup_shortcut
+            # re-installs the pre-wipe command names.
+            if [[ -f "$uninstall_tx_dir/wipe-keep-shortcut" && ! -L "$uninstall_tx_dir/wipe-keep-shortcut" ]]; then
+                install_file_atomically "$uninstall_tx_dir/wipe-keep-shortcut" "$ABOX_DIR/.shortcut" 600 || die "$(tr_msg cu_datadir)"
+            fi
+            if [[ -f "$uninstall_tx_dir/wipe-keep-shortcut-migrate" && ! -L "$uninstall_tx_dir/wipe-keep-shortcut-migrate" ]]; then
+                install_file_atomically "$uninstall_tx_dir/wipe-keep-shortcut-migrate" "$ABOX_DIR/.shortcut-migrate" 600 || die "$(tr_msg cu_datadir)"
+            fi
             setup_shortcut || die "$(tr_msg cu_shortcut)"
         fi
         commit_deployment_transaction
         if (( _argo_rm_failed == 1 )); then
-            msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
+            if (( _argo_state_moved == 1 )); then
+                msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary was kept and Argo token/state were moved to ${uninstall_tx_dir}/argo-retry for retry.${NC}"
+            else
+                msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
+            fi
             exit 1
         fi
         msg "${GREEN}$(tr_msg cu_full_done)${NC}"
@@ -35103,9 +35284,176 @@ _standalone_link_prune_if_gone() {
     return 0
 }
 
+# M-12(1): the per-tag TUIC cert filename suffix (same construction as
+# the TUIC deployer): sanitized tag + first 8 hex of its sha256.
+tuic_cert_tag() {
+    local _t
+    _t=$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_')
+    printf '%s-%s\n' "$_t" "$(printf '%s' "$1" | sha256sum | cut -c1-8)"
+}
+
+# M-12(1): delete the Hy2 HOP REDIRECT NAT rules (v4+v6) for one hop
+# range. Idempotent: a rule that is already gone is not an error.
+# Returns 1 only when a rule that is still present cannot be deleted.
+remove_hy2_hop_nat_rules() {
+    local _start="$1" _end="$2" _base="$3" _iface="$4" cmd _probe _spec
+    local _failed=0
+    for cmd in "$IPT" "$IPT6"; do
+        if [[ "$cmd" == "$IPT6" ]]; then
+            if ! command -v "$IPT6" >/dev/null 2>&1; then continue; fi
+            _iptables_q "$IPT6" -t nat -S PREROUTING >/dev/null 2>&1 || continue
+            if ! _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1; then
+                # Usable IPv6 is not guaranteed; a non-empty IPv6
+                # rulebase we cannot enumerate is fail-closed: leave
+                # the v6 rules in place and report failure.
+                _probe=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>/dev/null)
+                [[ -z "$_probe" ]] && continue
+                _failed=1
+                continue
+            fi
+        fi
+        for _spec in "-i $_iface -p udp --dport ${_start}:${_end} -j REDIRECT --to-ports $_base"; do
+            while _iptables_q "$cmd" -t nat -C PREROUTING $_spec 2>/dev/null; do
+                _iptables_q "$cmd" -t nat -D PREROUTING $_spec 2>/dev/null || { _failed=1; break; }
+            done
+        done
+    done
+    (( _failed == 0 ))
+}
+
+# M-12(1): enumerate "proto/port" lines for the given inbound tags in a
+# JSONC-stripped core config file ($1). Transport mapping mirrors
+# core_expected_listen_ports (Xray socks is tcp+udp exactly when
+# settings.udp is true, SS follows settings.network; sing-box
+# shadowsocks follows .network, socks/mixed are tcp-only). Loopback
+# inbounds and the api inbound have no public firewall surface and are
+# skipped. Prints nothing and returns 0 when no tag matches.
+removed_inbound_ports() {
+    local cfg="$1"; shift
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    (( $# > 0 )) || return 0
+    local _tags_json=''
+    _tags_json=$(printf '%s\n' "$@" | jq -R . | jq -sc . 2>/dev/null) || return 1
+    jq -r --argjson tags "$_tags_json" '
+    def transports:
+      if (.protocol // null) != null then
+        (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
+         elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
+         elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+         elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+         elif (.streamSettings.network // null) != null then
+           (.streamSettings.network | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"] elif . == "kcp" or . == "quic" then ["udp"] elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"] else ["tcp"] end)
+         else ["tcp"] end)
+      elif (.type // null) != null then
+        (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
+         elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+         else ["tcp"] end)
+      else ["tcp"] end;
+    ($tags) as $want
+    | .inbounds[]?
+    | select(.tag as $t | ($want | index($t)) != null)
+    | select(.tag != "api")
+    | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1"))
+    | select((.port // .listen_port) != null)
+    | (transports) as $trs
+    | ((.port // .listen_port) | tostring | split(",")) as $ps
+    | $ps[] as $p | $trs[] | "\(.)/\($p)"' "$cfg" 2>/dev/null
+}
+
+# M-12(1): true when the given single proto/port is still listened on
+# by a surviving inbound, per the live-set text ($3, "proto/port"
+# lines as produced by core_expected_listen_ports, plus the Hysteria
+# YAML listen port). A live range that contains the port also counts.
+_firewall_port_live() {
+    local _proto="$1" _port="$2" _live="$3" _l _lp _lr _lo _hi
+    while IFS= read -r _l; do
+        [[ "$_l" == "$_proto/$_port" ]] && return 0
+        if [[ "$_l" =~ ^$_proto/([0-9]+)[-:]([0-9]+)$ ]]; then
+            _lo="${BASH_REMATCH[1]}"; _hi="${BASH_REMATCH[2]}"
+            if (( _port >= _lo && _port <= _hi )); then return 0; fi
+        fi
+    done <<< "$_live"
+    return 1
+}
+
+# M-12(1): true when the given proto/range overlaps any live port or
+# live range in the live-set text ($4). A malformed live range is
+# treated as live (fail-closed).
+_firewall_range_live() {
+    local _proto="$1" _lo="$2" _hi="$3" _live="$4" _l _lp _lr _rlo _rhi
+    while IFS= read -r _l; do
+        [[ "$_l" == "$_proto/"* ]] || continue
+        _lr="${_l#*/}"
+        if [[ "$_lr" =~ ^([0-9]+)[-:]([0-9]+)$ ]]; then
+            _rlo="${BASH_REMATCH[1]}"; _rhi="${BASH_REMATCH[2]}"
+            if (( _lo <= _rhi && _hi >= _rlo )); then return 0; fi
+        elif [[ "$_lr" =~ ^[0-9]+$ ]]; then
+            if (( _lr >= _lo && _lr <= _hi )); then return 0; fi
+        else
+            return 0
+        fi
+    done <<< "$_live"
+    return 1
+}
+
+# M-12(1): recycle firewall openings for removed inbounds. Reads
+# "proto/port" lines on stdin; for each, removes the native rule and
+# the iptables ACCEPT rule only when no surviving inbound in either
+# core config (or the Hysteria YAML) still listens on it. One
+# save_firewall_rules at the end when anything was removed.
+# Best-effort: a failure to enumerate live ports leaves every rule in
+# place, and a removal failure only warns; the removal itself never
+# fails because of this recycling.
+firewall_recycle_freed_ports() {
+    local spec='' proto='' port='' _live='' _out='' _removed=0 _live_failed=0 _line='' _lo='' _hi='' _rspec='' _hy2p=''
+    if [[ -f /usr/local/etc/xray/config.json && ! -L /usr/local/etc/xray/config.json ]]; then
+        _out=$(core_expected_listen_ports xray /usr/local/etc/xray/config.json 2>/dev/null) || _live_failed=1
+        _live+="$_out"$'\n'
+    fi
+    if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+        _out=$(core_expected_listen_ports singbox /etc/sing-box/config.json 2>/dev/null) || _live_failed=1
+        _live+="$_out"$'\n'
+    fi
+    if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+        _hy2p=$(xl_hy2_port 2>/dev/null || true)
+        _hy2p="${_hy2p%%-*}"
+        if [[ "$_hy2p" =~ ^[0-9]+$ ]]; then _live+="udp/$_hy2p"$'\n'; fi
+    fi
+    if (( _live_failed == 1 )); then
+        msg "${YELLOW}[!] Cannot enumerate live ports; leaving removed inbounds' firewall rules in place.${NC}"
+        return 0
+    fi
+    while IFS= read -r spec; do
+        [[ -n "$spec" ]] || continue
+        proto="${spec%%/*}"; port="${spec#*/}"
+        [[ "$proto" == tcp || "$proto" == udp ]] || continue
+        if [[ "$port" =~ ^([0-9]+)[-:]([0-9]+)$ ]]; then
+            _lo="${BASH_REMATCH[1]}"; _hi="${BASH_REMATCH[2]}"
+            _firewall_range_live "$proto" "$_lo" "$_hi" "$_live" && continue
+            _rspec="$_lo:$_hi"
+        else
+            [[ "$port" =~ ^[0-9]+$ ]] || continue
+            _firewall_port_live "$proto" "$port" "$_live" && continue
+            _rspec="$port"
+        fi
+        remove_abox_native_firewall_rule "$_rspec" "$proto" >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to remove the native firewall rule for ${_rspec}/${proto} of a removed inbound.${NC}"
+        wallos_remove_abox_iptables_accept "$_rspec" "$proto" >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to remove the iptables ACCEPT rule for ${_rspec}/${proto} of a removed inbound.${NC}"
+        _removed=1
+    done
+    if (( _removed == 1 )); then
+        save_firewall_rules >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to persist firewall rules after recycling removed inbounds' ports.${NC}"
+    fi
+    return 0
+}
+
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
     local tag='' cfg=''
+    # M-12(1): hop parameters are captured up front: the .env port
+    # reconciliation below may unset HY2_BASE_PORT before the tail
+    # block deletes the hop NAT rules.
+    local _hop_start="${HY2_RANGE_START:-}" _hop_end="${HY2_RANGE_END:-}" _hop_base="${HY2_BASE_PORT:-}" _hop_iface="${INGRESS_IF:-}" _hop_on="${HY2_HOP:-}"
+    local _tuic_ct='' _tuic_f=''
     for tag in "$@"; do
         case "$tag" in
             # R15-F10-03: the Argo source inbounds live in sing-box;
@@ -35191,6 +35539,38 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             fi
         fi
     fi
+    # M-12(1): reclaim Hy2 hop NAT rules and per-tag TUIC certs when
+    # the last inbound of that kind is gone. The HOP REDIRECT rules
+    # live in the sing-box unit's ExecStartPre/ExecStopPost and would
+    # otherwise keep hijacking the hop range into a base port with no
+    # inbound behind it; note the unit file itself is not rewritten
+    # here, so a later service restart re-adds the rules until the
+    # next deploy regenerates the unit.
+    if [[ "$core" == 'sing-box' && -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
+        local _hop_left_rc=0
+        jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hop_left_rc=$?
+        if [[ "$_hop_left_rc" == 1 && "$_hop_on" == 'true' && -n "$_hop_start" && -n "$_hop_end" && -n "$_hop_base" && -n "$_hop_iface" ]]; then
+            if remove_hy2_hop_nat_rules "$_hop_start" "$_hop_end" "$_hop_base" "$_hop_iface"; then
+                save_firewall_rules >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to persist firewall rules after removing Hy2 hop NAT rules.${NC}"
+            else
+                msg "${YELLOW}[!] Failed to remove Hy2 hop NAT rules after the last Hy2 inbound was removed.${NC}"
+            fi
+        fi
+        local _tuic_left_rc=0
+        jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _tuic_left_rc=$?
+        if [[ "$_tuic_left_rc" == 1 ]]; then
+            for tag in "$@"; do
+                case "$tag" in
+                    *tuic*)
+                        _tuic_ct=$(tuic_cert_tag "$tag")
+                        for _tuic_f in "/etc/sing-box/tuic-${_tuic_ct}.crt" "/etc/sing-box/tuic-${_tuic_ct}.key" "/etc/sing-box/tuic-${_tuic_ct}.crt.A-Box-bak" "/etc/sing-box/tuic-${_tuic_ct}.key.A-Box-bak"; do
+                            [[ -f "$_tuic_f" && ! -L "$_tuic_f" ]] && rm -f -- "$_tuic_f" 2>/dev/null || true
+                        done
+                        ;;
+                esac
+            done
+        fi
+    fi
     return 0
 }
 
@@ -35251,7 +35631,7 @@ _remove_hy2_official() {
 
 remove_single_protocol_menu() {
     local -a rows=() tags=()
-    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs='' _cfg_stripped=''
+    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs='' _cfg_stripped='' _freed_ports=''
     local _inv_tmp='' _inv_rc=0
     _inv_tmp=$(mktemp /tmp/A-Box-inventory.XXXXXX) || return 1
     protocol_inventory > "$_inv_tmp"; _inv_rc=$?
@@ -35324,6 +35704,10 @@ remove_single_protocol_menu() {
             while IFS= read -r d; do [[ -n "$d" ]] && tags+=("$d"); done <<< "$deps"
             msg "${YELLOW}$(tr_msg cl_dep_warn): ${deps//$'\n'/, }${NC}"
         fi
+        # M-12(1): capture the doomed inbounds' ports now (the stripped
+        # config is deleted below); the firewall openings are recycled
+        # after the side effects, only for ports nothing else uses.
+        _freed_ports=$(removed_inbound_ports "$_cfg_stripped" "${tags[@]}" 2>/dev/null | sort -u || true)
         rm -f -- "$_cfg_stripped"
     fi
     read -r -p "$(tr_msg cl_confirm_one) ${label} [Y/N]: " answer || return 0
@@ -35336,12 +35720,15 @@ remove_single_protocol_menu() {
         # SYD-B E4: the hy2 branch previously skipped side effects,
         # so stale .env port keys (incl. HY2_URI_PORTS) survived.
         _protocol_removed_side_effects hy2 hy2-official
+        # M-12(1): recycle the Hy2 UDP port when nothing else uses it.
+        if [[ "$port" =~ ^[0-9]+$ ]]; then printf 'udp/%s\n' "$port" | firewall_recycle_freed_ports; fi
     else
         if ! _remove_inbounds_from_config "$core" "${tags[@]}"; then
             msg "${RED}$(tr_msg cl_fail)${NC}"
             return 1
         fi
         _protocol_removed_side_effects "$core" "${tags[@]}"
+        if [[ -n "$_freed_ports" ]]; then printf '%s\n' "$_freed_ports" | firewall_recycle_freed_ports; fi
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
     msg "${GREEN}$(tr_msg cl_done): ${label}${NC}"
@@ -35371,7 +35758,7 @@ clear_all_remove_sole_api_inbound() {
 }
 
 clear_all_protocols() {
-    local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped='' _cmv=''
+    local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped='' _cmv='' _freed_tmp='' _hy2port=''
     local -a all_tags=()
     read -r -p "$(tr_msg cl_confirm_all) [Y/N]: " answer || return 0
     is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
@@ -35385,6 +35772,7 @@ clear_all_protocols() {
         msg "${RED}[!] $(tr_msg cl_desired_commit_fail)${NC}" >&2
         return 1
     fi
+    _freed_tmp=$(mktemp /tmp/A-Box-cl-ports.XXXXXX) || { msg "${RED}$(tr_msg cl_fail)${NC}"; return 1; }
     for core in xray sing-box; do
         info=$(_protocol_cfg_of "$core") || continue
         IFS='|' read -r cfg _ _ <<< "$info"
@@ -35414,6 +35802,9 @@ clear_all_protocols() {
             continue
         fi
         mapfile -t all_tags < "$_tags_tmp"
+        # M-12(1): snapshot this core's doomed inbounds' ports before
+        # the stripped config is deleted; recycled later (wipe_ok only).
+        removed_inbound_ports "$_tags_stripped" "${all_tags[@]}" 2>/dev/null >> "$_freed_tmp" || true
         rm -f "$_tags_tmp" "$_tags_stripped"
         if ! _remove_inbounds_from_config "$core" --all; then
             msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
@@ -35423,10 +35814,12 @@ clear_all_protocols() {
         (( ${#all_tags[@]} )) && _protocol_removed_side_effects "$core" "${all_tags[@]}"
     done
     if [[ -f /etc/hysteria/config.yaml ]]; then
+        _hy2port=$(xl_hy2_port 2>/dev/null || true)
         if _remove_hy2_official; then
             # R1-11-F09 (SYD-B E4 mirror): Hy2 removal must run side effects
             # (notably .env port reconciliation) just like the JSON cores.
             _protocol_removed_side_effects hy2 hy2-official
+            if [[ "$_hy2port" =~ ^[0-9]+$ ]]; then printf 'udp/%s\n' "$_hy2port" >> "$_freed_tmp"; fi
         else
             wipe_ok=0
         fi
@@ -35454,6 +35847,9 @@ clear_all_protocols() {
         # ports of surviving nodes; best-effort (a failed sync keeps
         # the ports, exactly like a skipped one did).
         sync_env_ports_after_removal || true
+        # M-12(1): recycle the freed ports now that every removal has
+        # succeeded; on partial wipe the rules stay (fail-closed).
+        if [[ -s "$_freed_tmp" ]]; then firewall_recycle_freed_ports < "$_freed_tmp"; fi
         argo_remove_unit argo || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
@@ -35470,6 +35866,7 @@ clear_all_protocols() {
     else
         msg "${YELLOW}[!] $(tr_msg cl_wipe_partial)${NC}"
     fi
+    rm -f -- "$_freed_tmp"
     ( setup_active_defense ) >/dev/null 2>&1 || true
     if (( wipe_ok == 1 )); then
         msg "${GREEN}$(tr_msg cl_all_done)${NC}"
@@ -35519,9 +35916,26 @@ check_virgin_state() {
     begin_deployment_transaction 'environment reset' xray sing-box hysteria || die "$(tr_msg vg_tx_fail)"
     preflight_reset_ownership || die "$(tr_msg vg_preflight_fail)"
     stop_all_managed_services || die "$(tr_msg vg_stop)"
+    # M-12(2): snapshot the Wallos ports before the input rules are
+    # reset: clean_input_rules deletes the A-Box ACCEPT rules the
+    # Wallos HTTP/HTTPS front (and its 80/tcp HTTP-01 listener) needs,
+    # and the reset must not strand a running Wallos stack.
+    local _vg_wallos_mode='' _vg_wallos_pubport=''
+    _vg_wallos_mode=$(wallos_state_value MODE 2>/dev/null || true)
+    _vg_wallos_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    # M-12(2): replay the snapshotted Wallos ports after the reset.
+    # Best-effort: a failed replay only warns and never rolls the
+    # reset back (the reset itself is the requested outcome).
+    if [[ "$_vg_wallos_mode" == 'http' || "$_vg_wallos_mode" == 'https' ]] && [[ "$_vg_wallos_pubport" =~ ^[0-9]+$ ]]; then
+        ( allowPort "$_vg_wallos_pubport" tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to restore the Wallos public port ${_vg_wallos_pubport}/tcp after the environment reset.${NC}"
+        if [[ "$_vg_wallos_mode" == 'https' ]]; then
+            ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to restore 80/tcp for Wallos HTTPS after the environment reset.${NC}"
+        fi
+        save_firewall_rules >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to persist firewall rules after restoring Wallos ports.${NC}"
+    fi
     remove_all_abox_cron_blocks || die "$(tr_msg cl_cron)"
     # Menu 17 deep self-heal: pass force_heal=1 explicitly (never via environment).
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_reset)"
@@ -39069,32 +39483,58 @@ try_latest_cores_danger() {
     if abox_owns_service sing-box && [[ -x /usr/local/bin/sing-box ]]; then targets+=(singbox); fi
     if abox_owns_service hysteria && [[ -x /usr/local/bin/hysteria ]]; then targets+=(hysteria); fi
     (( ${#targets[@]} > 0 )) || { msg "${YELLOW}$(tr_msg tl_no_owned)${NC}"; pause_return; return 0; }
-    # Each core gets an independent transaction in a subshell.
-    local failed_cores=()
+    # Each core gets an independent transaction in a subshell, with a
+    # rollback-status file like upgrade_current_cores_only (M-11): a
+    # failed/unknown rollback stops the loop instead of letting the
+    # next core's begin snapshot the already-damaged state.
+    local failed_cores=() stopped=0 idx=0
     for t in "${targets[@]}"; do
         msg "${CYAN}$(tprintf tl_trying "$t")${NC}"
-        if ( begin_core_upgrade_transaction "$t"
-             case "$t" in
-                 xray)
-                     latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die "$(tr_msg tl_cand_xray)"
-                     msg "${YELLOW}$(tprintf tl_try_xray "$latest")${NC}"
-                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
-                 singbox)
-                     latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die "$(tr_msg tl_cand_sb)"
-                     msg "${YELLOW}$(tprintf tl_try_sb "$latest")${NC}"
-                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
-                 hysteria)
-                     latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die "$(tr_msg tl_cand_hy)"
-                     msg "${YELLOW}$(tprintf tl_try_hy "$latest")${NC}"
-                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
-             esac || { core_upgrade_transaction_rollback; exit 1; }
-             commit_core_upgrade_transaction ); then
+        local rb_status rb_state
+        rb_status=$(mktemp) || { msg "${RED}[!] [$t] cannot create rollback status file; aborting latest-core attempts.${NC}"; return 1; }
+        printf 'not-started\n' > "$rb_status" || { rm -f -- "$rb_status"; msg "${RED}[!] [$t] cannot create rollback status file; aborting latest-core attempts.${NC}"; return 1; }
+        ABOX_CORE_TX_RB_STATUS="$rb_status"
+        if core_upgrade_transaction_attempt "$t" try_latest_upgrade_one "$t"; then
+            rm -f -- "$rb_status"
             msg "${GREEN}$(tprintf tl_done_one "$t")${NC}"
         else
-            msg "${YELLOW}$(tprintf tl_failed_one "$t")${NC}"
-            failed_cores+=("$t")
+            rb_state=$(cat "$rb_status" 2>/dev/null || echo unknown)
+            rm -f -- "$rb_status"
+            case "$rb_state" in
+                ok)
+                    msg "${YELLOW}$(tprintf tl_failed_one "$t")${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                not-started)
+                    msg "${YELLOW}[!] [$t] latest attempt failed before any change was made; no rollback needed; continuing.${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                not-modified)
+                    msg "${YELLOW}[!] [$t] latest attempt failed during precheck; installed binary was not changed, no rollback needed; continuing.${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                failed)
+                    msg "${RED}[!] [$t] latest attempt failed and its rollback FAILED; stopping further latest-core attempts.${NC}"
+                    failed_cores+=("$t"); stopped=1
+                    break
+                    ;;
+                *)
+                    msg "${RED}[!] [$t] latest attempt failed with rollback state unknown (interrupted mid-transaction); stopping further latest-core attempts.${NC}"
+                    failed_cores+=("$t"); stopped=1
+                    break
+                    ;;
+            esac
         fi
+        idx=$((idx+1))
     done
+    ABOX_CORE_TX_RB_STATUS=''
+    if (( stopped == 1 )); then
+        # R16C16-02 mirror: the unattempted cores are the targets after
+        # the one that stopped the loop, not failed_cores.
+        local unattempted=() j
+        for (( j=idx+1; j<${#targets[@]}; j++ )); do unattempted+=("${targets[j]}"); done
+        msg "${YELLOW}[!] Latest-core loop stopped early; failed cores: ${failed_cores[*]}; remaining cores not attempted: ${unattempted[*]}${NC}"
+    fi
     if (( ${#failed_cores[@]} > 0 )); then
         msg "${YELLOW}$(tprintf tl_finished_fail "${failed_cores[*]}")${NC}"
     else
@@ -51786,6 +52226,11 @@ wallos_remove_abox_iptables_accept() {
     local spec="$1" proto="${2:-tcp}" comment cmd check_rc failed=0
     spec=$(normalize_port_spec "$spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+    # M-12(2): same shared-port guard as remove_abox_native_firewall_rule.
+    if [[ "$spec" == 80 && "$proto" == tcp ]] && hy2_http01_port_still_needed; then
+        msg "${YELLOW}[!] Keeping 80/tcp: still needed by Hy2 HTTP-01 certificate renewal.${NC}" >&2
+        return 0
+    fi
     comment="A-Box-${spec}-${proto}"
     for cmd in "$IPT" "$IPT6"; do
         [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
@@ -55858,6 +56303,9 @@ upgrade_xray_core_only() {
     if [[ -f /usr/local/etc/xray/config.json ]] && ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$xray_ext/xray" run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New Xray is incompatible with the current config; installed binary was not changed.'
     fi
+    # M-11: prechecks are done; arm the transaction now, immediately
+    # before the first mutating step (old-binary backup + install).
+    core_upgrade_transaction_arm
     [[ -f /usr/local/bin/xray ]] && { backup="$tmp/xray.backup"; cp -a /usr/local/bin/xray "$backup" || { rm -rf "$tmp"; die 'Xray binary backup failed.'; }; }
     install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || { rm -rf "$tmp"; die 'Xray binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
@@ -55934,6 +56382,9 @@ upgrade_singbox_core_only() {
     if [[ -f /etc/sing-box/config.json ]] && ! "$sb_path" check -c /etc/sing-box/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New sing-box is incompatible with the current config; installed binary was not changed.'
     fi
+    # M-11: prechecks are done; arm the transaction now, immediately
+    # before the first mutating step (old-binary backup + install).
+    core_upgrade_transaction_arm
     [[ -f /usr/local/bin/sing-box ]] && { backup="$tmp/sing-box.backup"; cp -a /usr/local/bin/sing-box "$backup" || { rm -rf "$tmp"; die 'sing-box binary backup failed.'; }; }
     install_binary_atomically "$sb_path" /usr/local/bin/sing-box || { rm -rf "$tmp"; die 'sing-box binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
@@ -56007,6 +56458,9 @@ upgrade_hysteria_core_only() {
     if ! hysteria_staged_binary_smoke_test "$hy2_bin"; then
         rm -rf "$tmp"; die 'Hysteria staged startup precheck failed; installed binary was not changed.'
     fi
+    # M-11: prechecks are done; arm the transaction now, immediately
+    # before the first mutating step (old-binary backup + install).
+    core_upgrade_transaction_arm
     [[ -f /usr/local/bin/hysteria ]] && { backup="$tmp/hysteria.backup"; cp -a /usr/local/bin/hysteria "$backup" || { rm -rf "$tmp"; die 'Hysteria binary backup failed.'; }; }
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
@@ -56551,6 +57005,9 @@ restore_core_upgrade_transaction_traps() {
 # loop. No-op when the caller did not provide a status file (other
 # begin callers are unaffected). An unwritable file is removed so the
 # parent reads "unknown" and stops, rather than a stale state.
+# States: not-started (begin never ran / backup failed), not-modified
+# (M-11: prepared but nothing installed yet; a precheck failure needs
+# no rollback), active, ok, failed.
 core_upgrade_transaction_set_status() {
     [[ -n "${ABOX_CORE_TX_RB_STATUS:-}" ]] || return 0
     printf '%s\n' "$1" > "$ABOX_CORE_TX_RB_STATUS" 2>/dev/null || rm -f -- "$ABOX_CORE_TX_RB_STATUS"
@@ -56744,10 +57201,28 @@ begin_core_upgrade_transaction() {
     ABOX_LAST_BACKUP=''
     auto_backup_silent 'all-core atomic upgrade' "$ABOX_DIR/backups"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg begin_core_upgrade_transaction_backup_failed)"
-    ABOX_CORE_UPGRADE_ACTIVE=1
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
     ABOX_CORE_UPGRADE_TARGETS="$*"
-    # S163: mark the transaction active for the parent loop.
+    # M-11: the transaction is only PREPARED here (backup taken, nothing
+    # modified yet). The die hook and traps stay disarmed until
+    # core_upgrade_transaction_arm runs just before the atomic binary
+    # install, so a precheck failure (download / version direction /
+    # staged run -test) exits the subshell without stopping every
+    # managed service for a rollback of nothing. Status stays
+    # not-modified until armed; a backup failure above dies with the
+    # hook still empty, so the parent reads not-started.
+    core_upgrade_transaction_set_status not-modified
+}
+
+# M-11: arm a prepared core-upgrade transaction just before the atomic
+# binary install. Only from here on may a die trigger the full-stack
+# rollback; earlier failures exit with status not-modified and no
+# rollback. No-op when no prepared transaction exists (an upgrade
+# function called outside a transaction keeps its old behaviour).
+core_upgrade_transaction_arm() {
+    [[ -n "${ABOX_CORE_UPGRADE_BACKUP:-}" && -f "${ABOX_CORE_UPGRADE_BACKUP:-}" ]] || return 0
+    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] && return 0
+    ABOX_CORE_UPGRADE_ACTIVE=1
     core_upgrade_transaction_set_status active
     ABOX_DIE_HOOK=core_upgrade_transaction_rollback
     install_core_upgrade_transaction_traps
@@ -56760,6 +57235,51 @@ commit_core_upgrade_transaction() {
     ABOX_CORE_UPGRADE_TMP=''
     ABOX_DIE_HOOK=''
     restore_core_upgrade_transaction_traps
+}
+
+# M-11: dispatch one core's upgrade-only step by tag (shared by the
+# two core-upgrade loops so the per-core command cannot drift).
+upgrade_core_only_by_tag() {
+    case "$1" in
+        xray) upgrade_xray_core_only ;;
+        singbox) upgrade_singbox_core_only ;;
+        hysteria) upgrade_hysteria_core_only ;;
+        *) return 1 ;;
+    esac
+}
+
+# M-11: shared per-core attempt runner for the two core-upgrade loops.
+# Runs begin -> "$@" -> commit in a subshell; "$@" is the per-core
+# upgrade step. The caller owns the RB status file (via
+# ABOX_CORE_TX_RB_STATUS) and reads the outcome from it. Returns the
+# subshell status.
+core_upgrade_transaction_attempt() {
+    local t="$1"; shift
+    ( begin_core_upgrade_transaction "$t"
+      "$@" || { core_upgrade_transaction_rollback; exit 1; }
+      commit_core_upgrade_transaction )
+}
+
+# M-11: one try-latest attempt for a core: resolve the latest stable
+# candidate, then run the core-only upgrade. Runs inside the attempt
+# subshell, so a candidate-resolution die exits with status
+# not-modified (nothing installed, no rollback).
+try_latest_upgrade_one() {
+    local t="$1" latest=''
+    case "$t" in
+        xray)
+            latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die "$(tr_msg tl_cand_xray)"
+            msg "${YELLOW}$(tprintf tl_try_xray "$latest")${NC}"
+            ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
+        singbox)
+            latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die "$(tr_msg tl_cand_sb)"
+            msg "${YELLOW}$(tprintf tl_try_sb "$latest")${NC}"
+            ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
+        hysteria)
+            latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die "$(tr_msg tl_cand_hy)"
+            msg "${YELLOW}$(tprintf tl_try_hy "$latest")${NC}"
+            ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
+    esac
 }
 
 upgrade_current_cores_only() {
@@ -56795,9 +57315,7 @@ upgrade_current_cores_only() {
         rb_status=$(mktemp) || { msg "${RED}[!] [$t] cannot create rollback status file; aborting core upgrades.${NC}"; return 1; }
         printf 'not-started\n' > "$rb_status" || { rm -f -- "$rb_status"; msg "${RED}[!] [$t] cannot create rollback status file; aborting core upgrades.${NC}"; return 1; }
         ABOX_CORE_TX_RB_STATUS="$rb_status"
-        if ( begin_core_upgrade_transaction "$t"
-             case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac || { core_upgrade_transaction_rollback; exit 1; }
-             commit_core_upgrade_transaction ); then
+        if core_upgrade_transaction_attempt "$t" upgrade_core_only_by_tag "$t"; then
             rm -f -- "$rb_status"
             msg "${GREEN}[$t] upgrade completed.${NC}"
         else
@@ -56810,6 +57328,10 @@ upgrade_current_cores_only() {
                     ;;
                 not-started)
                     msg "${YELLOW}[!] [$t] upgrade failed before any change was made; no rollback needed; continuing.${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                not-modified)
+                    msg "${YELLOW}[!] [$t] upgrade failed during precheck; installed binary was not changed, no rollback needed; continuing.${NC}"
                     failed_cores+=("$t")
                     ;;
                 failed)

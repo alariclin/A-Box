@@ -52157,6 +52157,45 @@ urlencode() {
     done
 }
 
+# Effective SS-2022 client password for the primary (main) node user.
+# OBS-S1-07: once multi-user promotion stores a server_secret, the live
+# inbound is clients-form and a bare server key can never authenticate --
+# the SS-2022 multi-user server requires an EIH, so the client password
+# must be "serverKey:userKey" (Xray ParsePSKList splits on ':', sing-box /
+# Mihomo / shadowsocks-rust document the same form). Before promotion the
+# live password is SS_PASS. $1 (optional) overrides the core
+# ('xray' | 'sing-box'); otherwise ${CORE} decides ('singbox' -> sing-box).
+# Prints the password; rc 1 when no credential can be determined (callers
+# fall back to SS_PASS).
+ss_effective_password() {
+    local want="${1:-}" core='' reg='' ssecret='' main_secret=''
+    case "${want:-${CORE:-}}" in
+        sing-box|singbox) core='sing-box' ;;
+        *) core='xray' ;;
+    esac
+    reg=$(users_reg_file "$core" 'ss')
+    if [[ -f "$reg" && ! -L "$reg" ]]; then
+        ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null || true)
+        if [[ -n "$ssecret" ]]; then
+            # The credential must belong to a user the server actually
+            # has: primary user (main) first, else first enabled user.
+            main_secret=$(jq -r '.users[] | select(.name == "main" and .disabled != true and ((.blocked // "") == "")) | .secret // ""' "$reg" 2>/dev/null | head -1 || true)
+            if [[ -z "$main_secret" ]]; then
+                main_secret=$(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .secret // ""' "$reg" 2>/dev/null | head -1 || true)
+            fi
+            if [[ -n "$main_secret" ]]; then
+                printf '%s' "${ssecret}:${main_secret}"
+                return 0
+            fi
+        fi
+    fi
+    if [[ -n "${SS_PASS:-}" ]]; then
+        printf '%s' "${SS_PASS:-}"
+        return 0
+    fi
+    return 1
+}
+
 build_ss2022_uri() {
     local host="$1" port="$2" pass="$3"
     # SIP002/SIP022: AEAD-2022 userinfo must not be Base64URL encoded;
@@ -52775,7 +52814,7 @@ PY_CLASH_REALPATH
     # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
-    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    ss_pass_yaml=$(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
     # else the stored 64-hex fingerprint; empty means unusable.
@@ -53263,7 +53302,7 @@ view_config() {
         fi
     fi
     if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
-        SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$SS_PASS")
+        SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
         msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT}")${NC}"
         msg "${GREEN}${SS_URL}${NC}"
         generate_qr "$SS_URL"
@@ -53348,7 +53387,7 @@ EOF_SB
       "server": "$LINK_IP",
       "server_port": $SS_PORT,
       "method": "2022-blake3-aes-128-gcm",
-      "password": $(json_escape "$SS_PASS")
+      "password": $(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
     }
 EOF_SB
     fi

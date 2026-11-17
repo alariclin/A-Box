@@ -1152,7 +1152,7 @@ abox_dir_tighten_secrets() {
     # hardening/加固: a symlinked or non-root-owned link dir is
     # refused instead of assumed to gate its files).
     local dir="$1" f
-    for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir"/*.tar.gz; do
+    for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir/.argo-token" "$dir/.routing-state" "$dir/.wallos-cf-token" "$dir/.shortcut" "$dir/.shortcut-migrate" "$dir"/*.tar.gz; do
         [[ -e "$f" || -L "$f" ]] || continue
         [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"
         [[ -f "$f" ]] || continue
@@ -12363,9 +12363,20 @@ shell_quote() {
     local v=${1:-} q
     q=${v//\\/\\\\}
     q=${q//\"/\\\"}
+    q=${q//\$/\\\$}
+    q=${q//\`/\\\`}
+    q=${q//!/\\!}
     q=${q//$'\n'/\\n}
     q=${q//$'\r'/\\r}
     printf '\"%s\"' "$q"
+}
+
+# M-08(3): single-quote a value for a shell/crontab command line.
+# Single quotes defeat $/backtick/command substitution entirely; an
+# embedded ' is closed, escaped, and reopened ('\'').
+shell_single_quote() {
+    local v=${1:-}
+    printf "'%s'" "${v//\'/\'\\\'\'}"
 }
 json_escape() { jq -n --rawfile v <(printf '%s' "${1:-}") '$v'; }
 
@@ -28194,7 +28205,13 @@ argo_write_unit() {
         # exported variables are inherited by start-stop-daemon's child.
         rc_env_line='export TUNNEL_TOKEN="$(cut -d= -f2- /etc/ddr/.argo-token 2>/dev/null)"'
     fi
+    # M-08(2): never leave the tunnel log 0644: drop any stale log,
+    # then recreate it 0600 at once (systemd appends to the existing
+    # file, so the mode survives; OpenRC has no UMask equivalent, so
+    # the pre-created file is the only protection there). noclobber
+    # refuses a symlink swapped in between the remove and the create.
     rm -f "/etc/ddr/${name}.log"
+    ( umask 077; set -o noclobber; : > "/etc/ddr/${name}.log" ) 2>/dev/null || true
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin "/etc/systemd/system/${name}.service" 600 <<EOF_UNIT || die "$(tprintf ag_unit_fail 'systemd' "$name")"
 # Managed by A-Box
@@ -28205,6 +28222,7 @@ Wants=network-online.target
 
 [Service]
 ${env_file_line}
+UMask=0077
 ExecStart=/usr/local/bin/cloudflared ${args}
 Restart=on-failure
 RestartSec=5
@@ -29396,13 +29414,18 @@ _ip_geo_fetch_now() {
     local resp='' cc2='' tmpd=''
     tmpd=$(mktemp -d /tmp/A-Box-geo.XXXXXX 2>/dev/null) || return 1
     ( curl -fsS --max-time 4 "https://ipwho.is/${ip}?fields=success,country_code" 2>/dev/null | jq -r 'select(.success == true) | .country_code // empty' 2>/dev/null > "$tmpd/cc2" ) &
-    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,isp,org,as,mobile,hosting&lang=${geo_lang}" 2>/dev/null) || { rm -rf "$tmpd"; return 1; }
+    resp=$(curl -fsS --max-time 5 "https://ip-api.com/line/${ip}?fields=status,country,countryCode,city,isp,org,as,mobile,hosting&lang=${geo_lang}" 2>/dev/null) || { rm -rf "$tmpd"; return 1; }
     wait
     [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || { rm -rf "$tmpd"; return 1; }
     # Second source (ipwho.is) country code, best-effort: only used to flag
     # multi-source country disagreement (broadcast/anycast heuristic).
     cc2=$(cat "$tmpd/cc2" 2>/dev/null || true)
     rm -rf "$tmpd"
+    # M-08(4): strip control characters (MITM-injected ANSI escapes)
+    # from the upstream response before it is cached; newlines are
+    # field separators and are preserved (only tab survives with them).
+    resp=$(printf '%s' "$resp" | tr -d '\000-\010\013-\037\177')
+    cc2=$(printf '%s' "$cc2" | tr -d '[:cntrl:]')
     local _tmpf
     _tmpf=$(mktemp "${IP_GEO_FILE}.tmp.XXXXXX" 2>/dev/null) || return 1
     printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$_tmpf" 2>/dev/null || { rm -f -- "$_tmpf"; return 1; }
@@ -29887,6 +29910,15 @@ _menu_info_collect() {
           IFS= read -r _gcity; IFS= read -r _gisp; IFS= read -r _gorg; IFS= read -r _gas
           IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gcc2; IFS= read -r _glang
         } < "$IP_GEO_FILE" 2>/dev/null
+        # M-08(4): strip control characters from every cached geo field
+        # before any use or display (defense in depth with the fetch
+        # filter above: a cache written by an older version may still
+        # hold control characters).
+        _gcountry=$(printf '%s' "$_gcountry" | tr -d '[:cntrl:]')
+        _gcity=$(printf '%s' "$_gcity" | tr -d '[:cntrl:]')
+        _gisp=$(printf '%s' "$_gisp" | tr -d '[:cntrl:]')
+        _gorg=$(printf '%s' "$_gorg" | tr -d '[:cntrl:]')
+        _gas=$(printf '%s' "$_gas" | tr -d '[:cntrl:]')
         # A cache written under another UI language holds foreign-language
         # country/city names; skip the geo suffix for this panel open (a
         # detached refresh is already running) instead of showing them.
@@ -33131,7 +33163,7 @@ EOF_TRAFFIC
     chmod 700 "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_chmod_failed)${NC}" >&2; return 1; }
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_quota_snapshot_failed)${NC}" >&2; return 1; }
     local _tm_script="$ABOX_DIR/traffic_monitor.sh"
-    if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_quote "$_tm_script"); fi
+    if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_single_quote "$_tm_script"); fi
     ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_snapshot_failed)${NC}" >&2; return 1; }
 }
@@ -38002,7 +38034,7 @@ setup_user_guard() {
     # the default path must stay byte-identical (collect_abox_cron
     # matches the unquoted USERGUARD line exactly).
     local _runner_q="$runner"
-    if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_quote "$runner"); fi
+    if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$runner"); fi
     ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
     return 0
 }
@@ -44336,7 +44368,7 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)(?:$|[_-])",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess)://\S+")
@@ -44363,7 +44395,7 @@ _AUTH_STOP_HEAD = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
     r"""|authorization|proxy-authorization|cookie|set-cookie"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b["']?\s*[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)\b["']?\s*[:=]"""
 )
 
 # R12B-C3: tempered authorization value. Ordinary characters are
@@ -44427,12 +44459,12 @@ inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:
 _INLINE_KEY_HEAD = (
     r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 _TEXT_KEY_HEAD = (
     r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 
 
@@ -44444,11 +44476,30 @@ def _unquoted_value(head):
         + r"""|""" + _QUOTED_KEY_HEAD + r"""))[^\r\n}\"])+"""
     )
 
+# M-08(1): spliced quoted values. A sensitive value may be written as
+# adjacent quoted/bare segments ('aa'bbCCdd'): the primary value regex
+# only matches the first segment and the tail leaks verbatim. Consume
+# immediately-adjacent extra segments, but never a following sensitive
+# key-head or quoted key (guarded per character, like _unquoted_value),
+# and never across a delimiter. A trailing lone quote (the end of a
+# spliced run) is consumed only when a delimiter or end of text follows.
+def _spliced_tail(head):
+    return (
+        r"""(?:(?!(?:"""
+        + head
+        + r"""|"""
+        + _QUOTED_KEY_HEAD
+        + r"""))(?:\"(?:\\[\s\S]|[^\"\\])*\"|\"(?:\\[\s\S]|[^\"\\])*|'(?:[^']|'')*'|(?:(?!(?:"""
+        + head
+        + r"""|"""
+        + _QUOTED_KEY_HEAD
+        + r"""))[^ \t\r\n,;}\]"'{[])+|['"](?=[\s,;}\]]|\Z)))*"""
+    )
 
 inline_secret_assignment = re.compile(
-    r"(?i)(" + _INLINE_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|'(?:[^']|'')*'|"
+    r"(?i)(" + _INLINE_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|'(?:[^']|'')*'|\"(?:\\[\s\S]|[^\"\\])*|"
     + _unquoted_value(_INLINE_KEY_HEAD)
-    + r")"
+    + r")" + _spliced_tail(_INLINE_KEY_HEAD)
 )
 
 
@@ -44467,7 +44518,7 @@ def redact_text(value):
     return value
 
 
-_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
+_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)"
 _block_scalar_re = re.compile(
     r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
@@ -44662,13 +44713,13 @@ def _skip_id_gap(text, pos):
 _TEXT_KEY_CANDIDATE = (
     r"""["']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["']?"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)["']?"""
 )
 _INLINE_KEY_CANDIDATE = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
     r"""|authorization|proxy-authorization|cookie|set-cookie"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b["']?"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)\b["']?"""
 )
 
 
@@ -44832,7 +44883,7 @@ except Exception:
     text = redact_block_scalars(text)
     text = url_userinfo.sub(r"\1***REDACTED***@", text)
     text = re.sub(
-        r"(?im)^(UUID|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN)=.*$",
+        r"(?im)^(UUID|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|SOCKS_USER|SOCKS_PASS)=.*$",
         r"\1=***REDACTED***",
         text,
     )
@@ -44852,7 +44903,7 @@ except Exception:
         sys.stdout.write(_SUPPRESS_NOTICE + "\n")
         raise SystemExit(2)
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
         text,
     )
@@ -44864,7 +44915,7 @@ except Exception:
     text = re.sub(
         r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|\"(?:\\[\s\S]|[^\"\\])*|'(?:[^']|'')*'|"
         + _unquoted_value(_TEXT_KEY_HEAD)
-        + r")",
+        + r")" + _spliced_tail(_TEXT_KEY_HEAD),
         r'\1"***REDACTED***"',
         text,
     )
@@ -45111,6 +45162,12 @@ commit_crontab_if_unchanged() {
 install_abox_cron_block() {
     local name="$1" line="$2" current tmp
     [[ -n "$name" && -n "$line" ]] || return 1
+    # M-08(3): fail closed on a newline or '%' in the cron line:
+    # cron treats '%' as a newline, so either would smuggle extra
+    # commands past the single-line block format.
+    case "$line" in
+        *$'\n'*|*%*) return 1 ;;
+    esac
     current=$(mktemp) || die "$(tr_msg install_abox_cron_block_current_tmp_failed)"
     tmp=$(mktemp) || { rm -f -- "$current"; die "$(tr_msg install_abox_cron_block_tmp_failed)"; }
     if ! read_crontab_to_file "$current"; then
@@ -50215,7 +50272,7 @@ wallos_bruteforce_protection() {
         write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER_HTTPS' || return 0
 # Managed by A-Box
 [Definition]
-failregex = "remote_ip":\s*"<HOST>".*"method":\s*"POST".*"uri":\s*"/login\.php(\?[^"]*)?".*"status":\s*200
+failregex = "remote_ip":\s*"<HOST>".*"method":\s*"POST".*"uri":\s*"/(?:/|./)?login\.php(\?[^"]*)?".*"status":\s*200
 ignoreregex =
 EOF_WF2B_FILTER_HTTPS
     else
@@ -50226,7 +50283,7 @@ EOF_WF2B_FILTER_HTTPS
         write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
 # Managed by A-Box
 [Definition]
-failregex = ^<HOST> - \S+ \[[^\]]*\] "POST /login\.php(\?\S*)? HTTP/[0-9.]+" 200 [0-9]+
+failregex = ^<HOST> - \S+ \[[^\]]*\] "POST /(?:/|./)?login\.php(\?\S*)? HTTP/[0-9.]+" 200 [0-9]+
 ignoreregex =
 EOF_WF2B_FILTER
     fi
@@ -50238,7 +50295,10 @@ EOF_WF2B_FILTER
         local _sample=''
         _sample=$(umask 077; mktemp /tmp/A-Box-wallos-f2b-sample.XXXXXX) || return 1
         printf '%s\n' '203.0.113.7 - - [06/Nov/2026:10:00:00 +0000] "POST /login.php HTTP/1.1" 200 1234' > "$_sample" || { rm -f -- "$_sample"; return 1; }
-        if ! fail2ban-regex --print-all-matched "$_sample" A-Box-wallos 2>&1 | grep -q '203.0.113.7'; then
+        printf '%s\n' '203.0.113.8 - - [06/Nov/2026:10:00:00 +0000] "POST //login.php HTTP/1.1" 200 1234' >> "$_sample" || { rm -f -- "$_sample"; return 1; }
+        local _f2b_out
+        _f2b_out=$(fail2ban-regex --print-all-matched "$_sample" A-Box-wallos 2>&1 || true)
+        if ! grep -q '203.0.113.7' <<< "$_f2b_out" || ! grep -q '203.0.113.8' <<< "$_f2b_out"; then
             rm -f -- "$_sample" "$jail" "$filter"
             msg "${YELLOW}[!] Wallos fail2ban jail NOT created: the login filter matches no failed-login line. Login brute-force protection is OFF.${NC}"
             return 1
@@ -50304,8 +50364,8 @@ findtime = 600
 bantime = 86400
 action = ${action}
 EOF_WF2B_JAIL
-    if ! validate_fail2ban_config 2>&1 >/dev/null; then
-        msg "${RED}Wallos fail2ban jail NOT created: fail2ban configuration validation failed. Login brute-force protection is OFF.${NC}" 2>&1
+    if ! validate_fail2ban_config >/dev/null 2>&1; then
+        msg "${RED}Wallos fail2ban jail NOT created: fail2ban configuration validation failed. Login brute-force protection is OFF.${NC}" >&2
         rm -f -- "$jail"
         return 1
     fi
@@ -57385,9 +57445,9 @@ manual_stop_managed_stack() {
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
     # they are restored after commit below.
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
@@ -57406,11 +57466,11 @@ manual_stop_managed_stack() {
     done <<< "$services"
 
     if (( failed != 0 )); then
-        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else trap - HUP INT TERM; rm -rf -- "$tx_dir"; fi
         die "$(tr_msg manual_stop_managed_stack_stop_commit_fail)"
     fi
     set_desired_state MANUAL_STOPPED || {
-        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else trap - HUP INT TERM; rm -rf -- "$tx_dir"; fi
         die "$(tr_msg manual_stop_managed_stack_submit_fail)"
     }
     # U232: transaction committed; restore the lock traps exactly.
@@ -57444,9 +57504,9 @@ manual_start_managed_stack() {
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
     # they are restored after commit below.
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
-    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '\''%s\n'\'' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
@@ -57475,7 +57535,7 @@ manual_start_managed_stack() {
         # S162: no more `|| true` file-state restores: the wrapper
         # restores block period + desired state + services together,
         # and tx_dir is deleted only when ALL steps report ok.
-        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else trap - HUP INT TERM; rm -rf -- "$tx_dir"; fi
         die "$(tr_msg manual_start_managed_stack_start_commit_fail)"
     fi
     # U232: transaction committed; restore the lock traps exactly.

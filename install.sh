@@ -11930,27 +11930,50 @@ valid_path() {
     return 0
 }
 
-# port_is_free: true when nothing is listening on the TCP port locally.
+# is_reserved_port: true when the port is a system/management reserved
+# port (22/53/68/123/161/323). Shared by prompt_port_input and
+# prompt_validated so the two prompts cannot drift apart.
+is_reserved_port() {
+    local input="${1:-}"
+    valid_port "$input" || return 1
+    case "$((10#$input))" in
+        22|53|68|123|161|323) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# port_is_free: true when nothing is listening on the port locally.
+# $2 = proto: tcp (default), udp, or both. TCP and UDP are
+# independent port spaces, so a UDP-only protocol (TUIC) must not be
+# refused because TCP is busy, and vice versa.
 # Without ss/netstat the answer is unknown, so it returns false (fail closed).
 port_is_free() {
-    local port="${1:-}" out='' _probe=''
+    local port="${1:-}" proto="${2:-tcp}" out='' _probe='' _netid=''
     [[ -n "$port" ]] || return 1
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    port="$((10#$port))"
+    case "$proto" in
+        tcp) _netid='^tcp' ;;
+        udp) _netid='^udp' ;;
+        both) _netid='^(tcp|udp)' ;;
+        *) return 1 ;;
+    esac
     if command -v ss >/dev/null 2>&1; then
         # A failed ss probe is "unknown", never "free" (fail closed).
         out=$(ss -tuln 2>/dev/null) || return 1
         # awk reads the whole listing: no grep -q early exit, so no
         # SIGPIPE under pipefail can flip a busy result into "free".
-        # R8-F3-2: only TCP rows count — -tuln also lists UDP, and the
-        # TCP/UDP port spaces are independent. (Do NOT switch to
+        # M-01: $proto selects which Netid rows count — -tuln lists
+        # both TCP and UDP, and the two port spaces are independent.
+        # (Do NOT switch to
         # -tln: ss drops the Netid column there, moving Local from
         # $5 to $4, which would turn real TCP listeners free.)
-        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $1 ~ /^tcp/ && $5 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" -v pat="$_netid" 'NR>1 && $1 ~ pat && $5 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
         [[ "$_probe" == 'free' ]] && return 0
         return 1
     elif command -v netstat >/dev/null 2>&1; then
         out=$(netstat -tuln 2>/dev/null) || return 1
-        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $1 ~ /^tcp/ && $4 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" -v pat="$_netid" 'NR>2 && $1 ~ pat && $4 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
         [[ "$_probe" == 'free' ]] && return 0
         return 1
     else
@@ -11970,9 +11993,9 @@ port_is_free() {
 #   path   -> /-prefixed, no whitespace/control chars
 #   cidr   -> IPv4 or IPv6 with optional /mask
 is_test() {
-    local type="${1:-}" value="${2:-}"
+    local type="${1:-}" value="${2:-}" proto="${3:-tcp}"
     case "$type" in
-        port)   valid_port "$value" && port_is_free "$(printf '%s' "$value" | sed 's/^0\+//')" ;;
+        port)   valid_port "$value" && port_is_free "$value" "$proto" ;;
         domain) valid_domain "$value" ;;
         uuid)   valid_uuid "$value" ;;
         ip)     valid_ip_address "$value" ;;
@@ -11985,21 +12008,23 @@ is_test() {
 # prompt_validated: read from stdin, apply default on empty, re-prompt until
 # is_test passes. Prints the accepted value to stdout.
 prompt_validated() {
-    local prompt="$1" type="$2" default="${3:-}"
+    local prompt="$1" type="$2" default="${3:-}" proto="${4:-tcp}"
     local val
     while true; do
         if ! read -r -p "$prompt" val; then
-            val="$default"
-            if is_test "$type" "$val"; then
-                printf '%s' "$val"
-                return 0
-            fi
             msg "${RED}$(tprintf pv_eof "$type")${NC}" >&2
             return 1
         fi
         val="${val:-$default}"
         val=$(normalize_fa_ar_digits "$val")
-        if is_test "$type" "$val"; then
+        if [[ "$type" == 'port' ]] && valid_port "$val"; then
+            val="$((10#$val))"
+            if is_reserved_port "$val"; then
+                msg "${RED}$(tprintf pt_reserved "$val")${NC}" >&2
+                continue
+            fi
+        fi
+        if is_test "$type" "$val" "$proto"; then
             printf '%s' "$val"
             return 0
         fi
@@ -12207,9 +12232,9 @@ prompt_port_input() {
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
         if valid_port "$input"; then
-            case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
-            esac
+            if is_reserved_port "$input"; then
+                printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue
+            fi
             printf '%s\n' "$((10#$input))"
             return 0
         fi
@@ -12224,9 +12249,9 @@ prompt_ss_port_input() {
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
         if valid_port "$input"; then
-            case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
-            esac
+            if is_reserved_port "$input"; then
+                printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue
+            fi
             printf '%s\n' "$((10#$input))"
             return 0
         fi
@@ -14665,16 +14690,31 @@ users_registries_remove_core() {
 # dies with the sing-box ws inbounds; the hysteria links are removed
 # unconditionally, mirroring _remove_hy2_official.
 _prune_standalone_links() {
-    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ws_out=''
+    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ws_out='' _legacy=''
     case "$srv" in
         xray)
-            for key in trojan-xray socks5-xray; do
+            for key in trojan-xray trojan-xray-2 trojan-xray-3 socks5-xray socks5-xray-2 socks5-xray-3; do
                 _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
+            done
+            # M-02: one-time migration — pre-fix -2/-3 links live in
+            # the shared trojan-landing-2.link / socks5-landing-2.link
+            # file (one file, last writer wins). Remove it only when
+            # its title proves it belongs to this core; the other
+            # core's live link must survive the prune.
+            for _legacy in trojan-landing-2 trojan-landing-3 socks5-landing-2 socks5-landing-3; do
+                if [[ -f "$dir/${_legacy}.link" ]] && grep -Fq '(Xray)' "$dir/${_legacy}.link" 2>/dev/null; then
+                    rm -f -- "$dir/${_legacy}.link" 2>/dev/null || true
+                fi
             done
             ;;
         sing-box)
-            for key in trojan-sb tuic anytls shadowtls socks5-sb; do
+            for key in trojan-sb trojan-sb-2 trojan-sb-3 tuic tuic-in-2 tuic-in-3 anytls anytls-in-2 anytls-in-3 shadowtls shadowtls-in-2 shadowtls-in-3 socks5-sb socks5-sb-2 socks5-sb-3; do
                 _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
+            done
+            for _legacy in trojan-landing-2 trojan-landing-3 socks5-landing-2 socks5-landing-3; do
+                if [[ -f "$dir/${_legacy}.link" ]] && grep -Fq '(sing-box)' "$dir/${_legacy}.link" 2>/dev/null; then
+                    rm -f -- "$dir/${_legacy}.link" 2>/dev/null || true
+                fi
             done
             if [[ ! -f /etc/sing-box/config.json ]]; then
                 rm -f -- "$dir/argo.link" 2>/dev/null || true
@@ -26563,7 +26603,7 @@ deploy_singbox_socks5_landing() {
     load_optional_abox_env_or_die
     light_preflight_check
 
-    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080' both) || die 'SOCKS5 port input failed.'
     IFS= read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
     IFS= read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
@@ -27178,7 +27218,7 @@ deploy_singbox_tuic() {
     load_optional_abox_env_or_die
     light_preflight_check
 
-    port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443') || die 'TUIC port input failed.'
+    port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443' udp) || die 'TUIC port input failed.'
     IFS= read -r -p "$(tr_msg tuic_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'TUIC password generation failed.'
@@ -29070,10 +29110,21 @@ deploy_with_instance_choice() {
     case "$ch" in
         1) "$@" ;;
         2)
-            local n=2
+            local n=2 _stem=''
             while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
             msg "${CYAN}$(tr_msg mu_inst_tag): ${btag}-${n} ($(tr_msg mu_inst_port_note))${NC}"
-            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="${btag}-${n}" "$@" ;;
+            # M-02: the -2/-3 link stem must be per-core for the shared
+            # trojan/socks5 btags, or both cores overwrite the same
+            # trojan-landing-2.link / socks5-landing-2.link file.
+            # Other btags already point at one core, so keep ${btag}-${n}.
+            _stem="${btag}-${n}"
+            case "${core}/${btag}" in
+                xray/trojan-landing) _stem="trojan-xray-${n}" ;;
+                sing-box/trojan-landing) _stem="trojan-sb-${n}" ;;
+                xray/socks5-landing) _stem="socks5-xray-${n}" ;;
+                sing-box/socks5-landing) _stem="socks5-sb-${n}" ;;
+            esac
+            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="$_stem" "$@" ;;
         *) msg "$(tr_msg mu_cancelled)"; return 0 ;;
     esac
 }
@@ -30044,6 +30095,7 @@ routing_rule_add() {
 routing_rule_del() {
     local idx="$1" tmp rc
     [[ "$idx" =~ ^[0-9]+$ ]] || return 1
+    idx=$((10#$idx))
     routing_state_init || return 1
     # Out-of-range indices are a caller error, not a no-op success:
     # jq del() silently keeps the array, which made the menu report
@@ -30834,6 +30886,7 @@ split_preset_interactive() {
 split_rule_del_interactive() {
     local idx
     read -r -p "$(tr_msg split_rule_del_prompt): " idx || return 0
+    [[ "$idx" =~ ^[0-9]+$ ]] && idx=$((10#$idx))
     # Snapshot for rollback: re-adding appends, which would move the rule
     # and change first-match order, so the original object is kept to be
     # re-inserted at this same index if the live apply fails.
@@ -30868,7 +30921,7 @@ deploy_socks5_landing() {
     load_optional_abox_env_or_die
     light_preflight_check
 
-    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080' both) || die 'SOCKS5 port input failed.'
     IFS= read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
     IFS= read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
@@ -34651,15 +34704,28 @@ sync_env_ports_after_removal() {
 # or is missing) — callers must only delete on rc 1.
 _standalone_link_survivor() {
     local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
-    local _cfg='' _prog='' _jq_rc=0
+    local _cfg='' _tag='' _jq_rc=0
+    # M-02: exact first-instance tag equality. A numbered instance
+    # (trojan-landing-2, tuic-in-2, ...) must NOT keep the
+    # first-instance link alive: its own link is the numbered stem
+    # file, and the base link points at the deleted instance.
+    # Numbered stems map to the same-numbered config tag, so
+    # _prune_standalone_links can sweep *-2/*-3 links too.
     case "$key" in
-        trojan-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "trojan")' ;;
-        trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' ;;
-        tuic) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))' ;;
-        anytls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))' ;;
-        shadowtls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))' ;;
-        socks5-sb) _cfg="$scfg"; _prog='.inbounds[]? | select(.type == "socks" or .type == "mixed")' ;;
-        socks5-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "socks")' ;;
+        trojan-xray) _cfg="$xcfg"; _tag='trojan-landing' ;;
+        trojan-xray-[0-9]*) _cfg="$xcfg"; _tag="trojan-landing-${key#trojan-xray-}" ;;
+        trojan-sb) _cfg="$scfg"; _tag='trojan-landing' ;;
+        trojan-sb-[0-9]*) _cfg="$scfg"; _tag="trojan-landing-${key#trojan-sb-}" ;;
+        tuic) _cfg="$scfg"; _tag='tuic-in' ;;
+        tuic-in-[0-9]*) _cfg="$scfg"; _tag="$key" ;;
+        anytls) _cfg="$scfg"; _tag='anytls-in' ;;
+        anytls-in-[0-9]*) _cfg="$scfg"; _tag="$key" ;;
+        shadowtls) _cfg="$scfg"; _tag='shadowtls-in' ;;
+        shadowtls-in-[0-9]*) _cfg="$scfg"; _tag="$key" ;;
+        socks5-sb) _cfg="$scfg"; _tag='socks5-landing' ;;
+        socks5-sb-[0-9]*) _cfg="$scfg"; _tag="socks5-landing-${key#socks5-sb-}" ;;
+        socks5-xray) _cfg="$xcfg"; _tag='socks5-landing' ;;
+        socks5-xray-[0-9]*) _cfg="$xcfg"; _tag="socks5-landing-${key#socks5-xray-}" ;;
         *) return 1 ;;
     esac
     # 2gq: a missing config is a confirmed "not served" (as before); a
@@ -34672,7 +34738,7 @@ _standalone_link_survivor() {
     # (jq 1.6 parse-fail is rc 4, jq 1.7 is rc 5 — both land in *.)
     [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
-    jq -s -e "([.[] | (${_prog})] | length) > 0" "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
+    jq -s -e --arg t "$_tag" '([.[] | .inbounds[]? | select((.tag // "") == $t)] | length) > 0' "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
     case "$_jq_rc" in
         0) return 0 ;;
         1) return 1 ;;
@@ -34716,7 +34782,30 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         # confirmed rc 1); the generic rm would delete it unconditionally.
         case "$tag" in
             trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray) ;;
-            *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
+            *)
+                if [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+                    rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+                    # M-02: a numbered trojan/socks5 instance owns a
+                    # per-core stem link (trojan-xray-2, trojan-sb-2,
+                    # ...), not ${tag}.link. Remove this core's stem
+                    # link, survivor-gated so an unverifiable config
+                    # keeps the link; the rm above already removed a
+                    # pre-fix legacy shared-name file, if any.
+                    case "$tag" in
+                        trojan-landing-[0-9]*)
+                            if [[ "$core" == 'xray' ]]; then
+                                _standalone_link_prune_if_gone "trojan-xray-${tag#trojan-landing-}" "/etc/ddr/standalone-links.d/trojan-xray-${tag#trojan-landing-}.link"
+                            elif [[ "$core" == 'sing-box' ]]; then
+                                _standalone_link_prune_if_gone "trojan-sb-${tag#trojan-landing-}" "/etc/ddr/standalone-links.d/trojan-sb-${tag#trojan-landing-}.link"
+                            fi ;;
+                        socks5-landing-[0-9]*)
+                            if [[ "$core" == 'xray' ]]; then
+                                _standalone_link_prune_if_gone "socks5-xray-${tag#socks5-landing-}" "/etc/ddr/standalone-links.d/socks5-xray-${tag#socks5-landing-}.link"
+                            elif [[ "$core" == 'sing-box' ]]; then
+                                _standalone_link_prune_if_gone "socks5-sb-${tag#socks5-landing-}" "/etc/ddr/standalone-links.d/socks5-sb-${tag#socks5-landing-}.link"
+                            fi ;;
+                    esac
+                fi ;;
         esac
         users_registry_remove "$core" "$tag"
     done
@@ -37412,8 +37501,9 @@ users_inbound_menu() {
                 local gb=''
                 read -r -p "$(tr_msg mu_gb_prompt)" gb || continue
                 [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
+                gb=$((10#$gb))
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson g "$gb" '
-                    .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and $g == 0 then .blocked = "" else . end) else . end)') || continue
+                    .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and ($g == 0 or ((.used_up // 0) + (.used_down // 0) < ($g * 1073741824))) then .blocked = "" else . end) else . end)') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_quota_set): ${nm} = ${gb} GB${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             4)
@@ -37435,6 +37525,9 @@ users_inbound_menu() {
                 local w=''
                 read -r -p "$(tr_msg mu_win_prompt)" w || continue
                 if [[ -n "$w" && ! "$w" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                    msg "${RED}$(tr_msg mu_win_bad)${NC}"; pause_return; continue
+                fi
+                if [[ -n "$w" && "${w%-*}" == "${w#*-}" ]]; then
                     msg "${RED}$(tr_msg mu_win_bad)${NC}"; pause_return; continue
                 fi
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg w "$w" '

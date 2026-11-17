@@ -40178,6 +40178,95 @@ dns_install_dnscrypt_proxy() {
     [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config missing after install; DNS was not changed.${NC}"; return 1; }
 }
 
+# OBS-S1-02: the stock dnscrypt-proxy.socket shipped by Debian /
+# Ubuntu listens on 127.0.2.1:53 (Stream + Datagram). Everything
+# downstream in dns_enable_doh is pinned to 127.0.0.1:5353 (menu
+# promise, config listen_addresses, probe, resolved DNS=), so the
+# guard below used to fail deterministically on such hosts -- after
+# the package was already installed and left running. Normalise the
+# socket to the pinned address with a drop-in override instead of
+# relaxing the guard: relaxing it would also mean re-threading the
+# effective listen address through the config, the probe and the
+# resolved drop-in, and the promised address would change.
+# Returns 0 when socket activation is not in play, when Listen is
+# already exactly the pinned pair, or after a successful rebind.
+# Returns 1 (fail closed) when Listen cannot be queried, when a
+# foreign drop-in already owns the override, or when any systemd
+# step fails. Sets the caller's local _doh_dropin_written=1 (bash
+# dynamic scoping) iff this call wrote the drop-in file.
+dns_normalize_dnscrypt_socket() {
+    local _sock_listen='' _dropin_dir='/etc/systemd/system/dnscrypt-proxy.socket.d'
+    local _dropin_file="$_dropin_dir/abox-listen.conf" _dtmp=''
+    local _listen_norm='' _ln='' _n_listen=0 _seen_stream=0 _seen_dgram=0 _bad_listen=0
+    systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null || return 0
+    _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || return 1
+    _listen_norm=$(printf '%s' "$_sock_listen" | sed -e 's/)[[:space:]]*/)\n/g' -e 's/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null)
+    while IFS= read -r _ln; do
+        [[ -z "$_ln" ]] && continue
+        _n_listen=$(( _n_listen + 1 ))
+        case "$_ln" in
+            '127.0.0.1:5353 (Stream)') _seen_stream=1 ;;
+            '127.0.0.1:5353 (Datagram)') _seen_dgram=1 ;;
+            *) _bad_listen=1 ;;
+        esac
+    done <<< "$_listen_norm"
+    (( _n_listen == 2 && _seen_stream == 1 && _seen_dgram == 1 && _bad_listen == 0 )) && return 0
+    # Never clobber an override owned by someone else: a foreign
+    # drop-in means the admin pinned the socket deliberately.
+    if [[ -f "$_dropin_file" ]]; then
+        grep -Fq '# Managed by A-Box' "$_dropin_file" 2>/dev/null || return 1
+    fi
+    mkdir -p "$_dropin_dir" || return 1
+    _dtmp=$(mktemp "$_dropin_dir/.abox-listen.XXXXXX") || return 1
+    {
+        printf '%s\n' '# Managed by A-Box'
+        printf '%s\n' '[Socket]'
+        printf '%s\n' 'ListenStream='
+        printf '%s\n' 'ListenDatagram='
+        printf '%s\n' 'ListenStream=127.0.0.1:5353'
+        printf '%s\n' 'ListenDatagram=127.0.0.1:5353'
+    } > "$_dtmp" || { rm -f -- "$_dtmp"; return 1; }
+    chmod 644 "$_dtmp" || { rm -f -- "$_dtmp"; return 1; }
+    mv -- "$_dtmp" "$_dropin_file" || { rm -f -- "$_dtmp"; return 1; }
+    _doh_dropin_written=1
+    if ! systemctl daemon-reload >/dev/null 2>&1; then
+        rm -f -- "$_dropin_file"; systemctl daemon-reload >/dev/null 2>&1 || true
+        return 1
+    fi
+    # The running service holds the old socket FDs; stop it so the
+    # restart below hands it the new ones. A stop failure is
+    # tolerated: the guard re-validates Listen right after.
+    systemctl stop dnscrypt-proxy >/dev/null 2>&1 || true
+    if ! systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1; then
+        rm -f -- "$_dropin_file"; systemctl daemon-reload >/dev/null 2>&1 || true
+        return 1
+    fi
+    return 0
+}
+
+# OBS-S1-02: pre-snapshot failure cleanup for dns_enable_doh. No
+# rollback snapshot exists yet at the guard stage, so a bare
+# `return 1` used to leave the just-installed proxy running.
+# $1: 1 if dnscrypt-proxy was already installed before this run
+#     (a pre-existing proxy is left alone -- only this run's
+#     residue is removed). $2: 1 if this run wrote the socket
+#     drop-in (remove it). Best effort throughout; always returns 0.
+dns_doh_cleanup_fresh_proxy() {
+    local _pre_installed="${1:-0}" _dropin_written="${2:-0}"
+    if [[ "$_dropin_written" == 1 ]]; then
+        rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || true
+        rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    if [[ "$_pre_installed" != 1 ]] && command -v systemctl >/dev/null 2>&1; then
+        systemctl stop dnscrypt-proxy.socket >/dev/null 2>&1 || true
+        systemctl stop dnscrypt-proxy >/dev/null 2>&1 || true
+        systemctl disable dnscrypt-proxy.socket >/dev/null 2>&1 || true
+        systemctl disable dnscrypt-proxy >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 dns_enable_doh() {
     local backend config answer temp rc prompt resolved_major
     local doh_server="${1:-cloudflare}" doh_label="${2:-Cloudflare}"
@@ -40213,6 +40302,10 @@ dns_enable_doh() {
     is_yes "$answer" || return 0
     # X-04: install only after user confirmation; the pre-confirm install left
     # dnscrypt-proxy present even on "N", skewing the rollback snapshot.
+    # OBS-S1-02: record whether the proxy predates this run, so a
+    # pre-snapshot failure can clean up only what this run installed.
+    local _doh_pre_installed=0 _doh_dropin_written=0
+    command -v dnscrypt-proxy >/dev/null 2>&1 && _doh_pre_installed=1
     dns_install_dnscrypt_proxy || { msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
     config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
     [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
@@ -40258,6 +40351,13 @@ dns_enable_doh() {
         else read -r -p "$prompt" answer; fi
         is_yes "$answer" || return 0
     fi
+    # OBS-S1-02: rebind the stock socket (127.0.2.1:53) to the
+    # pinned 127.0.0.1:5353 before the guard validates it.
+    if ! dns_normalize_dnscrypt_socket; then
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
+        msg "${RED}[!] Could not move dnscrypt-proxy.socket to 127.0.0.1:5353; resolver configuration was not switched.${NC}"
+        return 1
+    fi
     # R11-10: socket activation hands the service the socket's own
     # listen addresses; verify BOTH typed endpoints (Stream for TCP,
     # Datagram for UDP) are exactly 127.0.0.1:5353 before any
@@ -40267,7 +40367,7 @@ dns_enable_doh() {
     # unparseable, or mismatched output fails closed.
     if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
         local _sock_listen=''
-        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
+        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
         # R14-F12-02: presence is not exclusivity. The socket hands the
         # service every address it listens on (doh_listen='[]' below),
         # so any extra endpoint (e.g. 0.0.0.0:5353) would make the
@@ -40287,6 +40387,7 @@ dns_enable_doh() {
             esac
         done <<< "$_listen_norm"
         if (( _n_listen != 2 || _seen_stream != 1 || _seen_dgram != 1 || _bad_listen != 0 )); then
+            dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
             msg "${RED}[!] dnscrypt-proxy.socket must listen on exactly 127.0.0.1:5353 (Stream and Datagram); resolver configuration was not switched. Effective Listen: ${_sock_listen:-none} -- correct the socket configuration or disable socket activation.${NC}"
             return 1
         fi

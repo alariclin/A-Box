@@ -2548,12 +2548,12 @@ tr_msg() {
         fa:wl_iu_state_save_fail) echo 'ذخیره وضعیت Wallos ناموفق بود؛ اجرای دوباره نصب می‌تواند فراداده را تعمیر کند.' ;;
         zh-tw:wl_iu_state_save_fail) echo 'Wallos 狀態保存失敗，重跑安裝可修復中繼資料。' ;;
         ja:wl_iu_state_save_fail) echo 'Wallos の状態保存に失敗しました。インストールを再実行するとメタデータを修復できます。' ;;
-        zh:wl_iu_https_incomplete) echo 'HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。' ;;
-        en:wl_iu_https_incomplete) echo 'HTTPS setup did not complete: Wallos is running locally but not exposed. Fix the cause and re-run the install to retry.' ;;
-        ru:wl_iu_https_incomplete) echo 'Настройка HTTPS не завершена: Wallos работает локально, но не опубликован. Устраните причину и повторите установку.' ;;
-        fa:wl_iu_https_incomplete) echo 'تنظیم HTTPS کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. علت را رفع و نصب را دوباره اجرا کنید.' ;;
-        zh-tw:wl_iu_https_incomplete) echo 'HTTPS 設定未完成：Wallos 已在本機運行，但未對外暴露。修復後重跑安裝即可重試。' ;;
-        ja:wl_iu_https_incomplete) echo 'HTTPS の設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因を修正してインストールを再実行してください。' ;;
+        zh:wl_iu_https_incomplete) echo 'HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。若失败原因确定（如 80 端口被占、证书限流），须先修因或在 Wallos 菜单放弃中断的升级，否则重跑仍会失败。' ;;
+        en:wl_iu_https_incomplete) echo 'HTTPS setup did not complete: Wallos is running locally but not exposed. If the cause is deterministic (e.g. port 80 taken, certificate rate-limited), fix it or abandon the interrupted upgrade from the Wallos menu first; re-running will fail the same way.' ;;
+        ru:wl_iu_https_incomplete) echo 'Настройка HTTPS не завершена: Wallos работает локально, но не опубликован. Если причина постоянная (например, порт 80 занят или ограничение сертификатов), сначала устраните её или отмените прерванное обновление в меню Wallos — повторная установка завершится той же ошибкой.' ;;
+        fa:wl_iu_https_incomplete) echo 'تنظیم HTTPS کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. اگر علت قطعی است (مثلاً پورت 80 اشغال شده یا محدودیت گواهی)، ابتدا علت را رفع کنید یا ارتقای ناتمام را از منوی Wallos رها کنید؛ اجرای دوباره به همان خطا می‌رسد.' ;;
+        zh-tw:wl_iu_https_incomplete) echo 'HTTPS 設定未完成：Wallos 已在本機運行，但未對外暴露。若失敗原因確定（如 80 連接埠被佔用、憑證限流），須先修因或在 Wallos 選單放棄中斷的升級，否則重跑仍會失敗。' ;;
+        ja:wl_iu_https_incomplete) echo 'HTTPS の設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因が確定的な場合（ポート 80 の占有や証明書のレート制限など）は、まず原因を修正するか、Wallos メニューから中断したアップグレードを破棄してください。再実行しても同じ失敗になります。' ;;
         zh:wl_iu_fb_restored) echo 'HTTP 降级失败，已恢复降级前的容器，安装仍未完成。' ;;
         en:wl_iu_fb_restored) echo 'HTTP fallback failed; pre-fallback container restored, install still incomplete.' ;;
         ru:wl_iu_fb_restored) echo 'Резервный переход на HTTP не удался; контейнер до перехода восстановлен, установка не завершена.' ;;
@@ -3268,6 +3268,48 @@ tr_msg() {
         fa:wl_menu_repair) echo 'تعمیر پایگاه داده آسیب‌دیده (پایگاه خالی)' ;;
         zh-tw:wl_menu_repair) echo '修復損壞的資料庫（空庫中毒）' ;;
         ja:wl_menu_repair) echo '破損したデータベースを修復する（空 DB）' ;;
+        zh:wl_menu_abandon) echo '放弃中断的升级' ;;
+        en:wl_menu_abandon) echo 'Abandon interrupted upgrade' ;;
+        ru:wl_menu_abandon) echo 'Отменить прерванное обновление' ;;
+        fa:wl_menu_abandon) echo 'رها کردن ارتقای ناتمام' ;;
+        zh-tw:wl_menu_abandon) echo '放棄中斷的升級' ;;
+        ja:wl_menu_abandon) echo '中断したアップグレードを破棄' ;;
+        zh:wl_abandon_q) echo '将删除中断升级的记录（升级事务及前端/隧道令牌备份），保留当前运行的 Wallos。确定放弃吗？[Y/N]: ' ;;
+        en:wl_abandon_q) echo 'This deletes the interrupted-upgrade record (transaction plus frontend/tunnel-token backups) and keeps the currently running Wallos. Abandon the upgrade? [Y/N]: ' ;;
+        ru:wl_abandon_q) echo 'Будет удалена запись о прерванном обновлении (транзакция и резервные копии фронтенда/токена туннеля), текущий Wallos останется запущенным. Отменить обновление? [Y/N]: ' ;;
+        fa:wl_abandon_q) echo 'رکورد ارتقای ناتمام (تراکنش و پشتیبان‌های فرانت‌اند/توکن تونل) حذف می‌شود و Wallos فعلی در حال اجرا باقی می‌ماند. ارتقا رها شود؟ [Y/N]: ' ;;
+        zh-tw:wl_abandon_q) echo '將刪除中斷升級的記錄（升級交易及前端/通道權杖備份），保留目前運行的 Wallos。確定放棄嗎？[Y/N]: ' ;;
+        ja:wl_abandon_q) echo '中断したアップグレードの記録（トランザクションとフロントエンド/トンネルトークンのバックアップ）を削除し、現在実行中の Wallos は残します。破棄しますか？[Y/N]: ' ;;
+        zh:wl_abandon_none) echo '没有中断的升级可放弃。' ;;
+        en:wl_abandon_none) echo 'No interrupted upgrade to abandon.' ;;
+        ru:wl_abandon_none) echo 'Нет прерванного обновления.' ;;
+        fa:wl_abandon_none) echo 'ارتقای ناتمامی برای رها کردن وجود ندارد.' ;;
+        zh-tw:wl_abandon_none) echo '沒有中斷的升級可放棄。' ;;
+        ja:wl_abandon_none) echo '破棄する中断したアップグレードはありません。' ;;
+        zh:wl_abandon_done) echo '已放弃中断的升级；当前 Wallos 保持运行，可重跑安装重新选择。' ;;
+        en:wl_abandon_done) echo 'Interrupted upgrade abandoned; the current Wallos keeps running. Re-run the install to choose again.' ;;
+        ru:wl_abandon_done) echo 'Прерванное обновление отменено; текущий Wallos продолжает работу. Повторите установку, чтобы выбрать заново.' ;;
+        fa:wl_abandon_done) echo 'ارتقای ناتمام رها شد؛ Wallos فعلی همچنان در حال اجراست. برای انتخاب دوباره، نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_abandon_done) echo '已放棄中斷的升級；目前的 Wallos 保持運行，可重跑安裝重新選擇。' ;;
+        ja:wl_abandon_done) echo '中断したアップグレードを破棄しました。現在の Wallos は実行を続けます。再度選択するにはインストールを再実行してください。' ;;
+        zh:wl_abandon_frontend_fail) echo '前端未能按当前状态重建；Wallos 容器本身未动，请重跑安装修复前端。' ;;
+        en:wl_abandon_frontend_fail) echo 'The frontend could not be rebuilt to match the current state; the Wallos container itself was left untouched. Re-run the install to repair the frontend.' ;;
+        ru:wl_abandon_frontend_fail) echo 'Фронтенд не удалось перестроить по текущему состоянию; сам контейнер Wallos не тронут. Повторите установку, чтобы восстановить фронтенд.' ;;
+        fa:wl_abandon_frontend_fail) echo 'فرانت‌اند مطابق وضعیت فعلی بازسازی نشد؛ خود کانتینر Wallos دست‌نخورده باقی ماند. برای تعمیر فرانت‌اند، نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_abandon_frontend_fail) echo '前端未能按目前狀態重建；Wallos 容器本身未動，請重跑安裝修復前端。' ;;
+        ja:wl_abandon_frontend_fail) echo 'フロントエンドを現在の状態に合わせて再構築できませんでした。Wallos コンテナ自体は変更していません。フロントエンドを修復するにはインストールを再実行してください。' ;;
+        zh:wl_abandon_rm_fail) echo '删除中断升级记录失败，记录仍保留，请手动检查。' ;;
+        en:wl_abandon_rm_fail) echo 'Failed to delete the interrupted-upgrade record; it is still in place. Check it manually.' ;;
+        ru:wl_abandon_rm_fail) echo 'Не удалось удалить запись о прерванном обновлении; она осталась на месте. Проверьте её вручную.' ;;
+        fa:wl_abandon_rm_fail) echo 'حذف رکورد ارتقای ناتمام ناموفق بود؛ رکورد همچنان موجود است. آن را دستی بررسی کنید.' ;;
+        zh-tw:wl_abandon_rm_fail) echo '刪除中斷升級記錄失敗，記錄仍保留，請手動檢查。' ;;
+        ja:wl_abandon_rm_fail) echo '中断したアップグレードの記録を削除できませんでした。記録は残っています。手動で確認してください。' ;;
+        zh:wl_f2b_cleanup_warn) echo 'Wallos Fail2Ban 残留清理未完全成功，请手动检查 /etc/fail2ban 下的 A-Box-wallos 文件。' ;;
+        en:wl_f2b_cleanup_warn) echo 'Wallos Fail2Ban leftover cleanup did not fully succeed; check the A-Box-wallos files under /etc/fail2ban manually.' ;;
+        ru:wl_f2b_cleanup_warn) echo 'Очистка остатков Fail2Ban для Wallos выполнена не полностью; проверьте файлы A-Box-wallos в /etc/fail2ban вручную.' ;;
+        fa:wl_f2b_cleanup_warn) echo 'پاک‌سازی باقی‌مانده‌های Fail2Ban مربوط به Wallos کاملاً موفق نبود؛ فایل‌های A-Box-wallos در /etc/fail2ban را دستی بررسی کنید.' ;;
+        zh-tw:wl_f2b_cleanup_warn) echo 'Wallos Fail2Ban 殘留清理未完全成功，請手動檢查 /etc/fail2ban 下的 A-Box-wallos 檔案。' ;;
+        ja:wl_f2b_cleanup_warn) echo 'Wallos の Fail2Ban 残留クリーンアップが完全には成功しませんでした。/etc/fail2ban 配下の A-Box-wallos ファイルを手動で確認してください。' ;;
         zh:wl_repair_healthy) echo '数据库正常，无需修复。' ;;
         en:wl_repair_healthy) echo 'Database is healthy; no repair needed.' ;;
         ru:wl_repair_healthy) echo 'База данных исправна; ремонт не требуется.' ;;
@@ -28480,6 +28522,9 @@ _argo_token_exit_restore() {
     trap - EXIT
     if [[ "${_argo_token_ok:-0}" != "1" && -n "${_argo_token_bak:-}" && -f "${_argo_token_bak:-}" ]]; then
         if cp -a "${_argo_token_bak}" /etc/ddr/.argo-token 2>/dev/null; then
+            # M-10: the backup has served its purpose; drop it now so a
+            # successful restore never leaves a stale token copy behind.
+            rm -f -- "${_argo_token_bak}" 2>/dev/null || true
             if [[ "${_argo_service_touched:-0}" == "1" ]]; then
                 if [[ "${_argo_was_running:-0}" == "1" ]]; then
                     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
@@ -28497,6 +28542,16 @@ _argo_token_exit_restore() {
             fi
         else
             msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+        fi
+    elif [[ "${_argo_token_ok:-0}" != "1" && -z "${_argo_token_bak:-}" ]]; then
+        # M-10: first deploy — there is no old token to restore. Delete
+        # the newly written token and remove the new unit, so a bad
+        # token cannot keep a crash-looping service alive. There is no
+        # previous service state to restore to, so the unit is removed
+        # rather than restarted whatever _argo_was_running says.
+        rm -f -- /etc/ddr/.argo-token 2>/dev/null || true
+        if [[ "${_argo_service_touched:-0}" == "1" ]]; then
+            argo_remove_unit argo 2>/dev/null || true
         fi
     fi
     if [[ -n "${_argo_prev_trap_exit:-}" ]]; then
@@ -28528,10 +28583,14 @@ deploy_argo_fixed() {
     if [[ -f /etc/ddr/.argo-token ]]; then
         _argo_token_bak=$(mktemp /etc/ddr/.argo-token.bak.XXXXXX) || die "Failed to back up the existing Argo token."
         cp -a /etc/ddr/.argo-token "$_argo_token_bak" || die "Failed to back up the existing Argo token."
-        _argo_prev_trap_exit=$(trap -p EXIT || true)
-        trap '_argo_token_exit_restore' EXIT
-        _argo_exit_trap_installed=1
     fi
+    # M-10: register the EXIT trap unconditionally. A first deploy has
+    # no old token (_argo_token_bak stays empty); on failure the trap
+    # then deletes the newly written (bad) token and removes the new
+    # unit instead of restoring a backup.
+    _argo_prev_trap_exit=$(trap -p EXIT || true)
+    trap '_argo_token_exit_restore' EXIT
+    _argo_exit_trap_installed=1
     write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
@@ -28639,14 +28698,21 @@ EOF_SVC
     # R13C9-01: restart succeeds before cloudflared authenticates;
     # do not commit mode=fixed until an authenticated connection
     # is seen, or fail the deploy (no state commit, no success).
-    argo_wait_fixed_ready /etc/ddr/argo.log 60 || die 'Fixed Argo tunnel did not become ready (authentication or connection failed); check /etc/ddr/argo.log.'
+    # M-10: stop the newly created service explicitly on failure: its
+    # unit has Restart=on-failure, so leaving it running would
+    # crash-loop on the bad token until the EXIT trap removes it. The
+    # trap still runs on die and deletes the bad token.
+    if ! argo_wait_fixed_ready /etc/ddr/argo.log 60; then
+        argo_remove_unit argo 2>/dev/null || true
+        die 'Fixed Argo tunnel did not become ready (authentication or connection failed); check /etc/ddr/argo.log.'
+    fi
     # R5C9-02: fixed tunnel verified; the new token is good, so
     # clear the restore trap and drop the backup. R1-09-C04: only
     # now (fixed ready) delete the temp units, then commit state.
     # R8C9-05: only now (token verified) clear the restore trap —
     # and restore the caller's EXIT trap instead of wiping it.
-    # Gated on the explicit installed flag, not on the backup
-    # file: when no trap was installed, nothing is touched.
+    # The trap is registered unconditionally now (M-10), so this
+    # cleanup always runs once the tunnel is verified ready.
     if (( _argo_exit_trap_installed == 1 )); then
         _argo_token_ok=1
         restore_saved_trap EXIT "$_argo_prev_trap_exit"
@@ -46991,7 +47057,7 @@ PY_RB_ENUM
         shortcut_is_managed_path "$path" && continue
         restore_auxiliary_path_from_backup "$root" "$path" || die "Restore failed: $path"
     done <<< "$aux_paths"
-    chmod 700 "$ABOX_DIR" 2>/dev/null || die "$(tr_msg restore_from_backup_dir_perm_fail)"
+    chmod 711 "$ABOX_DIR" 2>/dev/null || die "$(tr_msg restore_from_backup_dir_perm_fail)"
     # X-08: restoring an initial backup (no .env) must not die here.
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         chmod 600 "$ABOX_ENV" 2>/dev/null || die "$(tr_msg restore_from_backup_env_perm_fail)"
@@ -47033,6 +47099,11 @@ PY_RB_ENUM
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
         preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
+    # M-10(2): second insurance that the restored directory keeps the
+    # 0711 traverse bit the non-root service users need (see
+    # ensure_abox_dir_owned). Dies on failure, before the transaction
+    # is committed, so a bad mode cannot be reported as restored.
+    ensure_abox_dir_owned "$ABOX_DIR"
     commit_deployment_transaction
     rm -rf "$work"
     msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
@@ -50528,13 +50599,21 @@ wallos_write_state() {
     if [[ "$mode" == cftunnel && "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then printf 'CFHOST=%s\n' "$cfhost" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf 'VERSION=%s\n' "$version" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
-    # R7-F15-6 (R10-06 clone): a directory at the state path must fail,
-    # not be silently swallowed: without -T, mv renames the temp file
-    # INTO the directory and reports success. The -T flag is what
-    # closes the pre-check/move race, not the check.
+    # R7-F15-6 (R10-06 clone, M-15): a directory at the state path must
+    # fail, not be silently swallowed: without -T, mv renames the temp
+    # file INTO the directory and reports success. BusyBox mv has no
+    # -T, so the guarantee is kept with a pre-check plus a post-commit
+    # verification instead: if a directory was swapped in between the
+    # check and the move, the temp file lands inside it and the
+    # destination is still a directory — that must fail, and the stray
+    # file inside it is removed so no state is left behind.
     if [[ -d "$WALLOS_DIR/.abox-state" ]]; then rm -f -- "$tmp"; return 1; fi
-    if ! chmod 600 "$tmp" || ! mv -f -T -- "$tmp" "$WALLOS_DIR/.abox-state"; then
+    if ! chmod 600 "$tmp" || ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
+        return 1
+    fi
+    if [[ ! -f "$WALLOS_DIR/.abox-state" ]]; then
+        rm -f -- "$WALLOS_DIR/.abox-state/$(basename -- "$tmp")" 2>/dev/null || true
         return 1
     fi
     return 0
@@ -51876,29 +51955,6 @@ wallos_install_or_update() {
         fi
     fi
     # F02-GATE-END
-    # The ownership marker was created and permission-checked before starting
-    # the container. Commit the mutable image/port/timezone state atomically;
-    # do not silently report a complete update if metadata cannot be saved.
-    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost" "$image_version"; then
-        msg "${RED}$(tr_msg wl_iu_meta_fail)${NC}"
-        if (( running == 1 )); then
-            docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-        else
-            docker rm -f wallos >/dev/null 2>&1 || true
-        fi
-        wallos_fw_rollback_added "${_fw_added[@]}" || true
-        return 1
-    fi
-    if (( running == 1 )); then
-        # N-11: prune local images to current + previous (2 max, 500MB cap).
-        # P2-3: skip old_image when same as image to avoid deleting N-1 rollback.
-        if [[ "$image" != "$old_image" ]]; then
-            wallos_prune_local_images "$image" "$old_image" || true
-        else
-            wallos_prune_local_images "$image" || true
-        fi
-    fi
     msg "${GREEN}$(tprintf wl_iu_running "${image_version:-$image}")${NC}"
     if [[ "$bind_address" == 127.0.0.1 ]]; then security_note=$(tr_msg wl_iu_note_local)
     else security_note=$(tprintf wl_iu_note_http_pub "$port"); fi
@@ -51930,10 +51986,16 @@ wallos_install_or_update() {
                     msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 fi
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
+                if (( running == 1 )); then
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                fi
                 return 1
             else
                 msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
+                if (( running == 1 )); then
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                fi
                 return 1
             fi
         fi
@@ -51950,8 +52012,22 @@ wallos_install_or_update() {
         # transaction before overwriting; restored on setup
         # failure and by interrupted-upgrade recovery.
         if [[ -f "$WALLOS_CF_TOKEN_FILE" && ! -L "$WALLOS_CF_TOKEN_FILE" ]]; then
-            cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
-            chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+            if ! cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken"; then
+                msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
+                if (( running == 1 )); then
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                fi
+                return 1
+            fi
+            if ! chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken"; then
+                msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
+                if (( running == 1 )); then
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                fi
+                return 1
+            fi
         fi
             write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}$(tr_msg wallos_install_or_update_token_save_failed)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
             cftoken=''
@@ -51982,6 +52058,9 @@ wallos_install_or_update() {
             fi
         fi
             wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
@@ -51993,6 +52072,9 @@ wallos_install_or_update() {
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ; msg "$(tr_msg wl_health_fail_repair_hint)" ;;
         esac
         wallos_fw_rollback_added "${_fw_added[@]}" || true
+        if (( running == 1 )); then
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+        fi
         return 1
     fi
     # R9C15-02: firewall opens are a post-deployment check, not a
@@ -52000,20 +52082,82 @@ wallos_install_or_update() {
     # committed below (S143): a persistence failure swallowed after
     # commit left the public port unreachable (and unrecoverable after
     # reboot) while the install reported success. On failure the
-    # journal stays active, so the next run recovers.
+    # journal stays active, so the next run recovers. H-10: the failure
+    # exits below recover the old container at once instead; only a
+    # failed recovery leaves the journal active for the next run.
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
         _fw_open_out=$(_wallos_fw_open_tracked "$pubport" tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
-        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        if (( _fw_open_rc != 0 )); then
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
         _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
-        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
-        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        if (( _fw_open_rc != 0 )); then
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
+        if ! save_firewall_rules; then
+            msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
         _fw_open_out=$(_wallos_fw_open_tracked "$port" tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
-        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
-        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        if (( _fw_open_rc != 0 )); then
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
+        if ! save_firewall_rules; then
+            msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
+    fi
+    # H-10(1): commit the mutable image/port/timezone state atomically,
+    # but only AFTER all post-deployment checks (HTTPS/tunnel setup,
+    # database health, firewall persistence) have passed. Committing
+    # before them left the new mode in .abox-state while the journal
+    # was still active, so a post-check failure wedged the next run in
+    # recovery; now a post-check failure leaves the old state in place
+    # and the failure exits below recover the old container at once.
+    # Do not silently report a complete update if metadata cannot be saved.
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost" "$image_version"; then
+        msg "${RED}$(tr_msg wl_iu_meta_fail)${NC}"
+        if (( running == 1 )); then
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+        else
+            docker rm -f wallos >/dev/null 2>&1 || true
+        fi
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
+        return 1
+    fi
+    if (( running == 1 )); then
+        # N-11: prune local images to current + previous (2 max, 500MB cap).
+        # P2-3: skip old_image when same as image to avoid deleting N-1 rollback.
+        if [[ "$image" != "$old_image" ]]; then
+            wallos_prune_local_images "$image" "$old_image" || true
+        else
+            wallos_prune_local_images "$image" || true
+        fi
     fi
     # S143: the upgrade journal is the rollback material. It must not be
     # committed (phase=committed, which recover treats as "already done"
@@ -52303,6 +52447,78 @@ _wallos_manual_rollback() {
     wallos_rollback_to_version "$target"
 }
 
+# H-10(4): remove the Wallos jail/filter/action files left behind by a
+# menu-4 uninstall. A jail whose logpath is gone (Caddy log deleted by
+# the https teardown, container overlay gone with `docker rm -f`) makes
+# `fail2ban-client -t` fail and blocks the daemon. Only files carrying
+# the '# Managed by A-Box' marker are removed (same rule as do_cleanup);
+# then reload, and restart only if the jail survives the reload (same
+# shape as wallos_bruteforce_protection). Returns 1 on any failure; the
+# caller warns only and must not mask an otherwise successful uninstall.
+wallos_cleanup_fail2ban_leftovers() {
+    local _f _fail=0
+    for _f in /etc/fail2ban/jail.d/A-Box-wallos.local /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/action.d/A-Box-wallos-dockeruser.conf; do
+        if [[ -f "$_f" ]] && grep -Fxq '# Managed by A-Box' "$_f" 2>/dev/null; then
+            rm -f -- "$_f" 2>/dev/null || _fail=1
+        fi
+    done
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        fail2ban-client reload >/dev/null 2>&1 || _fail=1
+        if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+            fail2ban-client restart >/dev/null 2>&1 || _fail=1
+        fi
+    fi
+    return "$_fail"
+}
+
+# H-10(3): menu escape hatch for a deterministically failing frontend.
+# An interrupted upgrade whose frontend rebuild always fails (port 80
+# taken, LE rate-limit, no public IP) loops forever: every install entry
+# re-runs recovery, recovery rebuilds the same failing frontend, and the
+# journal stays active. Abandoning deletes the transaction record so the
+# next install starts from mode selection again, then re-aligns the live
+# frontend with the current .abox-state (or says plainly that it could
+# not). The running container and its data are never touched here.
+wallos_abandon_interrupted_upgrade() {
+    local _journal="$WALLOS_DIR/.upgrade-transaction"
+    if [[ ! -e "$_journal" && ! -L "$_journal" ]]; then
+        msg "${YELLOW}$(tr_msg wl_abandon_none)${NC}"
+        return 0
+    fi
+    confirm_yes_no "$(tr_msg wl_abandon_q)" || return 0
+    rm -f -- "$_journal" "$WALLOS_DIR/.upgrade-transaction.frontend" "$WALLOS_DIR/.upgrade-transaction.cftoken" || {
+        msg "${RED}$(tr_msg wl_abandon_rm_fail)${NC}"
+        return 1
+    }
+    local _mode='' _port='' _pubport='' _cfhost=''
+    _mode=$(wallos_state_value MODE 2>/dev/null || true)
+    _port=$(wallos_state_value PORT 2>/dev/null || true)
+    _pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+    _cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+    case "$_mode" in
+        https)
+            if [[ "$_pubport" =~ ^[0-9]+$ && "$_port" =~ ^[0-9]+$ ]] && wallos_https_setup "$_pubport" "$_port"; then
+                msg "${GREEN}$(tr_msg wl_abandon_done)${NC}"
+            else
+                msg "${RED}$(tr_msg wl_abandon_frontend_fail)${NC}"
+            fi
+            ;;
+        cftunnel)
+            if [[ "$_cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] && wallos_cftunnel_setup "$_cfhost"; then
+                msg "${GREEN}$(tr_msg wl_abandon_done)${NC}"
+            else
+                msg "${RED}$(tr_msg wl_abandon_frontend_fail)${NC}"
+            fi
+            ;;
+        *)
+            wallos_https_teardown >/dev/null 2>&1 || true
+            wallos_cftunnel_teardown >/dev/null 2>&1 || true
+            msg "${GREEN}$(tr_msg wl_abandon_done)${NC}"
+            ;;
+    esac
+    return 0
+}
+
 wallos_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
@@ -52314,6 +52530,7 @@ wallos_menu() {
     msg "${CYAN}4.${NC} $(tr_msg wl_menu_remove)"
     msg "${CYAN}5.${NC} $(tr_msg wl_menu_rollback)"
     msg "${CYAN}6.${NC} $(tr_msg wl_menu_repair)"
+    msg "${CYAN}7.${NC} $(tr_msg wl_menu_abandon)"
     msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
     local c prompt_confirm
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
@@ -52356,6 +52573,7 @@ wallos_menu() {
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
+                    wallos_cleanup_fail2ban_leftovers || msg "${YELLOW}$(tr_msg wl_f2b_cleanup_warn)${NC}"
                 else
                     msg "${RED}$(tr_msg wl_remove_fail)${NC}"
                 fi
@@ -52369,6 +52587,9 @@ wallos_menu() {
             pause_return ;;
         6)
             wallos_db_repair_poisoned
+            pause_return ;;
+        7)
+            wallos_abandon_interrupted_upgrade
             pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;

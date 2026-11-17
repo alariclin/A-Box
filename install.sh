@@ -21317,6 +21317,21 @@ verify_ed25519_detached() {
         rm -rf -- "$keydir"
         return 1
     fi
+    # H-14: the CLI path needs pkeyutl -rawin (OpenSSL 3.0+); on hosts
+    # without it (e.g. OpenSSL 1.1.1) delegate to the ctypes libcrypto
+    # verifier instead of rejecting every valid signature. rc 0 =
+    # verified; any other rc (invalid signature, or 2 = no verifier
+    # available) maps to 1, preserving the fail-closed contract of the
+    # direct callers (e.g. run_mirrored_test_script, which deliberately
+    # bypasses abox_verify_sig_gate).
+    if ! _openssl_has_ed25519; then
+        if verify_ed25519_detached_ctypes "$file" "$sigfile"; then
+            rm -rf -- "$keydir"
+            return 0
+        fi
+        rm -rf -- "$keydir"
+        return 1
+    fi
     for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
         label="${entry%%:*}"
         pubkey_b64="${entry#*:}"
@@ -61097,6 +61112,13 @@ PY_F05_TPUB
                     if ! _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate rejected ctypes-valid signature under injected incapable state'; failures=$((failures + 1))
                     fi
+                    # H-14: the direct call (run_mirrored_test_script uses
+                    # verify_ed25519_detached directly, bypassing the gate)
+                    # must also fall back to ctypes when the CLI lacks
+                    # -rawin; a valid signature must verify.
+                    if ! _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
+                        echo 'FAIL: F-05 direct verify rejected valid signature under injected incapable state'; failures=$((failures + 1))
+                    fi
                     if _f05_gate_err=$(verify_ed25519_detached_ctypes() { return 2; }; _OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate did not fail-closed on stubbed no-verifier'; failures=$((failures + 1))
                     else
@@ -61111,6 +61133,11 @@ PY_F05_TPUB
                         grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no enforcement FATAL'; failures=$((failures + 1)); }
                     fi
                     printf 'F-05 CT TAMPERED\n' > "$_f05_tdir/ct-msg-bad.txt"
+                    # H-14 (fail-closed): the direct call must still reject
+                    # a tampered message when routing through ctypes.
+                    if _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
+                        echo 'FAIL: F-05 direct verify accepted tampered signature under injected incapable state'; failures=$((failures + 1))
+                    fi
                     if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate accepted ctypes-tampered signature under injected incapable state'; failures=$((failures + 1))
                     else

@@ -31516,6 +31516,14 @@ EOF_SVC
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
     commit_deployment_transaction
+    # OBS-S1-08: an overwrite redeploy writes fresh credentials into
+    # live config but never touched the user registries; re-adopt every
+    # existing registry of this core from live before any link is
+    # issued, so a stale server_secret cannot produce a dead ss://
+    # link. Best-effort: the deploy already committed, so a failure
+    # warns but must not fail it (same posture as the post-deploy
+    # snapshot below).
+    users_reg_reconcile_after_deploy xray || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
     # R27-H-NF-06 (GPT-arbitrated B): snapshot the just-deployed config
     # so the newest trusted backup is no longer the pre-deployment
     # empty one; a later self-heal then restores nodes instead of an
@@ -31692,6 +31700,13 @@ EOF_SVC
     prune_owned_core_families_except sing-box
     setup_geo_cron
     commit_deployment_transaction
+    # OBS-S1-08: an overwrite redeploy writes fresh credentials into
+    # live config but never touched the user registries; re-adopt every
+    # existing registry of this core from live before any link is
+    # issued, so a stale server_secret cannot produce a dead ss://
+    # link. Best-effort: the deploy already committed, so a failure
+    # warns but must not fail it.
+    users_reg_reconcile_after_deploy sing-box || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
     view_config deploy
 }
 
@@ -36271,6 +36286,35 @@ users_hy2_read_users() {
     jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v, password_only: true}]'
 }
 
+
+# OBS-S1-08: reconcile user registries after an overwrite redeploy.
+# A redeploy writes a fresh live config (new passwords/UUIDs) but the
+# registries still hold the pre-redeploy credentials; the next issued
+# link then carries stale keys while live has already moved on (for SS
+# this is a dead serverKey:userKey against a fresh legacy password,
+# with no error anywhere). Re-adopt every existing registry of this
+# core whose tag is still present in the new live config, so the
+# registry matches live before any link is issued. A registry whose
+# tag is gone from live is left alone (removed-inbound behaviour is
+# unchanged). Returns 1 if any present-tag re-adopt fails; the deploy
+# caller treats that as a best-effort warning, never a deploy failure.
+users_reg_reconcile_after_deploy() {
+    local core="$1" dir='' f='' c='' t='' rc=0
+    dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
+    [[ -d "$dir" ]] || return 0
+    for f in "$dir/$core"__*.json; do
+        [[ -f "$f" && ! -L "$f" ]] || continue
+        c=$(jq -r '.core // ""' "$f" 2>/dev/null || true)
+        t=$(jq -r '.tag // ""' "$f" 2>/dev/null || true)
+        [[ "$c" == "$core" && -n "$t" ]] || continue
+        if users_adopt "$core" "$t" >/dev/null 2>&1; then
+            users_normalize_default_name "$core" "$t" >/dev/null 2>&1 || rc=1
+        fi
+        # users_adopt fails when the tag is gone from live: leave that
+        # registry alone (see header).
+    done
+    return "$rc"
+}
 
 # Ensure a registry exists for (core, tag): adopt from the live config
 # when missing, then merge in any config credentials the registry does
@@ -52388,6 +52432,43 @@ urlencode() {
     done
 }
 
+# OBS-S1-08: verify a registry server_secret against the live SS inbound
+# before ss_effective_password() issues it as serverKey:userKey.
+# Returns 0 (use the registry key) when the live inbound is clients-form
+# with a server key equal to $2, or when the live config cannot be read
+# (fail open: previous behaviour). Returns 1 (do not use it) when live
+# is positively read as a legacy single-password inbound, or as a
+# clients-form inbound with a different server key: an overwrite
+# redeploy writes exactly that fresh legacy form while the registry
+# still holds the pre-redeploy key, and issuing it would be a dead link.
+_ss_live_server_key_matches() {
+    local core="$1" want="$2" cfg='' probe=''
+    cfg=$(users_cfg_of "$core" 2>/dev/null) || return 0
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    case "$core" in
+        xray)
+            probe=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r --arg t 'ss' '
+                [.inbounds[]? | select(.tag == $t)][0]
+                | if . == null then "__ABOX_NO_INBOUND__"
+                  elif ((.settings.clients // null) | type) == "array" then (.settings.password // "__ABOX_NO_KEY__")
+                  else "__ABOX_LEGACY__" end' 2>/dev/null) || return 0
+            ;;
+        sing-box)
+            probe=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r --arg t 'ss' '
+                [.inbounds[]? | select(.tag == $t)][0]
+                | if . == null then "__ABOX_NO_INBOUND__"
+                  elif ((.users // []) | length) > 0 then (.password // "__ABOX_NO_KEY__")
+                  else "__ABOX_LEGACY__" end' 2>/dev/null) || return 0
+            ;;
+        *) return 0 ;;
+    esac
+    case "$probe" in
+        ''|__ABOX_NO_INBOUND__|__ABOX_NO_KEY__) return 0 ;;
+        __ABOX_LEGACY__) return 1 ;;
+        *) [[ "$probe" == "$want" ]] ;;
+    esac
+}
+
 # Effective SS-2022 client password for the primary (main) node user.
 # OBS-S1-07: once multi-user promotion stores a server_secret, the live
 # inbound is clients-form and a bare server key can never authenticate --
@@ -52407,7 +52488,7 @@ ss_effective_password() {
     reg=$(users_reg_file "$core" 'ss')
     if [[ -f "$reg" && ! -L "$reg" ]]; then
         ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null || true)
-        if [[ -n "$ssecret" ]]; then
+        if [[ -n "$ssecret" ]] && _ss_live_server_key_matches "$core" "$ssecret"; then
             # The credential must belong to a user the server actually
             # has: primary user (main) first, else first enabled user.
             main_secret=$(jq -r '.users[] | select(.name == "main" and .disabled != true and ((.blocked // "") == "")) | .secret // ""' "$reg" 2>/dev/null | head -1 || true)

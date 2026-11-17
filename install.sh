@@ -10258,6 +10258,12 @@ tr_msg() {
         fa:apply_host_dns_verify_mismatch) echo 'پس از اعمال تغییرات، مجموعه DNS سراسری با مقدار مورد انتظار مطابقت نداشت؛ تغییرات بازگردانده شد.' ;;
         zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回復。' ;;
         ja:apply_host_dns_verify_mismatch) echo '適用後のシステム全体の DNS セットが期待値と一致しなかったため、ロールバックしました。' ;;
+        zh:dns_rollback_failed_staging_removed) echo 'DNS 回滚失败；本次快照暂存目录已删除。基线快照仍保留，可用 DNS 菜单回滚。' ;;
+        en:dns_rollback_failed_staging_removed) echo 'DNS rollback failed; the per-attempt snapshot staging directory was removed. The baseline snapshot is preserved; use the DNS menu to roll back.' ;;
+        ru:dns_rollback_failed_staging_removed) echo 'Откат DNS не удался; временный каталог снимка этой попытки удалён. Базовый снимок сохранён; для отката используйте меню DNS.' ;;
+        fa:dns_rollback_failed_staging_removed) echo 'بازگشت DNS ناموفق بود؛ پوشه موقت نسخه این تلاش حذف شد. نسخه پایه حفظ شده است؛ برای بازگشت از منوی DNS استفاده کنید.' ;;
+        zh-tw:dns_rollback_failed_staging_removed) echo 'DNS 回滾失敗；本次快照暫存目錄已刪除。基線快照仍保留，可用 DNS 選單回滾。' ;;
+        ja:dns_rollback_failed_staging_removed) echo 'DNS のロールバックに失敗しました。今回のスナップショット用一時ディレクトリは削除されました。ベースラインのスナップショットは保持されています。ロールバックするには DNS メニューを使用してください。' ;;
         zh:backup_current_config_retention_invalid) echo 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。' ;;
         en:backup_current_config_retention_invalid) echo 'Invalid BACKUP_RETENTION_COUNT; it must be an integer in the range 0-1000.' ;;
         ru:backup_current_config_retention_invalid) echo 'Недопустимое значение BACKUP_RETENTION_COUNT; требуется целое число в диапазоне 0-1000.' ;;
@@ -39343,6 +39349,31 @@ restore_dns_snapshot() {
     fi
     return "$rc"
 }
+
+# R28-OBS-S1-05: a failed per-attempt rollback must never leave its
+# staging dir behind. The staging dir holds a symlinked resolv.conf
+# copy (snapshot_dns_state uses cp -a), and the pre-deploy backup's
+# symlink scan refuses any symlink under $ABOX_DIR outside the pruned
+# scratch dirs, so one leaked `${DNS_BACKUP_DIR}.new.*` dir blocks
+# every later deployment ("Backup aborted because an existing A-Box
+# path could not be copied."). The staging dir is only this attempt's
+# rollback source: it is never referenced by any crash-recovery
+# record (the pending swap names the `.install` copy, not the
+# original), and install_new leaves a COMPLETE baseline in
+# $DNS_BACKUP_DIR for manual rollback via the DNS menu. A failed
+# restore is reported loudly instead of silently retaining the dir.
+dns_rollback_drop_staging() {
+    local _dir="$1"
+    [[ -n "$_dir" ]] || return 0
+    case "$_dir" in "${DNS_BACKUP_DIR}.new."*) ;; *) return 0 ;; esac
+    if restore_dns_snapshot "$_dir"; then
+        rm -rf -- "$_dir" 2>/dev/null || true
+    else
+        msg "${RED}[!] $(tr_msg dns_rollback_failed_staging_removed): $_dir${NC}"
+        rm -rf -- "$_dir" 2>/dev/null || true
+    fi
+    return 0
+}
 # Verify an NM DNS change actually landed: the connection's stored
 # servers must match, and the generated resolv.conf must carry the new
 # nameserver unless a local plugin (127.0.0.1/127.0.0.53) fronts it.
@@ -39665,10 +39696,10 @@ apply_host_dns() {
     case "$backend" in
         resolved)
             mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
-            resolved_strip_global_dns_sources || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_clear_sources_failed)"; }
+            resolved_strip_global_dns_sources || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_clear_sources_failed)"; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dot_write_failed)"; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dot_write_failed)"; }
 [Resolve]
 DNS=${dns_servers}
 FallbackDNS=
@@ -39676,7 +39707,7 @@ Domains=~.
 DNSOverTLS=yes
 EOF_DNS
             else
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dropin_write_failed)"; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dropin_write_failed)"; }
 [Resolve]
 DNS=${v4}${v6:+ $v6}
 FallbackDNS=
@@ -39684,22 +39715,22 @@ Domains=~.
 DNSOverTLS=no
 EOF_DNS
             fi
-            systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
-            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_verify_mismatch)"; }
+            systemctl restart systemd-resolved >/dev/null 2>&1 || { dns_rollback_drop_staging "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
+            resolved_global_dns_check "$v4${v6:+ $v6}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_verify_mismatch)"; }
             ;;
         networkmanager)
             local iface connection
             iface=$(nm_effective_device 2>/dev/null || true)
-            [[ -n "$iface" ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_iface)"; }
+            [[ -n "$iface" ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_no_iface)"; }
             connection=$(nmcli --escape no -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
-            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_conn)"; }
-            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
-            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
-            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
-            nm_dns_verify_applied "$connection" "$v4" "$v6" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
+            [[ -n "$connection" && "$connection" != '--' ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_no_conn)"; }
+            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
+            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
+            nmcli device reapply "$iface" >/dev/null 2>&1 || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
+            nm_dns_verify_applied "$connection" "$v4" "$v6" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
             ;;
         *)
-            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_symlink)"; }
+            [[ ! -L /etc/resolv.conf ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_resolv_symlink)"; }
             # R7C12-02: preserve search/domain/options from the
             # existing resolv.conf; the old code dropped them.
             local _pd_search_domain='' _pd_options=''
@@ -39716,8 +39747,8 @@ EOF_DNS
                 if [[ -n "$v6" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v6" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
                 if [[ -n "$_pd_search_domain" ]]; then printf '%s\n' "$_pd_search_domain"; fi
                 if [[ -n "$_pd_options" ]]; then printf '%s\n' "$_pd_options"; else printf 'options timeout:2 attempts:3\n'; fi
-            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_gen)"; }
-            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_write)"; }
+            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_resolv_gen)"; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_resolv_write)"; }
             rm -f "$DNS_BACKUP_DIR/resolv.conf.new"
             ;;
     esac
@@ -45869,15 +45900,15 @@ backup_current_config() {
         # a nested mount must never be traversed by tar during backup. This also
         # catches same-device bind mounts that --one-file-system cannot detect.
         path_tree_has_nested_mountpoint "$ABOX_DIR" && backup_failed=1
-        # C-04: Exclude .tz-rollback/.dns-backup (contain symlinks from cp -a of /etc/localtime, /etc/resolv.conf).
-        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o "${backup_find_prune[@]}" -type l -print 2>/dev/null) || backup_failed=1
+        # C-04: Exclude .tz-rollback/.dns-backup (contain symlinks from cp -a of /etc/localtime, /etc/resolv.conf). R28-OBS-S1-05: also exclude .dns-backup.new.* staging dirs (same symlinked resolv.conf copy); a leaked staging dir must not abort the backup.
+        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o -path "$ABOX_DIR/.dns-backup.new.*" -prune -o "${backup_find_prune[@]}" -type l -print 2>/dev/null) || backup_failed=1
         if [[ -n "${_abox_links:-}" ]]; then
             backup_failed=1
         else
             mkdir -p "$root$ABOX_DIR" || backup_failed=1
             [[ "$backup_failed" == 0 ]] && (cd "$ABOX_DIR" && tar \
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
-                --exclude='./.tz-rollback' --exclude='./.dns-backup' \
+                --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \

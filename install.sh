@@ -31691,7 +31691,7 @@ deploy_xray() {
     build_xray_config "$MODE_IN"
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
     jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
-    /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
+    XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
     standalone_preserve_restore xray /usr/local/etc/xray/config.json || { deployment_transaction_rollback; return 1; }
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
@@ -37933,7 +37933,17 @@ _nsni_rollback() {
     local _link="${9:-}" _linkbak="${10:-}"
     local _kemode="${11:-}" _crtmode="${12:-}"
     local _ok=1
-    [[ -f "$_bak" && -r "$_bak" ]] && cat "$_bak" > "$_cfg" 2>/dev/null || _ok=0
+    # H-06(3b): atomic config restore; mode/owner are taken from the
+    # live file (already normalized by the atomic commit), so a rollback
+    # never silently drops 0600/root.
+    if [[ -f "$_bak" && -r "$_bak" ]]; then
+        local _rbmode='600' _rbowner='root:root'
+        _rbmode=$(stat -c %a "$_cfg" 2>/dev/null || printf '600')
+        _rbowner=$(stat -c %U:%G "$_cfg" 2>/dev/null || printf 'root:root')
+        install_file_atomically "$_bak" "$_cfg" "$_rbmode" 2>/dev/null && chown "$_rbowner" "$_cfg" 2>/dev/null || _ok=0
+    else
+        _ok=0
+    fi
     if [[ -n "$_kebak" && -f "$_kebak" ]]; then if cp -a "$_kebak" "$_key" 2>/dev/null; then if [[ -n "$_kemode" ]]; then chmod -- "$_kemode" "$_key" 2>/dev/null || _ok=0; fi; else _ok=0; fi; fi
     if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then if cp -a "$_crtbak" "$_crt" 2>/dev/null; then if [[ -n "$_crtmode" ]]; then chmod -- "$_crtmode" "$_crt" 2>/dev/null || _ok=0; fi; else _ok=0; fi; fi
     if [[ -n "$_link" && -n "$_linkbak" && -f "$_linkbak" ]]; then
@@ -37973,11 +37983,23 @@ _wait_tcp_port() {
 # raw 32-byte Curve25519 private key (base64url). openssl does the
 # scalar multiplication via a PKCS#8 DER wrapper; python3 only moves
 # bytes around. Proven against `sing-box generate reality-keypair`.
+# H-16: Bash+OpenSSL derivation first (x25519_pub_from_priv); the
+# Python call below is only a fallback (PIPE, not capture_output,
+# so it stays valid on Python 3.6).
 _reality_pbk_from_private() {
-    local priv="$1"
+    local priv="$1" _pbk=''
     [[ -n "$priv" ]] || return 1
-    command -v python3 >/dev/null 2>&1 || return 1
     command -v openssl >/dev/null 2>&1 || return 1
+    # H-16: prefer the pure Bash+OpenSSL derivation
+    # (x25519_pub_from_priv): it needs no Python at all, so it works
+    # on Python 3.6 (Rocky/Alma 8), where subprocess.run() has no
+    # capture_output keyword. The PIPE-based Python call below stays
+    # as a fallback for inputs outside the 43-char base64url form.
+    if _pbk=$(x25519_pub_from_priv "$priv" 2>/dev/null); then
+        printf '%s' "$_pbk"
+        return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || return 1
     python3 -I - 3<<<"$priv" <<'PYEOF' || return 1
 import base64, subprocess, os
 priv = os.fdopen(3).read().strip()
@@ -37989,7 +38011,7 @@ if len(raw) != 32:
     raise SystemExit(1)
 der = bytes.fromhex("302e020100300506032b656e04220420") + raw
 p = subprocess.run(["openssl", "pkey", "-inform", "DER", "-in", "/dev/stdin", "-pubout", "-outform", "DER"],
-                   input=der, capture_output=True)
+                   input=der, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 if p.returncode != 0 or len(p.stdout) < 32:
     raise SystemExit(1)
 print(base64.urlsafe_b64encode(p.stdout[-32:]).decode().rstrip("="))
@@ -38215,6 +38237,12 @@ _nsni_apply() {
     local bak='' tmp='' bin='' filter=''
     bak=$(mktemp /tmp/A-Box-nsni-bak.XXXXXX) || return 1
     cp -a "$cfg" "$bak" && chmod 600 "$bak" || { rm -f "$bak"; return 1; }
+    # H-06(3b): record the live config's mode/owner before any replace:
+    # install_file_atomically swaps the inode (mv), so mode/owner must
+    # be restored explicitly (plain `cat >` used to keep them).
+    local _cfgmode='600' _cfgowner='root:root'
+    _cfgmode=$(stat -c %a "$cfg" 2>/dev/null || printf '600')
+    _cfgowner=$(stat -c %U:%G "$cfg" 2>/dev/null || printf 'root:root')
     local _was_running=0
     is_service_running "$core" 2>/dev/null && _was_running=1
     tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX.json) || { rm -f "$bak"; return 1; }
@@ -38225,13 +38253,29 @@ _nsni_apply() {
         shadowtls) filter='.inbounds |= map(if .tag == $t then .handshake.server = $s else . end)' ;;
         *) rm -f "$tmp" "$bak"; return 1 ;;
     esac
-    if ! jq --arg t "$tag" --arg s "$new" "$filter" "$cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
+    # L-01 (顺带): Xray configs are JSONC; read through the stripped
+    # view like users_adopt/users_sync, so a commented config does not
+    # fail the transform. sing-box configs are strict JSON: read raw.
+    local _jq_cfg="$cfg"
+    if [[ "$core" == xray ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-nsni-json.XXXXXX) || { rm -f "$tmp" "$bak"; return 1; }
+        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$tmp" "$bak"; return 1; }
+    fi
+    if ! jq --arg t "$tag" --arg s "$new" "$filter" "$_jq_cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
     case "$core" in
-        xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
+        xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         *) rm -f "$tmp" "$bak"; return 1 ;;
     esac
-    cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
+    # H-06(3b): atomic commit via install_file_atomically (mv), with the
+    # recorded mode/owner restored explicitly; the rollback write below
+    # is atomic the same way. A failed rollback keeps $bak for manual
+    # recovery, as before.
+    if ! install_file_atomically "$tmp" "$cfg" "$_cfgmode" || ! chown "$_cfgowner" "$cfg" 2>/dev/null; then
+        if [[ -f "$bak" && -r "$bak" ]] && install_file_atomically "$bak" "$cfg" "$_cfgmode" && chown "$_cfgowner" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi
+        return 1
+    fi
     rm -f "$tmp"
     local _kebak='' _crtbak='' _kemode='' _crtmode='' _tuic_cert_regen=0
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
@@ -38243,7 +38287,7 @@ _nsni_apply() {
         # Checked stat is part of the failure chain: a failed
         # capture aborts here, never silently with an empty mode.
         if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null || ! _kemode=$(stat -c %a "$key" 2>/dev/null) || ! _crtmode=$(stat -c %a "$crt" 2>/dev/null); then
-            if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi
+            if [[ -f "$bak" && -r "$bak" ]] && install_file_atomically "$bak" "$cfg" "$_cfgmode" && chown "$_cfgowner" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
         fi
@@ -38285,7 +38329,32 @@ _nsni_apply() {
     local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new='' _lbak=''
     _stem=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag")
     _lf="${_stem}.link"
-    if [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -qF "sni=${old}" "$_ldir/$_lf" 2>/dev/null; then
+    # H-06(1): ShadowTLS links carry no sni= parameter; the SNI lives in
+    # the Base64 JSON behind ?shadow-tls=. Decode it, replace only .host
+    # with the new SNI (password taken from the old JSON, never
+    # regenerated), and re-encode with the deploy-time jq expression.
+    if [[ "$kind" == shadowtls && -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -q 'shadow-tls=' "$_ldir/$_lf" 2>/dev/null; then
+        _lbak=$(mktemp /tmp/A-Box-nsni-linkbak.XXXXXX 2>/dev/null || true)
+        if [[ -z "$_lbak" ]] || ! cp -a "$_ldir/$_lf" "$_lbak" 2>/dev/null; then
+            rm -f "$_lbak" 2>/dev/null || true
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+        local _st_b64='' _st_json='' _st_pass='' _st_new=''
+        _st_b64=$(grep -o 'shadow-tls=[^#&]*' "$_ldir/$_lf" 2>/dev/null | cut -d= -f2- | head -1)
+        _st_json=$(users_b64url_dec "$_st_b64" 2>/dev/null)
+        _st_pass=$(printf '%s' "$_st_json" | jq -r '.password // ""' 2>/dev/null)
+        if [[ -z "$_st_b64" || -z "$_st_json" || -z "$_st_pass" ]] || ! _st_new=$(jq -cn --arg h "$new" --arg p "$_st_pass" '{version:"3", host:$h, password:$p}' 2>/dev/null | base64 | tr -d '\n\r') || [[ -z "$_st_new" ]]; then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+        if ! sed -i -e "s|\(shadow-tls=\)[^#&]*|\1${_st_new}|" "$_ldir/$_lf" 2>/dev/null; then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+        _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
+    fi
+    if [[ "$kind" != shadowtls && -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -qF "sni=${old}" "$_ldir/$_lf" 2>/dev/null; then
         _esc_old=$(printf '%s' "$old" | sed 's/[][\\.|*^$]/\\&/g')
         _esc_new=$(printf '%s' "$new" | sed 's/[\\|&]/\\&/g')
         _lbak=$(mktemp /tmp/A-Box-nsni-linkbak.XXXXXX 2>/dev/null || true)
@@ -38329,12 +38398,17 @@ _nsni_apply() {
     if [[ -n "$_envvar" && -f "$_envf" && ! -L "$_envf" ]]; then
         _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
         if [[ -n "$_etmp" ]]; then
-            if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } else if (substr(val, 1, 1) == "\047" && substr(val, length(val), 1) == "\047") { q = "\047"; val = substr(val, 2, length(val) - 2); } if (val == o) $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
+            if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } else if (substr(val, 1, 1) == "\047" && substr(val, length(val), 1) == "\047") { q = "\047"; val = substr(val, 2, length(val) - 2); } if (val == o || val == "") $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
                 # R14-F11-03: the awk above only rewrites a key that
                 # already exists with the old value. When the
                 # per-protocol key is missing entirely (only VLESS_SNI
                 # is set), append it: the link generator falls back to
                 # VLESS_SNI, so without this later links keep the old SNI.
+                # H-06(2): an empty value (VISION_SNI="") is rewritten
+                # by the awk as well: write_env always writes the key,
+                # so the missing-key append below never fires for it,
+                # and the old SNI would otherwise survive through the
+                # VLESS_SNI fallback.
                 if ! grep -q "^${_envvar}=" "$_etmp" 2>/dev/null; then
                     if ! printf '%s=%s\n' "$_envvar" "$new" >> "$_etmp" 2>/dev/null; then
                         rm -f "$_etmp"

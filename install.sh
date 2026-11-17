@@ -3508,6 +3508,54 @@ tr_msg() {
         fa:dh_resolved_health) echo 'بررسی سلامت systemd-resolved ناموفق بود؛ تلاش برای بازگشت انجام شد.' ;;
         zh-tw:dh_resolved_health) echo 'systemd-resolved 健康檢查失敗；已嘗試回滾。' ;;
         ja:dh_resolved_health) echo 'systemd-resolved のヘルスチェックに失敗しました。ロールバックを試みました。' ;;
+        zh:doh_link_search_domains_warn) echo '本次已启用 DoH，但经 systemd-resolved 查询的这些链路搜索域及其子域（含短名称补全后的查询）仍可能走链路 DNS：%s；其他普通 DNS 查询走 DoH，且后续 DHCP 或链路配置变化可能改变这一例外范围。' ;;
+        en:doh_link_search_domains_warn) echo 'DoH is now enabled, but queries for these link search domains and their subdomains (including short-name lookups completed via the search domains) may still go via the link DNS: %s. Other ordinary DNS queries handled by systemd-resolved go via DoH, and later DHCP or link configuration changes may change this exception scope.' ;;
+        ru:doh_link_search_domains_warn) echo 'DoH включён, но запросы к этим поисковым доменам канала и их поддоменам (включая короткие имена, дополненные через поисковые домены) могут по-прежнему идти через DNS канала: %s. Остальные обычные DNS-запросы, обрабатываемые systemd-resolved, идут через DoH, а последующие изменения DHCP или конфигурации канала могут изменить область этого исключения.' ;;
+        fa:doh_link_search_domains_warn) echo 'DoH اکنون فعال است، اما پرس‌وجوهای مربوط به این دامنه‌های جست‌وجوی پیوند و زیردامنه‌های آن‌ها (از جمله نام‌های کوتاه تکمیل‌شده با این دامنه‌های جست‌وجو) ممکن است همچنان از DNS پیوند عبور کنند: %s. سایر پرس‌وجوهای عادی DNS که systemd-resolved پردازش می‌کند از DoH عبور می‌کنند و تغییرات بعدی DHCP یا پیکربندی پیوند ممکن است دامنهٔ این استثنا را تغییر دهد.' ;;
+        zh-tw:doh_link_search_domains_warn) echo '本次已啟用 DoH，但經 systemd-resolved 查詢的這些鏈路搜尋網域及其子網域（含短名稱補全後的查詢）仍可能走鏈路 DNS：%s；其他一般 DNS 查詢走 DoH，且後續 DHCP 或鏈路設定變化可能改變這一例外範圍。' ;;
+        ja:doh_link_search_domains_warn) echo 'DoH を有効にしました。ただし、これらのリンクの検索ドメインとそのサブドメインに対するクエリ（検索ドメインによる短い名前の補完を含む）は、引き続きリンクの DNS を経由する可能性があります：%s。その他の通常の DNS クエリは systemd-resolved 経由で DoH を使用します。なお、今後の DHCP やリンク設定の変更により、この例外の範囲が変わる可能性があります。' ;;
+        zh:dh_cfg_temp) echo 'dnscrypt-proxy 配置临时文件创建失败；未修改 DNS。' ;;
+        en:dh_cfg_temp) echo 'Failed to create the dnscrypt-proxy configuration temp file; DNS was not changed.' ;;
+        ru:dh_cfg_temp) echo 'Не удалось создать временный файл конфигурации dnscrypt-proxy; DNS не изменён.' ;;
+        fa:dh_cfg_temp) echo 'ایجاد فایل موقت پیکربندی dnscrypt-proxy ناموفق بود؛ DNS تغییر نکرد.' ;;
+        zh-tw:dh_cfg_temp) echo 'dnscrypt-proxy 設定暫存檔建立失敗；未變更 DNS。' ;;
+        ja:dh_cfg_temp) echo 'dnscrypt-proxy の設定一時ファイルを作成できませんでした。DNS は変更されていません。' ;;
+        zh:dh_cfg_rewrite) echo 'dnscrypt-proxy 配置重写失败；未修改 DNS。' ;;
+        en:dh_cfg_rewrite) echo 'Failed to rewrite the dnscrypt-proxy configuration; DNS was not changed.' ;;
+        ru:dh_cfg_rewrite) echo 'Не удалось переписать конфигурацию dnscrypt-proxy; DNS не изменён.' ;;
+        fa:dh_cfg_rewrite) echo 'بازنویسی پیکربندی dnscrypt-proxy ناموفق بود؛ DNS تغییر نکرد.' ;;
+        zh-tw:dh_cfg_rewrite) echo 'dnscrypt-proxy 設定重寫失敗；未變更 DNS。' ;;
+        ja:dh_cfg_rewrite) echo 'dnscrypt-proxy の設定を書き換えられませんでした。DNS は変更されていません。' ;;
+        zh:dh_cfg_install) echo 'dnscrypt-proxy 配置安装失败；已尽可能回滚。' ;;
+        en:dh_cfg_install) echo 'Failed to install the dnscrypt-proxy configuration; rolled back where possible.' ;;
+        ru:dh_cfg_install) echo 'Не удалось установить конфигурацию dnscrypt-proxy; откат выполнен, где возможно.' ;;
+        fa:dh_cfg_install) echo 'نصب پیکربندی dnscrypt-proxy ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_cfg_install) echo 'dnscrypt-proxy 設定安裝失敗；已盡可能回滾。' ;;
+        ja:dh_cfg_install) echo 'dnscrypt-proxy の設定をインストールできませんでした。可能な範囲でロールバックしました。' ;;
+        zh:dh_proxy_enable) echo 'dnscrypt-proxy 服务启用失败；已尽可能回滚。' ;;
+        en:dh_proxy_enable) echo 'Failed to enable the dnscrypt-proxy service; rolled back where possible.' ;;
+        ru:dh_proxy_enable) echo 'Не удалось включить службу dnscrypt-proxy; откат выполнен, где возможно.' ;;
+        fa:dh_proxy_enable) echo 'فعال‌سازی سرویس dnscrypt-proxy ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_proxy_enable) echo 'dnscrypt-proxy 服務啟用失敗；已盡可能回滾。' ;;
+        ja:dh_proxy_enable) echo 'dnscrypt-proxy サービスを有効化できませんでした。可能な範囲でロールバックしました。' ;;
+        zh:dh_proxy_restart) echo 'dnscrypt-proxy 服务重启失败；已尽可能回滚。' ;;
+        en:dh_proxy_restart) echo 'Failed to restart the dnscrypt-proxy service; rolled back where possible.' ;;
+        ru:dh_proxy_restart) echo 'Не удалось перезапустить службу dnscrypt-proxy; откат выполнен, где возможно.' ;;
+        fa:dh_proxy_restart) echo 'راه‌اندازی مجدد سرویس dnscrypt-proxy ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_proxy_restart) echo 'dnscrypt-proxy 服務重新啟動失敗；已盡可能回滾。' ;;
+        ja:dh_proxy_restart) echo 'dnscrypt-proxy サービスを再起動できませんでした。可能な範囲でロールバックしました。' ;;
+        zh:dh_dropin_write) echo 'DNS drop-in 写入失败；已尽可能回滚。' ;;
+        en:dh_dropin_write) echo 'Failed to write the DNS drop-in; rolled back where possible.' ;;
+        ru:dh_dropin_write) echo 'Не удалось записать DNS drop-in; откат выполнен, где возможно.' ;;
+        fa:dh_dropin_write) echo 'نوشتن drop-in مربوط به DNS ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_dropin_write) echo 'DNS drop-in 寫入失敗；已盡可能回滾。' ;;
+        ja:dh_dropin_write) echo 'DNS のドロップインを書き込めませんでした。可能な範囲でロールバックしました。' ;;
+        zh:dh_resolved_restart) echo 'systemd-resolved 重启失败；已尽可能回滚。' ;;
+        en:dh_resolved_restart) echo 'Failed to restart systemd-resolved; rolled back where possible.' ;;
+        ru:dh_resolved_restart) echo 'Не удалось перезапустить systemd-resolved; откат выполнен, где возможно.' ;;
+        fa:dh_resolved_restart) echo 'راه‌اندازی مجدد systemd-resolved ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_resolved_restart) echo 'systemd-resolved 重新啟動失敗；已盡可能回滾。' ;;
+        ja:dh_resolved_restart) echo 'systemd-resolved を再起動できませんでした。可能な範囲でロールバックしました。' ;;
         zh:sn_tmp_fail) echo 'SNI 雷达临时目录创建失败。' ;;
         en:sn_tmp_fail) echo 'SNI radar temporary directory creation failed.' ;;
         ru:sn_tmp_fail) echo 'Не удалось создать временный каталог радара SNI.' ;;
@@ -39648,13 +39696,22 @@ resolved_strip_global_dns_sources() {
 # possible, treated as pass: the strip above is the actual fix, this is
 # defense in depth.
 resolved_global_dns_check() {
-    local expected="$1" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
+    local expected="$1" policy="${2:-strict}" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
     # OBS-S1-06: record WHY the check failed so the caller can say it.
     # The verdict itself is unchanged (still fail-closed, F06/R11-15);
     # only the diagnosis becomes specific. A stale value would blame
     # the previous call, so always reset on entry.
     RESOLVED_DNS_CHECK_FAIL=''
+    RESOLVED_DNS_CHECK_WARN=''
+    # R30-OBS-S1-02: explicit policy. strict (default, preset path):
+    # any link domain fails. doh_search_warn (DoH install only):
+    # ordinary search domains warn-and-continue, any ~ route domain
+    # still fails. An unknown policy fails closed.
+    case "$policy" in
+        strict|doh_search_warn) ;;
+        *) RESOLVED_DNS_CHECK_FAIL='unknown_dns_check_policy'; return 1 ;;
+    esac
     command -v resolvectl >/dev/null 2>&1 || return 0
     line=$(resolvectl dns 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
     [[ -n "$line" ]] || { RESOLVED_DNS_CHECK_FAIL='no_global_dns'; return 1; }
@@ -39669,6 +39726,9 @@ resolved_global_dns_check() {
     # of ~. alone does not either: any link domain (route-only
     # or ordinary) can still select that link for matching names.
     # Require global ~. AND no link domain at all, else roll back.
+    # R30-OBS-S1-02: under doh_search_warn ordinary search domains
+    # are a warned exception (recorded in RESOLVED_DNS_CHECK_WARN),
+    # not a failure; ~ route domains still fail in both policies.
     _dom_out=$(LC_ALL=C resolvectl domain 2>/dev/null) || { RESOLVED_DNS_CHECK_FAIL='domain_query_failed'; return 1; }
     dline=$(printf '%s\n' "$_dom_out" | awk '/^Global:/ {print; exit}' || true)
     [[ -n "$dline" ]] || { RESOLVED_DNS_CHECK_FAIL='no_global_domain'; return 1; }
@@ -39689,6 +39749,25 @@ resolved_global_dns_check() {
         esac
     done <<< "$_dom_out"
     if [[ -n "$_fail_domains" ]]; then
+        if [[ "$policy" == 'doh_search_warn' ]]; then
+            # Any ~ route domain still fails; ordinary search
+            # domains only warn. Re-scan the collected lines:
+            # a ~ token anywhere keeps the strict verdict.
+            local _has_route=0 _entry='' _doms='' _tok=''
+            local -a _entries=() _toks=()
+            IFS=';' read -ra _entries <<< "$_fail_domains" || true
+            for _entry in "${_entries[@]}"; do
+                _doms="${_entry#*:}"
+                IFS=$' \t' read -ra _toks <<< "$_doms" || true
+                for _tok in "${_toks[@]}"; do
+                    case "$_tok" in '~'*) _has_route=1 ;; esac
+                done
+            done
+            if (( _has_route == 0 )); then
+                RESOLVED_DNS_CHECK_WARN="$_fail_domains"
+                return 0
+            fi
+        fi
         RESOLVED_DNS_CHECK_FAIL="link_domain:${_fail_domains}"
         return 1
     fi
@@ -39709,6 +39788,16 @@ resolved_dns_check_fail_message() {
             tprintf apply_host_dns_verify_link_domain "${detail#link_domain:}" ;;
         *) tr_msg apply_host_dns_verify_mismatch ;;
     esac
+}
+
+# R30-OBS-S1-02: render the doh_search_warn exception recorded by
+# resolved_global_dns_check (RESOLVED_DNS_CHECK_WARN holds the
+# "Link N (iface): domain..." list). Empty when nothing was warned;
+# the message never claims all DNS goes via DoH.
+resolved_dns_check_warn_message() {
+    local detail="${RESOLVED_DNS_CHECK_WARN:-}"
+    [[ -n "$detail" ]] || return 0
+    tprintf doh_link_search_domains_warn "$detail"
 }
 
 apply_host_dns() {
@@ -40560,7 +40649,7 @@ dns_enable_doh() {
         msg "${RED}$(tr_msg dh_snap_install)${NC}"
         return 1
     fi
-    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; return 1; }
+    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_temp)${NC}"; return 1; }
     # R8C12-N02: under socket activation the socket unit binds
     # the address; the service must inherit it (empty list).
     local doh_listen="['127.0.0.1:5353']"
@@ -41095,10 +41184,10 @@ else:
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
-    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; return 1; fi
+    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_rewrite)${NC}"; return 1; fi
     # R1-12-F7: preserve the original mode (a 0640 credential
     # file must not be loosened to 0644 by the rewrite).
-    install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+    install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_install)${NC}"; return 1; }
     rm -f -- "$temp"
     if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
         if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
@@ -41109,10 +41198,10 @@ PY_DOH_CONFIG
     # would keep serving the old config; restart a live instance so
     # the new config is really loaded before probing it.
     if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
-        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
-        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; return 1; }
+        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_restart)${NC}"; return 1; }
     else
-        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; return 1; }
     fi
     # R10-F12-4: this probe is an availability check only (the local
     # proxy answers); it does not prove queries travel over DoH. The
@@ -41131,16 +41220,16 @@ PY_DOH_CONFIG
         msg "${RED}$(tr_msg dh_test_resolve)${NC}"
         return 1
     fi
-    resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
-    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+    resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg apply_host_dns_clear_sources_failed)${NC}"; return 1; }
+    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
 [Resolve]
 DNS=127.0.0.1:5353
 FallbackDNS=
 Domains=~.
 DNSOverTLS=no
 EOF_DOH
-    systemctl restart systemd-resolved >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
-    resolved_global_dns_check '127.0.0.1:5353' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+    systemctl restart systemd-resolved >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_resolved_restart)${NC}"; return 1; }
+    resolved_global_dns_check '127.0.0.1:5353' 'doh_search_warn' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(resolved_dns_check_fail_message)${NC}"; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
             if restore_dns_snapshot "$_doh_snap_keep"; then
@@ -41154,6 +41243,9 @@ EOF_DOH
         fi
         msg "${GREEN}$(tr_msg dh_ok)${NC}"
         msg "${YELLOW}$(tr_msg dh_note)${NC}"
+        if [[ -n "${RESOLVED_DNS_CHECK_WARN:-}" ]]; then
+            msg "${YELLOW}$(resolved_dns_check_warn_message)${NC}"
+        fi
         rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
     else
         if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi

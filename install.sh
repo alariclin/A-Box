@@ -35674,10 +35674,9 @@ remove_hy2_hop_nat_rules() {
                 continue
             fi
         fi
-        for _spec in "-i $_iface -p udp --dport ${_start}:${_end} -j REDIRECT --to-ports $_base"; do
-            while _iptables_q "$cmd" -t nat -C PREROUTING $_spec 2>/dev/null; do
-                _iptables_q "$cmd" -t nat -D PREROUTING $_spec 2>/dev/null || { _failed=1; break; }
-            done
+        _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -j REDIRECT --to-ports "$_base")
+        while _iptables_q "$cmd" -t nat -C PREROUTING "${_spec[@]}" 2>/dev/null; do
+            _iptables_q "$cmd" -t nat -D PREROUTING "${_spec[@]}" 2>/dev/null || { _failed=1; break; }
         done
     done
     (( _failed == 0 ))

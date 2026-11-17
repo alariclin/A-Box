@@ -10252,6 +10252,12 @@ tr_msg() {
         fa:apply_host_dns_dropin_write_failed) echo 'نوشتن فایل drop-in مربوط به DNS ناموفق بود.' ;;
         zh-tw:apply_host_dns_dropin_write_failed) echo 'DNS drop-in 寫入失敗。' ;;
         ja:apply_host_dns_dropin_write_failed) echo 'DNS のドロップインの書き込みに失敗しました。' ;;
+        zh:apply_host_dns_verify_link_domain) echo '全局 DNS 集合与预期一致，但链路仍带域名（%s），匹配的查询仍可能走该链路，已回滚。' ;;
+        en:apply_host_dns_verify_link_domain) echo 'The global DNS set matched, but a link still carries domains (%s), so matching queries can still go via that link; rolled back.' ;;
+        ru:apply_host_dns_verify_link_domain) echo 'Глобальный набор DNS совпал, но на канале остались домены (%s), поэтому совпадающие запросы могут идти через этот канал; выполнен откат.' ;;
+        fa:apply_host_dns_verify_link_domain) echo 'مجموعه DNS سراسری مطابقت داشت، اما پیوند هنوز دامنه دارد (%s) و درخواست‌های مطابق ممکن است از آن پیوند عبور کنند؛ تغییرات بازگردانده شد.' ;;
+        zh-tw:apply_host_dns_verify_link_domain) echo '全域 DNS 集合與預期一致，但鏈路仍帶域名（%s），相符的查詢仍可能走該鏈路，已回復。' ;;
+        ja:apply_host_dns_verify_link_domain) echo 'システム全体の DNS セットは一致しましたが、リンクにドメインが残っています（%s）。一致するクエリはそのリンクを経由する可能性があるため、ロールバックしました。' ;;
         zh:apply_host_dns_verify_mismatch) echo '应用后全局 DNS 集合与预期不符，已回滚。' ;;
         en:apply_host_dns_verify_mismatch) echo 'The global DNS set did not match the expected set after applying the changes; rolled back.' ;;
         ru:apply_host_dns_verify_mismatch) echo 'После применения общесистемный набор DNS не совпал с ожидаемым; выполнен откат.' ;;
@@ -39544,37 +39550,67 @@ resolved_strip_global_dns_sources() {
 # possible, treated as pass: the strip above is the actual fix, this is
 # defense in depth.
 resolved_global_dns_check() {
-    local expected="$1" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks=''
+    local expected="$1" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
+    # OBS-S1-06: record WHY the check failed so the caller can say it.
+    # The verdict itself is unchanged (still fail-closed, F06/R11-15);
+    # only the diagnosis becomes specific. A stale value would blame
+    # the previous call, so always reset on entry.
+    RESOLVED_DNS_CHECK_FAIL=''
     command -v resolvectl >/dev/null 2>&1 || return 0
     line=$(resolvectl dns 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
-    [[ -n "$line" ]] || return 1
+    [[ -n "$line" ]] || { RESOLVED_DNS_CHECK_FAIL='no_global_dns'; return 1; }
     line="${line#Global:}"
     IFS=$' \t\n' read -ra exp <<< "$expected" || true
     IFS=$' \t\n' read -ra gottok <<< "$line" || true
     for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$(normalize_ip_literal "$tok")"); done
     for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$(normalize_ip_literal "$tok")"); done
-    [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]] || return 1
+    [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]] || { RESOLVED_DNS_CHECK_FAIL='dns_mismatch'; return 1; }
     # F06/R11-15: a global DNS list alone does not keep link DHCP
     # resolvers out of the query path, and a global route domain
     # of ~. alone does not either: any link domain (route-only
     # or ordinary) can still select that link for matching names.
     # Require global ~. AND no link domain at all, else roll back.
-    _dom_out=$(LC_ALL=C resolvectl domain 2>/dev/null) || return 1
+    _dom_out=$(LC_ALL=C resolvectl domain 2>/dev/null) || { RESOLVED_DNS_CHECK_FAIL='domain_query_failed'; return 1; }
     dline=$(printf '%s\n' "$_dom_out" | awk '/^Global:/ {print; exit}' || true)
-    [[ -n "$dline" ]] || return 1
-    [[ " $dline " == *' ~. '* ]] || return 1
+    [[ -n "$dline" ]] || { RESOLVED_DNS_CHECK_FAIL='no_global_domain'; return 1; }
+    [[ " $dline " == *' ~. '* ]] || { RESOLVED_DNS_CHECK_FAIL='no_global_route_domain'; return 1; }
     while IFS= read -r _lline; do
         case "$_lline" in
             'Global:'*) ;;
             'Link '*:*)
                 _ltoks="${_lline#*:}"
-                [[ -n "${_ltoks//[[:space:]]/}" ]] && return 1 ;;
+                if [[ -n "${_ltoks//[[:space:]]/}" ]]; then
+                    # Keep the whole line (e.g. "Link 2 (ens5):
+                    # ap-southeast-2.compute.internal") so the failure
+                    # message can name the exact link and domain.
+                    _fail_domains="${_fail_domains:+${_fail_domains}; }${_lline}"
+                fi ;;
             '') ;;
-            *) return 1 ;;
+            *) RESOLVED_DNS_CHECK_FAIL="unexpected_domain_line:${_lline}"; return 1 ;;
         esac
     done <<< "$_dom_out"
+    if [[ -n "$_fail_domains" ]]; then
+        RESOLVED_DNS_CHECK_FAIL="link_domain:${_fail_domains}"
+        return 1
+    fi
     return 0
+}
+
+# OBS-S1-06: when the check fails only because a link still carries a
+# (usually DHCP-supplied) search/route domain, name the link instead of
+# blaming the global DNS set: the set itself matched in that case, so
+# the generic "global DNS set mismatch" text misdescribes the failure.
+# The guard itself stays fail-closed (F06/R11-15): any link domain can
+# still select that link for matching names, so this only changes the
+# message, never the verdict.
+resolved_dns_check_fail_message() {
+    local detail="${RESOLVED_DNS_CHECK_FAIL:-}"
+    case "$detail" in
+        link_domain:*)
+            tprintf apply_host_dns_verify_link_domain "${detail#link_domain:}" ;;
+        *) tr_msg apply_host_dns_verify_mismatch ;;
+    esac
 }
 
 apply_host_dns() {
@@ -39685,7 +39721,7 @@ DNSOverTLS=no
 EOF_DNS
             fi
             systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
-            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_verify_mismatch)"; }
+            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(resolved_dns_check_fail_message)"; }
             ;;
         networkmanager)
             local iface connection

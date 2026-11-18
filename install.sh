@@ -46178,6 +46178,12 @@ convert_legacy_backup_archive() {
     # and path_parent_chain_safe below rejects relative paths outright).
     # realpath -m never requires the path to exist; on failure keep the
     # original value (no regression: the later checks fail as before).
+    # N-2 (H-27 follow-up): reject a symlinked raw input BEFORE realpath
+    # resolves it -- otherwise a symlink to a real directory (or a dangling
+    # symlink, which realpath -m happily resolves to a path that is then
+    # created) would pass the ! -L gate below, which only ever sees the
+    # resolved target. A symlink input is refused outright.
+    [[ ! -L "$out_dir" ]] || die 'Legacy conversion output directory must not be a symbolic link.'
     out_dir=$(realpath -m -- "$out_dir" 2>/dev/null || printf '%s' "$out_dir")
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
     # R6C14-01: private root-only copy BEFORE any validation; every
@@ -60309,7 +60315,7 @@ main() {
     case "${1:-}" in
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
-        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
+        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; [[ ! -L "$_conv_out" ]] || die 'Legacy conversion output directory must not be a symbolic link.'; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
         --xray-config-autorecover) shift; prepare_noninteractive_file_operation; xray_config_autorecover; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;

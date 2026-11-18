@@ -14761,7 +14761,7 @@ _prune_standalone_link_file() {
 }
 
 _prune_standalone_links() {
-    local srv="$1" dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" link='' stem='' _ws_out=''
+    local srv="$1" dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" link='' stem='' _ws_out='' _stripped=''
     [[ -d "$dir" ]] || return 0
     # H-26(3): sweep the links actually on disk (base stems AND -N
     # variants such as tuic-in-2.link, whose stem is the raw tag) and
@@ -14792,7 +14792,13 @@ _prune_standalone_links() {
             # H-26(3): strip JSONC before jq (bare jq fails rc 5 on a
             # commented config). A jq failure is unverifiable, so the
             # link is kept; only a clean "no ws inbound" deletes it.
-            if ! _ws_out=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null | jq -r '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' 2>/dev/null); then
+            # H-26(3b): an empty / comment-only config is likewise
+            # unverifiable (same non-empty check as
+            # _standalone_link_tag_survivor's rc 2): keep the link.
+            _stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _stripped=''
+            if [[ -z "${_stripped//[[:space:]]/}" ]]; then
+                :
+            elif ! _ws_out=$(printf '%s' "$_stripped" | jq -r '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' 2>/dev/null); then
                 :
             elif [[ -z "$_ws_out" ]]; then
                 rm -f -- "$dir/argo.link" 2>/dev/null || true
@@ -20517,6 +20523,62 @@ ss_holder_is_abox_owned() {
     return 0
 }
 
+# H-26(2b): does the preserve snapshot hold an inbound bound to
+# proto:port? rc 0 = yes, rc 1 = confirmed no binding (no snapshot
+# file, empty snapshot, or no inbound covers it), rc 2 = unverifiable
+# (jq missing / snapshot unreadable / an inbound binding is
+# unparseable). Callers must only take the tolerance branch on rc 1;
+# rc 2 stays fail-closed (prompt). The binding model (port ranges,
+# transport sets) mirrors standalone_preserve_snapshot's drop filter.
+_preserve_snapshot_binds_port() {
+    local proto="$1" p="$2" _file="${ABOX_PRESERVE_FILE:-}" _res=''
+    [[ -n "$_file" && -f "$_file" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 2
+    _res=$(jq -r --arg proto "$proto" --argjson port "$p" '
+            def parse_range:
+              if type == "number" then [., .]
+              elif type == "string" then
+                if test("^[0-9]+$") then [(tonumber), (tonumber)]
+                elif test("^[0-9]+-[0-9]+$") then
+                  (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
+                else null end
+              else null end;
+            def transport_set:
+              if (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+              elif (.streamSettings.network // null) != null then
+                (.streamSettings.network
+                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                   elif . == "kcp" or . == "quic" then ["udp"]
+                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                   else ["tcp"] end)
+              elif (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+              elif (.type // null) != null then
+                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+              else ["tcp"] end;
+            def binding:
+              ((.listen_port // .port) as $ps
+               | if $ps == null then null
+                 else
+                   (($ps | parse_range) as $r
+                    | if $r == null then {addr: (.listen // "0.0.0.0"), transports: transport_set, range: null, unparseable: true}
+                      else {addr: (.listen // "0.0.0.0"), transports: transport_set, range: $r, unparseable: false} end)
+                 end);
+            def binds($proto; $port):
+              ([.[] | (binding) as $b | select($b != null and ($b.unparseable | not) and (($b.transports | index($proto)) != null) and ($port >= $b.range[0] and $port <= $b.range[1]))] | length) > 0;
+            def any_unparseable:
+              ([.[] | (binding) as $b | select($b != null and $b.unparseable)] | length) > 0;
+            if any_unparseable then "unknown"
+            elif binds($proto; $port) then "binds"
+            else "none" end' "$_file" 2>/dev/null) || return 2
+    case "$_res" in
+        binds) return 0 ;;
+        none) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
 # H-26(2): preserve-mode port conflict. The selected port is held by an
 # A-Box-owned process AND preserve mode would restore a standalone
 # inbound onto the same port; silently tolerating it (same-port
@@ -20651,6 +20713,19 @@ check_selected_ports_free() {
                 # standalone inbound that will be restored; the old
                 # same-port tolerance would let restore silently drop
                 # it. Treat it as a hard conflict instead.
+                # H-26(2b): only when the preserve snapshot really
+                # holds an inbound bound to this port. With no such
+                # binding (no snapshot, or no inbound on this port)
+                # there is nothing to lose, so the old tolerance
+                # applies; an unverifiable snapshot stays fail-closed
+                # (rc 2 falls through to the prompt below).
+                _preserve_snapshot_binds_port "$proto" "$p"
+                case "$?" in
+                    1)
+                        msg "${YELLOW}[*] $(tprintf check_selected_ports_free_owned_process "${p}" "${proto}")${NC}"
+                        continue
+                        ;;
+                esac
                 _preserve_port_conflict "$proto" "$p" || return 1
                 continue
             fi
@@ -40103,6 +40178,10 @@ restore_dns_snapshot_body() {
     fi
     if [[ -f "$dir/dns-state" ]]; then rm -f -- "$DNS_STATE_FILE" || return 1; cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
+    # H-25(3b): a failed socket-drop-in rollback step must not report
+    # success: record it here and fail at the end of the function
+    # instead of swallowing it with "|| true".
+    local _abox_listen_rollback_failed=0
     # H-25(3): the snapshot never recorded the A-Box socket drop-in
     # (abox-listen.conf), so a restore left 127.0.0.1:5353 bound after
     # the rollback. Remove it and rebind the socket to the distro
@@ -40112,11 +40191,13 @@ restore_dns_snapshot_body() {
     # is ever removed; a foreign admin override is left alone.
     if [[ ! -f "$dir/dns-state" ]] || ! grep -qE '(^|;)[ \t]*mode=doh([; \t]|$)' "$dir/dns-state" 2>/dev/null; then
         if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] && grep -q 'Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null; then
-            rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || true
+            rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || { msg "${YELLOW}[!] Failed to remove A-Box DNS socket drop-in abox-listen.conf; DNS rollback incomplete.${NC}" >&2; _abox_listen_rollback_failed=1; }
             rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
             if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
-                systemctl daemon-reload >/dev/null 2>&1 || true
-                systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null && systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+                systemctl daemon-reload >/dev/null 2>&1 || { msg "${YELLOW}[!] systemctl daemon-reload failed; DNS socket rollback incomplete.${NC}" >&2; _abox_listen_rollback_failed=1; }
+                if systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+                    systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to restart dnscrypt-proxy.socket; DNS socket rollback incomplete.${NC}" >&2; _abox_listen_rollback_failed=1; }
+                fi
             fi
         fi
     fi
@@ -40195,6 +40276,9 @@ restore_dns_snapshot_body() {
         esac
         fi
     fi
+    # H-25(3b): see above -- a failed drop-in rollback step fails
+    # the whole restore instead of reporting success.
+    (( _abox_listen_rollback_failed == 0 )) || return 1
     return 0
 }
 # Crash-recovery for interrupted DNS snapshot swaps. Called on entry to
@@ -53785,9 +53869,9 @@ ss_effective_password() {
 }
 
 # H-24 (Carbon R3): the effective Hy2 credential for display/export.
-# userpass with >= 2 users needs "login:secret" (the server
-# authenticates by .login // .name, R10-10); a single userpass user
-# and password mode need the bare secret. Mirrors
+# userpass needs "login:secret" (the server authenticates by
+# .login // .name, R10-10), whatever the user count; only password
+# mode needs the bare secret. Mirrors
 # ss_effective_password's fail-open: when the live config cannot be
 # read (or yields no usable credential), fall back to $HY2_PASS;
 # return 1 only when neither yields a credential. On success prints
@@ -53796,10 +53880,9 @@ ss_effective_password() {
 # secret intact through $(...) (same sentinel convention as
 # users_hy2_yaml_scalar / rebuild_standalone_links).
 hy2_effective_password() {
-    local cfg='/etc/hysteria/config.yaml' users='' pw_only='' nusers=0 login='' secret=''
+    local cfg='/etc/hysteria/config.yaml' users='' pw_only='' login='' secret=''
     users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
     if [[ -n "$users" && "$users" != '[]' ]]; then
-        nusers=$(printf '%s' "$users" | jq -r 'length' 2>/dev/null || echo 0)
         pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
         if [[ "$pw_only" == 'true' ]]; then
             secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
@@ -53808,20 +53891,17 @@ hy2_effective_password() {
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
                 return 0
             fi
-        elif (( nusers >= 2 )); then
+        else
+            # D-5: userpass auth (any user count) authenticates by
+            # login/name, so even a single userpass user needs
+            # "login:secret"; only password-only auth takes the
+            # bare secret (handled above).
             login=$(printf '%s' "$users" | jq -r '((.[0].login // .[0].name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             login=${login%__ABOX_TRAILING_NL_KEEP__}
             secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             secret=${secret%__ABOX_TRAILING_NL_KEEP__}
             if [[ -n "$login" && -n "$secret" ]]; then
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
-                return 0
-            fi
-        else
-            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
-            secret=${secret%__ABOX_TRAILING_NL_KEEP__}
-            if [[ -n "$secret" ]]; then
-                printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
                 return 0
             fi
         fi
@@ -54515,21 +54595,23 @@ PY_CLASH_REALPATH
     # the node even when a fingerprint is available).
     if (( _hy2_ports_bad == 1 )); then hy2_yaml_emit=false; fi
     # H-24: per-protocol port gates for the Clash YAML. A port is
-    # skipped only when it is set but invalid; an empty port keeps
-    # the historical :-default (443/8443/2053). Warnings are plain
-    # English (precedent: the cached-fingerprint warning above).
+    # skipped when it is empty or invalid (D-1): an empty port must
+    # not keep the historical :-default (443/8443/2053), which would
+    # emit a node pointing at a port that does not exist. Warnings
+    # are plain English (precedent: the cached-fingerprint warning
+    # above).
     local _vless_port_ok=1 _xhttp_port_ok=1 _ss_port_ok=1
-    local _vision_emit=0 _xhttp_emit=0 _ss_emit=0
-    if [[ -n "${VLESS_PORT:-}" ]] && ! valid_canonical_port "${VLESS_PORT:-}"; then
-        msg "${YELLOW}[!] VLESS port '${VLESS_PORT}' is invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+    local _vision_emit=0 _xhttp_emit=0 _ss_emit=0 _vision_base_emit=0 _xhttp_base_emit=0
+    if ! valid_canonical_port "${VLESS_PORT:-}"; then
+        msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
         _vless_port_ok=0
     fi
-    if [[ -n "${XHTTP_PORT:-}" ]] && ! valid_canonical_port "${XHTTP_PORT:-}"; then
-        msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT}' is invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+    if ! valid_canonical_port "${XHTTP_PORT:-}"; then
+        msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
         _xhttp_port_ok=0
     fi
-    if [[ -n "${SS_PORT:-}" ]] && ! valid_canonical_port "${SS_PORT:-}"; then
-        msg "${YELLOW}[!] SS port '${SS_PORT}' is invalid; skipping the SS node in Clash YAML.${NC}" >&2
+    if ! valid_canonical_port "${SS_PORT:-}"; then
+        msg "${YELLOW}[!] SS port '${SS_PORT:-}' is missing or invalid; skipping the SS node in Clash YAML.${NC}" >&2
         _ss_port_ok=0
     fi
     # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
@@ -54595,7 +54677,7 @@ EOF_CLASH
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 _vision_emit=1
-                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; _vision_base_emit=1; else proxy_name="Vision-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
@@ -54623,7 +54705,7 @@ EOF_CLASH
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 _xhttp_emit=1
-                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; _xhttp_base_emit=1; else proxy_name="XHTTP-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
@@ -54748,9 +54830,12 @@ proxy-groups:
 EOF_CLASH
         # H-24: proxy-groups list only nodes actually emitted above
         # (emission flags), never MODE alone: a skipped protocol must
-        # not leave a dangling group entry.
-        (( _vision_emit == 1 )) && echo '      - Vision'
-        (( _xhttp_emit == 1 )) && echo '      - XHTTP'
+        # not leave a dangling group entry. The base names are listed
+        # only when the base node itself was emitted: with UUID empty
+        # (or absent from the list) only suffixed nodes exist, so the
+        # base name must not appear.
+        (( _vision_base_emit == 1 )) && echo '      - Vision'
+        (( _xhttp_base_emit == 1 )) && echo '      - XHTTP'
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
             (( _vision_emit == 1 )) && echo "      - Vision-$client_uuid"

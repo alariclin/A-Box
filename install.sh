@@ -26507,6 +26507,13 @@ EOF_SVC
         refresh_subscription_after_deploy || true
         view_config deploy
     fi
+    # S2-NEW-04: reconcile the hy2 registry like the xray/sing-box
+    # deployers do (OBS-S1-08 pattern): an overwrite redeploy writes a
+    # fresh password-mode config, and without this the registry keeps
+    # stale credentials until a menu visit -- where the merge used to
+    # duplicate main as main-2. Best-effort: the deploy already
+    # committed, so a failure warns but must not fail it.
+    users_reg_reconcile_after_deploy hy2 || msg "S2-NEW-04: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
 }
 
 install_file_atomically() {
@@ -36533,15 +36540,20 @@ list_extra_uuids() {
 # line, in glob order. Fail-closed like list_extra_uuids: a corrupt
 # or symlinked registry file is a hard failure (return 1), never an
 # empty list. A missing directory is an empty list.
+# H-24(3) follow-up: vless/vmess registries carry the UUID in .secret
+# (users_adopt sets secret=.id and leaves .uuid empty), so .secret is
+# also accepted as a candidate for those protocols only -- a
+# UUID-shaped password in any other registry must never leak in.
 list_usersd_uuids() {
-    local dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" f='' _u=''
+    local dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" f='' _u='' _proto=''
     [[ -d "$dir" ]] || return 0
     [[ ! -L "$dir" ]] || return 1
     for f in "$dir"/*.json; do
         [[ -e "$f" || -L "$f" ]] || continue
         [[ ! -L "$f" ]] || return 1
         [[ -f "$f" && -r "$f" ]] || return 1
-        _u=$(jq -r '.users[]? | select((.uuid // "") != "") | .uuid | select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' "$f" 2>/dev/null) || return 1
+        _proto=$(jq -r '.protocol // ""' "$f" 2>/dev/null) || return 1
+        _u=$(jq -r --arg proto "$_proto" '.users[]? | [(.uuid // ""), (if ($proto == "vless" or $proto == "vmess") then (.secret // "") else "" end)] | map(select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) | .[0] // empty' "$f" 2>/dev/null) || return 1
         printf '%s\n' "$_u"
     done
     return 0
@@ -37432,6 +37444,50 @@ users_hy2_read_users() {
 }
 
 
+# Merge a fresh adoption into an existing registry (S2-NEW-04).
+# $1=core $2=tag $3=registry-file $4=fresh-file (users_adopt output).
+# Identity is the user NAME (login for credential-type registries): a
+# fresh user with the same name is a credential ROTATION of that user
+# -- its secret/uuid/flow/alterId/login/password_only update in place
+# while registry metadata (created, expire_at, quota, disabled,
+# blocked, usage counters) is kept. A fresh user with a new name is
+# appended (auto-renamed with -N only on collision). Users in the
+# registry but absent from fresh are KEPT: an overwrite redeploy
+# rebuilds live config with fresh single credentials, and dropping
+# them would silently delete users. server_secret: fresh wins when
+# non-empty. Writes the merged registry with users_reg_write.
+users_reg_merge_fresh() {
+    local core="$1" tag="$2" regfile="$3" freshfile="$4" merged=''
+    [[ -f "$regfile" && ! -L "$regfile" && -f "$freshfile" && ! -L "$freshfile" ]] || return 1
+    merged=$(jq -c --slurpfile s "$freshfile" '
+        def name_matches($f; $u):
+            ($f.name == $u.name)
+            or ((($f.login // "") != "") and ($f.login == ($u.login // $u.name)))
+            or ((($u.login // "") != "") and ($f.name == $u.login));
+        . as $r | ($s[0].users // []) as $fresh
+        | .users = (
+            [.users[] | . as $u
+             | ([$fresh[] | select(.secret == $u.secret and (if (.password_only // false) then true else (.name == $u.name) end) and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
+             | ([$fresh[] | select(name_matches(.; $u))] | .[0]) as $nm
+             | if $m != null then (if ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end)
+               elif $nm != null then $u + {secret: $nm.secret, uuid: ($nm.uuid // ""), flow: ($nm.flow // ""), alterId: ($nm.alterId // 0), login: ($nm.login // $nm.name), password_only: ($nm.password_only // false)}
+               else $u end]
+            + (reduce ([$fresh[] | . as $f | select(
+                ([$r.users[] | select(.secret == $f.secret and (if ($f.password_only // false) then true else (.name == $f.name) end) and (.uuid // "") == ($f.uuid // ""))] | length == 0)
+                and ([$r.users[] | select(name_matches($f; .))] | length == 0)
+              )])[] as $f (
+                {used: [.users[].name], out: []};
+                (.used) as $used
+                | (first(range(0; 1000) | (if . == 0 then $f.name else ($f.name + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // $f.name) as $c
+                | {used: ($used + [$c]), out: (.out + [$f + (if ($f.email // "") == ($r.tag + "/" + $f.name) then {name: $c, email: ($r.tag + "/" + $c)} else {name: $c} end)])}
+              ) | .out)
+          )
+        | .server_secret = ($s[0].server_secret // .server_secret)
+    ' "$regfile" 2>/dev/null) || return 1
+    [[ -n "$merged" ]] || return 1
+    users_reg_write "$core" "$tag" "$merged"
+}
+
 # OBS-S1-08: reconcile user registries after an overwrite redeploy.
 # A redeploy writes a fresh live config (new passwords/UUIDs) but the
 # registries still hold the pre-redeploy credentials; the next issued
@@ -37444,7 +37500,7 @@ users_hy2_read_users() {
 # unchanged). Returns 1 if any present-tag re-adopt fails; the deploy
 # caller treats that as a best-effort warning, never a deploy failure.
 users_reg_reconcile_after_deploy() {
-    local core="$1" dir='' f='' c='' t='' rc=0
+    local core="$1" dir='' f='' c='' t='' rc=0 _scratch='' _preserved=0
     dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
     [[ -d "$dir" ]] || return 0
     for f in "$dir/$core"__*.json; do
@@ -37452,9 +37508,31 @@ users_reg_reconcile_after_deploy() {
         c=$(jq -r '.core // ""' "$f" 2>/dev/null || true)
         t=$(jq -r '.tag // ""' "$f" 2>/dev/null || true)
         [[ "$c" == "$core" && -n "$t" ]] || continue
-        if users_adopt "$core" "$t" >/dev/null 2>&1; then
-            users_normalize_default_name "$core" "$t" >/dev/null 2>&1 || rc=1
+        # S2-NEW-04: adopt to scratch and MERGE (users_reg_merge_fresh)
+        # instead of overwriting the registry: users absent from the
+        # rebuilt live config are deploy casualties, not deletions --
+        # overwriting dropped them silently (vision mu1). A registry
+        # whose tag is gone from live still fails adopt and is left
+        # alone (see header).
+        _scratch=$(mktemp /tmp/A-Box-urecon.XXXXXX) || { rc=1; continue; }
+        if users_adopt "$core" "$t" "$_scratch" >/dev/null 2>&1 && jq -e '.users' "$_scratch" >/dev/null 2>&1; then
+            if users_reg_merge_fresh "$core" "$t" "$f" "$_scratch"; then
+                users_normalize_default_name "$core" "$t" >/dev/null 2>&1 || rc=1
+                # Restore preserved users into the live config: the
+                # merge kept users the rebuilt config does not know,
+                # and their links stay dead until the live config
+                # regains them. Best-effort (the deploy already
+                # committed): a sync failure warns but never fails
+                # the deploy.
+                _preserved=$(jq -r --slurpfile s "$_scratch" '[.users[] | .name] - ($s[0].users // [] | map(.name)) | length' "$f" 2>/dev/null || echo 0)
+                if [[ "$_preserved" =~ ^[0-9]+$ ]] && (( _preserved > 0 )); then
+                    users_sync "$core" "$t" >/dev/null 2>&1 || msg "S2-NEW-04: preserved ${_preserved} user(s) in ${core}/${t} could not be restored into the live config; their links stay dead until the next user-management sync." >&2
+                fi
+            else
+                rc=1
+            fi
         fi
+        rm -f -- "$_scratch"
         # users_adopt fails when the tag is gone from live: leave that
         # registry alone (see header).
     done
@@ -37485,23 +37563,7 @@ users_reg_ensure() {
             msg "users_reg_ensure: server_secret mismatch between registry and live config; refusing to keep incompatible credentials. Reconcile manually." >&2
             rm -f -- "$scratch"; return 1
         fi
-        merged=$(jq -c --slurpfile s "$scratch" '
-            . as $r | ($s[0].users // []) as $fresh
-            | .users = (
-                [.users[] | . as $u
-                 | ([$fresh[] | select(.secret == $u.secret and (if (.password_only // false) then true else (.name == $u.name) end) and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
-                 | if $m == null then $u elif ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
-                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and (if ($f.password_only // false) then true else (.name == $f.name) end) and (.uuid // "") == ($f.uuid // ""))] | length == 0)])[] as $f (
-                    {used: [.users[].name], out: []};
-                    (.used) as $used
-                    | (first(range(0; 1000) | (if . == 0 then $f.name else ($f.name + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // $f.name) as $c
-                    | {used: ($used + [$c]), out: (.out + [$f + (if ($f.email // "") == ($r.tag + "/" + $f.name) then {name: $c, email: ($r.tag + "/" + $c)} else {name: $c} end)])}
-                  ) | .out)
-              )
-            | .server_secret = (if (.server_secret // "") == "" then ($s[0].server_secret // "") else .server_secret end)
-        ' "$reg" 2>/dev/null) || { rm -f -- "$scratch"; return 1; }
-        [[ -n "$merged" ]] || { rm -f -- "$scratch"; return 1; }
-        users_reg_write "$core" "$tag" "$merged" || { rm -f -- "$scratch"; return 1; }
+        users_reg_merge_fresh "$core" "$tag" "$reg" "$scratch" || { rm -f -- "$scratch"; return 1; }
     else
         # R10-09: a registry whose inbound was deleted keeps its
         # snapshot, but the snapshot alone must not resurrect it:
@@ -37928,13 +37990,24 @@ users_link() {
         # lose the whole inbound; substitute current credentials.
         newinfo="$(urlencode "$use_uuid"):$(urlencode "$secret")" 
     elif [[ "$core" == 'hy2' ]]; then
-        if (( enabled_count >= 2 )); then
-            # R10-10: the server authenticates by .login // .name;
-            # use the login for the userinfo (the fragment keeps
-            # the display name, as the SOCKS branch does).
-            local ulogin=''
-            ulogin=$(printf '%s' "$user" | jq -r '(.login // .name) // ""')
-            newinfo="$(urlencode "$ulogin"):$(urlencode "$secret")"
+        # H-24(1) follow-up: the userinfo is the EFFECTIVE password for
+        # THIS user, from the live server config: in userpass mode
+        # "login:secret" as ONE urlencoded string (a literal ':' is
+        # parsed by sing-box as password=<secret> only and the server
+        # 404s); in password-only mode the bare server password. The
+        # old code urlencoded login and secret separately, leaving a
+        # literal ':' -- and used the stale registry secret.
+        local ulogin='' _hy2_eff=''
+        ulogin=$(printf '%s' "$user" | jq -r '(.login // .name) // ""')
+        _hy2_eff=$(hy2_effective_password_for_user "$ulogin" 2>/dev/null || true)
+        if [[ -n "$_hy2_eff" ]]; then
+            _hy2_eff=${_hy2_eff%__ABOX_TRAILING_NL_KEEP__}
+            newinfo="$(urlencode "$_hy2_eff")"
+        elif (( enabled_count >= 2 )) && [[ -n "$ulogin" ]]; then
+            # Live lookup failed (stale user or unreadable config):
+            # fall back to the registry credential, still as ONE
+            # urlencoded userinfo so no literal colon leaks.
+            newinfo="$(urlencode "$ulogin:$secret")"
         else
             newinfo="$(urlencode "$secret")"
         fi
@@ -54467,6 +54540,35 @@ hy2_effective_password() {
         return 0
     fi
     return 1
+}
+# Per-user effective Hy2 password (H-24(1) follow-up): the server
+# authenticates ONE credential per connection. In userpass mode that
+# credential is "login:secret" OF THE TARGET USER (not the first
+# user's, which the no-arg hy2_effective_password returns); in
+# password-only mode it is the bare server password for every user.
+# Prints the effective password with the trailing-newline sentinel,
+# like hy2_effective_password. $1 = login (registry .login // .name);
+# $2 = optional config path (default /etc/hysteria/config.yaml, for
+# fixtures). Returns 1 when the live config has no such user (a link
+# built from the registry alone would 404) or is unreadable.
+hy2_effective_password_for_user() {
+    local login="$1" cfg="${2:-/etc/hysteria/config.yaml}" users='' pw_only='' entry='' secret=''
+    [[ -n "$login" ]] || return 1
+    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || return 1
+    [[ -n "$users" && "$users" != '[]' ]] || return 1
+    pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
+    if [[ "$pw_only" == 'true' ]]; then
+        secret=$(printf '%s' "$users" | jq -r '.[0].secret // ""' 2>/dev/null || true)
+        [[ -n "$secret" ]] || return 1
+        printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
+        return 0
+    fi
+    entry=$(printf '%s' "$users" | jq -c --arg n "$login" '.[] | select(.name == $n)' 2>/dev/null) || return 1
+    [[ -n "$entry" && "$entry" != 'null' ]] || return 1
+    secret=$(printf '%s' "$entry" | jq -r '.secret // ""' 2>/dev/null || true)
+    [[ -n "$secret" ]] || return 1
+    printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
+    return 0
 }
 
 build_ss2022_uri() {

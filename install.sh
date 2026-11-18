@@ -23172,6 +23172,15 @@ ensure_fail2ban() {
         return 1
     fi
     fi
+    # M-23 (follow-up): backend = systemd needs the python3 systemd
+    # bindings; Debian/Ubuntu install fail2ban without them when
+    # Recommends are off, so the stock [sshd] jail fails to load.
+    # Cover fresh and pre-installed fail2ban alike; fail-open, never
+    # blocks setup. Only apt hosts (Debian/Ubuntu) carry this package.
+    if command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import systemd' >/dev/null 2>&1; then
+        apt-get update -y -q >/dev/null 2>&1 || true
+        apt-get -y install python3-systemd >/dev/null 2>&1 || true
+    fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl enable fail2ban >/dev/null 2>&1 || return 1
         systemctl is-enabled --quiet fail2ban >/dev/null 2>&1 || return 1

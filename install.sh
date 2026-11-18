@@ -1158,7 +1158,7 @@ abox_dir_tighten_secrets() {
     # hardening/加固: a symlinked or non-root-owned link dir is
     # refused instead of assumed to gate its files).
     local dir="$1" f
-    for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir"/*.tar.gz; do
+    for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir/.shortcut" "$dir/.shortcut-migrate" "$dir"/*.tar.gz; do
         [[ -e "$f" || -L "$f" ]] || continue
         [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"
         [[ -f "$f" ]] || continue
@@ -15390,15 +15390,24 @@ shortcut_validate_name() {
 # shortcut_parse_state_file <file>
 # Strictly parses a state file into global SHORTCUT_NAMES. Never sources
 # or evaluates file content. Returns 0 on success, 1 when corrupt
-# (SHORTCUT_ERR set: bad_type / dup_version / bad_version / dup_names /
-# unknown_key / missing_field / empty_names / bad_name:<name> /
-# dup_name:<name>). A CRLF-edited file fails cleanly (the CR becomes part
-# of the last name and fails validation).
+# (SHORTCUT_ERR set: bad_type / bad_owner / bad_mode / dup_version /
+# bad_version / dup_names / unknown_key / missing_field / empty_names /
+# bad_name:<name> / dup_name:<name>). A CRLF-edited file fails cleanly
+# (the CR becomes part of the last name and fails validation).
 shortcut_parse_state_file() {
     local _file="$1" _version='' _names='' _seen_version=0 _seen_names=0
     SHORTCUT_ERR=''
     # Abnormal file type (symlink, directory, FIFO, ...) is corrupt.
     [[ -f "$_file" && ! -L "$_file" ]] || { SHORTCUT_ERR='bad_type'; return 1; }
+    # M-34: the state file is created 0600 root:root (see
+    # shortcut_write_state); a drifted mode or owner means this
+    # is no longer the file this code wrote, so refuse it
+    # fail-closed instead of trusting the names inside it.
+    local _owner _mode
+    _owner=$(stat -c %u:%g "$_file" 2>/dev/null || echo -1:-1)
+    [[ "$_owner" == '0:0' ]] || { SHORTCUT_ERR='bad_owner'; return 1; }
+    _mode=$(stat -c %a "$_file" 2>/dev/null || echo 999)
+    [[ "$_mode" =~ ^0?600$ ]] || { SHORTCUT_ERR='bad_mode'; return 1; }
     local _line _val
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         case "$_line" in
@@ -15817,6 +15826,13 @@ shortcut_change_transaction() {
     local _mfile _mcontent _mline _mval _mn
     _mfile=$(shortcut_migrate_path)
     if [[ -f "$_mfile" && ! -L "$_mfile" ]]; then
+        # M-34: same owner/mode gate as the state file (the
+        # writer creates the record 0600 root:root); a drifted
+        # record is refused fail-closed instead of merged into
+        # the pending set.
+        if [[ "$(stat -c %u:%g "$_mfile" 2>/dev/null || echo -1:-1)" != '0:0' ]] || [[ ! "$(stat -c %a "$_mfile" 2>/dev/null || echo 999)" =~ ^0?600$ ]]; then
+            rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_mode'; return 1
+        fi
         _mcontent=$(cat -- "$_mfile" 2>/dev/null) || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_read'; return 1; }
         _pending="$_pending "
         while IFS= read -r _mline || [[ -n "$_mline" ]]; do
@@ -16266,6 +16282,17 @@ shortcut_custom_menu() {
             2)
                 if ! shortcut_resolve_desired ab abox; then
                     printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                fi
+                # M-34: a corrupt live state makes the transaction
+                # fail closed with no menu-reachable recovery;
+                # heal it to the default first (the reset is what
+                # this option asks for), then run the transaction.
+                shortcut_read_state >/dev/null 2>&1
+                _rc=$?
+                if (( _rc == 1 )); then
+                    if ! shortcut_reset_corrupt_state_confirmed; then
+                        printf '%s\n' "$(tprintf sc_tb_fail "$SHORTCUT_ERR")" >&2; continue
+                    fi
                 fi
                 shortcut_change_transaction $SHORTCUT_RESOLVED
                 _rc=$?

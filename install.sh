@@ -23976,6 +23976,15 @@ fi
 RUNTIME_LOCK=/run/A-Box.lock
 acquire_abox_runtime_guard() {
     local FALLBACK_DIR=/run/A-Box.lock.d fb_pid fb_start fb_actual mode
+    # H-22 (Carbon R3): when the caller already holds the runtime lock
+    # (menu force_update_geo runs under the main FD 9 lock), a second
+    # flock on a fresh OFD would always fail (flock is per-OFD) and the
+    # old code yielded with exit 0, which the caller read as success.
+    # The caller passes ABOX_CALLER_HOLDS_LOCK=1; skip the redundant
+    # guard. Cron runs without the variable and keeps the normal guard.
+    if [[ "${ABOX_CALLER_HOLDS_LOCK:-}" == '1' ]]; then
+        return 0
+    fi
     [[ -d /run && ! -L /run ]] || exit 0
     # If a live fallback lock is held by another A-Box process, yield. Helpers
     # must not treat an idle LOCK_FILE flock as free while main owns fallback.
@@ -24050,9 +24059,16 @@ for target in targets:
         for chunk in iter(lambda: f.read(1024*1024), b''):
             h.update(chunk)
     matches = [r for r in rows if r[0] == 'F' and r[1] == 'xray' and r[2] == target]
-    if len(matches) != 1:
+    if len(matches) > 1:
         raise SystemExit(1)
-    matches[0][3] = h.hexdigest()
+    if not matches:
+        # H-22 (Carbon R3): a host installed by an older minimal flow
+        # has the geo files but no manifest rows for them; add the
+        # missing row instead of failing (the old len != 1 check
+        # failed legacy hosts).
+        rows.append(['F', 'xray', target, h.hexdigest()])
+    else:
+        matches[0][3] = h.hexdigest()
 dirname = os.path.dirname(manifest) or '.'
 fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.geo.', dir=dirname, text=True)
 try:
@@ -26800,6 +26816,21 @@ deploy_xray_trojan_landing() {
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         fi
         rm -f "$tmp_json"
+    fi
+    # H-22 (Carbon R3): the minimal install above never installed Geo
+    # data, so a standalone Xray could not serve geoip:/geosite: rules
+    # (the full deploy_xray installs both files). Install them when
+    # either file is missing; a redeploy with intact Geo skips the
+    # download instead of re-fetching on every run.
+    if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
+        local _geo_tmp
+        _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
+        fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
+        fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
+        install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
+        install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
+        rm -rf -- "$_geo_tmp"
     fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
@@ -30824,6 +30855,21 @@ EOF_SVC
     # R6-F09-7: a pre-existing binary does not imply a service unit exists.
     # Ensure it here, before the config merge and restart (R7-13 precedent
     # on the sing-box path). Managed units are a no-op; foreign units die.
+    # H-22 (Carbon R3): the minimal install above never installed Geo
+    # data, so a standalone Xray could not serve geoip:/geosite: rules
+    # (the full deploy_xray installs both files). Install them when
+    # either file is missing; a redeploy with intact Geo skips the
+    # download instead of re-fetching on every run.
+    if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
+        local _geo_tmp
+        _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
+        fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
+        fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
+        install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
+        install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
+        rm -rf -- "$_geo_tmp"
+    fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
     # Build the socks inbound object.
@@ -54338,7 +54384,7 @@ force_update_geo() {
     fi
     [[ -x "$ABOX_DIR/geo_update.sh" ]] || setup_geo_cron
     msg "${YELLOW}[*] $(tr_msg force_update_geo_fetching)${NC}"
-    if bash "$ABOX_DIR/geo_update.sh"; then
+    if ABOX_CALLER_HOLDS_LOCK=1 bash "$ABOX_DIR/geo_update.sh"; then
         msg "${GREEN}$(tr_msg force_update_geo_done)${NC}"
     else
         msg "${RED}[!] $(tr_msg force_update_geo_failed)${NC}"

@@ -52241,6 +52241,104 @@ wallos_fw_register_opened() { # $1=spec $2=proto
     return 0
 }
 
+# Tri-state probe: does a live A-Box-owned rule for spec/proto exist?
+# Returns 0 = yes (iptables v4/v6 or the native ledger), 1 = no,
+# 2 = unknown (a probe errored while the rule could still exist).
+# A missing iptables binary means that backend holds no rules (the same
+# reading as capture_abox_iptables_snapshot); a probe error on a present
+# binary is unknown, never "absent".
+_wallos_fw_rule_live() {
+    local spec="$1" proto="$2" _rc=0
+    spec=$(normalize_port_spec "$spec") || return 2
+    [[ "$proto" == tcp || "$proto" == udp ]] || return 2
+    if command -v "$IPT" >/dev/null 2>&1; then
+        iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$spec" -m comment --comment "A-Box-${spec}-${proto}" -j ACCEPT
+        _rc=$?
+        case "$_rc" in 0) return 0 ;; 1) ;; *) return 2 ;; esac
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+        iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$spec" -m comment --comment "A-Box-${spec}-${proto}" -j ACCEPT
+        _rc=$?
+        case "$_rc" in 0) return 0 ;; 1) ;; *) host_has_usable_ipv6 && return 2 ;; esac
+    fi
+    # Native backends (ufw/firewalld) keep their own ledger of live rules.
+    if [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]]; then
+        validate_native_firewall_state_file "$ABOX_FW_STATE" || return 2
+        if grep -qE "^(ufw|firewalld)\\|${spec}\\|${proto}\\|" "$ABOX_FW_STATE" 2>/dev/null; then return 0; fi
+    fi
+    return 1
+}
+
+# Rebuild a missing Wallos firewall registry from live firewall state.
+# M-28 follow-up: installs predating the registry (.fw-opened) opened
+# ports but recorded them nowhere durable, so reclaiming them later was
+# a silent no-op and the openings leaked. The import is scoped to ports
+# Wallos is known to have used, so other features' A-Box rules are never
+# claimed: the Wallos state PORT/PUBPORT, 80/tcp (HTTP-01), plus any
+# spec/proto the caller passes explicitly (the mode-switch path passes
+# the previous port/pubport, which the state file no longer holds - it
+# was just rewritten with the new values).
+# $@ = optional "spec/proto" entries to import. Returns 0 when the live
+# state was fully determined (the registry may now exist, or nothing was
+# live to import); 1 when the live state could not be determined or the
+# registry could not be written - callers must fail loudly instead of
+# reporting success with rules leaking.
+wallos_fw_import_legacy_registry() {
+    local reg spec proto _entry _port _pubport _state_known=0 _rc=0
+    local -a _candidates=()
+    reg=$(wallos_fw_registry_file)
+    # Caller-verified Wallos ports first (mode switch: the previous
+    # port/pubport). These are imported even when a registry already
+    # exists: a previous install may have failed to register them.
+    for _entry in "$@"; do
+        case "$_entry" in */tcp|*/udp) ;; *) return 1 ;; esac
+        spec="${_entry%/*}"; proto="${_entry##*/}"
+        spec=$(normalize_port_spec "$spec") || return 1
+        [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+        _wallos_fw_rule_live "$spec" "$proto"; _rc=$?
+        case "$_rc" in
+            0) wallos_fw_register_opened "$spec" "$proto" || return 1 ;;
+            1) : ;;
+            *) return 1 ;;
+        esac
+    done
+    # A registry that already exists needs no further migration.
+    [[ -f "$reg" && ! -L "$reg" ]] && return 0
+    # Then the ports the current Wallos state records.
+    _port=$(wallos_state_value PORT 2>/dev/null || true)
+    if [[ -n "$_port" ]] && valid_canonical_port "$_port"; then
+        _state_known=1
+        _candidates+=("${_port}/tcp")
+    fi
+    _pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+    if [[ -n "$_pubport" ]] && valid_canonical_port "$_pubport"; then
+        _state_known=1
+        _candidates+=("${_pubport}/tcp")
+    fi
+    # 80/tcp is shared with the Hysteria HTTP-01 challenge; the reclaim
+    # loop keeps it while the challenge still needs it, so importing it
+    # here is safe even when another feature opened it.
+    _candidates+=('80/tcp')
+    # A Wallos directory with no readable state port means the install
+    # predates state tracking: its openings cannot be identified, so
+    # fail loudly rather than claim a verified clean slate - unless the
+    # caller already supplied explicit ports to import.
+    if (( _state_known == 0 )) && (( $# == 0 )) && [[ -d "$WALLOS_DIR" ]]; then
+        msg "${YELLOW}[!] Wallos state has no readable port, so pre-registry firewall openings cannot be identified; check the firewall rules manually.${NC}"
+        return 1
+    fi
+    for _entry in "${_candidates[@]}"; do
+        spec="${_entry%/*}"; proto="${_entry##*/}"
+        _wallos_fw_rule_live "$spec" "$proto"; _rc=$?
+        case "$_rc" in
+            0) wallos_fw_register_opened "$spec" "$proto" || return 1 ;;
+            1) : ;;
+            *) return 1 ;;
+        esac
+    done
+    return 0
+}
+
 _wallos_hy2_http01_keeps_80() {
     # Hysteria HTTP-01 ACME listens on 80/tcp via `altPort: 80` in
     # its config; reclaiming 80 would break its issuance/renewal.
@@ -52253,7 +52351,18 @@ _wallos_hy2_http01_keeps_80() {
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
     local reg line spec proto keep _k _removed=0 _kept=''
     reg=$(wallos_fw_registry_file)
-    [[ -f "$reg" && ! -L "$reg" ]] || return 0
+    if [[ ! -f "$reg" || -L "$reg" ]]; then
+        # M-28 follow-up: a missing registry used to mean silent
+        # success, leaking every opening a pre-registry install made.
+        # Rebuild the registry from the live firewall state first; a
+        # failed rebuild means the live state is unknown, so fail
+        # loudly instead of claiming success with rules leaking.
+        if ! wallos_fw_import_legacy_registry; then
+            msg "${YELLOW}[!] Could not rebuild the missing Wallos firewall registry from the live firewall rules; check the firewall rules manually.${NC}"
+            return 1
+        fi
+        [[ -f "$reg" && ! -L "$reg" ]] || return 0
+    fi
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
         case "$line" in */tcp|*/udp) ;; *) continue ;; esac
@@ -53017,6 +53126,14 @@ wallos_install_or_update() {
         IFS='|' read -r _ _fw_spec _fw_proto _ <<< "$_fw_entry"
         [[ -n "$_fw_spec" && -n "$_fw_proto" ]] && wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || true
     done
+    # M-28 follow-up: a pre-registry install switching modes or ports
+    # leaks its old openings - the state file above already holds the
+    # NEW port/pubport, so the reclaim's own import cannot see them.
+    # Import the previous ports explicitly (live-checked, so a port
+    # that was never opened registers nothing). Best effort here: a
+    # failed import is retried by the reclaim below, which warns.
+    if [[ -n "$old_port" ]]; then wallos_fw_import_legacy_registry "${old_port}/tcp" || true; fi
+    if [[ -n "$_old_pubport" ]]; then wallos_fw_import_legacy_registry "${_old_pubport}/tcp" || true; fi
     if [[ "$wmode" == https ]]; then _fw_keep=("${pubport}/tcp" '80/tcp');
     elif [[ "$wmode" == http ]]; then _fw_keep=("${port}/tcp"); fi
     wallos_fw_reclaim_registered "${_fw_keep[@]}" || msg "${YELLOW}[!] Failed to reclaim a stale Wallos firewall opening; check the firewall rules manually.${NC}"

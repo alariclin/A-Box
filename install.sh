@@ -1607,6 +1607,24 @@ tr_msg() {
         fa:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL تنظیم نشده است. برای وارد کردن در Clash با اسکن کد QR، %s را روی HTTPS منتشر کنید و سپس اجرا کنید:' ;;
         zh-tw:view_config_clash_sub_url_missing) echo '尚未設定 ABOX_CLASH_SUB_URL。若要在 Clash 掃碼匯入，請先將 %s 發布至 HTTPS，再執行：' ;;
         ja:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL が設定されていません。Clash で QR コードをスキャンしてインポートするには、%s を HTTPS で公開してから次を実行してください：' ;;
+        zh:view_config_mihomo_single_title) echo 'Mihomo 单用户配置（仅当前用户）' ;;
+        en:view_config_mihomo_single_title) echo 'Mihomo single-user configuration (current user only)' ;;
+        ru:view_config_mihomo_single_title) echo 'Конфигурация Mihomo для одного пользователя (только текущий пользователь)' ;;
+        fa:view_config_mihomo_single_title) echo 'پیکربندی تک‌کاربر Mihomo (فقط کاربر جاری)' ;;
+        zh-tw:view_config_mihomo_single_title) echo 'Mihomo 單一使用者設定（僅目前使用者）' ;;
+        ja:view_config_mihomo_single_title) echo 'Mihomo 単一ユーザー設定（現在のユーザーのみ）' ;;
+        zh:view_config_mihomo_single_note) echo 'Mihomo 用户请直接导入此文件：仅含当前用户的 Vision / XHTTP 节点，reality-opts 已按 Xray 版本填好，无需手动修改；不要扫描上方单条 vless:// 链接。' ;;
+        en:view_config_mihomo_single_note) echo 'Mihomo users: import this file directly. It contains only the current user'"'"'s Vision / XHTTP nodes, with reality-opts already set for the installed Xray version — no manual edits needed. Do not scan the individual vless:// links above.' ;;
+        ru:view_config_mihomo_single_note) echo 'Пользователи Mihomo: импортируйте этот файл напрямую. В нём только узлы Vision / XHTTP текущего пользователя, а reality-opts уже выставлены под установленную версию Xray — вручную ничего менять не нужно. Не сканируйте отдельные ссылки vless:// выше.' ;;
+        fa:view_config_mihomo_single_note) echo 'کاربران Mihomo: این فایل را مستقیماً وارد کنید. فقط گره‌های Vision / XHTTP کاربر جاری را دارد و reality-opts مطابق نسخهٔ نصب‌شدهٔ Xray تنظیم شده است — نیازی به ویرایش دستی نیست. پیوندهای تکی vless:// در بالا را اسکن نکنید.' ;;
+        zh-tw:view_config_mihomo_single_note) echo 'Mihomo 使用者請直接匯入此檔案：僅含目前使用者的 Vision / XHTTP 節點，reality-opts 已按 Xray 版本填好，無需手動修改；不要掃描上方單條 vless:// 連結。' ;;
+        ja:view_config_mihomo_single_note) echo 'Mihomo ユーザーはこのファイルを直接インポートしてください。現在のユーザーの Vision / XHTTP ノードのみを含み、reality-opts はインストール済みの Xray バージョンに合わせて設定済みです。手動での変更は不要です。上の個別の vless:// リンクはスキャンしないでください。' ;;
+        zh:view_config_mihomo_single_failed) echo '单用户 Mihomo 配置生成失败，仍可用上方完整 YAML（内含全部用户，请勿外发）。' ;;
+        en:view_config_mihomo_single_failed) echo 'Single-user Mihomo configuration could not be generated; the full YAML above still works (it contains all users — do not share it).' ;;
+        ru:view_config_mihomo_single_failed) echo 'Не удалось создать конфигурацию Mihomo для одного пользователя; полный YAML выше по-прежнему работает (в нём все пользователи — не передавайте его другим).' ;;
+        fa:view_config_mihomo_single_failed) echo 'ایجاد پیکربندی تک‌کاربر Mihomo ممکن نشد؛ YAML کامل بالا همچنان کار می‌کند (شامل همهٔ کاربران است — آن را به اشتراک نگذارید).' ;;
+        zh-tw:view_config_mihomo_single_failed) echo '單一使用者 Mihomo 設定產生失敗，仍可使用上方完整 YAML（內含全部使用者，請勿外傳）。' ;;
+        ja:view_config_mihomo_single_failed) echo '単一ユーザー用 Mihomo 設定を生成できませんでした。上の完全な YAML は引き続き使用できます（全ユーザーを含むため共有しないでください）。' ;;
         zh:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 预览' ;;
         en:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML preview' ;;
         ru:view_config_clash_yaml_preview_title) echo 'Предпросмотр YAML для Clash / Mihomo' ;;
@@ -54172,6 +54190,69 @@ with open(groups_path, "a", encoding="utf-8") as groups:
     return "$_rc"
 }
 
+# U14 (D1): emit one Mihomo vless proxy block (Vision or XHTTP) with the
+# version-gated reality-opts. Shared by write_clash_yaml (all users) and
+# write_mihomo_user_yaml (one user): same gate value, same node data, so
+# the two files can never disagree on fingerprint / ML-KEM / UUID / port /
+# SNI / Reality / XHTTP fields. $1 = vision|xhttp, $2 = proxy name,
+# $3 = uuid, $4 = clash_mlkem (true|false, from clash_reality_mlkem_enabled).
+emit_mihomo_vless_proxy_block() {
+    local kind="$1" proxy_name="$2" client_uuid="$3" clash_mlkem="$4"
+    case "$kind" in
+        vision)
+            cat <<EOF_CLASH
+  - name: "$proxy_name"
+    type: vless
+    server: "${LINK_IP:-}"
+    port: ${VLESS_PORT:-443}
+    uuid: "$client_uuid"
+    udp: true
+    tls: true
+    servername: "${VISION_SNI:-}"
+    client-fingerprint: chrome
+    encryption: ""
+    network: tcp
+    flow: xtls-rprx-vision
+    packet-encoding: xudp
+    reality-opts:
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
+      support-x25519mlkem768: $clash_mlkem
+    smux:
+      enabled: false
+EOF_CLASH
+            ;;
+        xhttp)
+            cat <<EOF_CLASH
+  - name: "$proxy_name"
+    type: vless
+    server: "${LINK_IP:-}"
+    port: ${XHTTP_PORT:-8443}
+    uuid: "$client_uuid"
+    udp: true
+    tls: true
+    servername: "${XHTTP_SNI:-}"
+    client-fingerprint: chrome
+    encryption: ""
+    network: xhttp
+    alpn:
+      - h2
+    reality-opts:
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
+      support-x25519mlkem768: $clash_mlkem
+    xhttp-opts:
+      path: /xhttp
+      host: "${XHTTP_SNI:-}"
+      mode: stream-one
+    smux:
+      enabled: false
+EOF_CLASH
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
@@ -54315,58 +54396,14 @@ EOF_CLASH
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
-                cat <<EOF_CLASH
-  - name: "$proxy_name"
-    type: vless
-    server: "${LINK_IP:-}"
-    port: ${VLESS_PORT:-443}
-    uuid: "$client_uuid"
-    udp: true
-    tls: true
-    servername: "${VISION_SNI:-}"
-    client-fingerprint: chrome
-    encryption: ""
-    network: tcp
-    flow: xtls-rprx-vision
-    packet-encoding: xudp
-    reality-opts:
-      public-key: "${PUBLIC_KEY:-}"
-      short-id: "${SHORT_ID:-}"
-      support-x25519mlkem768: $clash_mlkem
-    smux:
-      enabled: false
-EOF_CLASH
+                emit_mihomo_vless_proxy_block vision "$proxy_name" "$client_uuid" "$clash_mlkem"
             done < "$_clash_uuid_list_tmp"
         fi
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
-                cat <<EOF_CLASH
-  - name: "$proxy_name"
-    type: vless
-    server: "${LINK_IP:-}"
-    port: ${XHTTP_PORT:-8443}
-    uuid: "$client_uuid"
-    udp: true
-    tls: true
-    servername: "${XHTTP_SNI:-}"
-    client-fingerprint: chrome
-    encryption: ""
-    network: xhttp
-    alpn:
-      - h2
-    reality-opts:
-      public-key: "${PUBLIC_KEY:-}"
-      short-id: "${SHORT_ID:-}"
-      support-x25519mlkem768: $clash_mlkem
-    xhttp-opts:
-      path: /xhttp
-      host: "${XHTTP_SNI:-}"
-      mode: stream-one
-    smux:
-      enabled: false
-EOF_CLASH
+                emit_mihomo_vless_proxy_block xhttp "$proxy_name" "$client_uuid" "$clash_mlkem"
             done < "$_clash_uuid_list_tmp"
         fi
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
@@ -54488,6 +54525,92 @@ EOF_CLASH
     }
     rm -f -- "$_clash_uuid_list_tmp" \
         "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+    chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
+    [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
+    mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
+    chmod 600 "$out" || return 1
+    printf '%s\n' "$out"
+}
+
+# U14 (D1): write a single-user Mihomo YAML for one user/node only.
+# Same version gate (clash_reality_mlkem_enabled) and the same node data
+# as write_clash_yaml, via the shared emit_mihomo_vless_proxy_block, so
+# the per-user file agrees with the full YAML field for field. Only the
+# requested user's UUID is emitted; other users' credentials never appear.
+# Import the file directly in a Mihomo client (local file import); the
+# raw vless:// links / QR codes are NOT a complete Mihomo delivery.
+# $1 = uuid (default ${UUID:-}); $2 = out path (default
+# ${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}).
+# Prints the output path on stdout. Returns 1 on bad uuid / bad path /
+# gate or write failure; returns 2 when the node has no VLESS leg to
+# deliver (preflight: nothing to write, no file is left behind).
+# No public subscription service is created; the file is local-only, 600.
+write_mihomo_user_yaml() {
+    local _uuid="${1:-${UUID:-}}" out="${2:-${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}}"
+    local clash_mlkem=false clash_mlkem_rc tmp_out out_real base_real
+    local _has_vision=0 _has_xhttp=0 _emit_rc=0
+    [[ -n "$_uuid" ]] || return 1
+    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
+    if clash_reality_mlkem_enabled; then
+        clash_mlkem=true
+    else
+        clash_mlkem_rc=$?
+        (( clash_mlkem_rc == 1 )) || return 1
+    fi
+    [[ -n "$out" && "$out" == /* ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    ensure_abox_dir_owned "$ABOX_DIR" || return 1
+    base_real=$(python3 -I - "$ABOX_DIR" <<'PY_CLASH_REALPATH'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY_CLASH_REALPATH
+) || return 1
+    out_real=$(python3 -I - "$out" <<'PY_CLASH_REALPATH'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY_CLASH_REALPATH
+) || return 1
+    [[ "$out_real" == "$base_real"/* ]] || return 1
+    [[ ! -L "$out" ]] || return 1
+    [[ ! -e "$out" || -f "$out" ]] || { msg "${RED}Refusing to write Mihomo config: output path exists and is not a regular file: $out${NC}" >&2; return 1; }
+    # Nothing to deliver unless a VLESS Reality leg exists for this node.
+    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then _has_vision=1; fi
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then _has_xhttp=1; fi
+    (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
+    tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
+    {
+        cat <<EOF_MIHOMO_SINGLE
+# A-Box single-user Mihomo config: only this user's Vision / XHTTP node.
+# Import this file directly in a Mihomo client (local file import).
+# Do not scan single vless:// links for Mihomo: they carry no
+# reality-opts, and on Xray >= v26.9.8 the handshake needs
+# support-x25519mlkem768, which is set below from the installed version.
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: true
+
+proxies:
+EOF_MIHOMO_SINGLE
+        if (( _has_vision == 1 )); then emit_mihomo_vless_proxy_block vision 'Vision' "$_uuid" "$clash_mlkem" || _emit_rc=1; fi
+        if (( _has_xhttp == 1 )); then emit_mihomo_vless_proxy_block xhttp 'XHTTP' "$_uuid" "$clash_mlkem" || _emit_rc=1; fi
+        cat <<EOF_MIHOMO_SINGLE
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+EOF_MIHOMO_SINGLE
+        (( _has_vision == 1 )) && echo '      - Vision'
+        (( _has_xhttp == 1 )) && echo '      - XHTTP'
+        cat <<EOF_MIHOMO_SINGLE
+      - DIRECT
+
+rules:
+  - MATCH,PROXY
+EOF_MIHOMO_SINGLE
+    } > "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
+    (( _emit_rc == 0 )) || { rm -f -- "$tmp_out"; return 1; }
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
@@ -54645,7 +54768,7 @@ view_config() {
     # shadows it; otherwise ${CLASH_SUB_URL:-} at assignment time reads
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
-    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
+    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME MIHOMO_USER_FILE _mihomo_single_rc=0
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die "$(tr_msg view_config_hy2_uri_port_invalid)"
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
@@ -54724,6 +54847,7 @@ view_config() {
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
+    MIHOMO_USER_FILE=$(write_mihomo_user_yaml 2>/dev/null) || _mihomo_single_rc=$?
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_clash_full_config_title) ]${NC}"
@@ -54741,6 +54865,14 @@ view_config() {
         _clash_launch=${_clash_launch:-ab}
         msg "${YELLOW}$(tprintf view_config_clash_sub_url_missing "${CLASH_FILE}")${NC}"
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
+    fi
+
+    if [[ -n "${MIHOMO_USER_FILE:-}" ]]; then
+        msg "${YELLOW}[ $(tr_msg view_config_mihomo_single_title) ]${NC}"
+        msg "${GREEN}Local YAML (this user only): ${MIHOMO_USER_FILE}${NC}"
+        msg "${YELLOW}$(tr_msg view_config_mihomo_single_note)${NC}"
+    elif [[ "$_mihomo_single_rc" != '2' ]]; then
+        msg "${YELLOW}$(tr_msg view_config_mihomo_single_failed)${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
@@ -59283,6 +59415,16 @@ EOF_SELFTEST_IPT
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem.yaml")" -eq 2 ]] || { echo 'FAIL: Xray >= ML-KEM threshold must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem-new.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem-new.yaml")" -eq 2 ]] || { echo 'FAIL: Xray 26.11.9 must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single.yaml" write_mihomo_user_yaml >/dev/null 2>&1 || { echo 'FAIL: Mihomo single-user YAML generation'; failures=$((failures + 1)); }
+        [[ "$(stat -c %a "$clash_dir/A-Box-mihomo-single.yaml" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Mihomo single-user YAML permissions must be 0600'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-mihomo-single.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must enable REALITY ML-KEM flags on new Xray'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc '11111111-1111-4111-8111-111111111111' "$clash_dir/A-Box-mihomo-single.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must carry only the current user UUID'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-old.yaml" write_mihomo_user_yaml >/dev/null 2>&1 || { echo 'FAIL: Mihomo single-user YAML generation on old Xray'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-mihomo-single-old.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must disable REALITY ML-KEM flags on old Xray'; failures=$((failures + 1)); }
+        if ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=SS LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 SS_PORT=2053 MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-ss.yaml" write_mihomo_user_yaml >/dev/null 2>&1; then
+            echo 'FAIL: Mihomo single-user YAML must refuse a mode with no VLESS leg'; failures=$((failures + 1))
+        fi
+        [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }

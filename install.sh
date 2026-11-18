@@ -12689,7 +12689,10 @@ get_public_ip() {
 
 # Background refresh of the public-IP cache (best effort, detached).
 refresh_public_ip_bg() {
-    ( refresh_public_ip >/dev/null 2>&1 || true ) >/dev/null 2>&1 &
+    # M-33: 9>&- 10>&- closes the menu lock FDs in the detached
+    # child; without it the child holds the lock after the menu
+    # exits and the next menu run blocks on flock.
+    ( refresh_public_ip >/dev/null 2>&1 || true ) 9>&- 10>&- >/dev/null 2>&1 &
 }
 
 # Startup/menu path: stale-while-revalidate. A fresh cache (strict TTL)
@@ -12736,7 +12739,18 @@ refresh_public_ip() {
         printf '%s\n' "$ip"
         return 0
     fi
-    get_public_ip
+    # M-33: do not fall through to get_public_ip here: with a
+    # stale or missing cache it re-probes the same endpoints
+    # (a second full round offline), and an expired address
+    # must never be served for link generation. A still-fresh
+    # cache (strict TTL/owner/mode/family gates) is reused as-is.
+    ip=$(read_cached_public_ip 2>/dev/null || true)
+    if [[ -n "$ip" ]]; then
+        printf '%s\n' "$ip"
+        return 0
+    fi
+    printf 'N/A\n'
+    return 1
 }
 get_active_interface() {
     local iface
@@ -29341,14 +29355,14 @@ _ip_geo_refresh() {
             if (( _now - _mt < 86400 )); then return 0; fi
             # Stale but usable: the panel reads the file as-is; refresh
             # detached so the menu never blocks on the network.
-            ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+            ( _ip_geo_fetch_now "$ip" "$geo_lang" ) 9>&- 10>&- >/dev/null 2>&1 &
             return 0
         fi
     fi
     # A cache file exists but belongs to another IP/language: refresh
     # detached; the menu never blocks on the network for it.
     if [[ -f "$IP_GEO_FILE" ]]; then
-        ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+        ( _ip_geo_fetch_now "$ip" "$geo_lang" ) 9>&- 10>&- >/dev/null 2>&1 &
         return 0
     fi
     _ip_geo_fetch_now "$ip" "$geo_lang"

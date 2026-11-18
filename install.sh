@@ -35574,15 +35574,28 @@ restore_vps_tune() {
     if [[ -f "$dir/sysctl.original" ]]; then
         while IFS='=' read -r key value; do
             [[ -n "$key" ]] || continue
-            # M-32(3): skip keys already at the snapshot value,
-            # and keys that are read-only here: a no-op probe
-            # write of the live value fails, so forcing the
-            # snapshot value would fail anyway. Neither case
-            # sets failed=1 or leaves the snapshot behind.
-            _live=$(sysctl -n "$key" 2>/dev/null || true)
+            # N-02 (M-32 follow-up): skip keys already at the
+            # snapshot value. A key that cannot be read is skipped
+            # explicitly -- never probe-write an empty value into
+            # a key we could not read. A failed probe write is
+            # retried with the snapshot value itself: if that
+            # applies, the failure was transient and the restore
+            # succeeded; if it also fails, the key is read-only
+            # here, so skip it without failing the restore or
+            # leaving the snapshot behind.
+            _live=$(sysctl -n "$key" 2>/dev/null) || continue
             [[ "$_live" == "$value" ]] && continue
-            sysctl -w "$key=$_live" >/dev/null 2>&1 || continue
-            sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1
+            if sysctl -w "$key=$_live" >/dev/null 2>&1; then
+                sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1
+            elif sysctl -w "$key=$value" >/dev/null 2>&1; then
+                # Probe write failed but the snapshot value applied:
+                # transient probe failure; the restore succeeded.
+                :
+            else
+                # Both writes failed: treat as read-only here and skip
+                # without failing the restore or keeping the snapshot.
+                :
+            fi
         done < "$dir/sysctl.original"
     fi
     if [[ -f "$dir/sysctl.conf" ]]; then install -d -m 755 /etc/sysctl.d || failed=1; cp -a "$dir/sysctl.conf" /etc/sysctl.d/99-A-Box-tune.conf || failed=1; else rm -f /etc/sysctl.d/99-A-Box-tune.conf || failed=1; fi

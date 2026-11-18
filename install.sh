@@ -22923,6 +22923,7 @@ validate_fail2ban_config() {
         sample=$(umask 077; mktemp /tmp/A-Box-f2b-sample.XXXXXX) || { printf '%s\n' "${RED}[!] Fail2Ban sample creation failed.${NC}" >&2; return 1; }
         cat > "$sample" <<'EOF_F2B_SAMPLE' || { rm -f -- "$sample"; printf '%s\n' "${RED}[!] Fail2Ban sample write failed.${NC}" >&2; return 1; }
 +0000 2026-07-25 10:00:00 ERROR [1253312684 0ms] inbound/vless[vless-in]: process connection from 203.0.113.7:54321: unknown UUID: 99999999-8888-4777-8666-555555555555
+-0800 2026-07-25 10:00:00 ERROR [1253312684 0ms] inbound/vless[vless-in]: process connection from 203.0.113.12:54326: unknown UUID: 99999999-8888-4777-8666-555555555555
 2026/07/25 10:00:01.123456 from 203.0.113.8:54322 rejected  proxy/vless/encoding: invalid request user id: 99999999-8888-4777-8666-555555555555
 +0000 2026-07-25 10:00:02 ERROR [2126696436 0ms] inbound/shadowsocks[ss-in]: process connection from 203.0.113.9:54323: shadowsocks: serve TCP from 203.0.113.9:54323: cipher: message authentication failed
 +0000 2026-07-25 10:00:03 ERROR [2451458976 3.60s] inbound/vless[vless-in]: process connection from 203.0.113.10:54324: EOF
@@ -22935,6 +22936,14 @@ EOF_F2B_SAMPLE
             return 1
         }
         rm -f "$sample"
+        # T-3 (follow-up): a -0800 sing-box line (TZ=America/Los_Angeles)
+        # must still yield a date hit; the old ^\+ datepattern matched
+        # the failregex but detected no date, so the line was silently
+        # dropped from banning. Fail closed if the Date template hits
+        # section parses to zero hits.
+        local _f2b_date_hits
+        _f2b_date_hits=$(sed -n '/^Date template hits:/,/^`-$/p' <<< "$out" | grep -cE '^[|] +\[1-9][0-9]*\]' || true)
+        [[ "$_f2b_date_hits" =~ ^[0-9]+$ ]] && (( _f2b_date_hits >= 1 )) || { printf '%s\n' "$out" >&2; printf '%s\n' "${RED}[!] Fail2Ban date detection failed for a sample log line.${NC}" >&2; return 1; }
         local summary matched_count missed_count matched_lines
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
         matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$summary")
@@ -23405,12 +23414,12 @@ EOF_LOGROTATE
 [Definition]
 # H-19: datepatterns for the two real log formats (verified with
 # fail2ban-regex 1.0.2 against live sing-box 1.14.3 / Xray 26.7.28
-# output): sing-box timestamp:true lines start "+0000 YYYY-MM-DD
+# output): sing-box timestamp:true lines start "+0000/-0800 YYYY-MM-DD
 # HH:MM:SS"; Xray access/error.log lines start "YYYY/MM/DD
 # HH:MM:SS.micro". Without these, no date is detected at all.
 # Hysteria is deliberately absent: at default level info it logs no
 # auth-failure line at all (core/v2.13.0 falls through to masquerade).
-datepattern = ^\+[0-9]{4} %%Y-%%m-%%d %%H:%%M:%%S
+datepattern = ^[-+][0-9]{4} %%Y-%%m-%%d %%H:%%M:%%S
               ^%%Y/%%m/%%d %%H:%%M:%%S
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
             ^.*(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:).*?(?:authentication failed|message authentication failed).*$
@@ -23494,10 +23503,19 @@ bantime.maxtime = 86400'
         # the global `fail2ban-client -t` fail). Per-jail
         # `backend = polling` below still overrides this for A-Box
         # jails, which read log files.
-        cat >> "$jail_tmp" <<'EOF_F2B_DEFAULT' || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
+        # M-23 (follow-up N1): only pin backend=systemd when this host
+        # is systemd AND the python3-systemd bindings are confirmed
+        # importable (checked with -I so a stray systemd.py in cwd or
+        # PYTHONPATH cannot fake it). Anywhere else -- non-systemd, or
+        # systemd without the bindings (dnf/yum/apk hosts have no
+        # install path for them) -- the block is omitted and stock
+        # file-log jails keep backend=auto.
+        if [[ "${INIT_SYS:-}" == 'systemd' ]] && python3 -I -c 'import systemd' >/dev/null 2>&1; then
+            cat >> "$jail_tmp" <<'EOF_F2B_DEFAULT' || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
 [DEFAULT]
 backend = systemd
 EOF_F2B_DEFAULT
+        fi
         if [[ -n "$tcp_ports" ]]; then
             local -a tcp_groups=()
             if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi
@@ -31286,7 +31304,20 @@ deploy_socks5_landing() {
     # EXIT trap is the only backstop. Cleared on the success path
     # below, once both files are removed explicitly. (Precedent: the
     # same EXIT-trap idiom is used elsewhere in this file.)
-    trap '[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true' EXIT
+    # M-24 (follow-up N2): save the pre-existing EXIT trap (installed
+    # by enter_runtime: runtime_lock_cleanup) and chain it into ours,
+    # instead of overwriting it; the success path restores it with
+    # restore_saved_trap instead of bare `trap - EXIT`. (Precedent:
+    # the _n2 temp-dir trap chain, same strip-and-eval idiom.)
+    local _socks5_prev_trap_exit='' _socks5_exit_trap_cmd='' _socks5_old_cmd=''
+    _socks5_prev_trap_exit=$(trap -p EXIT || true)
+    _socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_socks5_prev_trap_exit" ]]; then
+        _socks5_old_cmd="${_socks5_prev_trap_exit#trap -- }"
+        _socks5_old_cmd="${_socks5_old_cmd% EXIT}"
+        _socks5_exit_trap_cmd="$_socks5_exit_trap_cmd; eval $_socks5_old_cmd"
+    fi
+    trap "$_socks5_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31485,6 +31516,7 @@ EOF_SVC
     fi
     rm -f -- "$cfg_bak"
     trap - EXIT
+    restore_saved_trap EXIT "$_socks5_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip
@@ -40167,7 +40199,11 @@ restore_dns_snapshot_body() {
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     fi
-    if (( _dns_no_systemd == 0 )) && [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
+    # M-26 (follow-up N3): no _dns_no_systemd gate here -- nmcli needs
+    # no systemd bus, and the application path uses nmcli on non-systemd
+    # hosts too. The systemctl gate stays only on steps that truly need
+    # the bus (resolved restart / socket reload below).
+    if [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
         connection=$(cat "$dir/nm-connection")
         for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
             value=$(cat "$dir/nm-${key//./-}" 2>/dev/null || true)
@@ -51140,7 +51176,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # now a lasting one; record it for later switch/uninstall
     # reclaim (a later failure teardown removes the rule again and
     # the stale registry line is dropped on the next reclaim).
-    if (( _http80_new == 1 )); then wallos_fw_register_opened 80 tcp || true; fi
+    if (( _http80_new == 1 )); then wallos_fw_register_opened 80 tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening 80/tcp; a later uninstall may leave the port open.${NC}"; fi
     return 0
 }
 
@@ -52314,13 +52350,25 @@ _wallos_hy2_http01_keeps_80() {
     # Hysteria HTTP-01 ACME listens on 80/tcp via `altPort: 80` in
     # its config; reclaiming 80 would break its issuance/renewal.
     # The config path is overridable for fixtures.
-    local _hy2cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
-    [[ -f "$_hy2cfg" && ! -L "$_hy2cfg" ]] || return 1
-    grep -qE '^[[:space:]]*altPort:[[:space:]]*80[[:space:]]*$' "$_hy2cfg" 2>/dev/null
+    # Tri-state (M-28 follow-up N5): 0 = definitely needs 80/tcp
+    # (altPort 80 present; a trailing comment and leading-zero /
+    # quoted forms are legal YAML and count); 1 = definitely not
+    # needed (config readable, no such altPort); 2 = cannot determine
+    # (config missing, unreadable, or a symlink) -- the caller must
+    # keep 80/tcp rather than delete on an unknown.
+    local _hy2cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" _grep_rc=0
+    [[ -f "$_hy2cfg" && ! -L "$_hy2cfg" ]] || return 2
+    [[ -r "$_hy2cfg" ]] || return 2
+    grep -qE '^[[:space:]]*altPort:[[:space:]]*"?0*80"?[[:space:]]*(#.*)?$' "$_hy2cfg" 2>/dev/null || _grep_rc=$?
+    case "$_grep_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
 }
 
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
-    local reg line spec proto keep _k _removed=0 _kept=''
+    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept=''
     reg=$(wallos_fw_registry_file)
     [[ -f "$reg" && ! -L "$reg" ]] || return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -52330,18 +52378,35 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
         keep=0
         for _k in "$@"; do [[ "$_k" == "$line" ]] && keep=1; done
         if (( keep == 1 )); then _kept+="${line}"$'\n'; continue; fi
-        if [[ "$line" == '80/tcp' ]] && _wallos_hy2_http01_keeps_80; then
-            msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
-            _kept+="${line}"$'\n'; continue
+        if [[ "$line" == '80/tcp' ]]; then
+            _wallos_hy2_http01_keeps_80
+            _hy2_rc=$?
+            if (( _hy2_rc == 0 )); then
+                msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
+                _kept+="${line}"$'\n'; continue
+            elif (( _hy2_rc == 2 )); then
+                msg "${YELLOW}[!] Cannot determine whether Hysteria needs 80/tcp (its config is missing, unreadable, or a symlink); keeping it open.${NC}"
+                _kept+="${line}"$'\n'; continue
+            fi
         fi
-        wallos_remove_abox_iptables_accept "$spec" "$proto" >/dev/null 2>&1 || true
-        remove_abox_native_firewall_rule "$spec" "$proto" >/dev/null 2>&1 || true
+        # M-28 (follow-up N4): both delete helpers verify their own
+        # removal (an absent rule is success), so a failure here means
+        # the rule may still be live: keep the registry line and fail,
+        # the same ledger principle as wallos_fw_rollback_added. Never
+        # deregister on an unverified delete.
+        _del_failed=0
+        wallos_remove_abox_iptables_accept "$spec" "$proto" >/dev/null 2>&1 || _del_failed=1
+        remove_abox_native_firewall_rule "$spec" "$proto" >/dev/null 2>&1 || _del_failed=1
+        if (( _del_failed == 1 )); then
+            msg "${YELLOW}[!] Failed to reclaim the Wallos firewall opening ${line}; keeping it registered for a later retry.${NC}"
+            _kept+="${line}"$'\n'; _failed=1; continue
+        fi
         _removed=1
     done < "$reg"
     printf '%s' "$_kept" > "$reg" || return 1
     chmod 600 "$reg" 2>/dev/null || true
     if (( _removed == 1 )); then save_firewall_rules || return 1; fi
-    return 0
+    (( _failed == 0 ))
 }
 
 wallos_fw_rollback_added() {
@@ -53084,7 +53149,7 @@ wallos_install_or_update() {
     local -a _fw_keep=()
     for _fw_entry in "${_fw_added[@]}"; do
         IFS='|' read -r _ _fw_spec _fw_proto _ <<< "$_fw_entry"
-        [[ -n "$_fw_spec" && -n "$_fw_proto" ]] && wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || true
+        if [[ -n "$_fw_spec" && -n "$_fw_proto" ]]; then wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${_fw_spec}/${_fw_proto}; a later uninstall may leave the port open.${NC}"; fi
     done
     if [[ "$wmode" == https ]]; then _fw_keep=("${pubport}/tcp" '80/tcp');
     elif [[ "$wmode" == http ]]; then _fw_keep=("${port}/tcp"); fi

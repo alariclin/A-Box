@@ -20586,6 +20586,9 @@ _preserve_port_conflict() {
             ;;
     esac
     read -r -p "$_prompt" _ans || { die "$(tr_msg dp_cancelled)"; return 1; }
+    # M-36: normalize Persian/Arabic digits (e.g. ۱ -> 1) so a digit
+    # choice is not misread as invalid input and die-cancelled.
+    _ans=$(normalize_fa_ar_digits "$_ans")
     case "$_ans" in
         1)
             ABOX_PRESERVE_DROP_PORTS="${ABOX_PRESERVE_DROP_PORTS:+$ABOX_PRESERVE_DROP_PORTS }${proto}:${p}"
@@ -57098,6 +57101,10 @@ ota_and_geo_menu() {
         read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
+    # M-36: normalize Persian/Arabic digits for every language branch
+    # (the en branch already normalizes at read time; this shared line
+    # covers ru/fa/ja/zh-tw/zh). normalize_fa_ar_digits is idempotent.
+    ota_choice=$(normalize_fa_ar_digits "$ota_choice")
     case "$ota_choice" in
         1) update_script ;;
         2) force_update_geo ;;

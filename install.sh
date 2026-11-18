@@ -32722,21 +32722,61 @@ force_stop_owned_openrc() {
     start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1 >/dev/null 2>&1 || return 1
 }
 
+# R3-NEW-04: a family recorded in the ownership manifest was deployed by
+# A-Box. Recording requires abox_owns_service, i.e. a marked unit at
+# record time, and the manifest row below names this exact unit path, so
+# a recorded row is proof of A-Box deployment even if the unit file has
+# since lost its marker, gone missing, or become a symlink. The manifest
+# gates mirror remove_recorded_core_family: regular non-symlink file,
+# root-owned 0600, at most 4 MiB, and every row well-formed
+# (_manifest_rows_valid). Anything else fails closed (return 1).
+core_family_unit_registered() {
+    local srv="$1" u mf line t f p h rest _notabs TAB=$'\t'
+    u=$(managed_unit_path "$srv") || return 1
+    mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$mf" && ! -L "$mf" ]] || return 1
+    [[ "$(stat -c %u:%g "$mf" 2>/dev/null || true)" == 0:0 ]] || return 1
+    [[ "$(stat -c %a "$mf" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
+    [[ "$(stat -c %s "$mf" 2>/dev/null || echo 99999999)" -le 4194304 ]] || return 1
+    _manifest_rows_valid "$mf" || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        _notabs="${line//$TAB/}"
+        [[ "$(( ${#line} - ${#_notabs} ))" -eq 3 ]] || return 1
+        IFS=$'\t' read -r t f p h rest <<< "$line"
+        [[ -z "${rest:-}" ]] || return 1
+        if [[ "$t" == F && "$f" == "$srv" && "$p" == "$u" ]]; then return 0; fi
+    done < "$mf"
+    return 1
+}
+
 stop_owned() {
     local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
     u=$(managed_unit_path "$srv") || return 1
     if ! owned "$srv"; then
-        # An existing but unmarked unit is outside A-Box ownership and cannot be
-        # changed. If the unit file is absent, still query the service manager:
-        # a previously loaded unit may remain active after its file was removed.
-        [[ ! -e "$u" && ! -L "$u" ]] || return 1
-        if is_systemd; then
-            local load_state
-            load_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
-            case "$load_state" in inactive|failed|dead|not-found) return 0 ;; *) return 1 ;; esac
-        else
-            rc-service "$srv" status >/dev/null 2>&1; rc=$?
-            case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
+        # R3-NEW-04: the marker gate above refuses a unit whose file lost
+        # its marker (or went missing, or became a symlink) after
+        # deployment. A family recorded in the ownership manifest was
+        # deployed by A-Box -- recording requires abox_owns_service, i.e.
+        # a marked unit at record time, and the manifest row names this
+        # exact unit path. Refusing to stop such a service leaves a
+        # cleared stack running as an empty shell (the H-23 failure:
+        # clear_all reported success while sing-box kept listening).
+        # Fall through to the normal stop path for a registered family;
+        # the post-stop verification below still has to confirm the
+        # service is actually stopped before success is reported.
+        if ! core_family_unit_registered "$srv"; then
+            # An existing but unmarked unit is outside A-Box ownership and cannot be
+            # changed. If the unit file is absent, still query the service manager:
+            # a previously loaded unit may remain active after its file was removed.
+            [[ ! -e "$u" && ! -L "$u" ]] || return 1
+            if is_systemd; then
+                local load_state
+                load_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+                case "$load_state" in inactive|failed|dead|not-found) return 0 ;; *) return 1 ;; esac
+            else
+                rc-service "$srv" status >/dev/null 2>&1; rc=$?
+                case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
+            fi
         fi
     fi
     if is_systemd; then
@@ -35447,9 +35487,22 @@ clear_all_protocols() {
         # (wipe_ok still 1): a partial wipe leaves surviving nodes
         # that must keep running. Best-effort: a never-deployed
         # service reports success (already stopped) via stop_owned.
+        # R3-NEW-04: a stop failure is no longer swallowed (see the loop
+        # below): stop_owned refuses a running service whose family is
+        # not registered, and clear_all must say so and fail instead of
+        # reporting success while the service keeps listening.
         if (( wipe_ok == 1 )); then
             for _clr_svc in xray sing-box hysteria; do
-                stop_owned "$_clr_svc" >/dev/null 2>&1 || true
+                # R3-NEW-04: a stop failure used to be swallowed by
+                # `|| true` while the wipe still reported success, so a
+                # cleared stack could keep running as an empty shell
+                # with no warning at all. Report it visibly and fail
+                # the clear: the stack is not fully cleared while a
+                # core service keeps listening.
+                if ! stop_owned "$_clr_svc" >/dev/null 2>&1; then
+                    msg "${YELLOW}[!] ${_clr_svc}: $(tr_msg cl_fail)${NC}"
+                    wipe_ok=0
+                fi
             done
             # In-memory CORE/MODE are stale after the wipe; main_loop
             # reloads .env on its next iteration, but reset them here

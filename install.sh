@@ -52235,13 +52235,25 @@ _wallos_hy2_http01_keeps_80() {
     # Hysteria HTTP-01 ACME listens on 80/tcp via `altPort: 80` in
     # its config; reclaiming 80 would break its issuance/renewal.
     # The config path is overridable for fixtures.
-    local _hy2cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
-    [[ -f "$_hy2cfg" && ! -L "$_hy2cfg" ]] || return 1
-    grep -qE '^[[:space:]]*altPort:[[:space:]]*80[[:space:]]*$' "$_hy2cfg" 2>/dev/null
+    # Tri-state (M-28 follow-up N5): 0 = definitely needs 80/tcp
+    # (altPort 80 present; a trailing comment and leading-zero /
+    # quoted forms are legal YAML and count); 1 = definitely not
+    # needed (config readable, no such altPort); 2 = cannot determine
+    # (config missing, unreadable, or a symlink) -- the caller must
+    # keep 80/tcp rather than delete on an unknown.
+    local _hy2cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" _grep_rc=0
+    [[ -f "$_hy2cfg" && ! -L "$_hy2cfg" ]] || return 2
+    [[ -r "$_hy2cfg" ]] || return 2
+    grep -qE '^[[:space:]]*altPort:[[:space:]]*"?0*80"?[[:space:]]*(#.*)?$' "$_hy2cfg" 2>/dev/null || _grep_rc=$?
+    case "$_grep_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
 }
 
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
-    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _kept=''
+    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept=''
     reg=$(wallos_fw_registry_file)
     [[ -f "$reg" && ! -L "$reg" ]] || return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -52251,9 +52263,16 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
         keep=0
         for _k in "$@"; do [[ "$_k" == "$line" ]] && keep=1; done
         if (( keep == 1 )); then _kept+="${line}"$'\n'; continue; fi
-        if [[ "$line" == '80/tcp' ]] && _wallos_hy2_http01_keeps_80; then
-            msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
-            _kept+="${line}"$'\n'; continue
+        if [[ "$line" == '80/tcp' ]]; then
+            _wallos_hy2_http01_keeps_80
+            _hy2_rc=$?
+            if (( _hy2_rc == 0 )); then
+                msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
+                _kept+="${line}"$'\n'; continue
+            elif (( _hy2_rc == 2 )); then
+                msg "${YELLOW}[!] Cannot determine whether Hysteria needs 80/tcp (its config is missing, unreadable, or a symlink); keeping it open.${NC}"
+                _kept+="${line}"$'\n'; continue
+            fi
         fi
         # M-28 (follow-up N4): both delete helpers verify their own
         # removal (an absent rule is success), so a failure here means

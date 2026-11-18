@@ -39764,6 +39764,23 @@ restore_dns_snapshot_body() {
     fi
     if [[ -f "$dir/dns-state" ]]; then rm -f -- "$DNS_STATE_FILE" || return 1; cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
+    # H-25(3): the snapshot never recorded the A-Box socket drop-in
+    # (abox-listen.conf), so a restore left 127.0.0.1:5353 bound after
+    # the rollback. Remove it and rebind the socket to the distro
+    # default -- unless the snapshot itself is a DoH-active state
+    # (mode=doh), in which case the drop-in belongs to the restored
+    # state and must stay. Only a drop-in carrying the A-Box marker
+    # is ever removed; a foreign admin override is left alone.
+    if [[ ! -f "$dir/dns-state" ]] || ! grep -qE '(^|;)[ \t]*mode=doh([; \t]|$)' "$dir/dns-state" 2>/dev/null; then
+        if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] && grep -q 'Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null; then
+            rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || true
+            rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
+            if command -v systemctl >/dev/null 2>&1; then
+                systemctl daemon-reload >/dev/null 2>&1 || true
+                systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null && systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
     if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
     if command -v systemctl >/dev/null 2>&1; then
         local _dnscrypt_units=''
@@ -40178,6 +40195,27 @@ resolved_strip_global_dns_sources() {
 # suffixes are ignored on both sides. resolvectl missing => no check
 # possible, treated as pass: the strip above is the actual fix, this is
 # defense in depth.
+# H-25(1): liveness probe for resolved_global_dns_check. Matching the
+# drop-in values proves nothing about reachability: 127.0.0.1:53 with
+# the proxy on :5353 matches no value yet resolves nothing. Send one
+# real query to each expected server; at least one must answer.
+# Returns 0 if any server answers.
+_resolved_dns_probe_any() {
+    local _tok='' _host='' _port=53
+    local -a _toks=()
+    IFS=$' \t\n' read -ra _toks <<< "$1" || true
+    for _tok in "${_toks[@]}"; do
+        _tok="${_tok%%#*}"
+        _host="$_tok"; _port=53
+        case "$_tok" in
+            *.*:*) _host="${_tok%:*}"; _port="${_tok##*:}" ;;
+        esac
+        [[ "$_port" =~ ^[0-9]+$ ]] || _port=53
+        if dns_probe_once "$_host" "$_port" example.com >/dev/null 2>&1; then return 0; fi
+    done
+    return 1
+}
+
 resolved_global_dns_check() {
     local expected="$1" policy="${2:-strict}" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
@@ -40247,6 +40285,10 @@ resolved_global_dns_check() {
                 done
             done
             if (( _has_route == 0 )); then
+                # H-25(1): values match, but a matching value can still
+                # be dead (127.0.0.1:53 with the proxy on :5353).
+                # Probe liveness before passing the check.
+                if ! _resolved_dns_probe_any "$expected"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
                 RESOLVED_DNS_CHECK_WARN="$_fail_domains"
                 return 0
             fi
@@ -40254,6 +40296,8 @@ resolved_global_dns_check() {
         RESOLVED_DNS_CHECK_FAIL="link_domain:${_fail_domains}"
         return 1
     fi
+    # H-25(1): same liveness probe as the warn path above.
+    if ! _resolved_dns_probe_any "$expected"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
     return 0
 }
 
@@ -40963,6 +41007,12 @@ dns_doh_cleanup_fresh_proxy() {
         rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || true
         rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
         systemctl daemon-reload >/dev/null 2>&1 || true
+        # H-25(3): rebind the socket to the distro default: the running
+        # socket still holds 127.0.0.1:5353 until restarted. Only when
+        # the proxy predates this run -- a fresh install is stopped and
+        # disabled below instead, and restarting it would undo that.
+        # An inactive socket stays inactive.
+        if [[ "$_pre_installed" == 1 ]] && systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true; fi
     fi
     if [[ "$_pre_installed" != 1 ]] && command -v systemctl >/dev/null 2>&1; then
         systemctl stop dnscrypt-proxy.socket >/dev/null 2>&1 || true
@@ -41012,9 +41062,9 @@ dns_enable_doh() {
     # pre-snapshot failure can clean up only what this run installed.
     local _doh_pre_installed=0 _doh_dropin_written=0
     command -v dnscrypt-proxy >/dev/null 2>&1 && _doh_pre_installed=1
-    dns_install_dnscrypt_proxy || { msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
+    dns_install_dnscrypt_proxy || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
     config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
-    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
+    [[ -f "$config" && ! -L "$config" ]] || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
     # R10-F12-4: a top-level forwarding_rules entry would keep some
     # queries on plaintext forwarding after DoH is enabled. Warn
     # before anything is changed; declining leaves the config
@@ -41027,12 +41077,14 @@ dns_enable_doh() {
     # is a warning-only fallback -- removal is enforced by the
     # rewriter, never by this pre-check.
     _doh_fr_present=0
+    _doh_disable_fr=1
     if _doh_fr_out=$(python3 -I -c 'import sys, tomllib; print("forwarding_rules" in tomllib.load(open(sys.argv[1], "rb")))' "$config" 2>/dev/null); then
         [[ "$_doh_fr_out" == 'True' ]] && _doh_fr_present=1
     elif python3 -I -c 'import tomllib' 2>/dev/null; then
         # tomllib exists but the file did not parse: refuse outright,
         # never warn-and-continue on an unverifiable config.
         msg "${RED}[!] Cannot parse $config as TOML; refusing to enable DoH on an unverifiable config.${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     elif awk '
         /^[[:space:]]*#/ { next }
@@ -41053,9 +41105,19 @@ dns_enable_doh() {
             ja) msg "${YELLOW}DoH を有効にすると $config のカスタム forwarding_rules エントリが無効になり、一覧のドメインは設定どおり転送されなくなります。${NC}"; prompt='続行して forwarding_rules を無効にしますか？[Y/N]: ' ;;
             *) msg "${YELLOW}启用 DoH 将停用 $config 中的自定义 forwarding_rules 条目；其中列出的域名将不再按原配置转发。${NC}"; prompt='继续并停用 forwarding_rules？[Y/N]: ' ;;
         esac
-        if [[ "${ABOX_DOH_YES:-}" == 1 ]]; then answer='y'
+        # H-25(2): this consent is independent of ABOX_DOH_YES (that
+        # variable only covers the initial "enable DoH?" confirmation
+        # above). Declining skips only this step: forwarding_rules
+        # stays and the rest of the enable continues.
+        if [[ "${ABOX_DOH_DISABLE_FORWARDING_RULES:-}" == 1 ]]; then answer='y'
+        elif [[ "${ABOX_DOH_DISABLE_FORWARDING_RULES:-}" == 0 ]]; then answer='n'
         else read -r -p "$prompt" answer; fi
-        is_yes "$answer" || return 0
+        if is_yes "$answer"; then
+            _doh_disable_fr=1
+        else
+            _doh_disable_fr=0
+            msg "${YELLOW}Keeping the forwarding_rules entry; DoH will not apply to the domains listed there. Remove the entry by hand to route them through DoH.${NC}"
+        fi
     fi
     # OBS-S1-02: rebind the stock socket (127.0.2.1:53) to the
     # pinned 127.0.0.1:5353 before the guard validates it.
@@ -41100,19 +41162,20 @@ dns_enable_doh() {
     fi
     # R11-11: capture owner/mode BEFORE any work touches the config.
     local _cfg_meta='' _cfg_uid='' _cfg_gid='' _cfg_mode=''
-    _cfg_meta=$(stat -c '%u %g %a' "$config" 2>/dev/null) || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
+    _cfg_meta=$(stat -c '%u %g %a' "$config" 2>/dev/null) || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     read -r _cfg_uid _cfg_gid _cfg_mode <<< "$_cfg_meta"
-    [[ "$_cfg_uid" =~ ^[0-9]+$ && "$_cfg_gid" =~ ^[0-9]+$ && "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
+    [[ "$_cfg_uid" =~ ^[0-9]+$ && "$_cfg_gid" =~ ^[0-9]+$ && "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
     # is COMPLETE before replacing the old one. The old code ran
     # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
     # the previous rollback snapshot with no way to recover it.
     local _doh_snap_new=""
-    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
-    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
+    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}$(tr_msg dh_snap_staging)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
+    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     if ! snapshot_dns_state "$_doh_snap_new" || [[ ! -f "$_doh_snap_new/COMPLETE" ]]; then
         rm -rf -- "$_doh_snap_new"
         msg "${RED}$(tr_msg dh_snap_rollback)${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
     # R11-09: retain a copy of THIS run's pre-change snapshot before
@@ -41123,16 +41186,17 @@ dns_enable_doh() {
     # Removed after a successful restore and on success; retained
     # (and reported) only when a restore fails.
     local _doh_snap_keep=''
-    _doh_snap_keep=$(mktemp -d /tmp/A-Box-doh-snap.XXXXXX) || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; }
-    if ! chmod 700 "$_doh_snap_keep" 2>/dev/null || ! cp -a "$_doh_snap_new/." "$_doh_snap_keep/" 2>/dev/null || [[ ! -f "$_doh_snap_keep/COMPLETE" ]]; then rm -rf -- "$_doh_snap_new" "$_doh_snap_keep"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; fi
+    _doh_snap_keep=$(mktemp -d /tmp/A-Box-doh-snap.XXXXXX) || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
+    if ! chmod 700 "$_doh_snap_keep" 2>/dev/null || ! cp -a "$_doh_snap_new/." "$_doh_snap_keep/" 2>/dev/null || [[ ! -f "$_doh_snap_keep/COMPLETE" ]]; then rm -rf -- "$_doh_snap_new" "$_doh_snap_keep"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; fi
     # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     if ! dns_snapshot_install_new "$_doh_snap_new"; then
         rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
         msg "${RED}$(tr_msg dh_snap_install)${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
-    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_temp)${NC}"; return 1; }
+    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_temp)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     # R8C12-N02: under socket activation the socket unit binds
     # the address; the service must inherit it (empty list).
     local doh_listen="['127.0.0.1:5353']"
@@ -41156,17 +41220,20 @@ dns_enable_doh() {
     else
         msg "${RED}[!] Cannot determine dnscrypt-proxy version; DNS was not changed.${NC}"
         rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
     if (( _dcrypt_major > 2 || (_dcrypt_major == 2 && _dcrypt_minor >= 1) )); then
         _dcrypt_bootstrap=1
     fi
-    python3 -I - "$config" "$temp" "$doh_server" "$doh_listen" "$_dcrypt_bootstrap" <<'PY_DOH_CONFIG'
+    python3 -I - "$config" "$temp" "$doh_server" "$doh_listen" "$_dcrypt_bootstrap" "$_doh_disable_fr" <<'PY_DOH_CONFIG'
 import re, sys
 source, target = sys.argv[1:3]
 server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 listen = sys.argv[4] if len(sys.argv) > 4 else "['127.0.0.1:5353']"
 bootstrap = sys.argv[5] if len(sys.argv) > 5 else '1'
+# H-25(2): '1' disables forwarding_rules, '0' keeps it (user declined).
+disable_fr = sys.argv[6] if len(sys.argv) > 6 else '1'
 # R29-OBS-S1-02: `bootstrap_resolvers` exists only since 2.1.0
 # (renamed from `fallback_resolvers`); a 2.0.x binary rejects the
 # new key with [FATAL] Unsupported key (rc=255). Write the key the
@@ -41605,7 +41672,8 @@ set_option('ignore_system_dns', 'true')
 # domains on plaintext forwarding after DoH is enabled. Remove the
 # entry (the rules file itself is left alone, and the pre-change
 # snapshot stays available for rollback).
-remove_option('forwarding_rules')
+if disable_fr == '1':
+    remove_option('forwarding_rules')
 # R11E-R2-10-2: final verification, independent of the mutation passes
 # above (fresh scan; never reuses indexes from set/remove). With
 # tomllib (Python 3.11+) verify the parsed document; without it,
@@ -41632,7 +41700,7 @@ if tomllib is not None:
     except Exception as _e:
         sys.stderr.write('rewritten config is not valid TOML: %s\n' % _e)
         sys.exit(1)
-    if 'forwarding_rules' in _doc:
+    if disable_fr == '1' and 'forwarding_rules' in _doc:
         sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
         sys.exit(1)
     _expected_doc = {
@@ -41653,7 +41721,7 @@ if tomllib is not None:
         sys.stderr.write('bootstrap_resolvers must be absent on dnscrypt-proxy < 2.1\n')
         sys.exit(1)
 else:
-    if _top_level_has_option('forwarding_rules'):
+    if disable_fr == '1' and _top_level_has_option('forwarding_rules'):
         sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
         sys.exit(1)
     for _k, _want in _expected_values.items():
@@ -41667,24 +41735,25 @@ else:
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
-    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_rewrite)${NC}"; return 1; fi
+    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_rewrite)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; fi
     # R1-12-F7: preserve the original mode (a 0640 credential
     # file must not be loosened to 0644 by the rewrite).
-    install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_install)${NC}"; return 1; }
+    install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_install)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     rm -f -- "$temp"
     if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
         if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_cfg_check)${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
     # enable --now is a no-op on an already-running instance, which
     # would keep serving the old config; restart a live instance so
     # the new config is really loaded before probing it.
     if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
-        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; return 1; }
-        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_restart)${NC}"; return 1; }
+        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
+        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_restart)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     else
-        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; return 1; }
+        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_proxy_enable)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     fi
     # R10-F12-4: this probe is an availability check only (the local
     # proxy answers); it does not prove queries travel over DoH. The
@@ -41701,18 +41770,19 @@ PY_DOH_CONFIG
     if (( _probe_ok == 0 )); then
         if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_test_resolve)${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
-    resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg apply_host_dns_clear_sources_failed)${NC}"; return 1; }
-    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
+    resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg apply_host_dns_clear_sources_failed)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
+    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
 [Resolve]
 DNS=127.0.0.1:5353
 FallbackDNS=
 Domains=~.
 DNSOverTLS=no
 EOF_DOH
-    systemctl restart systemd-resolved >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_resolved_restart)${NC}"; return 1; }
-    resolved_global_dns_check '127.0.0.1:5353' 'doh_search_warn' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(resolved_dns_check_fail_message)${NC}"; return 1; }
+    systemctl restart systemd-resolved >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_resolved_restart)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
+    resolved_global_dns_check '127.0.0.1:5353' 'doh_search_warn' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(resolved_dns_check_fail_message)${NC}"; dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
             if restore_dns_snapshot "$_doh_snap_keep"; then
@@ -41722,6 +41792,7 @@ EOF_DOH
             else
                 msg "${RED}$(tprintf dh_meta_commit_fail "$_doh_snap_keep")${NC}"
             fi
+            dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
             return 1
         fi
         msg "${GREEN}$(tr_msg dh_ok)${NC}"
@@ -41733,6 +41804,7 @@ EOF_DOH
     else
         if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_resolved_health)${NC}"
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
     fi
 }
@@ -41823,40 +41895,70 @@ _dns_valid_v6_group() {
     printf '%s' "$out"
 }
 
+# H-25(1): true (rc 0) when the recorded DNS state says DoH is active.
+# In that state 127.0.0.1 is the dnscrypt-proxy listener on :5353, not a
+# :53 resolver, so callers must never treat it as a plain v4 server.
+_dns_state_mode_doh() {
+    [[ -f "$DNS_STATE_FILE" ]] || return 1
+    grep -qE '(^|;)[ \t]*mode=doh([; \t]|$)' "$DNS_STATE_FILE" 2>/dev/null
+}
+
 _dns_current_v4() {
-    local cur='' out=''
+    local cur='' out='' _doh=0 _tok='' _filtered=''
+    # H-25(1): when DoH is active, 127.0.0.1 is the dnscrypt-proxy
+    # listener on :5353. The sole-loopback fallback below must not hand
+    # it back as a plain :53 server, or the tri-mode wizard rewrites
+    # resolved to 127.0.0.1:53 (nothing listens there).
+    _dns_state_mode_doh && _doh=1
     if [[ -r /etc/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /etc/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
-            # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
-            # exist (e.g. Unbound), return them instead of empty; empty
-            # makes the caller fall back to IPv6-only and rewrite away v4.
-            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
-            out=$(_dns_valid_v4_group "$cur")
-            [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        if (( _doh == 0 )); then
+                # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
+                # exist (e.g. Unbound), return them instead of empty; empty
+                # makes the caller fall back to IPv6-only and rewrite away v4.
+                cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+                out=$(_dns_valid_v4_group "$cur")
+                [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        fi
     fi
     if [[ -r /run/systemd/resolve/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
-            # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
-            # exist (e.g. Unbound), return them instead of empty; empty
-            # makes the caller fall back to IPv6-only and rewrite away v4.
-            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
-            out=$(_dns_valid_v4_group "$cur")
-            [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        if (( _doh == 0 )); then
+                # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
+                # exist (e.g. Unbound), return them instead of empty; empty
+                # makes the caller fall back to IPv6-only and rewrite away v4.
+                cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+                out=$(_dns_valid_v4_group "$cur")
+                [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        fi
     fi
     if [[ -f "$DNS_STATE_FILE" ]]; then
         if grep -qE '(^|;)[ \t]*v4=' "$DNS_STATE_FILE" 2>/dev/null; then
             cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
             out=$(_dns_valid_v4_group "$cur")
+            # H-25(1): in DoH mode a recorded 127.0.0.1 is the :5353
+            # proxy, not a :53 server; drop that token.
+            if (( _doh == 1 )); then
+                _filtered=''
+                while IFS= read -r _tok; do [[ "$_tok" == '127.0.0.1' ]] || _filtered+="${_filtered:+ }$_tok"; done <<< "$(printf '%s' "$out" | tr ' ' '\n')"
+                out="$_filtered"
+            fi
             printf '%s' "$out"; return 0
         fi
     fi
     if [[ -f "$ABOX_ENV" ]]; then
         cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
+        # H-25(1): same recorded-loopback filter as above.
+        if (( _doh == 1 )); then
+            _filtered=''
+            while IFS= read -r _tok; do [[ "$_tok" == '127.0.0.1' ]] || _filtered+="${_filtered:+ }$_tok"; done <<< "$(printf '%s' "$out" | tr ' ' '\n')"
+            out="$_filtered"
+        fi
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
     return 0
@@ -42003,6 +42105,13 @@ dns_setup_tri_mode() {
         v6="$(_dns_current_v6)"
     elif [[ "$mode" == "2" ]]; then
         v4="$(_dns_current_v4)"
+        # H-25(1): in DoH mode the v4 side is the proxy at
+        # 127.0.0.1:5353; "IPv6 only (IPv4 unchanged)" must keep that
+        # endpoint, or resolved would be rewritten to 127.0.0.1:53
+        # (nothing listens there). The liveness probe in
+        # resolved_global_dns_check fails the apply if the proxy is
+        # actually dead, so keeping :5353 cannot mask a dead proxy.
+        if _dns_state_mode_doh; then v4='127.0.0.1:5353'; fi
     fi
 
     # Safety: refuse to apply if both are empty (would break DNS)

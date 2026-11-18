@@ -49771,7 +49771,7 @@ wallos_prune_local_images() {
 # D-02: best-effort recovery if rollback fails after the old container was removed.
 # Tries to bring Wallos back up with the previous image so the service is not
 # left completely down. Data on disk is already the restored backup.
-_wallos_rollback_recover() {
+_wallos_rollback_recover_impl() {
     local prev_image="$1" port="$2" tz="$3" bind_address="$4" _pre_version="${5:-}" _pre_mode="${6:-}" _pre_pubport="${7:-}" _pre_cfhost="${8:-}"
     local -a _pub_args=()
     # X-03: use explicit bind:port form like the install path (L15630).
@@ -49809,6 +49809,20 @@ _wallos_rollback_recover() {
         msg "${RED}Previous Wallos container is healthy, but state recovery failed; VERSION/IMAGE were not restored to the pre-rollback values.${NC}"
         return 1
     fi
+}
+
+# M-NEW-02: failure wrapper (same reason as
+# wallos_recover_interrupted_upgrade above): a failed rollback
+# leaves the Wallos jail pointing at a removed overlay; drop it when
+# provably dangling so `fail2ban-client -t` passes again. The
+# rollback's own return status is preserved unchanged.
+_wallos_rollback_recover() {
+    _wallos_rollback_recover_impl "$@"
+    local _rc=$?
+    if (( _rc != 0 )); then
+        wallos_fail2ban_drop_stale_jail >/dev/null 2>&1 || true
+    fi
+    return "$_rc"
 }
 
 # Normalize a Wallos image digest to canonical form
@@ -50897,7 +50911,7 @@ wallos_txn_value() {
     ' "$file"
 }
 
-wallos_recover_interrupted_upgrade() {
+_wallos_recover_interrupted_upgrade_impl() {
     local journal="$WALLOS_DIR/.upgrade-transaction"
     local owner mode phase old_image old_port old_tz old_bind backup was_running old_image_id _run_image _lines
     [[ -e "$journal" || -L "$journal" ]] || return 0
@@ -51316,6 +51330,22 @@ EOF_B15_SIDECAR
     # the rollback path. _rec_mode is the recovered mode.
     wallos_bruteforce_protection "$old_port" "$old_bind" "$_rec_mode" 2>/dev/null || true
     msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
+}
+
+# M-NEW-02: failure wrapper around the recovery implementation. A
+# failed recovery leaves the Wallos jail pointing at whatever the
+# failed run removed; drop it when it is provably dangling (see
+# wallos_fail2ban_drop_stale_jail) so `fail2ban-client -t` passes
+# again. The recovery's own return status is preserved unchanged,
+# and a successful recovery is untouched (it rebuilds the jail
+# itself at the end).
+wallos_recover_interrupted_upgrade() {
+    _wallos_recover_interrupted_upgrade_impl "$@"
+    local _rc=$?
+    if (( _rc != 0 )); then
+        wallos_fail2ban_drop_stale_jail >/dev/null 2>&1 || true
+    fi
+    return "$_rc"
 }
 
 # ============ Wallos brute-force protection (fail2ban on nginx access log) ============
@@ -54283,6 +54313,32 @@ _wallos_manual_rollback() {
         confirm_yes_no "$(tprintf wl_rb_confirm_target "$target")" || return 1
     fi
     wallos_rollback_to_version "$target"
+}
+
+# M-NEW-02: drop the A-Box-wallos fail2ban jail when its logpath is
+# provably gone. After a failed Wallos upgrade whose rollback also
+# fails, the container the jail watched is deleted, so the jail's
+# logpath points at a removed overlay and `fail2ban-client -t` fails
+# (rc=255), which blocks any fail2ban reload/restart and makes the
+# next proxy deploy's validate_fail2ban_config warn and roll back
+# A-Box's own jail config. Only acts when the jail file carries the
+# '# Managed by A-Box' marker AND names a logpath that is not a
+# regular file; a jail whose log exists is left untouched, so a
+# healthy or still-running instance (including https mode, whose
+# logpath is the Caddy log) keeps its protection. The jail is rebuilt
+# by wallos_bruteforce_protection on the next successful (re)create,
+# so dropping a dangling jail never loses protection permanently.
+# Best-effort: always returns 0, never fails a caller.
+wallos_fail2ban_drop_stale_jail() {
+    local _jail='/etc/fail2ban/jail.d/A-Box-wallos.local' _logpath=''
+    [[ -f "$_jail" && ! -L "$_jail" ]] || return 0
+    grep -Fxq '# Managed by A-Box' "$_jail" 2>/dev/null || return 0
+    _logpath=$(sed -n 's/^logpath[[:space:]]*=[[:space:]]*//p' "$_jail" 2>/dev/null | head -n 1 || true)
+    _logpath="${_logpath%"${_logpath##*[![:space:]]}"}"
+    [[ "$_logpath" == /* ]] || return 0
+    [[ -f "$_logpath" ]] && return 0
+    wallos_cleanup_fail2ban_leftovers >/dev/null 2>&1 || true
+    return 0
 }
 
 # H-10(4): remove the Wallos jail/filter/action files left behind by a

@@ -14687,7 +14687,11 @@ users_registries_remove_core() {
 # on rc 1.
 _standalone_link_tag_survivor() {
     local _tag="$1" _cfg="$2" _stripped='' _jq_rc=0
-    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # M-29: a symlinked config is unverifiable (rc 2), not "confirmed
+    # absent" (rc 1) -- the link target may still serve the tag, and
+    # callers delete the link only on rc 1.
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || return 2
     _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
     [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
@@ -20647,6 +20651,9 @@ _preserve_port_conflict() {
             ;;
     esac
     read -r -p "$_prompt" _ans || { die "$(tr_msg dp_cancelled)"; return 1; }
+    # M-36: normalize Persian/Arabic digits (e.g. ۱ -> 1) so a digit
+    # choice is not misread as invalid input and die-cancelled.
+    _ans=$(normalize_fa_ar_digits "$_ans")
     case "$_ans" in
         1)
             ABOX_PRESERVE_DROP_PORTS="${ABOX_PRESERVE_DROP_PORTS:+$ABOX_PRESERVE_DROP_PORTS }${proto}:${p}"
@@ -35196,7 +35203,10 @@ _standalone_link_survivor() {
     # the answer. An empty file slurps to [] (false -> rc 1), so
     # it is rejected up front as unverifiable, not "confirmed gone".
     # (jq 1.6 parse-fail is rc 4, jq 1.7 is rc 5 — both land in *.)
-    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # M-29: a symlinked config is unverifiable (rc 2), not "confirmed
+    # absent" (rc 1) -- the link target may still serve the protocol.
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
     # H-26(3): strip JSONC comments before jq: the live config may
     # legally carry // or /* */ comments, and a bare jq read fails
@@ -39232,7 +39242,7 @@ user_guard_tick() {
         [[ -n "$rcore" && -n "$rtag" ]] || continue
         case "$rcore" in
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
-            hy2) stats=''; have=0; gen='' ;;  # M-38: Hy2 has no per-user stats source; only expiry/window are enforced, quota never triggers
+            hy2) stats=''; have=0; gen='' ;;  # M-38: this script does not currently consume any Hy2 stats source; only expiry/window are enforced, quota never triggers
             *) stats=''; have=0; gen='' ;;
         esac
         users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end"
@@ -40704,6 +40714,12 @@ _resolved_dns_probe_any() {
         _tok="${_tok%%#*}"
         _host="$_tok"; _port=53
         case "$_tok" in
+            # N-3 (H-25 hardening): bracketed IPv6 with port, e.g.
+            # [::1]:5353 -- the *.*:* arm below cannot split it (no dot),
+            # and without this arm the whole token becomes the host with
+            # port 53. Unreachable today (no caller emits this form), and
+            # dns_probe_once would fail-closed on the bad host anyway.
+            \[*\]:*) _host="${_tok#\[}"; _host="${_host%%\]*}"; _port="${_tok##*:}" ;;
             *.*:*) _host="${_tok%:*}"; _port="${_tok##*:}" ;;
         esac
         [[ "$_port" =~ ^[0-9]+$ ]] || _port=53
@@ -46106,7 +46122,7 @@ write_private_sidecar() {
     path_parent_chain_safe "$dest" || return 1
     dir=$(dirname "$dest")
     [[ -d "$dir" && ! -L "$dir" ]] || return 1
-    [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || return 1
+    [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || { msg "${RED}[!] Output directory must be owned by root (root-owned output directory required; non-root home directories are not supported).${NC}" >&2; return 1; }
     if ! path_mode_has_no_group_other_write "$dir"; then
         # H-27: allow a sticky directory owned by root (e.g. /tmp,
         # mode 1777): only root can unlink or rename another user's
@@ -46128,6 +46144,10 @@ write_private_sidecar() {
     # another user could plant a symlink at $dest after the early
     # check above.
     [[ ! -L "$dest" ]] || { rm -f -- "$tmp"; return 1; }
+    # N-8 (H-27 follow-up): re-check the directory case too -- a directory
+    # planted at $dest after the entry check would make mv install the
+    # tmp file INSIDE it and still report success.
+    [[ ! -d "$dest" ]] || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
 }
 
@@ -46347,6 +46367,12 @@ convert_legacy_backup_archive() {
     # and path_parent_chain_safe below rejects relative paths outright).
     # realpath -m never requires the path to exist; on failure keep the
     # original value (no regression: the later checks fail as before).
+    # N-2 (H-27 follow-up): reject a symlinked raw input BEFORE realpath
+    # resolves it -- otherwise a symlink to a real directory (or a dangling
+    # symlink, which realpath -m happily resolves to a path that is then
+    # created) would pass the ! -L gate below, which only ever sees the
+    # resolved target. A symlink input is refused outright.
+    [[ ! -L "$out_dir" ]] || die 'Legacy conversion output directory must not be a symbolic link.'
     out_dir=$(realpath -m -- "$out_dir" 2>/dev/null || printf '%s' "$out_dir")
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
     # R6C14-01: private root-only copy BEFORE any validation; every
@@ -53438,7 +53464,11 @@ wallos_status() {
             # HTTPS needs IPv4). 80/tcp is shared with the Hy2
             # HTTP-01 challenge (altPort 80), so the TLS front and
             # the challenge coexist on the same port by design.
-            msg "No public IPv4 address detected; TLS handshake check skipped (Wallos HTTPS needs IPv4)."
+            if [[ ! "$_wport" =~ ^[0-9]+$ ]]; then
+                msg "No Wallos public port (PUBPORT) recorded; TLS handshake check skipped."
+            else
+                msg "No public IPv4 address detected; TLS handshake check skipped (Wallos HTTPS needs IPv4)."
+            fi
         fi
     fi
     port=$(wallos_state_value PORT 2>/dev/null || true)
@@ -55518,7 +55548,7 @@ r/R One-click Reality.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
 
-Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. By default Wallos is served over public HTTPS with an automatic Caddy certificate; plain HTTP is only a disaster-recovery fallback — never enter personal information on an HTTP URL.
+Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. Choose the access mode explicitly during installation; Caddy HTTPS is recommended, and plain HTTP is only a disaster-recovery fallback — never enter personal information on an HTTP URL.
 
 Toolbox test scripts use upstream-first download and explicit execution confirmation. When upstream is unavailable, a fixed-name A-Box Release snapshot is accepted only after SHA256 verification. If both sources fail, the script is not executed.
 EOF_USAGE
@@ -55552,7 +55582,7 @@ r/R Reality в один клик.
 
 BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
 
-Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. По умолчанию Wallos доступен по публичному HTTPS с автоматическим сертификатом Caddy; обычный HTTP — только аварийный запасной вариант, никогда не вводите личные данные по HTTP-адресу.
+Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. Во время установки явно выберите режим доступа; рекомендуется HTTPS через Caddy, а обычный HTTP — только аварийный запасной вариант, никогда не вводите личные данные по HTTP-адресу.
 
 Тестовые скрипты загружаются из upstream и требуют явного подтверждения. При недоступности upstream резервная копия A-Box принимается только после проверки SHA256. Если оба источника недоступны, скрипт не запускается.
 EOF_USAGE
@@ -55586,7 +55616,7 @@ r/R Reality با یک کلیک.
 
 BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
 
-Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. به‌صورت پیش‌فرض Wallos روی HTTPS عمومی با گواهی خودکار Caddy ارائه می‌شود؛ HTTP ساده فقط راه‌حل اضطراری بازیابی است — هرگز اطلاعات شخصی را روی URL ‏HTTP وارد نکنید.
+Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. در زمان نصب حالت دسترسی را صراحتاً انتخاب کنید؛ HTTPS با Caddy توصیه می‌شود و HTTP ساده فقط راه‌حل اضطراری بازیابی است — هرگز اطلاعات شخصی را روی URL ‏HTTP وارد نکنید.
 
 اسکریپت‌های آزمون ابتدا از upstream دریافت و اجرای آن‌ها با تأیید صریح انجام می‌شود. در صورت خرابی upstream، نسخه پشتیبان A-Box فقط پس از تطبیق SHA256 اجرا می‌شود. اگر هر دو منبع در دسترس نباشند، هیچ اسکریپتی اجرا نمی‌شود.
 EOF_USAGE
@@ -55620,7 +55650,7 @@ r/R 一鍵 Reality。
 
 協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
 
-Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。預設經公網 HTTPS 提供服務，由 Caddy 自動簽發憑證；純 HTTP 只是災備回退——切勿在 HTTP 位址上錄入個人資料。
+Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。安裝時請明確選擇存取模式；建議使用 Caddy HTTPS，純 HTTP 只是災備回退——切勿在 HTTP 位址上錄入個人資料。
 
 測速指令碼優先從上游下載，顯示 SHA256 並要求確認；上游不可用時，僅在 SHA256 校驗透過後使用 A-Box `test-tools-mirror`。兩處來源都失敗則不執行。
 EOF_USAGE
@@ -55654,7 +55684,7 @@ r/R ワンクリック Reality。
 
 プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
 
-Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。既定では Caddy の自動証明書による公開 HTTPS で提供され、平文 HTTP は災害復旧時のフォールバック専用です。HTTP の URL には個人情報を入力しないでください。
+Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。インストール時にアクセスモードを明示的に選択してください。Caddy による HTTPS を推奨します。平文 HTTP は災害復旧時のフォールバック専用です。HTTP の URL には個人情報を入力しないでください。
 
 テストスクリプトは upstream からのダウンロードを優先し、SHA256 を表示して確認を求めます；upstream が利用できない場合、SHA256 検証に合格した後にのみ A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
 EOF_USAGE
@@ -55688,7 +55718,7 @@ r/R 一键 Reality。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
 
-Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。默认经公网 HTTPS 提供服务，由 Caddy 自动签发证书；纯 HTTP 只是灾备回退——切勿在 HTTP 地址上录入个人数据。
+Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。安装时请明确选择访问模式；推荐使用 Caddy HTTPS，纯 HTTP 只是灾备回退——切勿在 HTTP 地址上录入个人数据。
 
 测速脚本优先从上游下载，显示 SHA256 并要求确认；上游不可用时，仅在 SHA256 校验通过后使用 A-Box `test-tools-mirror`。两处来源都失败则不执行。
 EOF_USAGE
@@ -57413,6 +57443,10 @@ ota_and_geo_menu() {
         read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
+    # M-36: normalize Persian/Arabic digits for every language branch
+    # (the en branch already normalizes at read time; this shared line
+    # covers ru/fa/ja/zh-tw/zh). normalize_fa_ar_digits is idempotent.
+    ota_choice=$(normalize_fa_ar_digits "$ota_choice")
     case "$ota_choice" in
         1) update_script ;;
         2) force_update_geo ;;
@@ -60637,7 +60671,7 @@ main() {
     case "${1:-}" in
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
-        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
+        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; [[ ! -L "$_conv_out" ]] || die 'Legacy conversion output directory must not be a symbolic link.'; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
         --xray-config-autorecover) shift; prepare_noninteractive_file_operation; xray_config_autorecover; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;

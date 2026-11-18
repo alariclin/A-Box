@@ -53680,14 +53680,14 @@ wallos_install_or_update() {
         # open succeeded: reclaim only removes A-Box-owned rules
         # (comment/ledger-gated), so registering an already-open foreign
         # port is a harmless no-op.
-        wallos_fw_register_opened "$pubport" tcp || true
+        wallos_fw_register_opened "$pubport" tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${pubport}/tcp; a later uninstall may leave the port open.${NC}"
         _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         # R3-NEW-03: same ledger gap as the public port above (and 80/tcp
         # may already be open from wallos_https_setup's own allowPort,
         # which also leaves no ledger entry). Register directly.
-        wallos_fw_register_opened 80 tcp || true
+        wallos_fw_register_opened 80 tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening 80/tcp; a later uninstall may leave the port open.${NC}"
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
         _fw_open_out=$(_wallos_fw_open_tracked "$port" tcp); _fw_open_rc=$?
@@ -53695,7 +53695,7 @@ wallos_install_or_update() {
         (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         # R3-NEW-03: same ledger gap as the https ports above; the http
         # container port (e.g. 29503) would otherwise never be registered.
-        wallos_fw_register_opened "$port" tcp || true
+        wallos_fw_register_opened "$port" tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${port}/tcp; a later uninstall may leave the port open.${NC}"
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     fi
     # S143: the upgrade journal is the rollback material. It must not be
@@ -54089,8 +54089,8 @@ wallos_menu() {
                     local _wl_pub='' _wl_port='' _wf=''
                     _wl_pub=$(wallos_state_value PUBPORT 2>/dev/null || true)
                     _wl_port=$(wallos_state_value PORT 2>/dev/null || true)
-                    [[ -n "$_wl_pub" ]] && wallos_fw_register_opened "$_wl_pub" tcp || true
-                    [[ -n "$_wl_port" ]] && wallos_fw_register_opened "$_wl_port" tcp || true
+                    [[ -n "$_wl_pub" ]] && wallos_fw_register_opened "$_wl_pub" tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${_wl_pub}/tcp; a later uninstall may leave the port open.${NC}"
+                    [[ -n "$_wl_port" ]] && wallos_fw_register_opened "$_wl_port" tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${_wl_port}/tcp; a later uninstall may leave the port open.${NC}"
                     wallos_fw_reclaim_registered || msg "${YELLOW}[!] Failed to reclaim a Wallos firewall opening during uninstall; check the firewall rules manually.${NC}"
                     # R3-NEW-03 (low observation): deleting the container
                     # left the A-Box-wallos fail2ban jail/filter loaded.

@@ -53113,7 +53113,11 @@ wallos_status() {
             # HTTPS needs IPv4). 80/tcp is shared with the Hy2
             # HTTP-01 challenge (altPort 80), so the TLS front and
             # the challenge coexist on the same port by design.
-            msg "No public IPv4 address detected; TLS handshake check skipped (Wallos HTTPS needs IPv4)."
+            if [[ ! "$_wport" =~ ^[0-9]+$ ]]; then
+                msg "No Wallos public port (PUBPORT) recorded; TLS handshake check skipped."
+            else
+                msg "No public IPv4 address detected; TLS handshake check skipped (Wallos HTTPS needs IPv4)."
+            fi
         fi
     fi
     port=$(wallos_state_value PORT 2>/dev/null || true)

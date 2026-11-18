@@ -39076,7 +39076,7 @@ user_guard_tick() {
         [[ -n "$rcore" && -n "$rtag" ]] || continue
         case "$rcore" in
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
-            hy2) stats=''; have=0; gen='' ;;  # M-38: Hy2 has no per-user stats source; only expiry/window are enforced, quota never triggers
+            hy2) stats=''; have=0; gen='' ;;  # M-38: this script does not currently consume any Hy2 stats source; only expiry/window are enforced, quota never triggers
             *) stats=''; have=0; gen='' ;;
         esac
         users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end"

@@ -13779,8 +13779,14 @@ def check_fd(fd, path):
     try:
         st=os.fstat(fd)
         acme = path == target or path.startswith(target + '/')
-        uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
-        gid_ok = st.st_gid in ({0, runtime_gid})
+        # U1 (F05-02): the ownership marker is the trust anchor and
+        # must stay root:root. The generic ACME rule that also accepts
+        # runtime ownership must never apply to it: a runtime-owned
+        # marker used to pass this check while marker_valid() rejected
+        # it, so prepare failed on a fully canonical tree.
+        is_marker = (path == os.path.join(target, '.A-Box-managed'))
+        uid_ok = (st.st_uid == 0) if is_marker else st.st_uid in ({0, runtime_uid} if acme else {0})
+        gid_ok = (st.st_gid == 0) if is_marker else st.st_gid in ({0, runtime_gid})
         legacy_root_dir_ok = acme and path == target and st.st_uid == 0 and st.st_gid == 0 and stat.S_ISDIR(st.st_mode) and (st.st_mode & 0o077) == 0
         group_write_ok = acme and path == target and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
         if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok) or (acme and path == target and not (group_write_ok or legacy_root_dir_ok)):
@@ -13850,6 +13856,9 @@ hysteria_acme_repair_tree_ownership() {
     # fails the manifest re-check and the caller refuses instead of
     # proceeding on a half-fixed tree. Symlinks, hard-linked files and
     # unrecorded paths are skipped, never followed or modified.
+    # U1 (F05-02): the ownership marker (.A-Box-managed) is special:
+    # it is never handed to the runtime user; see the restricted
+    # marker branch below (root:root 0600, manifest-verified only).
     local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" group="${3:-}"
     local gid=''
     [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
@@ -13857,9 +13866,13 @@ hysteria_acme_repair_tree_ownership() {
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[0-9]+$ ]] || return 1
     python3 -I - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
-import os, re, stat, sys
+import hashlib, os, re, stat, sys
 manifest, target, gid = sys.argv[1], sys.argv[2], int(sys.argv[3])
 target = os.path.normpath(target)
+# U1 (F05-02): the ownership marker is the trust anchor; its
+# canonical state is root:root 0600 (see marker_valid()).
+marker_path = os.path.join(target, '.A-Box-managed')
+marker_magic = b'A-Box managed Hysteria ACME directory v1'
 # R15C5-01: manifest preconditions on the OPEN file, not a
 # re-resolved path. fstat pins the inode; lstat must agree (else the
 # path was swapped for a symlink between the bash check and the open).
@@ -13942,6 +13955,49 @@ for typ, _fam, rawpath, _h in rows:
     try:
         st = os.fstat(fd)
         if stat.S_ISLNK(st.st_mode):
+            continue
+        # U1 (F05-02): the ownership marker is the trust anchor and
+        # must NEVER be handed to the runtime user below. A marker
+        # that is already root:root 0600 is left alone. Any other
+        # state is restored to root:root 0600 only through the
+        # restricted recovery below, and only when all of these hold:
+        # the file was opened via its pinned parent fd (O_NOFOLLOW),
+        # it is a recorded regular file with a single link, its
+        # content read through the held fd hashes to the hash recorded
+        # for it in the trusted root-owned manifest (the manifest
+        # preconditions above already pinned it to root:root 0600),
+        # and it carries the magic marker line. Anything else is
+        # skipped, so the manifest re-check refuses and the operator
+        # must recover it by hand. The magic line alone never
+        # authorises recovery, and content is never rewritten here.
+        if path == marker_path:
+            if typ != 'F' or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                continue
+            _mdata = bytearray()
+            _moff = 0
+            _mtoolarge = False
+            try:
+                while True:
+                    _mchunk = os.pread(fd, 1024 * 1024, _moff)
+                    if not _mchunk:
+                        break
+                    _moff += len(_mchunk)
+                    if _moff > 4 * 1024 * 1024:
+                        _mtoolarge = True
+                        break
+                    _mdata += _mchunk
+            except OSError:
+                continue
+            if _mtoolarge:
+                continue
+            if hashlib.sha256(bytes(_mdata)).hexdigest() != _h:
+                continue
+            if marker_magic not in bytes(_mdata).split(b'\n'):
+                continue
+            if st.st_uid != 0 or st.st_gid != 0:
+                os.fchown(fd, 0, 0)
+            if stat.S_IMODE(st.st_mode) != 0o600:
+                os.fchmod(fd, 0o600)
             continue
         if stat.S_ISDIR(st.st_mode):
             if typ != 'D':
@@ -14065,6 +14121,103 @@ os.replace(tmp, manifest)
 PY_ACME_READOPT
 }
 
+hysteria_acme_marker_recovery_evidence() {
+    # U1 (F05-02): restricted recovery evidence for a marker damaged by
+    # the old repair (e.g. runtime-owned 0640 with intact content).
+    # Returns 0 only when the marker is proven to be OUR marker from
+    # evidence independent of its current ownership:
+    #   * a manifest record for this exact marker path, in the trusted
+    #     root-owned manifest (open-file fstat pinned, lstat agrees,
+    #     uid/gid 0:0, mode 0600 — same preconditions as the repair);
+    #   * the marker file opened via its pinned parent fd (O_NOFOLLOW),
+    #     a regular file with a single link (symlink/hard-link refused);
+    #   * its content, read through the held fd, hashes to the recorded
+    #     hash AND carries the magic marker line.
+    # The magic line alone never suffices, content is never rewritten
+    # here, and this changes nothing: the caller still runs the repair
+    # (which re-verifies every condition) and the strict manifest
+    # re-check afterwards. Without this evidence the gate refuses and
+    # the operator must recover the marker by hand.
+    local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" marker="${3:-$HY2_ACME_OWNER_MARKER}"
+    [[ "$target" == /etc/hysteria/acme ]] || return 1
+    [[ "$marker" == "$target/.A-Box-managed" ]] || return 1
+    path_parent_chain_safe "$marker" || return 1
+    path_tree_has_mountpoint "$target" && return 1
+    [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+    python3 -I - "$manifest" "$target" "$marker" <<'PY_ACME_MARKER_EVIDENCE'
+import hashlib, os, stat, sys
+manifest, target, marker = sys.argv[1:]
+try:
+    f = open(manifest, 'r', encoding='utf-8')
+except OSError:
+    raise SystemExit(1)
+fst = os.fstat(f.fileno())
+try:
+    lst = os.lstat(manifest)
+except OSError:
+    raise SystemExit(1)
+if (fst.st_dev, fst.st_ino) != (lst.st_dev, lst.st_ino):
+    raise SystemExit(1)
+if fst.st_uid != 0 or fst.st_gid != 0 or (fst.st_mode & 0o777) != 0o600:
+    raise SystemExit(1)
+recorded = None
+for line in f:
+    p = line.rstrip('\n').split('\t')
+    if len(p) != 4 or p[0] not in {'F', 'D'} or p[1] != 'hysteria' or not p[2].startswith('/') or '\x00' in line:
+        continue
+    if p[0] == 'F' and p[2] == marker:
+        recorded = p[3]
+f.close()
+if recorded is None:
+    raise SystemExit(1)
+def _open_parent_fd(path):
+    # Same fd-pinning pattern as the repair: a swap before a step is
+    # refused (ELOOP); a swap after it cannot redirect the held fd.
+    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for comp in parts[:-1]:
+            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+try:
+    parent_fd, leaf = _open_parent_fd(marker)
+except OSError:
+    raise SystemExit(1)
+try:
+    mfd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+except OSError:
+    os.close(parent_fd)
+    raise SystemExit(1)
+os.close(parent_fd)
+try:
+    st = os.fstat(mfd)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        raise SystemExit(1)
+    data = bytearray()
+    off = 0
+    while True:
+        chunk = os.pread(mfd, 1024 * 1024, off)
+        if not chunk:
+            break
+        off += len(chunk)
+        if off > 4 * 1024 * 1024:
+            raise SystemExit(1)
+        data += chunk
+finally:
+    os.close(mfd)
+if hashlib.sha256(bytes(data)).hexdigest() != recorded:
+    raise SystemExit(1)
+if b'A-Box managed Hysteria ACME directory v1' not in bytes(data).split(b'\n'):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY_ACME_MARKER_EVIDENCE
+}
+
 prepare_hysteria_acme_dir_ownership() {
     local dir=/etc/hysteria/acme marker=$HY2_ACME_OWNER_MARKER user group _pgroup _pmode
     IFS=$'\t' read -r user group < <(abox_runtime_identity hysteria) || return 1
@@ -14085,7 +14238,19 @@ prepare_hysteria_acme_dir_ownership() {
     fi
     if [[ -e "$dir" || -L "$dir" ]]; then
         [[ ! -L "$dir" && -d "$dir" ]] || return 1
-        if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
+        # U1 (F05-02): the tree is managed if the marker is valid, the
+        # manifest matches, or the marker carries restricted recovery
+        # evidence (manifest-verified content, independent of its
+        # current ownership). The repair still re-verifies everything
+        # and the strict manifest re-check below has the final word.
+        if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir" && ! hysteria_acme_marker_recovery_evidence "$ABOX_CORE_OWNERSHIP" "$dir" "$marker"; then
+            # U1 (F05-02): a marker that exists but cannot be verified
+            # (bad ownership/content, or no matching manifest record)
+            # is never auto-certified. Refuse and point the operator
+            # at manual recovery.
+            if [[ -e "$marker" || -L "$marker" ]]; then
+                msg "${RED}$(tr_msg hy2_acme_tree_drift)${NC}"
+            fi
             return 1
         fi
         # U145: the gate above passes on a valid marker even when the

@@ -20611,8 +20611,175 @@ except Exception:
 PY_TAR_EXTRACT
 }
 
+# B-C2 (final-round): total budget for the "services stopped, config not
+# yet written" fetch segment of a (re)deployment. The guard is armed by
+# abox_fetch_guard_start just before release_ports and disarmed by
+# abox_fetch_guard_stop once every download is verified and staged; every
+# fetch primitive checks the deadline at each retry boundary and caps its
+# own curl -m at the remaining budget, so a hung download can never
+# outlive the budget by more than one in-flight call. On expiry the
+# caller dies and the existing deployment transaction rolls the
+# pre-deployment snapshot back -- no kill, no signal trap required.
+# ABOX_FETCH_TOTAL_BUDGET_SECONDS may be overridden in the environment;
+# the watchdog grace is ABOX_FETCH_WATCHDOG_GRACE_SECONDS (60s).
+ABOX_FETCH_TOTAL_BUDGET_SECONDS="${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}"
+ABOX_FETCH_DEADLINE_EPOCH=''
+ABOX_FETCH_SEGMENT_START=''
+ABOX_FETCH_SEGMENT_LABEL=''
+ABOX_FETCH_WATCHDOG_DIR=''
+ABOX_FETCH_WATCHDOG_PID=''
+ABOX_DEPLOY_ROLLBACK_STATE_FILE='/run/A-Box-deploy-rollback-state'
+ABOX_DEPLOY_WATCHDOG_STALL_FILE='/run/A-Box-deploy-watchdog-stall.log'
+
+abox_fetch_deadline_remaining() {
+    local _now
+    [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] || return 1
+    [[ "$ABOX_FETCH_DEADLINE_EPOCH" =~ ^[0-9]+$ ]] || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$(( ABOX_FETCH_DEADLINE_EPOCH - _now ))"
+    return 0
+}
+
+# Returns 0 when no budget is armed or budget remains; 1 when expired.
+abox_fetch_deadline_check() {
+    local _label="${1:-fetch}" _remaining
+    _remaining=$(abox_fetch_deadline_remaining 2>/dev/null) || return 0
+    (( _remaining > 0 )) && return 0
+    printf '%s\n' "[A-Box][fetch-budget] total fetch budget (${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}s) expired during ${_label}; aborting so the deployment transaction rolls back." >&2
+    return 1
+}
+
+# Prints the curl -m cap for one call: min(default, remaining budget).
+# Returns 1 when the budget is already spent (caller must not start).
+abox_fetch_curl_max_time() {
+    local _def="${1:-60}" _remaining
+    [[ "$_def" =~ ^[0-9]+$ ]] || _def=60
+    _remaining=$(abox_fetch_deadline_remaining 2>/dev/null) || { printf '%s\n' "$_def"; return 0; }
+    (( _remaining <= 0 )) && return 1
+    (( _remaining < _def )) && printf '%s\n' "$_remaining" || printf '%s\n' "$_def"
+    return 0
+}
+
+abox_fetch_heartbeat() {
+    [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" && -d "$ABOX_FETCH_WATCHDOG_DIR" ]] || return 0
+    : > "$ABOX_FETCH_WATCHDOG_DIR/heartbeat" 2>/dev/null || true
+    return 0
+}
+
+abox_fetch_guard_start() {
+    local _label="${1:-deploy}" _seconds="${2:-${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}}" _now _srv
+    [[ "$_seconds" =~ ^[0-9]+$ ]] || _seconds=300
+    _now=$(date +%s 2>/dev/null || printf '0')
+    ABOX_FETCH_DEADLINE_EPOCH=$(( _now + _seconds ))
+    ABOX_FETCH_TOTAL_BUDGET_SECONDS="$_seconds"
+    ABOX_FETCH_SEGMENT_START="$_now"
+    ABOX_FETCH_SEGMENT_LABEL="$_label"
+    ABOX_FETCH_WATCHDOG_DIR=$(mktemp -d /tmp/A-Box-fetch-watchdog.XXXXXX 2>/dev/null) || ABOX_FETCH_WATCHDOG_DIR=''
+    if [[ -n "$ABOX_FETCH_WATCHDOG_DIR" ]]; then
+        : > "$ABOX_FETCH_WATCHDOG_DIR/heartbeat" 2>/dev/null || true
+        # Snapshot of the services running right now (pre-stop): if the
+        # foreground stalls past the budget, the watchdog restarts exactly
+        # these with their still-untouched configs.
+        : > "$ABOX_FETCH_WATCHDOG_DIR/services" 2>/dev/null || true
+        for _srv in xray sing-box hysteria; do
+            if abox_owns_service "$_srv" 2>/dev/null && is_service_running "$_srv" 2>/dev/null; then
+                printf '%s\n' "$_srv" >> "$ABOX_FETCH_WATCHDOG_DIR/services" 2>/dev/null || true
+            fi
+        done
+        ( trap - EXIT INT TERM HUP; ABOX_DIE_HOOK=''; ABOX_DEPLOY_TX_ACTIVE=0; abox_deploy_watchdog_loop "$ABOX_FETCH_WATCHDOG_DIR" "$$" "$ABOX_FETCH_DEADLINE_EPOCH" "$_label" ) & ABOX_FETCH_WATCHDOG_PID=$!
+    fi
+    msg "[fetch] ${_label}: fetch segment started at $(now_iso) (total budget ${_seconds}s; on timeout the deployment rolls back)"
+    return 0
+}
+
+abox_fetch_guard_stop() {
+    local _now _elapsed
+    if [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" && -d "$ABOX_FETCH_WATCHDOG_DIR" ]]; then
+        : > "$ABOX_FETCH_WATCHDOG_DIR/done" 2>/dev/null || true
+    fi
+    if [[ -n "${ABOX_FETCH_WATCHDOG_PID:-}" ]]; then
+        kill "$ABOX_FETCH_WATCHDOG_PID" 2>/dev/null || true
+        wait "$ABOX_FETCH_WATCHDOG_PID" 2>/dev/null || true
+        ABOX_FETCH_WATCHDOG_PID=''
+    fi
+    if [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" ]]; then
+        rm -rf -- "$ABOX_FETCH_WATCHDOG_DIR" 2>/dev/null || true
+        ABOX_FETCH_WATCHDOG_DIR=''
+    fi
+    if [[ -n "${ABOX_FETCH_SEGMENT_START:-}" ]]; then
+        _now=$(date +%s 2>/dev/null || printf '0')
+        if [[ "$_now" =~ ^[0-9]+$ && "$ABOX_FETCH_SEGMENT_START" =~ ^[0-9]+$ ]]; then
+            _elapsed=$(( _now - ABOX_FETCH_SEGMENT_START ))
+            msg "[fetch] ${ABOX_FETCH_SEGMENT_LABEL:-deploy}: fetch segment finished in ${_elapsed}s"
+        fi
+    fi
+    ABOX_FETCH_DEADLINE_EPOCH=''
+    ABOX_FETCH_SEGMENT_START=''
+    return 0
+}
+
+# Background watchdog for the fetch segment. Runs in a child subshell;
+# its first act is to drop the inherited deployment transaction traps,
+# so it can never roll back from the child. It exits silently when the
+# parent dies or the segment completes (done marker). Only when the
+# deadline plus grace has passed with no completion does it fire once:
+# it lands a stall state file and best-effort restarts the pre-stop
+# snapshot services. It never kills anything and never touches config;
+# the foreground, on regaining control, still hits its deadline checks
+# and dies into the normal transaction rollback.
+abox_deploy_watchdog_loop() {
+    trap - EXIT INT TERM HUP
+    ABOX_DIE_HOOK=''
+    ABOX_DEPLOY_TX_ACTIVE=0
+    local _dir="$1" _parent="$2" _deadline="$3" _label="$4"
+    local _grace _now _stall _last_hb _srv _rc _rs_mtime _rollback_state
+    _grace="${ABOX_FETCH_WATCHDOG_GRACE_SECONDS:-60}"
+    [[ "$_grace" =~ ^[0-9]+$ ]] || _grace=60
+    _stall="${ABOX_DEPLOY_WATCHDOG_STALL_FILE:-/run/A-Box-deploy-watchdog-stall.log}"
+    _rollback_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    while true; do
+        sleep 5
+        kill -0 "$_parent" 2>/dev/null || exit 0
+        [[ -f "$_dir/done" ]] && exit 0
+        _now=$(date +%s 2>/dev/null || printf '0')
+        [[ "$_now" =~ ^[0-9]+$ ]] || continue
+        (( _now < _deadline + _grace )) && continue
+        # A rollback already in progress owns recovery now; stand down.
+        if [[ -f "$_rollback_state" ]]; then
+            _rs_mtime=$(stat -c %Y "$_rollback_state" 2>/dev/null || printf '0')
+            if [[ "$_rs_mtime" =~ ^[0-9]+$ ]] && (( _rs_mtime >= _deadline )); then exit 0; fi
+        fi
+        _last_hb='unknown'
+        [[ -f "$_dir/heartbeat" ]] && _last_hb=$(stat -c %y "$_dir/heartbeat" 2>/dev/null || printf 'unknown')
+        {
+            printf 'A-Box deploy watchdog stall\n'
+            printf 'label: %s\n' "$_label"
+            printf 'time: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || printf 'unknown')"
+            printf 'watchdog_pid: %s\n' "$BASHPID"
+            printf 'deadline_epoch: %s\n' "$_deadline"
+            printf 'last_heartbeat: %s\n' "$_last_hb"
+        } > "$_stall" 2>/dev/null || true
+        if [[ -f "$_dir/services" ]]; then
+            while IFS= read -r _srv || [[ -n "$_srv" ]]; do
+                [[ -n "$_srv" ]] || continue
+                _rc=0
+                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                    systemctl start "$_srv" >/dev/null 2>&1 || _rc=$?
+                elif command -v rc-service >/dev/null 2>&1; then
+                    rc-service "$_srv" start >/dev/null 2>&1 || _rc=$?
+                else
+                    _rc=127
+                fi
+                printf 'restart %s: rc=%s\n' "$_srv" "$_rc" >> "$_stall" 2>/dev/null || true
+            done < "$_dir/services"
+        fi
+        exit 0
+    done
+}
+
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now
+    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now _api_max_time=60
     local -a args=()
     [[ -n "$url" ]] || return 1
     if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
@@ -20626,6 +20793,20 @@ github_api_get() {
         -H 'Accept: application/vnd.github+json'
         -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
+        # B-C2: total fetch budget -- stop the retry course at once when
+        # the deploy fetch segment budget is spent; never sleep past it.
+        # Helpers are consulted only when a budget is armed
+        # (ABOX_FETCH_DEADLINE_EPOCH); unarmed callers -- including
+        # fixtures that extract this function standalone -- keep the
+        # previous uncapped behaviour verbatim.
+        _api_max_time=60
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
+            _api_max_time=$(abox_fetch_curl_max_time 60) || { rm -f -- "$tmp" "$headers"; return 1; }
+        fi
+        args=(-sS -L --connect-timeout 10 -m "$_api_max_time" -D "$headers"
+            -H 'Accept: application/vnd.github+json'
+            -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
         : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
         if [[ -n "${GITHUB_TOKEN:-}" ]]; then
             [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
@@ -20666,6 +20847,9 @@ github_api_get() {
             return 1
         fi
         if (( attempt == max_attempts )); then break; fi
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
+        fi
         if (( delay > 30 )); then delay=30; fi
         if (( delay > 0 )); then sleep "$delay"; fi
         if (( delay < 30 )); then delay=$((delay * 2)); fi
@@ -21603,7 +21787,7 @@ singbox_asset_json_from_release() {
 
 core_fetch_upstream_release_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
-    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc
+    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc _up_max_time=180 _up_retry=2
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
     release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_api_unavailable "${repo}" "${release_ref}")${NC}" >&2; return 1; }
     [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
@@ -21627,8 +21811,18 @@ core_fetch_upstream_release_asset() {
     # and update resolved state while the requested path holds no file.
     if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2; return 1; fi
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
+        # B-C2: total fetch budget -- one spent budget ends the mirror
+        # course; with a budget armed, curl gets no per-call retries so
+        # a single attempt can never overrun the remaining budget.
+        _up_max_time=180
+        _up_retry=2
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "core_fetch_upstream_release_asset $repo $release_ref" || return 1
+            _up_max_time=$(abox_fetch_curl_max_time 180) || return 1
+            abox_fetch_deadline_remaining >/dev/null 2>&1 && _up_retry=0
+        fi
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry "$_up_retry" --retry-delay 2 --connect-timeout 10 -m "$_up_max_time" "${mirror}${download_url}" -o "$tmp_file"; then
             # S31 (GPT-11): digest first -- the digest is already in hand
             # from release metadata, so the cheap SHA-256 check must reject
             # a bad archive before the expensive full-archive parse runs.
@@ -21677,7 +21871,7 @@ fetch_github_release() {
         if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] $(tprintf fg_mlkem "$target_ref")${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die "$(tr_msg fg_unparsable)"; fi
     fi
     msg "${YELLOW}$(tprintf fetch_github_release_candidate "${repo}" "${target_ref}" "${target_source}")${NC}"
-    probe_core_sources_banner
+    probe_core_sources_banner "$repo" "$target_ref"
 
     if [[ "$target_source" == 'mirror-exact' ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then return 0; fi
@@ -21782,7 +21976,7 @@ fetch_github_release() {
 }
 
 fetch_geo_data() {
-    local file_name official_url out tmp_out size repo asset release_json asset_json asset_name download_url digest release_ref out_created=0
+    local file_name official_url out tmp_out size repo asset release_json asset_json asset_name download_url digest release_ref out_created=0 _geo_t0 _geo_now _geo_max_time=90
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
@@ -21795,11 +21989,16 @@ fetch_geo_data() {
     fi
     [[ ! -L "$out" && ! -d "$out" ]] || die "$(tprintf gd_out_notfile "$out")"
     mkdir -p "$(dirname "$out")" || die "$(tr_msg gd_out_dir)"
+    _geo_t0=$(date +%s 2>/dev/null || printf '0')
+    msg "[fetch] geo ${file_name}: download started at $(now_iso)"
     tmp_out=$(umask 077; mktemp "${out}.download.XXXXXX") || { (( out_created == 1 )) && rm -f -- "$out"; die "$(tr_msg gd_tmp)"; }
 
     if [[ "$official_url" =~ ^https://github.com/([^/]+/[^/]+)/releases/latest/download/([^/?#]+)$ ]]; then
         repo="${BASH_REMATCH[1]}"
         asset="${BASH_REMATCH[2]}"
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} metadata."; }
+        fi
         release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
         [[ -n "$release_json" ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_api "$repo")"; }
         asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
@@ -21810,7 +22009,12 @@ fetch_geo_data() {
         digest=$(jq -r '.digest // ""' <<< "$asset_json")
         [[ -n "$asset_name" && -n "$release_ref" ]] || { rm -f -- "$tmp_out"; die 'Geo Release metadata missing asset name or tag.'; }
         valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die "$(tr_msg gd_url_mismatch)"; }
-        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
+        _geo_max_time=90
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
+            _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
+        fi
+        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
         if ! verify_github_asset_digest "$tmp_out" "$digest"; then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
             die "$(tprintf gd_digest "$file_name")"
@@ -21838,6 +22042,10 @@ fetch_geo_data() {
     if [[ ! -f "$out" ]]; then
         [[ -d "$out" ]] && rm -f -- "$out/$(basename "$tmp_out")" 2>/dev/null
         die "$(tprintf gd_commit "$file_name")"
+    fi
+    _geo_now=$(date +%s 2>/dev/null || printf '0')
+    if [[ "$_geo_t0" =~ ^[0-9]+$ && "$_geo_now" =~ ^[0-9]+$ ]]; then
+        msg "[fetch] geo ${file_name}: finished in $(( _geo_now - _geo_t0 ))s"
     fi
 }
 
@@ -25523,6 +25731,7 @@ deploy_official_hy2() {
         clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
         pre_install_setup hysteria HY2 || { deployment_transaction_rollback; return 1; }
+        abox_fetch_guard_start "hysteria HY2"
         release_ports
         get_architecture
     fi
@@ -25530,14 +25739,17 @@ deploy_official_hy2() {
     hy2_tmp=$(mktemp -d /tmp/A-Box-hysteria.XXXXXX) || die "$(tr_msg hy2b_tmp)"
     ABOX_DEPLOY_TX_TMP="$hy2_tmp"
     hy2_bin="$hy2_tmp/hysteria_core"
+    abox_fetch_heartbeat
     clear_core_release_resolution HyNetworks/hysteria
     fetch_github_release HyNetworks/hysteria hysteria_core "$hy2_bin"
+    abox_fetch_heartbeat
     chmod 755 "$hy2_bin" || die 'Hysteria staged binary chmod failed.'
     "$hy2_bin" version >/dev/null 2>&1 || die 'Hysteria staged binary execution check failed.'
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || die 'Hysteria binary atomic install failed.'
     rm -rf -- "$hy2_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/hysteria version >/dev/null 2>&1 || die "$(tr_msg hy2b_exec)"
+    abox_fetch_guard_stop
 
     HY2_PASS=$(rand_alnum 20)
     HY2_OBFS=$(rand_alnum 16)
@@ -25983,6 +26195,17 @@ rollback_restart_services_from_backup() {
 
 deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
+    # B-C2: land a rollback state file FIRST, so a later inspection can
+    # tell a rollback happened, when, why, and from which backup -- even
+    # when the operator only killed the hung deploy or it timed out.
+    # Best-effort: a failed write must never fail the rollback itself.
+    {
+        printf 'time: %s\n' "$(now_iso)"
+        printf 'pid: %s\n' "$$"
+        printf 'reason: %s\n' "${ABOX_DEPLOY_TX_REASON:-deployment}"
+        printf 'backup: %s\n' "${ABOX_DEPLOY_TX_BACKUP:-}"
+        printf 'targets: %s\n' "${ABOX_DEPLOY_TX_TARGETS:-}"
+    } > "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
@@ -26103,6 +26326,52 @@ begin_deployment_transaction() {
     ABOX_DEPLOY_TX_BACKUP="$ABOX_LAST_BACKUP"
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
+}
+
+# L6 (final-round): preserve the uninstall transaction backup before the
+# commit clears the transaction directory. The transaction backup is the
+# only pre-uninstall snapshot when the user answered N to the prompt
+# backup; deleting it with the tx dir left only a dangling separated
+# key. The archive + sha256 + hmac are copied to /root/A-Box-backups
+# (the same retention pool as the prompt backup), verified, and only
+# then may the commit proceed. Any failure here returns 1; the caller
+# must die so the transaction rolls back with the backup still in place.
+# The separated recovery key already lives in /root/A-Box-backup-keys
+# (written by backup_current_config); this step never touches keys, so
+# an old dangling key is left alone, never silently deleted.
+preserve_uninstall_transaction_backup() {
+    local tx_backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    local safe_dir="${ABOX_UNINSTALL_BACKUP_SAFE_DIR:-/root/A-Box-backups}"
+    local base dest key_path _sfx
+    [[ -n "$tx_backup" && -f "$tx_backup" && ! -L "$tx_backup" ]] || return 1
+    [[ -n "$tx_dir" && "$tx_backup" == "$tx_dir"/* ]] || return 1
+    [[ -n "$safe_dir" && "$safe_dir" == /* ]] || return 1
+    mkdir_private "$safe_dir" || return 1
+    path_owned_by_root "$safe_dir" || return 1
+    path_mode_has_no_group_other_write "$safe_dir" || return 1
+    base=$(basename -- "$tx_backup")
+    dest="$safe_dir/$base"
+    [[ ! -e "$dest" && ! -L "$dest" ]] || return 1
+    [[ -f "${tx_backup}.sha256" && ! -L "${tx_backup}.sha256" ]] || return 1
+    [[ -f "${tx_backup}.hmac" && ! -L "${tx_backup}.hmac" ]] || return 1
+    cp -- "$tx_backup" "$dest.tmp.$$" 2>/dev/null || return 1
+    chmod 600 "$dest.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$"; return 1; }
+    for _sfx in .sha256 .hmac; do
+        cp -- "$tx_backup$_sfx" "$dest$_sfx.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+        chmod 600 "$dest$_sfx.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    done
+    mv -f -T -- "$dest.tmp.$$" "$dest" || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    mv -f -T -- "$dest.sha256.tmp.$$" "$dest.sha256" || { rm -f -- "$dest" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    mv -f -T -- "$dest.hmac.tmp.$$" "$dest.hmac" || { rm -f -- "$dest" "$dest.sha256" "$dest.hmac.tmp.$$"; return 1; }
+    backup_checksum_verify "$dest" "$dest.sha256" || { rm -f -- "$dest" "$dest.sha256" "$dest.hmac"; return 1; }
+    key_path="/root/A-Box-backup-keys/$base.key"
+    if [[ -f "$key_path" && ! -L "$key_path" ]]; then
+        msg "[*] Uninstall transaction backup preserved: $dest (recovery key: $key_path)"
+    else
+        msg "[*] Uninstall transaction backup preserved: $dest"
+    fi
+    msg "[*] This is the uninstall transaction backup; the prompt backup (if any) is a separate file in $safe_dir under the same retention policy."
+    return 0
 }
 
 commit_deployment_transaction() {
@@ -31465,6 +31734,7 @@ deploy_xray() {
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup xray "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    abox_fetch_guard_start "xray ${MODE_IN}"
     release_ports
     get_architecture
 
@@ -31474,8 +31744,10 @@ deploy_xray() {
     xray_zip="$xray_tmp/xray_core.zip"
     xray_ext="$xray_tmp/xray_ext"
     mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+    abox_fetch_heartbeat
     clear_core_release_resolution XTLS/Xray-core
     fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+    abox_fetch_heartbeat
     extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die "$(tr_msg dp_xray_extract)"
     [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die "$(tr_msg dp_xray_bin)"
     chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
@@ -31489,10 +31761,14 @@ deploy_xray() {
 
     geo_tmp="$xray_tmp/geo"
     mkdir -p "$geo_tmp" || die "$(tr_msg dp_geo_tmpdir)"
+    abox_fetch_heartbeat
     fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$geo_tmp/geoip.dat"
+    abox_fetch_heartbeat
     fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$geo_tmp/geosite.dat"
+    abox_fetch_heartbeat
     install_file_atomically "$geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
     install_file_atomically "$geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
+    abox_fetch_guard_stop
     rm -rf -- "$xray_tmp"
     ABOX_DEPLOY_TX_TMP=''
 
@@ -31620,6 +31896,7 @@ deploy_singbox() {
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    abox_fetch_guard_start "sing-box ${MODE_IN}"
     release_ports
     get_architecture
 
@@ -31629,8 +31906,10 @@ deploy_singbox() {
     sb_tar="$sb_tmp/singbox_core.tar.gz"
     sb_ext="$sb_tmp/extract"
     mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir_tmp)"
+    abox_fetch_heartbeat
     clear_core_release_resolution SagerNet/sing-box
     fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+    abox_fetch_heartbeat
     SB_PATH="$sb_ext/sing-box"
     extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
     [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
@@ -31640,6 +31919,7 @@ deploy_singbox() {
     rm -rf -- "$sb_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
+    abox_fetch_guard_stop
 
     prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
@@ -34066,6 +34346,11 @@ do_cleanup() {
             fi
             setup_shortcut || die "$(tr_msg cu_shortcut)"
         fi
+        # L6: preserve the transaction backup BEFORE the commit clears
+        # the transaction directory; a failed transfer aborts the
+        # cleanup (die rolls the pre-uninstall snapshot back) instead
+        # of silently deleting the only backup.
+        preserve_uninstall_transaction_backup || die 'Uninstall transaction backup preservation failed; aborting before commit so the pre-uninstall backup is not lost.'
         commit_deployment_transaction
         if (( _argo_rm_failed == 1 )); then
             msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
@@ -35225,16 +35510,25 @@ show_core_pin_docs() {
 }
 
 probe_core_sources_banner() {
-    local pref='latest-stable-first' api_code mirror_code base
+    local pref='latest-stable-first' api_code mirror_code base repo="${1:-}" ref="${2:-}" api_url
     [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    # B-C2: probe the exact release tag the fetch is about to pull, not
+    # the release list: a 200 on the list endpoint never proved the tag
+    # fetch would succeed (list 200 + tag fetch 403 was observed). With
+    # no repo/ref given, keep the legacy list probe for compatibility.
+    if [[ -n "$repo" && -n "$ref" ]]; then
+        api_url="https://api.github.com/repos/${repo}/releases/tags/${ref//\//%2F}"
+    else
+        api_url='https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100'
+    fi
     # SYD-B E13: the release-API probe was single-shot, so one
     # transient blip reported the API dead. Retry it (max 3);
     # the mirror probe stays single-shot by design.
     api_code='000'
     local _try=0
     while (( _try < 3 )); do
-        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "$api_url" 2>/dev/null || printf '000')
         [[ "$api_code" == 200 ]] && break
         _try=$((_try + 1))
         (( _try < 3 )) && sleep 1
@@ -35242,7 +35536,11 @@ probe_core_sources_banner() {
     mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
-    msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    if [[ -n "$repo" && -n "$ref" ]]; then
+        msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release tag ${repo}@${ref}: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    else
+        msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    fi
 }
 
 # Pinned-utility mirror fetch (cloudflared / wgcf). The caller's in-script
@@ -35259,7 +35557,7 @@ fetch_util_mirror_asset() {
 
 fetch_abox_mirror_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" requested_version="${4:-}" prefer_versioned="${5:-0}"
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _core_ver_rc
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _core_ver_rc _mirror_max_time=30 _mirror_retry=2
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     # Integrity depends on TLS: a plaintext HTTP mirror lets a network attacker
@@ -35289,7 +35587,21 @@ fetch_abox_mirror_asset() {
     local sum_dir sum_file sum_sig
     sum_dir=$(mktemp -d) || return 1
     sum_file="$sum_dir/SHA256SUMS"; sum_sig="$sum_dir/SHA256SUMS.sig"
-    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+    # B-C2: total fetch budget applies to the mirror leg too. The curl
+    # line below stays byte-identical: a self-test pins it verbatim for
+    # the follow-redirects property. The budget is enforced by refusing
+    # to start when spent, plus a `timeout` cap when one is available
+    # (the plain line is the fallback where timeout is absent).
+    _mirror_max_time=30
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (SHA256SUMS)" || { rm -rf -- "$sum_dir"; return 1; }
+        _mirror_max_time=$(abox_fetch_curl_max_time 30) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] && command -v timeout >/dev/null 2>&1; then
+        if ! timeout "$_mirror_max_time" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+            rm -rf -- "$sum_dir"; return 1
+        fi
+    elif ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
@@ -35304,7 +35616,14 @@ fetch_abox_mirror_asset() {
     expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
     # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
-    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+    _mirror_max_time=180
+    _mirror_retry=2
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (asset)" || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+        _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+        abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
+    fi
+    if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
             local versioned_leaf
@@ -35316,7 +35635,14 @@ fetch_abox_mirror_asset() {
                 # S32: leaf switched -- re-extract the expected digest for it.
                 expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
                 tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
-                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
+                _mirror_max_time=180
+                _mirror_retry=2
+                if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+                    abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (asset versioned)" || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+                    _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+                    abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
+                fi
+                if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
             else
                 rm -rf -- "$sum_dir"; return 1
             fi
@@ -46061,6 +46387,50 @@ normalize_restored_runtime_ownership() {
     esac
 }
 
+# L4-E10 (final-round): reinstall the USERGUARD cron block after a restore.
+# regenerate used to reinstall only PROBE/GEO/TRAFFIC, so a restore always
+# dropped the user-guard tick even when the backup carried it. Layered by
+# backup fidelity:
+#   1. backup meta/cron.abox.txt validates AND carries a USERGUARD block
+#      -> reinstall (the validator only allows the default tick line, so a
+#        tampered rhythm can never be installed from the backup);
+#   2. otherwise, when users exist or the guard runner is present ->
+#      rebuild with the default rhythm via setup_user_guard;
+#   3. otherwise -> install nothing, but record the explicit
+#      "not installed" status so the restore summary cannot hide it.
+# Sets ABOX_RESTORE_CRON_USERGUARD to installed (backup|default) or
+# "not installed (no users, no runner)". Returns 1 only when an install
+# was attempted and failed.
+restore_user_guard_cron_block() {
+    local _restore_root="${1:-}" _backup_cron='' _users_dir='' _runner='' _have_users=0
+    ABOX_RESTORE_CRON_USERGUARD='not installed (no users, no runner)'
+    [[ -n "$_restore_root" ]] || return 1
+    _backup_cron="$(dirname -- "$_restore_root")/meta/cron.abox.txt"
+    _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
+    _runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
+    if [[ -f "$_backup_cron" && ! -L "$_backup_cron" ]] \
+        && validate_abox_cron_file "$_backup_cron" 2>/dev/null \
+        && { grep -Fq '# A-Box USERGUARD BEGIN' "$_backup_cron" 2>/dev/null \
+            || grep -Fq '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' "$_backup_cron" 2>/dev/null; }; then
+        setup_user_guard || return 1
+        ABOX_RESTORE_CRON_USERGUARD='installed (backup)'
+        return 0
+    fi
+    if [[ -d "$_users_dir" ]] && [[ -n "$(ls -A "$_users_dir" 2>/dev/null)" ]]; then _have_users=1; fi
+    if (( _have_users == 1 )) || [[ -f "$_runner" && ! -L "$_runner" ]]; then
+        setup_user_guard || return 1
+        ABOX_RESTORE_CRON_USERGUARD='installed (default)'
+        return 0
+    fi
+    return 0
+}
+
+# L4-E10: one-line restore summary of the four cron blocks, so a missing
+# block can never hide behind a bare "restore complete".
+report_restore_cron_status() {
+    msg "[cron restore] PROBE:${ABOX_RESTORE_CRON_PROBE:-unknown} GEO:${ABOX_RESTORE_CRON_GEO:-unknown} TRAFFIC:${ABOX_RESTORE_CRON_TRAFFIC:-unknown} USERGUARD:${ABOX_RESTORE_CRON_USERGUARD:-unknown}"
+}
+
 regenerate_runtime_assets_after_restore() {
     local _restore_root="${1:-}" _brc=0
     [[ -n "$_restore_root" ]] || return 1
@@ -46077,14 +46447,23 @@ regenerate_runtime_assets_after_restore() {
             return 1
         fi
     done
+    ABOX_RESTORE_CRON_PROBE='unknown'
+    ABOX_RESTORE_CRON_GEO='unknown'
+    ABOX_RESTORE_CRON_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_USERGUARD='unknown'
     setup_shortcut || return 1
     setup_health_monitor || return 1
+    ABOX_RESTORE_CRON_PROBE='installed'
     setup_geo_cron || return 1
+    ABOX_RESTORE_CRON_GEO='installed'
     if valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
         setup_traffic_monitor || return 1
+        ABOX_RESTORE_CRON_TRAFFIC='installed'
     else
         disable_traffic_monitor || return 1
+        ABOX_RESTORE_CRON_TRAFFIC='disabled'
     fi
+    restore_user_guard_cron_block "$_restore_root" || return 1
 }
 
 
@@ -46386,6 +46765,12 @@ auto_backup_prompt() {
 auto_backup_silent() {
     local reason="${1:-operation}" dest="${2:-$ABOX_DIR/backups}" newest
     msg "${YELLOW}[*] Auto backup before: ${reason}${NC}"
+    # L6: a backup landing in the uninstall transaction directory is a
+    # temporary transaction copy, not a safe backup yet -- say so, or the
+    # identical "backup created" line is misread as the prompt backup.
+    if [[ "$dest" == */A-Box-uninstall-tx.* ]]; then
+        msg "[*] Transaction backup: this copy lives in the temporary uninstall transaction directory and is preserved to /root/A-Box-backups before cleanup completes."
+    fi
     # SYD-B E1b: run the backup in a subshell with the die hook
     # cleared, so a backup failure only fails this call (the caller
     # returns to the menu) instead of exiting the whole script.
@@ -46647,6 +47032,7 @@ PY_LATEST_BACKUP
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
         preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
+    report_restore_cron_status
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
@@ -46847,6 +47233,7 @@ PY_RB_ENUM
     fi
     commit_deployment_transaction
     rm -rf "$work"
+    report_restore_cron_status
     msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
     pause_return
 }
@@ -57394,6 +57781,11 @@ PY_SELFTEST_TAR
     grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' <<< "$source_body" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
     grep -Fq 'XHTTP-$client_uuid' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
     grep -Fq 'probe_core_sources_banner()' <<< "$source_body" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_fetch_guard_start()' <<< "$source_body" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_deploy_watchdog_loop()' <<< "$source_body" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
+    grep -Fq 'preserve_uninstall_transaction_backup()' <<< "$source_body" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
+    grep -Fq 'restore_user_guard_cron_block()' <<< "$source_body" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
+    grep -Fq 'report_restore_cron_status()' <<< "$source_body" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
     grep -Fq 'fetch_abox_mirror_asset()' <<< "$source_body" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 
     assert_ok valid_ip_pref ipv4

@@ -11956,6 +11956,15 @@ prompt_validated() {
             return 1
         fi
         val="${val:-$default}"
+        # M-25: normalize a leading-zero port here, at the entry point,
+        # so every downstream consumer (incl. the eight independent
+        # deployers' `jq --argjson port`) sees the canonical spelling.
+        # valid_port already accepts 0443/01080; only the spelling
+        # changes, never the value. (jq --argjson itself accepts
+        # leading zeros -- this is canonicalization, not a crash fix.)
+        if [[ "$type" == 'port' ]] && valid_port "$val"; then
+            val="$((10#$val))"
+        fi
         if is_test "$type" "$val"; then
             printf '%s' "$val"
             return 0
@@ -12165,7 +12174,7 @@ prompt_port_input() {
         input="${input:-$default_port}"
         if valid_port "$input"; then
             case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
+                22|53|68|80|123|161|323|10085) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
             esac
             printf '%s\n' "$((10#$input))"
             return 0
@@ -12182,7 +12191,7 @@ prompt_ss_port_input() {
         input="${input:-$default_port}"
         if valid_port "$input"; then
             case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
+                22|53|68|80|123|161|323|10085) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
             esac
             printf '%s\n' "$((10#$input))"
             return 0
@@ -26513,30 +26522,6 @@ parse_x25519_keypair_output() {
 }
 
 
-# SOCKS5 landing proxy via Xray-core.
-# Setup SOCKS5 params (port/user/pass/proto). Used by SS-2022 wizard and toolbox.
-# Sets SOCKS_PORT, SOCKS_USER, SOCKS_PASS, SOCKS_PROTO globals.
-setup_socks5_params() {
-    local default_port
-    default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
-    local _tries=0
-    while ! is_test port "$default_port" 2>/dev/null || [[ "$default_port" == "${SS_PORT:-}" || "$default_port" == "${VLESS_PORT:-}" || "$default_port" == "10085" ]]; do
-        default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
-        _tries=$((_tries + 1))
-        [[ $_tries -gt 20 ]] && break
-    done
-    SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port'); [${default_port}]: " port "$default_port") || return 1
-    SOCKS_USER="abox_$(rand_alnum 6)" || die 'SOCKS5 username generation failed.'
-    [[ "${#SOCKS_USER}" -eq 11 ]] || die 'SOCKS5 username generation failed.'
-    SOCKS_PASS="$(rand_alnum 16)" || die 'SOCKS5 password generation failed.'
-    [[ "${#SOCKS_PASS}" -eq 16 ]] || die 'SOCKS5 password generation failed.'
-    if [[ "${CORE:-singbox}" == "singbox" ]]; then
-        SOCKS_PROTO="mixed"
-    else
-        SOCKS_PROTO="socks"
-    fi
-}
-
 # Interactive: port (default 1080), username (default abox), password (default random).
 # If Xray is already installed, the socks5-landing inbound is added/updated via
 # xray_hot_add_inbound (hot-push when the API is available, restart fallback).
@@ -37988,6 +37973,16 @@ users_hot_remove() {
             users_reg_write "$core" "$tag" "$_snap_reg" || return 1
         fi
     fi
+    # M-25(2): a single-password SS inbound has no clients array, so
+    # the live validator holds no such email: `api rmu` would fail
+    # with "not found" and the `api rmi` below is unreachable for it.
+    # Remember that here; the disk edit below still runs, and the
+    # return-1 after it sends the caller to a full users_sync restart
+    # (which reloads the already-edited disk config).
+    local _ss_no_clients=0
+    if [[ "$proto" == 'shadowsocks' ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+        _ss_no_clients=1
+    fi
     tmpd=$(mktemp -d /tmp/A-Box-uhot.XXXXXX) || return 1
     tmp="$tmpd/config.json"
     local ok=0
@@ -38015,6 +38010,9 @@ users_hot_remove() {
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
     esac
+    # M-25(2): no clients array (single-password SS) -> skip rmu/rmi
+    # entirely; rc 1 makes the caller fall back to users_sync.
+    if (( _ss_no_clients == 1 )); then return 1; fi
     "$bin" api rmu --server "127.0.0.1:$(users_api_port_of "$core")" -tag "$tag" "$email" >/dev/null 2>&1 || return 1
     # 2mv residual: rmu removes the user from the live daemon, but a
     # zero-client SS handler still serves the inbound password until
@@ -38028,6 +38026,11 @@ users_hot_remove() {
     # (jq >= 1.7) means "no output", i.e. the tag is absent (same rc
     # semantics as 2gq); any other non-zero rc is a read error, not a
     # deletion.
+    # M-25(2): this rmi branch is reachable ONLY for the multi-user
+    # last-user case: the deleted user was a real validator entry (the
+    # rmu above succeeded) and the file no longer has the tag, so the
+    # whole inbound must also leave the live daemon. Single-password
+    # SS never reaches here (it returned above).
     if [[ "$proto" == 'shadowsocks' ]]; then
         local _rmi_rc=0
         jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || _rmi_rc=$?

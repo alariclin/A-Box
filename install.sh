@@ -7120,6 +7120,12 @@ tr_msg() {
         fa:warp_status_off) echo 'وضعیت WARP: مستقر نشده' ;;
         zh-tw:warp_status_off) echo 'WARP 狀態：未部署' ;;
         ja:warp_status_off) echo 'WARP 状態：未展開' ;;
+        zh:warp_status_stale) echo 'WARP 状态：已部署（未生效）——运行配置中无此出口，请在分流菜单中卸载清理。' ;;
+        en:warp_status_stale) echo 'WARP status: deployed (not in effect) — the live config has no such outbound; remove it from the split-routing menu.' ;;
+        ru:warp_status_stale) echo 'Статус WARP: развёрнут (не действует) — в действующей конфигурации такого выхода нет; удалите его в меню разделения трафика.' ;;
+        fa:warp_status_stale) echo 'وضعیت WARP: مستقر شده (اعمال نشده) — پیکربندی فعال چنین خروجی‌ای ندارد؛ آن را از منوی تفکیک ترافیک حذف کنید.' ;;
+        zh-tw:warp_status_stale) echo 'WARP 狀態：已部署（未生效）——運行設定中無此出口，請在分流選單中解除安裝清理。' ;;
+        ja:warp_status_stale) echo 'WARP 状態：展開済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
         zh:warp_rules_count) echo '分流规则数：%s' ;;
         en:warp_rules_count) echo 'Routing rules: %s' ;;
         ru:warp_rules_count) echo 'Правил маршрутизации: %s' ;;
@@ -25247,10 +25253,10 @@ build_singbox_config() {
         route: ({rules: (([{network:["tcp"], action:"sniff"},{action:"resolve"},{ip_cidr:["127.0.0.0/8","::1/128"], action:"reject"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
             + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
                 url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
-                download_detour:"direct"}))} else {} end)),
+                http_client:"abox-dl"}))} else {} end)),
         inbounds:$inbounds[0],
         outbounds: ([{type:"direct", tag:"direct"}] + $obs)
-    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
+    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end) + (if ($tags | length) > 0 then {http_clients:[{tag:"abox-dl"}]} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
@@ -29398,7 +29404,7 @@ _menu_info_collect() {
     # --- split/WARP status + exits (display labels; SOCKS5 inbound is separate) ---
     local warp_st='' rule_n=0 exits=''
     if [[ -f "$ROUTING_STATE_FILE" ]]; then
-        routing_outbound_has 'warp-out' 2>/dev/null && warp_st='on'
+        routing_outbound_has_live 'warp-out' 2>/dev/null && warp_st='on'
         rule_n=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
         local _tag _lbl
         while IFS= read -r _tag; do
@@ -29785,7 +29791,10 @@ routing_outbound_has_live() {
     [[ -n "$tag" ]] || return 1
     for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
-        jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0
+        # sing-box stores wireguard outbounds (e.g. warp-out) in
+        # .endpoints, not .outbounds; without this a live WARP reads
+        # as "not in effect" even while it is serving traffic.
+        jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '(.outbounds[]?, .endpoints[]?) | select(.tag == $t)' >/dev/null 2>&1 && return 0
     done
     return 1
 }
@@ -29876,12 +29885,89 @@ routing_state_clear() {
     printf '%s\n' '{"version":1,"outbounds":[],"rules":[]}' | routing_state_put
 }
 
+# F-NEW-02: refuse a remote rule-set URL that provably does not exist
+# (HTTP 404) before it can reach the live config. sing-box only
+# downloads remote rule-sets at startup, so a 404 kills the service
+# after the apply has already committed; sing-box check cannot see it
+# (it only validates structure). Any other fetch failure (timeout,
+# 5xx, no network) is not treated as proof of non-existence: the
+# stability check after restart is the backstop there, and a transient
+# network blip must not block routing.
+# $1 = merged sing-box config file. Prints the offending URL on 404.
+routing_ruleset_urls_ok() {
+    local cfg="$1" url code
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    while IFS= read -r url; do
+        [[ -n "$url" ]] || continue
+        code=$(curl -s -o /dev/null -w '%{http_code}' -I --connect-timeout 5 --max-time 10 -- "$url" 2>/dev/null) || code='000'
+        if [[ "$code" == '404' ]]; then
+            msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+            msg "${RED}[!] ${url}${NC}"
+            return 1
+        fi
+    done < <(jq -r '.route.rule_set[]? | select(.type == "remote") | .url // empty' "$cfg" 2>/dev/null)
+    return 0
+}
+
+# F-NEW-02: stability check for the post-restart commit point.
+# restart_service_soft only samples is-active once, 2s after restart;
+# a service that FATALs just after that sample (e.g. a remote rule-set
+# 404, which sing-box only hits while initializing) was still committed
+# as "applied". Require the service to stay active across several
+# samples AND its systemd restart counter to stay flat across the
+# window: a FATAL followed by a Restart=always auto-restart inside the
+# window fails the check instead of being reported as success.
+# $1 = service name (xray|sing-box). Non-systemd hosts fall back to
+# repeated status probes.
+routing_service_stable() {
+    local srv="$1" i base now
+    case "$srv" in xray|sing-box) ;; *) return 1 ;; esac
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        base=$(systemctl show -p NRestarts --value "$srv" 2>/dev/null || echo '')
+        for i in 1 2 3; do
+            sleep 3
+            systemctl is-active --quiet "$srv" || return 1
+        done
+        now=$(systemctl show -p NRestarts --value "$srv" 2>/dev/null || echo '')
+        if [[ "$base" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]]; then
+            (( now == base )) || return 1
+        fi
+        return 0
+    fi
+    for i in 1 2 3; do
+        sleep 2
+        rc-service "$srv" status >/dev/null 2>&1 || return 1
+    done
+    return 0
+}
+
 # Surgically merge routing state into the LIVE config file, validate, restart.
-# $1 = xray | singbox (defaults to $CORE)
+# $1 = xray | singbox (defaults to $CORE). The argument is a preference,
+# not an absolute: the effective core is resolved from the live core
+# config actually on disk (see below), so a stale .env CORE (e.g.
+# "hysteria" after an attach deploy that never wrote .env) cannot fail
+# the apply before it touches live.
 routing_apply_live() {
     local core='' cfg tmp force_json='[]'
     if [[ $# -gt 0 ]]; then core="$1"; shift; fi
     [[ -n "$core" ]] || core="${CORE:-}"
+    # F-NEW-02/L3-11-5: dispatch on the live core config actually on
+    # disk, not on the .env CORE value. CORE can lag (e.g. it stays
+    # "hysteria" after a sing-box TUIC attach deploy that never wrote
+    # .env), and hysteria has no outbound-merge branch at all, so a
+    # stale CORE used to fail every apply before touching live.
+    # Prefer the requested core when its config exists; otherwise fall
+    # back to whichever live config exists (xray first); fail only
+    # when neither exists.
+    local _live_xray='/usr/local/etc/xray/config.json' _live_sb='/etc/sing-box/config.json'
+    local _has_xray=0 _has_sb=0
+    [[ -f "$_live_xray" && ! -L "$_live_xray" ]] && _has_xray=1
+    [[ -f "$_live_sb" && ! -L "$_live_sb" ]] && _has_sb=1
+    case "$core" in
+        xray) (( _has_xray == 1 )) || { (( _has_sb == 1 )) && core='singbox' || return 1; } ;;
+        singbox|sing-box) (( _has_sb == 1 )) || { (( _has_xray == 1 )) && core='xray' || return 1; } ;;
+        *) if (( _has_xray == 1 )); then core='xray'; elif (( _has_sb == 1 )); then core='singbox'; else return 1; fi ;;
+    esac
     if (( $# > 0 )); then
         force_json=$(jq -nc --args '$ARGS.positional' -- "$@" 2>/dev/null) || return 1
     fi
@@ -29937,7 +30023,14 @@ routing_apply_live() {
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
-                XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                local _xray_check_err=''
+                if ! _xray_check_err=$(XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" 2>&1 >/dev/null); then
+                    msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+                    if [[ -n "$_xray_check_err" ]]; then
+                        printf '%s\n' "$_xray_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
+                    fi
+                    rm -f "$tmp"; return 1
+                fi
             fi
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
@@ -29990,7 +30083,7 @@ routing_apply_live() {
             # config from live_bak, .applied from applied_bak or
             # removed when there was none), so the next apply still
             # sees the old record and re-pushes the policy.
-            if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
+            if prepare_abox_runtime_permissions xray && restart_service_soft xray && routing_service_stable xray; then
                 rm -f -- "$live_bak" "$applied_bak"
             else
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
@@ -30044,13 +30137,22 @@ routing_apply_live() {
                 | (.route.rules | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $refd
                 | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags | index($t)) | not) and ((($prevtags | index($t)) | not) or (($refd | index($t)) | . != null))))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
-                    download_detour:"direct"})))
+                    http_client:"abox-dl"})))
+                | (if ($tags | length) > 0 then .http_clients = (((.http_clients // []) | map(select(.tag != "abox-dl"))) + [{tag:"abox-dl"}]) else . end)
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             singbox_apply_loopback_guard "$tmp" || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
-                /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                local _sb_check_err=''
+                if ! _sb_check_err=$(/usr/local/bin/sing-box check -c "$tmp" 2>&1 >/dev/null); then
+                    msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+                    if [[ -n "$_sb_check_err" ]]; then
+                        printf '%s\n' "$_sb_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
+                    fi
+                    rm -f "$tmp"; return 1
+                fi
             fi
+            routing_ruleset_urls_ok "$tmp" || { rm -f "$tmp"; return 1; }
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
             cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
@@ -30102,7 +30204,7 @@ routing_apply_live() {
             # config from live_bak, .applied from applied_bak or
             # removed when there was none), so the next apply still
             # sees the old record and re-pushes the policy.
-            if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
+            if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box && routing_service_stable sing-box; then
                 rm -f -- "$live_bak" "$applied_bak"
             else
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
@@ -30292,9 +30394,10 @@ warp_deploy_inner() {
     fi
     if [[ -z "$core" ]]; then
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        routing_outbound_del 'warp-out' >/dev/null 2>&1 || true
         return 1
     fi
-    routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
+    routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; routing_outbound_del 'warp-out' >/dev/null 2>&1 || true; routing_apply_live "$core" >/dev/null 2>&1 || true; return 1; }
     msg "$(tr_msg warp_done)"
 }
 
@@ -30314,8 +30417,10 @@ warp_undeploy() {
 }
 
 warp_status() {
-    if routing_outbound_has 'warp-out'; then
+    if routing_outbound_has_live 'warp-out'; then
         msg "$(tr_msg warp_status_on)"
+    elif routing_outbound_has 'warp-out'; then
+        msg "$(tr_msg warp_status_stale)"
     else
         msg "$(tr_msg warp_status_off)"
     fi
@@ -30345,22 +30450,22 @@ warp_apply_preset() {
     # must not wipe the current rules.
     case "$preset" in
         streaming|cn-direct|global) ;;
-        *) return 1 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $preset${NC}"; return 1 ;;
     esac
     # Validate every outbound the preset needs before clearing the
     # current rules, so a preset can never half-apply.
     case "$preset" in
-        cn-direct) routing_outbound_has 'direct' || return 1 ;;
+        cn-direct) routing_outbound_has 'direct' || { msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; } ;;
     esac
     # Snapshot the whole state file: any failed add rolls back to this
     # instead of leaving a half-applied rule set behind.
     local snap='' _preset_rc=0
-    snap=$(mktemp) || return 1
-    cp -- "$ROUTING_STATE_FILE" "$snap" 2>/dev/null || { rm -f "$snap"; return 1; }
-    routing_rules_clear || { rm -f "$snap"; return 1; }
+    snap=$(mktemp) || { msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
+    cp -- "$ROUTING_STATE_FILE" "$snap" 2>/dev/null || { rm -f "$snap"; msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
+    routing_rules_clear || { rm -f "$snap"; msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
     case "$preset" in
         streaming)
-            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbomax' 'warp-out' || _preset_rc=1
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbo' 'warp-out' || _preset_rc=1
             ;;
         cn-direct)
             routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube' 'warp-out' || _preset_rc=1
@@ -30383,6 +30488,7 @@ warp_apply_preset() {
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
             msg "${YELLOW}[!] ${snap}${NC}"
         fi
+        msg "${RED}$(tr_msg warp_apply_fail)${NC}"
         return 1
     fi
     local core="${CORE:-}"
@@ -30413,6 +30519,12 @@ warp_apply_preset() {
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
             msg "${YELLOW}[!] ${snap}${NC}"
         fi
+        # The failed apply may have committed the bad config before the
+        # service died (restart race), leaving live diverged from the
+        # restored state: re-push the restored state so live converges
+        # back too. Best effort; the failure is reported either way.
+        routing_apply_live "$core" >/dev/null 2>&1 || true
+        msg "${RED}$(tr_msg warp_apply_fail)${NC}"
         return 1
     fi
     rm -f "$snap"
@@ -30445,7 +30557,7 @@ split_apply_preset() {
         routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
         return 1
     fi
-    routing_apply_live "$core" || { routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true; return 1; }
+    routing_apply_live "$core" || { routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true; routing_apply_live "$core" >/dev/null 2>&1 || true; return 1; }
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -30529,9 +30641,9 @@ warp_preset_menu() {
     local choice
     read -r -p "$(tr_msg select_prompt) [0-3]: " choice || return 0
     case "$choice" in
-        1) warp_apply_preset streaming; pause_return ;;
-        2) warp_apply_preset cn-direct; pause_return ;;
-        3) warp_apply_preset global; pause_return ;;
+        1) warp_apply_preset streaming || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
+        2) warp_apply_preset cn-direct || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
+        3) warp_apply_preset global || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
     esac
@@ -30553,6 +30665,7 @@ split_add_socks_interactive() {
             msg "$(tprintf split_add_done "$tag")"
         else
             routing_outbound_del "$tag" || true
+            routing_apply_live "$core" >/dev/null 2>&1 || true
             msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1
         fi
     else
@@ -30610,6 +30723,7 @@ split_rule_add_interactive() {
             # Roll back the just-appended rule (last index) so a retry
             # cannot duplicate it; the state stays the source of truth.
             routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
+            routing_apply_live "$core" >/dev/null 2>&1 || true
             msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
         fi
         msg "$(tr_msg split_rule_done)"
@@ -30652,6 +30766,7 @@ split_rule_del_interactive() {
             if [[ -n "$del_rule" ]]; then
                 jq --argjson i "$idx" --argjson r "$del_rule" '.rules |= (.[0:$i] + [$r] + .[$i:])' "$ROUTING_STATE_FILE" 2>/dev/null | routing_state_put || true
             fi
+            routing_apply_live "$core" >/dev/null 2>&1 || true
             msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
         fi
         msg "$(tr_msg split_rule_del_done)"

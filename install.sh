@@ -30081,21 +30081,33 @@ routing_apply_live() {
             # config from live_bak, .applied from applied_bak or
             # removed when there was none), so the next apply still
             # sees the old record and re-pushes the policy.
-            if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
-                rm -f -- "$live_bak" "$applied_bak"
-            else
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                else
-                    rm -f -- "$applied_file"
-                fi
+            # H-23 (Carbon R3): restart only when the desired state is
+            # RUNNING and the service was running before the apply; the
+            # new config and .applied record are already on disk, so a
+            # stopped stack stays stopped instead of being revived (or
+            # rolled back when the restart fails on a down service).
+            if service_restart_permitted xray; then
                 if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
                     rm -f -- "$live_bak" "$applied_bak"
                 else
+                    cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    if [[ -n "$applied_bak" ]]; then
+                        cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    else
+                        rm -f -- "$applied_file"
+                    fi
+                    if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
+                        rm -f -- "$live_bak" "$applied_bak"
+                    else
+                        return 1
+                    fi
                     return 1
                 fi
-                return 1
+            else
+                # Gate closed: the new config and .applied record
+                # are already committed on disk; just drop the
+                # backup temp files instead of rolling back.
+                rm -f -- "$live_bak" "$applied_bak"
             fi
             ;;
         singbox|sing-box)
@@ -30193,21 +30205,33 @@ routing_apply_live() {
             # config from live_bak, .applied from applied_bak or
             # removed when there was none), so the next apply still
             # sees the old record and re-pushes the policy.
-            if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
-                rm -f -- "$live_bak" "$applied_bak"
-            else
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                else
-                    rm -f -- "$applied_file"
-                fi
+            # H-23 (Carbon R3): restart only when the desired state is
+            # RUNNING and the service was running before the apply; the
+            # new config and .applied record are already on disk, so a
+            # stopped stack stays stopped instead of being revived (or
+            # rolled back when the restart fails on a down service).
+            if service_restart_permitted sing-box; then
                 if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
                     rm -f -- "$live_bak" "$applied_bak"
                 else
+                    cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    if [[ -n "$applied_bak" ]]; then
+                        cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    else
+                        rm -f -- "$applied_file"
+                    fi
+                    if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
+                        rm -f -- "$live_bak" "$applied_bak"
+                    else
+                        return 1
+                    fi
                     return 1
                 fi
-                return 1
+            else
+                # Gate closed: the new config and .applied record
+                # are already committed on disk; just drop the
+                # backup temp files instead of rolling back.
+                rm -f -- "$live_bak" "$applied_bak"
             fi
             ;;
         *) return 1 ;;
@@ -34388,20 +34412,27 @@ _remove_inbounds_from_config() {
         xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
         sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
     esac
-    if ! restart_service_soft "$svc"; then
-        local restore_ok=0
-        if install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"; then restore_ok=1; fi
-        case "$core" in
-            xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
-            sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
-        esac
-        restart_service_soft "$svc" || true
-        if [[ "$restore_ok" == 1 ]]; then
-            rm -f "$bak"
-        else
-            msg "${RED}[!] $(tprintf _remove_inbounds_from_config_restore_failed "$bak")${NC}" >&2
+    # H-23 (Carbon R3): restart only when the desired state is RUNNING
+    # and the service was already running; the replacement config is
+    # already installed, so a stopped stack stays stopped instead of
+    # being revived (or rolled back when the restart fails on a down
+    # service).
+    if service_restart_permitted "$svc"; then
+        if ! restart_service_soft "$svc"; then
+            local restore_ok=0
+            if install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"; then restore_ok=1; fi
+            case "$core" in
+                xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
+                sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
+            esac
+            restart_service_soft "$svc" || true
+            if [[ "$restore_ok" == 1 ]]; then
+                rm -f "$bak"
+            else
+                msg "${RED}[!] $(tprintf _remove_inbounds_from_config_restore_failed "$bak")${NC}" >&2
+            fi
+            return 1
         fi
-        return 1
     fi
     if (( routes_before - routes_after > 0 )); then
         msg "${YELLOW}$(tprintf cl_routes_cleaned "$(( routes_before - routes_after ))")${NC}"
@@ -34949,6 +34980,22 @@ clear_all_protocols() {
             for _cmv in CORE MODE; do
                 sed -i "s/^${_cmv}=.*/${_cmv}=\"\"/" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null || wipe_ok=0
             done
+        fi
+        # H-23 (Carbon R3): the stack is now empty (all inbounds gone,
+        # registries wiped, CORE/MODE cleared above); stop + disable
+        # the core services explicitly so a cleared stack does not
+        # keep running as an empty shell. Only on a full wipe
+        # (wipe_ok still 1): a partial wipe leaves surviving nodes
+        # that must keep running. Best-effort: a never-deployed
+        # service reports success (already stopped) via stop_owned.
+        if (( wipe_ok == 1 )); then
+            for _clr_svc in xray sing-box hysteria; do
+                stop_owned "$_clr_svc" >/dev/null 2>&1 || true
+            done
+            # In-memory CORE/MODE are stale after the wipe; main_loop
+            # reloads .env on its next iteration, but reset them here
+            # so nothing later in this iteration reads the old values.
+            CORE='' MODE=''
         fi
     else
         msg "${YELLOW}[!] $(tr_msg cl_wipe_partial)${NC}"
@@ -35932,31 +35979,38 @@ users_commit_cfg() {
         sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
         hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
     esac
-    if ! restart_service_soft "$svc"; then
-        if [[ -n "$bak" && -f "$bak" ]]; then
-            if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
-                # R15-F11-02: the file copy alone does not prove the
-                # rollback is usable. If the permission prep fails,
-                # the restored live config is unreadable by the
-                # runtime user and the service stays down; if the
-                # restart then fails, the rollback did not restore
-                # service either. Either failure is a failed restore
-                # (rc 2, callers keep $bak), never a plain failed
-                # commit (rc 1, callers delete $bak).
-                case "$core" in
-                    xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || return 2 ;;
-                    sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || return 2 ;;
-                    hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || return 2 ;;
-                esac
-                restart_service_soft "$svc" >/dev/null 2>&1 || return 2
-                return 1
+    # H-23 (Carbon R3): restart only when the desired state is RUNNING
+    # and the service was already running; otherwise the new config is
+    # already on disk and restarting would resurrect a deliberately
+    # stopped stack (or fail and roll back a valid commit when the
+    # service is down).
+    if service_restart_permitted "$svc"; then
+        if ! restart_service_soft "$svc"; then
+            if [[ -n "$bak" && -f "$bak" ]]; then
+                if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
+                    # R15-F11-02: the file copy alone does not prove the
+                    # rollback is usable. If the permission prep fails,
+                    # the restored live config is unreadable by the
+                    # runtime user and the service stays down; if the
+                    # restart then fails, the rollback did not restore
+                    # service either. Either failure is a failed restore
+                    # (rc 2, callers keep $bak), never a plain failed
+                    # commit (rc 1, callers delete $bak).
+                    case "$core" in
+                        xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || return 2 ;;
+                        sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || return 2 ;;
+                        hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || return 2 ;;
+                    esac
+                    restart_service_soft "$svc" >/dev/null 2>&1 || return 2
+                    return 1
+                fi
+                # Restore failed: $cfg still holds the failed replacement and
+                # $bak is the only good copy. Distinct code so the caller keeps
+                # $bak for manual recovery instead of deleting it.
+                return 2
             fi
-            # Restore failed: $cfg still holds the failed replacement and
-            # $bak is the only good copy. Distinct code so the caller keeps
-            # $bak for manual recovery instead of deleting it.
-            return 2
+            return 1
         fi
-        return 1
     fi
     return 0
 }
@@ -37662,15 +37716,27 @@ users_guard_eval() {
     local gen="${9:-}"
     local per_start="${10:-null}"
     local per_end="${11:-null}"
+    # H-23 (Carbon R3): the service name this registry's sync would
+    # restart (xray family) or touch (sing-box/hy2); used to gate
+    # the users_sync calls below on the restart permission.
+    local _guard_svc=''
+    _guard_svc=$(users_svc_of "$core" 2>/dev/null || printf '%s' "$core")
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire
     # it. A sidecar marker keeps the debt visible until sync succeeds.
     if [[ -f "${reg}.sync-pending" ]]; then
-        if users_sync "$core" "$tag" >/dev/null 2>&1; then
-            rm -f -- "${reg}.sync-pending"
-        else
-            return 0
+        # H-23: only retry the sync when a restart is permitted;
+        # under a stopped desired state the marker stays so the sync
+        # is retried after RUNNING resumes, while the evaluation
+        # below still records new registry transitions (bookkeeping
+        # without touching the service).
+        if service_restart_permitted "$_guard_svc"; then
+            if users_sync "$core" "$tag" >/dev/null 2>&1; then
+                rm -f -- "${reg}.sync-pending"
+            else
+                return 0
+            fi
         fi
     fi
     old_json=$(jq -c . "$reg" 2>/dev/null) || return 0
@@ -37781,8 +37847,14 @@ users_guard_eval() {
         fi
     fi
     if (( need_sync == 1 )); then
-        if users_sync "$core" "$tag" >/dev/null 2>&1; then
-            rm -f -- "${reg}.sync-pending"
+        # H-23: under a stopped desired state the registry transition
+        # above is already committed; skip the sync (no restart) and
+        # leave the marker planted so the next tick after RUNNING
+        # resumes retries the sync.
+        if service_restart_permitted "$_guard_svc"; then
+            if users_sync "$core" "$tag" >/dev/null 2>&1; then
+                rm -f -- "${reg}.sync-pending"
+            fi
         fi
     fi
     return 0
@@ -54405,6 +54477,23 @@ service_unit_exists() {
         [[ -x "/etc/init.d/${srv}" ]] && return 0
     fi
     return 1
+}
+
+# H-23 (Carbon R3): restart gate for config-writing paths. A restart is
+# permitted only when the desired state reads RUNNING and the service was
+# already running before the change; any failure reading the desired
+# state fails closed (no restart). Callers that skip the restart still
+# persist the new config on disk.
+service_restart_permitted() {
+    local svc="$1" _desired
+    _desired=$(get_desired_state 2>/dev/null) || return 1
+    [[ "$_desired" == RUNNING ]] || return 1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl is-active --quiet "$svc" 2>/dev/null || return 1
+    else
+        rc-service "$svc" status >/dev/null 2>&1 || return 1
+    fi
+    return 0
 }
 
 restart_service_soft() {

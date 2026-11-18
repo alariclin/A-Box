@@ -666,10 +666,14 @@ _tuic_cert_self_signed() {
 
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
-    [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
+    [[ "$_ip" == 'N/A' ]] && _ip=''
+    # M-35: a domain-only deployment (no usable public IP) must still
+    # rebuild the Hy2 link from HY2_DOMAIN; return early only when
+    # there is neither an IP nor a domain.
+    [[ -n "$_ip" || -n "${HY2_DOMAIN:-}" ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
-    if [[ -f "$_xc" ]]; then
+    if [[ -n "$_ip" && -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
             _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
@@ -707,7 +711,7 @@ rebuild_standalone_links() {
             fi
         fi
     fi
-    if [[ -f "$_sc" ]]; then
+    if [[ -n "$_ip" && -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
             _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
@@ -881,7 +885,7 @@ rebuild_standalone_links() {
             _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
         fi
         if [[ -n "$_pass" && -n "${_obfs:-}" ]]; then
-            _url=$(hy2_standalone_url "$_pass" "$_obfs" "$_ip" 2>/dev/null || true)
+            _url=$(hy2_standalone_url "$_pass" "$_obfs" "" 2>/dev/null || true)
             if [[ -n "$_url" ]]; then
                 IFS=$'\t' read -r _port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
                 [[ -n "$_port" ]] && register_standalone_link hy2 "$(tprintf sl_node_port 'Hysteria 2' "$_port")" "$_url"
@@ -26131,7 +26135,7 @@ EOF_SVC
     # NORMAL-only tail, so menu 4 keeps register-then-view order.
     _hy2_eff_pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
     _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
-    _hy2_url=$(hy2_standalone_url "$_hy2_eff_pass" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
+    _hy2_url=$(hy2_standalone_url "$_hy2_eff_pass" "${HY2_OBFS:-}" "" 2>/dev/null || true)
     if [[ -n "$_hy2_url" ]]; then
         IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
         [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "$(tprintf sl_node_port 'Hysteria 2' "$_hy2_port")" "$_hy2_url"
@@ -37517,7 +37521,7 @@ users_link_combo() {
                 "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         hy2)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
-            local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q=''
+            local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q='' _hy2_host=''
             obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
             obfs_type=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.type // ""' "$cfg" 2>/dev/null | head -1)
             sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
@@ -37538,11 +37542,17 @@ users_link_combo() {
             fi
             if (( insecure == 1 )); then q='insecure=1'; fi
             if [[ -n "$q" ]]; then q+="&sni=$sni"; else q="sni=$sni"; fi
-            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=$(urlencode "$obfs")"; fi
+            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=<redacted> "$obfs")"; fi
+            # M-35: host priority is the live ACME domain, then the
+            # deployment domain, then the IP -- never a bare IP when a
+            # domain is configured for this Hy2 node.
+            _hy2_host="${acme_domain:-}"
+            [[ -n "$_hy2_host" ]] || _hy2_host="${HY2_DOMAIN:-}"
+            [[ -n "$_hy2_host" ]] || _hy2_host="$ip"
             # R1-11-F05: sing-box Hy2 is password-only auth, even
             # multi-user; the name:secret form fails authentication.
             printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
+                "$(urlencode "$secret")" "$(uri_host "$_hy2_host")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         *) return 1 ;;
     esac
     return 0

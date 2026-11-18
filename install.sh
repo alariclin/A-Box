@@ -23180,7 +23180,8 @@ ensure_fail2ban() {
     # Recommends are off, so the stock [sshd] jail fails to load.
     # Cover fresh and pre-installed fail2ban alike; fail-open, never
     # blocks setup. Only apt hosts (Debian/Ubuntu) carry this package.
-    if command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import systemd' >/dev/null 2>&1; then
+    # Probe with -I so a planted systemd.py (cwd/PYTHONPATH) cannot shadow the real bindings.
+    if command -v apt-get >/dev/null 2>&1 && ! python3 -I -c 'import systemd' >/dev/null 2>&1; then
         apt-get update -y -q >/dev/null 2>&1 || true
         apt-get -y install python3-systemd >/dev/null 2>&1 || true
     fi

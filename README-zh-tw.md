@@ -149,7 +149,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | `sudo bash A-Box.sh --start` / `--stop` | 啟動或停止受管服務 |
 | `sudo bash A-Box.sh --version` | 顯示腳本建置標識 |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 匯出備份還原金鑰 |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目錄]` | 把舊格式備份轉換為現行格式 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | 把舊格式備份轉換為現行格式 |
 
 自檢通過不等於真實安裝或用戶端連通驗證都通過。
 

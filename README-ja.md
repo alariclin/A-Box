@@ -149,7 +149,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 | `sudo bash A-Box.sh --start` / `--stop` | 管理対象サービスを起動 / 停止 |
 | `sudo bash A-Box.sh --version` | スクリプトのビルド識別子を表示 |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | バックアップ復旧キーをエクスポート |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | 旧形式のバックアップを現行形式に変換 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | 旧形式のバックアップを現行形式に変換 |
 
 セルフテストの合格は、実際のインストール、クライアント接続確認の代わりにはなりません。
 

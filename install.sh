@@ -45560,7 +45560,14 @@ write_private_sidecar() {
     dir=$(dirname "$dest")
     [[ -d "$dir" && ! -L "$dir" ]] || return 1
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || return 1
-    path_mode_has_no_group_other_write "$dir" || return 1
+    if ! path_mode_has_no_group_other_write "$dir"; then
+        # H-27: allow a sticky directory owned by root (e.g. /tmp,
+        # mode 1777): only root can unlink or rename another user's
+        # files there, so the group/other write bits cannot be used
+        # to swap the sidecar out from under root. Ownership 0:0 was
+        # already verified above.
+        [[ "$(stat -c %a "$dir" 2>/dev/null || true)" =~ ^1[0-7]{3}$ ]] || return 1
+    fi
     [[ ! -L "$dest" ]] || return 1
     # A directory dest would make mv install the tmp file INSIDE it and
     # still report success, with no credential file at the target.
@@ -45570,6 +45577,10 @@ write_private_sidecar() {
     printf '%s\n' "$value" > "$tmp" || { rm -f -- "$tmp"; return 1; }
     chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
+    # H-27: re-check immediately before publish: in a sticky dir
+    # another user could plant a symlink at $dest after the early
+    # check above.
+    [[ ! -L "$dest" ]] || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
 }
 
@@ -45785,6 +45796,11 @@ PY_LEGACY_VALIDATE
 
 convert_legacy_backup_archive() {
     local selected="$1" out_dir="${2:-$(dirname -- "$1")}" work root out answer unit srv path
+    # H-27: absolutize out_dir (callers may pass a relative OUTPUT_DIR,
+    # and path_parent_chain_safe below rejects relative paths outright).
+    # realpath -m never requires the path to exist; on failure keep the
+    # original value (no regression: the later checks fail as before).
+    out_dir=$(realpath -m -- "$out_dir" 2>/dev/null || printf '%s' "$out_dir")
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
     # R6C14-01: private root-only copy BEFORE any validation; every
     # later read uses the copy, so a swap of $selected afterwards
@@ -45937,12 +45953,12 @@ PY_LEGACY_EXTRACT
     validate_backup_archive "$_c_tmp" || { rm -rf "$work"; rm -f "$_c_tmp"; die 'Converted backup failed v3 structure validation.'; }
     _c_hash=$(sha256sum < "$_c_tmp" 2>/dev/null | awk '{print $1}')
     [[ "$_c_hash" =~ ^[A-Fa-f0-9]{64}$ ]] || { rm -rf "$work"; rm -f "$_c_tmp"; die 'Converted backup authentication failed.'; }
-    write_private_sidecar "${out}.sha256" "$_c_hash  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
+    write_private_sidecar "${out}.sha256" "$_c_hash  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup checksum sidecar write failed.'; }
     ensure_backup_auth_key || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
     IFS= read -r _c_key < "$ABOX_BACKUP_KEY" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
     _c_mac=$(backup_hmac_sha256 "$_c_key" "$_c_tmp" 2>/dev/null)
     [[ "$_c_mac" =~ ^[A-Fa-f0-9]{64}$ ]] || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
-    write_private_sidecar "${out}.hmac" "$_c_mac  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup authentication failed.'; }
+    write_private_sidecar "${out}.hmac" "$_c_mac  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup HMAC sidecar write failed.'; }
     # Archive appears last, only when both sidecars already exist.
     ln -- "$_c_tmp" "$out" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup already exists.'; }
     rm -f -- "$_c_tmp"
@@ -57283,7 +57299,7 @@ Usage:
   bash install.sh --version          显示构建版本 / Show build version
   bash install.sh --export-backup-key /secure/path/A-Box-recovery.key
                                       将恢复密钥导出到独立可信介质
-  bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]
+  bash install.sh --convert-legacy-backup OLD.tar.gz /root/converted
                                       安全转换旧版备份为 manifest v3
   bash install.sh --xray-config-autorecover
                                       xray 配置损坏时从可信备份自动恢复一次（探针调用）
@@ -59744,7 +59760,7 @@ main() {
     case "${1:-}" in
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
-        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname -- "${1:-.}")}"; exit $? ;;
+        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
         --xray-config-autorecover) shift; prepare_noninteractive_file_operation; xray_config_autorecover; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;

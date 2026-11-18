@@ -149,7 +149,7 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 | `sudo bash A-Box.sh --start` / `--stop` | Start or stop the managed services |
 | `sudo bash A-Box.sh --version` | Show the script build identifier |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Export the backup recovery key |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Convert a legacy backup to the current format |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | Convert a legacy backup to the current format |
 
 A passing self-test does not replace a real installation or a client connectivity test.
 

@@ -149,7 +149,7 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 | `sudo bash A-Box.sh --start` / `--stop` | شروع یا توقف سرویس‌های مدیریت‌شده |
 | `sudo bash A-Box.sh --version` | نمایش شناسه ساخت اسکریپت |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | خروجی گرفتن از کلید بازیابی پشتیبان |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | تبدیل پشتیبان قالب قدیمی به قالب کنونی |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | تبدیل پشتیبان قالب قدیمی به قالب کنونی |
 
 قبولی در خودآزمون جای نصب واقعی یا آزمون اتصال کلاینت را نمی‌گیرد.
 

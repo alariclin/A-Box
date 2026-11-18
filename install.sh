@@ -34412,6 +34412,10 @@ do_cleanup() {
     wallos_https_teardown >/dev/null 2>&1 || die 'Wallos HTTPS teardown failed; aborting cleanup.'
     wallos_cftunnel_teardown >/dev/null 2>&1 || die 'Wallos tunnel teardown failed; aborting cleanup.'
     wallos_stack_teardown || die 'Wallos stack teardown failed; aborting cleanup.'
+    # M-28: reclaim every firewall opening the Wallos install
+    # registered (public port + 80/tcp). 80/tcp is kept when the
+    # Hysteria HTTP-01 challenge still needs it; the helper says so.
+    wallos_fw_reclaim_registered || msg "${YELLOW}[!] Failed to reclaim a Wallos firewall opening during uninstall; check the firewall rules manually.${NC}"
     # S-UNINSTALL-01: remove the caddy binary only when ownership was
     # proven above AND the front is confirmed stopped; a still-running
     # front, or any doubt in the ownership verdict, keeps the binary.
@@ -50604,9 +50608,35 @@ _wallos_caddy_config_matches() { # $1=public port $2=internal port
     [[ "$listen" == ":$pubport" && "$dial" == "127.0.0.1:$internal" ]]
 }
 
+# M-28: public-IPv4 lookup that ignores the user's IP preference
+# (/etc/ddr/.ip-pref). Wallos HTTPS needs the IPv4 address itself
+# for its IP certificate: with IP_PREF=ipv6, get_public_ip returns
+# the host's IPv6 address and the IPv4 check below used to misreport
+# "no public IPv4". Tries the cache first (IPv4 entries only, same
+# ownership/mode/TTL gates as read_cached_public_ip, minus the
+# preference gate), then a fresh IPv4-only probe.
+wallos_public_ipv4() {
+    local ip='' now mtime age
+    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]] \
+        && [[ "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]] \
+        && [[ "$(stat -c %a "$PUBLIC_IP_CACHE" 2>/dev/null || true)" =~ ^0?600$ ]]; then
+        ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
+        now=$(date +%s); mtime=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0); age=$(( now - mtime ))
+        if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && valid_public_ip "$ip" && (( age >= 0 && age <= PUBLIC_IP_CACHE_TTL )); then
+            printf '%s\n' "$ip"
+            return 0
+        fi
+    fi
+    __abox_try_v4 && return 0
+    return 1
+}
+
 wallos_https_setup() { # $1 = public port, $2 = internal container port
     local pubport="$1" internal="$2" pub_ip='' tmp_json='' tmpd='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
-    pub_ip=$(get_public_ip 2>/dev/null || true)
+    # M-28: must not go through get_public_ip: with IP_PREF=ipv6 it
+    # returns an IPv6 address and this setup would misreport "no
+    # public IPv4" on a dual-stack host that has one.
+    pub_ip=$(wallos_public_ipv4 2>/dev/null || true)
     if [[ ! "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         msg "${RED}$(tr_msg wl_hs_no_ipv4)${NC}"
         return 1
@@ -50655,7 +50685,10 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     install_file_atomically "$tmp_json" /etc/ddr/wallos-caddy.json 600 || { rm -f "$tmp_json"; rm -rf "$tmpd"; return 1; }
     rm -f "$tmp_json"; rm -rf "$tmpd"
     # ACME HTTP-01 for the IP certificate needs inbound 80/tcp on
-    # the host (certmagic listens there during issuance). Open it
+    # the host (certmagic listens there during issuance). M-28: 80/tcp
+    # is shared with the Hysteria HTTP-01 challenge (altPort: 80);
+    # reclaim must check that first (wallos_fw_reclaim_registered).
+    # Open it
     # through the standard owned-rule path before starting Caddy;
     # failure only warns — issuance may still succeed where the
     # host firewall already permits 80.
@@ -50723,6 +50756,11 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             return 1
         fi
     fi
+    # M-28: the front is live, so the 80/tcp opening made above is
+    # now a lasting one; record it for later switch/uninstall
+    # reclaim (a later failure teardown removes the rule again and
+    # the stale registry line is dropped on the next reclaim).
+    if (( _http80_new == 1 )); then wallos_fw_register_opened 80 tcp || true; fi
     return 0
 }
 
@@ -51065,7 +51103,12 @@ wallos_write_state() {
     fi
     if [[ "$mode" == https || "$mode" == cftunnel || "$mode" == http || "$mode" == local ]]; then printf 'MODE=%s\n' "$mode" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$mode" == cftunnel && "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then printf 'CFHOST=%s\n' "$cfhost" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
-    if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    # M-28: PUBPORT is only meaningful for the https front. In any
+    # other mode an inherited/stale PUBPORT must not be written back
+    # (a switch to cftunnel/local used to keep advertising the old
+    # public port). Restore calls ($9==1) pass the pre-rollback mode
+    # explicitly, so they keep PUBPORT exactly when that mode is https.
+    if [[ "$mode" == https && "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf 'VERSION=%s\n' "$version" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     # R7-F15-6 (R10-06 clone): a directory at the state path must fail,
     # not be silently swallowed: without -T, mv renames the temp file
@@ -51862,6 +51905,65 @@ wallos_fw_open_once() {
 # ledger deleter (which verifies the rule is really gone); a failure is
 # reported loudly and returns 1, so a caller that must not claim success
 # can fold it into its own failure flag. An empty set is a no-op success.
+# M-28: persistent registry of firewall openings this Wallos install
+# created, so a later mode switch / port change / uninstall can
+# reclaim ports the per-attempt _fw_added ledger no longer knows.
+# One line per opening: "spec/proto" (e.g. "8443/tcp", "80/tcp").
+# 80/tcp is shared with the Hysteria HTTP-01 ACME challenge
+# (altPort: 80 in /etc/hysteria/config.yaml); it is only reclaimed
+# when no such challenge still needs it, and the caller is told so.
+wallos_fw_registry_file() { printf '%s/.fw-opened' "$WALLOS_DIR"; }
+
+wallos_fw_register_opened() { # $1=spec $2=proto
+    local spec proto reg
+    spec=$(normalize_port_spec "${1:-}") || return 1
+    proto="${2:-tcp}"
+    [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+    reg=$(wallos_fw_registry_file)
+    [[ -d "$WALLOS_DIR" ]] || return 1
+    [[ ! -e "$reg" && ! -L "$reg" ]] || { [[ -f "$reg" && ! -L "$reg" ]] || return 1; }
+    if [[ -f "$reg" ]]; then
+        grep -qxF "${spec}/${proto}" "$reg" 2>/dev/null && return 0
+    fi
+    ( umask 077; printf '%s/%s\n' "$spec" "$proto" >> "$reg" ) || return 1
+    chmod 600 "$reg" 2>/dev/null || true
+    return 0
+}
+
+_wallos_hy2_http01_keeps_80() {
+    # Hysteria HTTP-01 ACME listens on 80/tcp via `altPort: 80` in
+    # its config; reclaiming 80 would break its issuance/renewal.
+    # The config path is overridable for fixtures.
+    local _hy2cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+    [[ -f "$_hy2cfg" && ! -L "$_hy2cfg" ]] || return 1
+    grep -qE '^[[:space:]]*altPort:[[:space:]]*80[[:space:]]*$' "$_hy2cfg" 2>/dev/null
+}
+
+wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
+    local reg line spec proto keep _k _removed=0 _kept=''
+    reg=$(wallos_fw_registry_file)
+    [[ -f "$reg" && ! -L "$reg" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        case "$line" in */tcp|*/udp) ;; *) continue ;; esac
+        spec="${line%/*}"; proto="${line##*/}"
+        keep=0
+        for _k in "$@"; do [[ "$_k" == "$line" ]] && keep=1; done
+        if (( keep == 1 )); then _kept+="${line}"$'\n'; continue; fi
+        if [[ "$line" == '80/tcp' ]] && _wallos_hy2_http01_keeps_80; then
+            msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
+            _kept+="${line}"$'\n'; continue
+        fi
+        wallos_remove_abox_iptables_accept "$spec" "$proto" >/dev/null 2>&1 || true
+        remove_abox_native_firewall_rule "$spec" "$proto" >/dev/null 2>&1 || true
+        _removed=1
+    done < "$reg"
+    printf '%s' "$_kept" > "$reg" || return 1
+    chmod 600 "$reg" 2>/dev/null || true
+    if (( _removed == 1 )); then save_firewall_rules || return 1; fi
+    return 0
+}
+
 wallos_fw_rollback_added() {
     local _entry _backend _spec _proto _scope _zone _failed=0 _pipes _scoped=0
     for _entry in "$@"; do
@@ -52575,6 +52677,21 @@ wallos_install_or_update() {
             return 1
         }
     fi
+    # M-28: this attempt's firewall openings are now live with the new
+    # mode; register them, then reclaim any previously registered
+    # Wallos port the new mode no longer needs (mode switch, port
+    # change). Keep-set: https keeps its public port + 80/tcp (ACME
+    # HTTP-01); http keeps the container port; local/cftunnel keep
+    # none (the tunnel/local front needs no inbound port).
+    local _fw_entry='' _fw_spec='' _fw_proto=''
+    local -a _fw_keep=()
+    for _fw_entry in "${_fw_added[@]}"; do
+        IFS='|' read -r _ _fw_spec _fw_proto _ <<< "$_fw_entry"
+        [[ -n "$_fw_spec" && -n "$_fw_proto" ]] && wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || true
+    done
+    if [[ "$wmode" == https ]]; then _fw_keep=("${pubport}/tcp" '80/tcp');
+    elif [[ "$wmode" == http ]]; then _fw_keep=("${port}/tcp"); fi
+    wallos_fw_reclaim_registered "${_fw_keep[@]}" || msg "${YELLOW}[!] Failed to reclaim a stale Wallos firewall opening; check the firewall rules manually.${NC}"
     wallos_php_gate_warn || true
     # 2hp: build the jail BEFORE printing URLs/checklist, so the
     # fail2ban claims below reflect the live jail state.
@@ -52687,13 +52804,25 @@ wallos_status() {
         # longer (2026-10-21 lesson).
         local _wport='' _wip='' _legs=''
         _wport=$(wallos_state_value PUBPORT 2>/dev/null || true)
-        _wip=$(get_public_ip 2>/dev/null || true)
-        if [[ "$_wport" =~ ^[0-9]+$ && "$_wip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v openssl >/dev/null 2>&1; then
-            if _legs=$(wallos_tls_handshake_check "$_wport" "$_wip"); then
-                msg "${GREEN}$(tr_msg wl_st_tls_ok)${NC}"
-            else
-                msg "${RED}$(tprintf wl_st_tls_fail "$_legs")${NC}"
+        # M-28: same pref-independent lookup as https_setup; with
+        # IP_PREF=ipv6 the old get_public_ip call returned IPv6 and
+        # this check was silently skipped on dual-stack hosts.
+        _wip=$(wallos_public_ipv4 2>/dev/null || true)
+        if [[ "$_wport" =~ ^[0-9]+$ && "$_wip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if command -v openssl >/dev/null 2>&1; then
+                if _legs=$(wallos_tls_handshake_check "$_wport" "$_wip"); then
+                    msg "${GREEN}$(tr_msg wl_st_tls_ok)${NC}"
+                else
+                    msg "${RED}$(tprintf wl_st_tls_fail "$_legs")${NC}"
+                fi
             fi
+        else
+            # M-28: say so instead of silently skipping: no public
+            # IPv4 means the TLS handshake check cannot run (Wallos
+            # HTTPS needs IPv4). 80/tcp is shared with the Hy2
+            # HTTP-01 challenge (altPort 80), so the TLS front and
+            # the challenge coexist on the same port by design.
+            msg "No public IPv4 address detected; TLS handshake check skipped (Wallos HTTPS needs IPv4)."
         fi
     fi
     port=$(wallos_state_value PORT 2>/dev/null || true)

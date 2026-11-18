@@ -16776,8 +16776,9 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     # entries). An inbound with an unparseable binding is kept
     # (fail-closed); only an inbound whose transports cover the dropped
     # proto AND whose port range covers the dropped port is filtered
-    # out. A dropped inbound's detour target goes with it (it was only
-    # captured as that inbound's detour).
+    # out. A dropped inbound's detour target goes with it only when no
+    # surviving inbound still references it: a detour shared with a kept
+    # inbound survives (it was captured as that inbound's detour too).
     if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
         if ! jq --arg drops "$ABOX_PRESERVE_DROP_PORTS" '
             def parse_range:
@@ -16820,7 +16821,9 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
                 end;
             ($drops | split(" ") | map(select(. != "")) | map(split(":") | {proto: .[0], port: (.[1] | tonumber)})) as $drop
             | ([.[] | select(is_dropped($drop)) | (.detour // empty)] | map(select(. != ""))) as $dd
-            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($dd | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
+            | ([.[] | select(is_dropped($drop) | not) | (.detour // empty)] | map(select(. != ""))) as $still
+            | ($dd - $still) as $ddx
+            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($ddx | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
             rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"
             msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
             return 1

@@ -17207,6 +17207,8 @@ reorder_one() {
     local _tmp_marker="A-Box-tmp-$$-$RANDOM$RANDOM" _marked_line='' _marked_drop_line='' _delete_norm=''
     local -a _tmp_lines=()
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
+    local -A _rules_seen=()
+    local _stripped_rule=''
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
     local -a current_target_lines=() current_foreign_lines=() original_foreign_rules=()
 
@@ -17512,7 +17514,15 @@ reorder_one() {
             # the normal delete flow instead of being re-marked. Both the
             # legacy standalone marker clause and the composite ":tmp"
             # suffix are removed; the ownership comment is kept.
-            rules+=("$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+([[:space:]]|$)/\1/g')")
+            # M-30(1): first occurrence wins -- an interrupted earlier
+            # run leaves a tmp-marked twin beside the canonical rule;
+            # stripping the marker without dedup re-inserts both and the
+            # rule count doubles on every interrupted run.
+            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
+            if [[ -z "${_rules_seen["$_stripped_rule"]+x}" ]]; then
+                _rules_seen["$_stripped_rule"]=1
+                rules+=("$_stripped_rule")
+            fi
         fi
     done
     rule_no=0
@@ -17838,7 +17848,12 @@ _fw_nat_guard() {
     local cmd="$1" label="$2" out err
     out=$(_iptables_q "$cmd" -t nat -S PREROUTING 2>/dev/null) || {
         err=$(_iptables_q "$cmd" -t nat -S PREROUTING 2>&1 >/dev/null || true)
-        if printf '%s' "$err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
+        # M-30(3): R15-F05-07 -- "can't/cannot initialize" is NOT a
+        # not-supported signal: iptables-legacy reports the same text
+        # for permission errors, which used to be misread as "no NAT
+        # table" and returned success without reading or cleaning any
+        # rule. A genuinely missing table says "Table does not exist".
+        if printf '%s' "$err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported"; then
             return 0
         fi
         echo "A-Box firewall restore: $label NAT query failed; refusing to delete." >&2
@@ -18255,6 +18270,10 @@ save_firewall_rules() {
         : > "$tmp6"
     fi
     chmod 600 "$tmp4" "$tmp6" || { rm -f "$tmp4" "$tmp6" "$backup4" "$backup6"; return 1; }
+    # M-30(2): mktemp inherits the caller's egid, so under
+    # `sudo -g <non-root>` the published files would be 0:<non-root>
+    # and firewall_state_file_safe (0:0) would refuse them later.
+    chown root:root "$tmp4" "$tmp6" || { rm -f "$tmp4" "$tmp6" "$backup4" "$backup6"; return 1; }
     if ! grep -q '^\*' "$tmp4" && ! grep -q '^\*' "$tmp6"; then
         rm -f "$tmp4" "$tmp6" "$backup4" "$backup6"
         remove_abox_firewall_persistence || return 1
@@ -19449,6 +19468,8 @@ reorder_ss_whitelist_rules_one() {
     local -a _tmp_lines=()
     local current_interleave='' original_interleave='' expected_interleave=''
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
+    local -A _rules_seen=()
+    local _stripped_rule=''
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
     local -a current_target_lines=() current_foreign_lines=() original_foreign_rules=()
 
@@ -19760,7 +19781,15 @@ reorder_ss_whitelist_rules_one() {
             # the normal delete flow instead of being re-marked. Both the
             # legacy standalone marker clause and the composite ":tmp"
             # suffix are removed; the ownership comment is kept.
-            rules+=("$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+([[:space:]]|$)/\1/g')")
+            # M-30(1): first occurrence wins -- an interrupted earlier
+            # run leaves a tmp-marked twin beside the canonical rule;
+            # stripping the marker without dedup re-inserts both and the
+            # rule count doubles on every interrupted run.
+            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
+            if [[ -z "${_rules_seen["$_stripped_rule"]+x}" ]]; then
+                _rules_seen["$_stripped_rule"]=1
+                rules+=("$_stripped_rule")
+            fi
         fi
     done
     rule_no=0
@@ -20266,7 +20295,7 @@ clean_nat_rules() {
             done
         else
             ipv6_nat_error=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>&1 >/dev/null || true)
-            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize ip6tables table ['\"]nat['\"]|cannot initialize ip6tables table ['\"]nat['\"]|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
+            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported" <<< "$ipv6_nat_error"; then
                 failed=1
             fi
         fi

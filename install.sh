@@ -41191,17 +41191,24 @@ dns_snapshot_recover_pending_swap() {
 # - Idempotency: if a COMPLETE baseline already exists, it is PRESERVED and
 #   the new staging dir is discarded. The snapshot's purpose is rollback to
 #   the pre-change state; overwriting it on re-run would destroy that.
+#   Pass force=1 as $2 to replace it anyway (post-success refresh only, via
+#   dns_snapshot_refresh_baseline; never at install time: a failed deploy
+#   must not move the baseline).
 # - Crash safety: pending-swap record written before rename; recovery via
 #   dns_snapshot_recover_pending_swap().
 dns_snapshot_install_new() {
     local staging="$1"
+    local _force="${2:-0}"
     local pending="${DNS_BACKUP_DIR}.pending-swap"
     local old_backup=""
     [[ -d "$staging" && -f "$staging/COMPLETE" ]] || return 1
     # Recover any interrupted previous swap first.
     dns_snapshot_recover_pending_swap || return 1
-    # Idempotency: baseline already exists, preserve it.
-    if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
+    # Idempotency: baseline already exists, preserve it -- unless the
+    # caller passes force=1 (post-success baseline refresh: the deploy
+    # already landed, so the staging snapshot IS the pre-change state a
+    # later rollback must restore; see dns_snapshot_refresh_baseline).
+    if [[ "$_force" != 1 ]] && [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
         rm -rf -- "$staging"
         return 0
     fi
@@ -41223,6 +41230,50 @@ dns_snapshot_install_new() {
         mv -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
     fi
     return 0
+}
+
+# M-NEW-01: true (0) iff snapshot $1 records a clean A-Box DoH install:
+# the .dns-state file says mode=doh, the resolved drop-in points at
+# 127.0.0.1:5353, the A-Box socket drop-in is present, and the socket
+# listens on 127.0.0.1:5353 with no distro-default 127.0.2.1:53 endpoint.
+# All four markers must agree: any manual tampering (dropped drop-in,
+# rebound socket, cleared state file) breaks the agreement and the
+# snapshot is NOT a clean DoH state, so the baseline gets refreshed.
+# Runtime liveness (service active/enabled) is deliberately NOT checked:
+# a dead service after a good deploy is still A-Box's DoH state, and
+# refreshing on liveness alone would strand the rollback on it.
+dns_snapshot_is_clean_doh_state() {
+    local dir="$1"
+    [[ -f "$dir/dns-state" ]] || return 1
+    grep -Fq 'mode=doh' "$dir/dns-state" 2>/dev/null || return 1
+    [[ -f "$dir/resolved.conf.d/99-abox-dns.conf" ]] || return 1
+    grep -Fq 'DNS=127.0.0.1:5353' "$dir/resolved.conf.d/99-abox-dns.conf" 2>/dev/null || return 1
+    [[ -f "$dir/dnscrypt-socket-dropin-state" ]] || return 1
+    [[ "$(tr -d '[:space:]' < "$dir/dnscrypt-socket-dropin-state" 2>/dev/null || true)" == present ]] || return 1
+    [[ -f "$dir/dnscrypt-socket-listen" ]] || return 1
+    grep -Fq '127.0.0.1:5353' "$dir/dnscrypt-socket-listen" 2>/dev/null || return 1
+    ! grep -Fq '127.0.2.1:53' "$dir/dnscrypt-socket-listen" 2>/dev/null || return 1
+    return 0
+}
+
+# M-NEW-01: post-success baseline refresh. Replaces $DNS_BACKUP_DIR with
+# the pre-deploy snapshot $1 (the per-attempt keep copy dns_enable_doh
+# already holds) through the same atomic swap as dns_snapshot_install_new,
+# so a later menu/uninstall rollback restores the immediate pre-deploy
+# state instead of a stale first-ever baseline. Call ONLY after the deploy
+# has fully succeeded: a failed deploy must leave the baseline alone, and
+# the per-attempt failure rollback already covers the failure path. The
+# keep copy is staged through a fresh ${DNS_BACKUP_DIR}.new.* dir so the
+# pending-swap record stays in-namespace for crash recovery.
+dns_snapshot_refresh_baseline() {
+    local keep="$1" staging=""
+    [[ -d "$keep" && -f "$keep/COMPLETE" ]] || return 1
+    staging=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || return 1
+    if ! cp -a "$keep/." "$staging/" 2>/dev/null || [[ ! -f "$staging/COMPLETE" ]]; then
+        rm -rf -- "$staging" 2>/dev/null || true
+        return 1
+    fi
+    dns_snapshot_install_new "$staging" 1
 }
 
 restore_dns_snapshot() {
@@ -43119,6 +43170,18 @@ EOF_DOH
         msg "${YELLOW}$(tr_msg dh_note)${NC}"
         if [[ -n "${RESOLVED_DNS_CHECK_WARN:-}" ]]; then
             msg "${YELLOW}$(resolved_dns_check_warn_message)${NC}"
+        fi
+        # M-NEW-01: refresh the rollback baseline ONLY when this run's
+        # pre-deploy state is not already a clean A-Box DoH state. A
+        # pure re-deploy over a live DoH install changes nothing, so
+        # the baseline (the pre-change state) must stay put; overwriting
+        # it with the live DoH state would make a later rollback a no-op.
+        if ! dns_snapshot_is_clean_doh_state "$_doh_snap_keep"; then
+            if ! dns_snapshot_refresh_baseline "$_doh_snap_keep"; then
+                if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
+                msg "${RED}[!] Could not refresh the DNS rollback snapshot; the DoH change was rolled back.${NC}"
+                return 1
+            fi
         fi
         rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
     else

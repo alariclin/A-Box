@@ -20388,7 +20388,7 @@ clean_nat_rules() {
             done
         else
             ipv6_nat_error=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>&1 >/dev/null || true)
-            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported" <<< "$ipv6_nat_error"; then
+            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
                 failed=1
             fi
         fi
@@ -35583,15 +35583,28 @@ restore_vps_tune() {
     if [[ -f "$dir/sysctl.original" ]]; then
         while IFS='=' read -r key value; do
             [[ -n "$key" ]] || continue
-            # M-32(3): skip keys already at the snapshot value,
-            # and keys that are read-only here: a no-op probe
-            # write of the live value fails, so forcing the
-            # snapshot value would fail anyway. Neither case
-            # sets failed=1 or leaves the snapshot behind.
-            _live=$(sysctl -n "$key" 2>/dev/null || true)
+            # N-02 (M-32 follow-up): skip keys already at the
+            # snapshot value. A key that cannot be read is skipped
+            # explicitly -- never probe-write an empty value into
+            # a key we could not read. A failed probe write is
+            # retried with the snapshot value itself: if that
+            # applies, the failure was transient and the restore
+            # succeeded; if it also fails, the key is read-only
+            # here, so skip it without failing the restore or
+            # leaving the snapshot behind.
+            _live=$(sysctl -n "$key" 2>/dev/null) || continue
             [[ "$_live" == "$value" ]] && continue
-            sysctl -w "$key=$_live" >/dev/null 2>&1 || continue
-            sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1
+            if sysctl -w "$key=$_live" >/dev/null 2>&1; then
+                sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1
+            elif sysctl -w "$key=$value" >/dev/null 2>&1; then
+                # Probe write failed but the snapshot value applied:
+                # transient probe failure; the restore succeeded.
+                :
+            else
+                # Both writes failed: treat as read-only here and skip
+                # without failing the restore or keeping the snapshot.
+                :
+            fi
         done < "$dir/sysctl.original"
     fi
     if [[ -f "$dir/sysctl.conf" ]]; then install -d -m 755 /etc/sysctl.d || failed=1; cp -a "$dir/sysctl.conf" /etc/sysctl.d/99-A-Box-tune.conf || failed=1; else rm -f /etc/sysctl.d/99-A-Box-tune.conf || failed=1; fi
@@ -37622,7 +37635,7 @@ users_link_combo() {
             fi
             if (( insecure == 1 )); then q='insecure=1'; fi
             if [[ -n "$q" ]]; then q+="&sni=$sni"; else q="sni=$sni"; fi
-            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=<redacted> "$obfs")"; fi
+            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=$(urlencode "$obfs")"; fi
             # M-35: host priority is the live ACME domain, then the
             # deployment domain, then the IP -- never a bare IP when a
             # domain is configured for this Hy2 node.
@@ -59092,6 +59105,26 @@ N11EOF
         ! clean_nat_rules
     ); then
         echo 'FAIL: clean_nat_rules must remain fail-closed on IPv6 firewall permission errors'; failures=$((failures + 1))
+    fi
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' "ip6tables v1.8.7 (nf_tables): table 'nat' is incompatible, use 'nft' tool." >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must tolerate an nft-incompatible IPv6 NAT table'; failures=$((failures + 1))
+    fi
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' "can't initialize ip6tables table 'nat': Permission denied (you must be root)" >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        ! clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must remain fail-closed on ip6tables initialization permission errors'; failures=$((failures + 1))
     fi
     mkdir -p "$tmp/atomic-dest-dir"
     printf '%s\n' 'payload' > "$tmp/atomic.src2"

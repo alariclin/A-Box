@@ -45943,7 +45943,7 @@ write_private_sidecar() {
     path_parent_chain_safe "$dest" || return 1
     dir=$(dirname "$dest")
     [[ -d "$dir" && ! -L "$dir" ]] || return 1
-    [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || return 1
+    [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || { msg "${RED}[!] Output directory must be owned by root (root-owned output directory required; non-root home directories are not supported).${NC}" >&2; return 1; }
     if ! path_mode_has_no_group_other_write "$dir"; then
         # H-27: allow a sticky directory owned by root (e.g. /tmp,
         # mode 1777): only root can unlink or rename another user's

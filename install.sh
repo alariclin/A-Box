@@ -16808,6 +16808,37 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     return 0
 }
 
+# Final-round follow-up §2 (worker A): after a same-core preserve
+# merge, carry the preserved standalone listener ports into the shell
+# variables that write_env() later persists to .env. Without this,
+# pre_install_setup/reset_protocol_vars leaves TROJAN_PORT empty and
+# write_env() rewrites .env with TROJAN_PORT="" even though the merged
+# live config still serves trojan on 8444 (same for SOCKS_PORT /
+# socks5-landing) -- so the F-NEW-04 coverage gate, which reads its
+# expected ports from .env, goes blind to the preserved protocol.
+# Fill-if-empty only: a value already set by the new main stack
+# (e.g. MODE=SOCKS sets SOCKS_PORT) is never overwritten. Best-effort
+# and never fatal: any extraction/validation failure leaves the
+# variable untouched and the deploy continues exactly as before.
+# $1 = core (xray|sing-box), $2 = merged config path.
+_preserve_sync_env_ports() {
+    local _cfg="$2" _tag _var _port
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    for _tag in trojan-landing socks5-landing; do
+        case "$_tag" in
+            trojan-landing) _var='TROJAN_PORT' ;;
+            socks5-landing) _var='SOCKS_PORT' ;;
+        esac
+        [[ -z "${!_var:-}" ]] || continue
+        _port=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r --arg tag "$_tag" '[.inbounds[]? | select(.tag == $tag) | (.port // .listen_port // empty)] | first // empty' 2>/dev/null) || continue
+        [[ -n "$_port" ]] || continue
+        valid_canonical_port "$_port" || continue
+        declare -g "${_var}=${_port}"
+    done
+    return 0
+}
+
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
@@ -16935,6 +16966,9 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
+        # Final-round follow-up §2 (worker A): sync preserved
+        # standalone ports into the shell vars write_env() persists.
+        _preserve_sync_env_ports "$1" "$cfg" || true
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"

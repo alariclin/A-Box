@@ -37626,7 +37626,7 @@ users_link_combo() {
             fi
             if (( insecure == 1 )); then q='insecure=1'; fi
             if [[ -n "$q" ]]; then q+="&sni=$sni"; else q="sni=$sni"; fi
-            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=<redacted> "$obfs")"; fi
+            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=$(urlencode "$obfs")"; fi
             # M-35: host priority is the live ACME domain, then the
             # deployment domain, then the IP -- never a bare IP when a
             # domain is configured for this Hy2 node.

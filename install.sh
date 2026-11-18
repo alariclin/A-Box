@@ -205,7 +205,12 @@ jq() {
     # Temp files created below hold secrets briefly; remove the whole
     # temp dir on every return path (including early return 2). The guard
     # only removes dirs this function created (basename abox-jq.*).
-    trap '[[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; true' RETURN
+    # M-37: deliberately NO RETURN trap here. RETURN traps are a single
+    # process-global slot (see R5C10-03): a trap set inside this shim
+    # would replace the caller's RETURN trap, so the caller's cleanup
+    # would never run, and the shim's trap would refire on the caller's
+    # later returns with this function's locals out of scope (set -u
+    # abort). Every return path below removes the temp dir explicitly.
     # Pass 2: rebuild argv, reading each --rawfile source exactly once.
     _i=0; _ri=0
     while (( _i < _n )); do
@@ -216,6 +221,7 @@ jq() {
                     _rn=${_all[_i+1]}; _rf=${_all[_i+2]}; _i=$(( _i + 3 ))
                     if [[ ! -r "$_rf" ]]; then
                         printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2
+                        [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null
                         return 2
                     fi
                     if [[ "${_raw_slurp[_ri]:-0}" == 1 ]]; then
@@ -225,16 +231,18 @@ jq() {
                         # with redirections only (no nested $(...) while
                         # pipe fds are still open). mktemp makes the
                         # file 0600; the dir is 0700; both are removed
-                        # explicitly after the final `command jq`
-                        # (RETURN trap as backstop for early returns).
+                        # explicitly after the final `command jq`, and
+                        # each early `return 2` removes the dir first
+                        # (M-37: no RETURN trap -- it would clobber the
+                        # caller's trap).
                         if [[ -z "${_jq_tmpdir:-}" ]]; then
                             _jq_tmpdir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/abox-jq.XXXXXX") || { printf '%s\n' "[!] jq shim: cannot create temp dir" >&2; return 2; }
                         fi
-                        _tmpf=$(umask 077; mktemp "$_jq_tmpdir/raw.XXXXXX") || { printf '%s\n' "[!] jq shim: cannot create temp file for: $_rn" >&2; return 2; }
-                        command jq -R -s . < "$_rf" > "$_tmpf" 2>/dev/null || { printf '%s\n' "[!] jq shim: cannot encode --rawfile file: $_rf" >&2; return 2; }
+                        _tmpf=$(umask 077; mktemp "$_jq_tmpdir/raw.XXXXXX") || { printf '%s\n' "[!] jq shim: cannot create temp file for: $_rn" >&2; [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; return 2; }
+                        command jq -R -s . < "$_rf" > "$_tmpf" 2>/dev/null || { printf '%s\n' "[!] jq shim: cannot encode --rawfile file: $_rf" >&2; [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; return 2; }
                         _args+=(--slurpfile "$_rn" "$_tmpf")
                     else
-                        _content=$(cat -- "$_rf" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2; return 2; }
+                        _content=$(cat -- "$_rf" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2; [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; return 2; }
                         _content=${_content%x}
                         _args+=(--arg "$_rn" "$_content")
                     fi
@@ -258,11 +266,12 @@ jq() {
     done
     command jq "${_args[@]}"
     local _rc=$?
-    # Explicit cleanup (see group 6): the RETURN trap alone is not enough
-    # -- a trailing `command` in a command-substitution subshell is
-    # exec-optimized, so the function may never return and the trap may
-    # never fire. Removing the temp dir here (guarded basename) is the
-    # primary path; the trap stays as backstop for early returns.
+    # Explicit cleanup: this function sets no RETURN trap (M-37 -- it
+    # would clobber the caller's trap), so the temp dir is removed on
+    # every return path, including each early `return 2` in Pass 2
+    # above. A trailing `command` in a command-substitution subshell
+    # may be exec-optimized, so the function may never return; the
+    # removal here is the primary path for the success path.
     [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null
     return "$_rc"
 }
@@ -30952,7 +30961,9 @@ split_add_socks_outbound() {
     while routing_outbound_has "socks-land$n" || routing_outbound_has_live "socks-land$n"; do n=$((n+1)); done
     tag="socks-land$n"
     workdir=$(mktemp -d) || return 1
-    trap 'rm -rf -- "$workdir"' RETURN
+    # M-37: hardened trap -- ${workdir:-} so a refire on an outer return
+    # cannot abort under set -u; silent and rc-safe.
+    trap 'rm -rf -- "${workdir:-}" 2>/dev/null || true' RETURN
     jq -n --arg tag "$tag" --arg ip "$ip" --argjson port "$port" --arg u "$user" --rawfile p <(printf '%s' "$pass") '{
         protocol:"socks", tag:$tag,
         settings:{servers:[{address:$ip, port:$port,

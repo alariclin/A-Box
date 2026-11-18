@@ -14040,6 +14040,17 @@ prepare_hysteria_acme_dir_ownership() {
             # its canonical state here is safe.
             chown "root:$group" "$dir" || return 1
             chmod 1770 "$dir" || return 1
+            # H-18(2): files legitimately issued after the manifest was
+            # written (e.g. ACME certificates) are unrecorded, so the
+            # manifest gate below fails; re-adopt refuses any
+            # non-marker-only tree, so prepare deadlocks. Refresh the
+            # manifest first. The marker gate above already passed, so
+            # refresh's own marker requirement is satisfied on a
+            # valid-marker tree; on a marker-invalid tree the refresh is
+            # skipped and the previous fail-closed behaviour is kept.
+            if hysteria_acme_owner_marker_valid "$marker"; then
+                refresh_dynamic_core_subtree_ownership hysteria "$dir" || return 1
+            fi
             if ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
                 # R8: interrupted first setup leaves dir + valid marker
                 # but no D record; repair cannot add records, so retry

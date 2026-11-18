@@ -14687,7 +14687,11 @@ users_registries_remove_core() {
 # on rc 1.
 _standalone_link_tag_survivor() {
     local _tag="$1" _cfg="$2" _stripped='' _jq_rc=0
-    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # M-29: a symlinked config is unverifiable (rc 2), not "confirmed
+    # absent" (rc 1) -- the link target may still serve the tag, and
+    # callers delete the link only on rc 1.
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || return 2
     _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
     [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
@@ -35067,7 +35071,10 @@ _standalone_link_survivor() {
     # the answer. An empty file slurps to [] (false -> rc 1), so
     # it is rejected up front as unverifiable, not "confirmed gone".
     # (jq 1.6 parse-fail is rc 4, jq 1.7 is rc 5 — both land in *.)
-    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # M-29: a symlinked config is unverifiable (rc 2), not "confirmed
+    # absent" (rc 1) -- the link target may still serve the protocol.
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
     # H-26(3): strip JSONC comments before jq: the live config may
     # legally carry // or /* */ comments, and a bare jq read fails

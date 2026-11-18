@@ -45386,6 +45386,10 @@ PY_LEGACY_EXTRACT
     done <<< "$legacy_aux_paths"
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     printf '\nConverted by %s from legacy archive: %s\n' "$ABOX_BUILD" "$(basename "$selected")" >> "$work/meta/metadata.txt"
+    # H-21 (Carbon R3): migrate a legacy .shortcut BEFORE the manifest
+    # is created, so the manifest hashes the migrated bytes and the
+    # converted backup validates downstream instead of deadlocking.
+    shortcut_migrate_legacy_file "$root$ABOX_DIR/.shortcut" || true
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Converted manifest creation failed.'; }
     if [[ -e "$out_dir" || -L "$out_dir" ]]; then
         [[ -d "$out_dir" && ! -L "$out_dir" ]] || { rm -rf "$work"; die 'Legacy conversion output directory is not a safe directory.'; }
@@ -45762,6 +45766,14 @@ validate_extracted_backup_content() {
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
     validate_backup_manifest_tree "$work" || return 1
+    # H-21 (Carbon R3): migrate a legacy .shortcut AFTER the manifest
+    # tree check (its hashes cover the pre-migration bytes) and BEFORE
+    # the strict parse below, so a backup still carrying the retired
+    # xray-latest token validates instead of deadlocking. Runs on the
+    # private extracted copy only; a file without the legacy token is
+    # untouched (migrate returns 2). A corrupt manifest fails above,
+    # before any byte is changed.
+    shortcut_migrate_legacy_file "$root$ABOX_DIR/.shortcut" || true
     # SYD-B7: tree hashes prove the backup manifest file is intact, not that
     # its rows are well-formed; validate row semantics when present (a missing
     # manifest is left to the merge path, which handles it).
@@ -46649,7 +46661,7 @@ PY_LATEST_BACKUP
     fi
     validate_backup_archive "$_rbc" || { msg "restore gate failed: archive" >&2; rm -rf "$work"; return 1; }
     tar -xzf "$_rbc" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
-    root="$work/root"; shortcut_migrate_legacy_file "$root/etc/ddr/.shortcut" || true; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
+    root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
     local _manifest_snapshot="$work/live-manifest.tsv"
     if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
         [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { msg "restore gate failed: live-manifest" >&2; rm -rf "$work"; return 1; }
@@ -46799,7 +46811,6 @@ PY_RB_ENUM
     validate_backup_archive "$_rbc" || die "$(tr_msg rb_structure_fail)"
     tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
     root="$work/root"
-    shortcut_migrate_legacy_file "$root/etc/ddr/.shortcut" || true
     assert_restore_target_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_target_fail)"; }
     assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_shortcut_fail)"; }
     validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; die "$(tr_msg rb_init_incompat)"; }

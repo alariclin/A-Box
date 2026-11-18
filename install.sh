@@ -35448,7 +35448,7 @@ check_virgin_state() {
 }
 
 restore_vps_tune() {
-    local quiet="${1:-0}" dir="$ABOX_DIR/tune-backup" line key value path failed=0
+    local quiet="${1:-0}" dir="$ABOX_DIR/tune-backup" line key value path failed=0 _live
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
     [[ -d "$dir" ]] || { [[ "$quiet" == 1 ]] || msg "${YELLOW}[!] $(tr_msg restore_vps_tune_no_snapshot)${NC}"; return 1; }
     path_tree_has_mountpoint "$dir" && { [[ "$quiet" == 1 ]] || msg "${RED}[!] $(tr_msg restore_vps_tune_mountpoint_refused)${NC}"; return 1; }
@@ -35462,7 +35462,18 @@ restore_vps_tune() {
         [[ ! -e "$path" && ! -L "$path" ]] || auxiliary_path_is_abox_managed "$path" || return 1
     done
     if [[ -f "$dir/sysctl.original" ]]; then
-        while IFS='=' read -r key value; do [[ -n "$key" ]] || continue; sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1; done < "$dir/sysctl.original"
+        while IFS='=' read -r key value; do
+            [[ -n "$key" ]] || continue
+            # M-32(3): skip keys already at the snapshot value,
+            # and keys that are read-only here: a no-op probe
+            # write of the live value fails, so forcing the
+            # snapshot value would fail anyway. Neither case
+            # sets failed=1 or leaves the snapshot behind.
+            _live=$(sysctl -n "$key" 2>/dev/null || true)
+            [[ "$_live" == "$value" ]] && continue
+            sysctl -w "$key=$_live" >/dev/null 2>&1 || continue
+            sysctl -w "$key=$value" >/dev/null 2>&1 || failed=1
+        done < "$dir/sysctl.original"
     fi
     if [[ -f "$dir/sysctl.conf" ]]; then install -d -m 755 /etc/sysctl.d || failed=1; cp -a "$dir/sysctl.conf" /etc/sysctl.d/99-A-Box-tune.conf || failed=1; else rm -f /etc/sysctl.d/99-A-Box-tune.conf || failed=1; fi
     if [[ -f "$dir/limits.conf" ]]; then install -d -m 755 /etc/security/limits.d || failed=1; cp -a "$dir/limits.conf" /etc/security/limits.d/A-Box.conf || failed=1; else rm -f /etc/security/limits.d/A-Box.conf || failed=1; fi
@@ -35630,6 +35641,9 @@ EOF_LIMITS
     __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
     __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
+    # M-32(2): fq is a requested qdisc (net.core.default_qdisc fq
+    # below), so its module must be loaded the same way tcp_bbr is.
+    modprobe sch_fq >/dev/null 2>&1 || true
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
         __abox_add_sysctl net.core.default_qdisc fq "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
@@ -35648,7 +35662,16 @@ EOF_BBR
     fi
     install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_atomic_write)"; }
     rm -f "$tmp"
-    if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die "$(tr_msg tn_apply)"; fi
+    if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then
+        # M-32(2): report what is still missing before rolling
+        # back, so the failure is diagnosable instead of silent.
+        missing=$(_tune_missing_items)
+        if [[ -n "$missing" ]]; then
+            msg "${YELLOW}[!] $(tr_msg apply_vps_tune_items_still_inactive)${NC}"
+            msg "$missing"
+        fi
+        restore_vps_tune 1; die "$(tr_msg tn_apply)"
+    fi
     missing=$(_tune_missing_items)
     if [[ -z "$missing" ]]; then
         msg "${GREEN}$(tr_msg apply_vps_tune_missing_filled)${NC}"
@@ -43715,7 +43738,28 @@ setup_swap_2g() {
     swapfile_active_state
     case $? in
         0) ;;
-        1) swapon /swapfile || { (( created_by_abox == 1 )) && rm -f -- /swapfile; die "$(tr_msg setup_swap_2g_swapon_failed_no_fstab)"; } ;;
+        1) if ! swapon /swapfile; then
+            if (( created_by_abox == 1 )); then
+                # M-32(1): a fallocate-built file can be rejected
+                # by swapon; rebuild it with dd and retry once
+                # instead of dying on the first failure. The
+                # Btrfs NOCOW setup is re-applied: a COW file is
+                # rejected the same way, so the rebuild must be
+                # NOCOW again when the original was.
+                rm -f -- /swapfile
+                if (( _swap_nocow == 1 )); then
+                    (umask 077 && : > /swapfile) || die "$(tr_msg setup_swap_2g_swap_file_create_failed)"
+                    chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_btrfs_nocow_failed)"; }
+                fi
+                (umask 077 && dd if=/dev/zero of=/swapfile bs=1M count=2048) || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_create_failed)"; }
+                chmod 600 /swapfile || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_chmod_failed)"; }
+                chown root:root /swapfile || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_chown_failed)"; }
+                mkswap /swapfile >/dev/null || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_mkswap_failed)"; }
+                swapon /swapfile || { rm -f -- /swapfile; die "$(tr_msg setup_swap_2g_swapon_failed_no_fstab)"; }
+            else
+                die "$(tr_msg setup_swap_2g_swapon_failed_no_fstab)"
+            fi
+        fi ;;
         *) die "$(tr_msg setup_swap_2g_swap_active_unknown)" ;;
     esac
     if (( created_by_abox == 1 )); then

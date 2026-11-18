@@ -23091,9 +23091,11 @@ f2b_port_groups() {
 
 # S38 (GPT-18): back up a file before it is replaced, and restore it.
 # Paths are parameters so the behavior is fixture-testable. A missing
-# source backs up as "absent" (any stale backup removed), and restoring
-# an absent backup deletes the new file -- returning to the pre-commit
-# state in both directions. Symlinks are never followed.
+# source backs up as "absent" (any stale backup removed). M-23: restoring
+# an absent backup must NOT delete the target -- bak absent means the
+# target is new this round (first install), and deleting it on a
+# validation failure destroys a legitimate new config. Only a backup
+# that really exists is restored. Symlinks are never followed.
 _f2b_backup_file() {
     local src="$1" bak="$2"
     if [[ -f "$src" && ! -L "$src" ]]; then
@@ -23108,7 +23110,9 @@ _f2b_restore_file() {
     if [[ -f "$bak" && ! -L "$bak" ]]; then
         cp -p -- "$bak" "$src" || return 1
     else
-        rm -f -- "$src" || return 1
+        # M-23: no backup exists, so the target is new this round;
+        # keep it instead of deleting a legitimate new config.
+        :
     fi
     return 0
 }
@@ -23265,6 +23269,16 @@ bantime.maxtime = 86400'
             # source host-wide and takes no port/protocol arguments.
         fi
         printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
+        # M-23: pin the default backend to systemd journal for jails
+        # without their own backend (notably the stock [sshd] jail on
+        # Debian 12, where backend=auto + no /var/log/auth.log makes
+        # the global `fail2ban-client -t` fail). Per-jail
+        # `backend = polling` below still overrides this for A-Box
+        # jails, which read log files.
+        cat >> "$jail_tmp" <<'EOF_F2B_DEFAULT' || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
+[DEFAULT]
+backend = systemd
+EOF_F2B_DEFAULT
         if [[ -n "$tcp_ports" ]]; then
             local -a tcp_groups=()
             if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi
@@ -48020,7 +48034,14 @@ wallos_install_runtime() {
             local pkg conflict_prompt
             command -v dnf >/dev/null 2>&1 || return 1
             command -v rpm >/dev/null 2>&1 || return 1
-            dnf -y install dnf-plugins-core ca-certificates curl jq || return 1
+            # M-23(2): Rocky/Alma/Fedora Minimal pre-install curl-minimal;
+            # forcing the full curl RPM conflicts with it. Only ask for
+            # curl when no curl binary exists (mirrors the
+            # init_system_environment avoidance), and pass
+            # --allowerasing so a residual swap cannot fail the install.
+            local -a _wallos_dnf_pkgs=(dnf-plugins-core ca-certificates jq)
+            command -v curl >/dev/null 2>&1 || _wallos_dnf_pkgs+=(curl)
+            dnf -y install --allowerasing "${_wallos_dnf_pkgs[@]}" || return 1
             case "$os_id" in
                 fedora)
                     if [[ "$(dnf --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1 | cut -d. -f1)" == '5' ]]; then

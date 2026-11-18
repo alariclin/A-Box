@@ -34972,16 +34972,12 @@ sync_env_ports_after_removal() {
 # or is missing) — callers must only delete on rc 1.
 _standalone_link_survivor() {
     local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
-<<<<<<< HEAD
     local _cfg='' _prog='' _jq_rc=0 _stripped=''
-=======
-    local _cfg='' _prog='' _jq_rc=0
     # M-29(3): one .link file per base tag -- the survivor test must
     # match that tag exactly, not the whole -2 family. socks5-sb stays
     # type-based (mixed-in/socks-in genuinely share one link) and the
     # xray keys stay protocol-based (old xray configs may be untagged;
     # a tag match there could delete a live link).
->>>>>>> b07da16 (update)
     case "$key" in
         trojan-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "trojan")' ;;
         trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") == "trojan-landing")' ;;

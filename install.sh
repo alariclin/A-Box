@@ -11987,6 +11987,21 @@ is_test() {
     esac
 }
 
+# R3-NEW-02: system/management reserved ports, shared by every port
+# prompt so the table cannot drift between the main deployer and the
+# independent deployers again (22 SSH, 53 DNS, 68 DHCP client, 80 HTTP,
+# 123 NTP, 161 SNMP, 323 chrony, 10085 Xray API). A reserved port is
+# refused even when nothing listens on it: the slot belongs to the
+# system/management plane, not to the next deployer that asks.
+is_reserved_port() {
+    local port="${1:-}"
+    valid_port "$port" || return 1
+    case "$((10#$port))" in
+        22|53|68|80|123|161|323|10085) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # prompt_validated: read from stdin, apply default on empty, re-prompt until
 # is_test passes. Prints the accepted value to stdout.
 prompt_validated() {
@@ -11995,6 +12010,10 @@ prompt_validated() {
     while true; do
         if ! read -r -p "$prompt" val; then
             val="$default"
+            if [[ "$type" == 'port' ]] && is_reserved_port "$val"; then
+                msg "${RED}$(tprintf pt_reserved "$((10#$val))")${NC}" >&2
+                return 1
+            fi
             if is_test "$type" "$val"; then
                 printf '%s' "$val"
                 return 0
@@ -12011,6 +12030,10 @@ prompt_validated() {
         # leading zeros -- this is canonicalization, not a crash fix.)
         if [[ "$type" == 'port' ]] && valid_port "$val"; then
             val="$((10#$val))"
+        fi
+        if [[ "$type" == 'port' ]] && is_reserved_port "$val"; then
+            msg "${RED}$(tprintf pt_reserved "$val")${NC}" >&2
+            continue
         fi
         if is_test "$type" "$val"; then
             printf '%s' "$val"
@@ -12220,9 +12243,7 @@ prompt_port_input() {
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
         if valid_port "$input"; then
-            case "$((10#$input))" in
-                22|53|68|80|123|161|323|10085) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
-            esac
+            if is_reserved_port "$input"; then printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue; fi
             printf '%s\n' "$((10#$input))"
             return 0
         fi
@@ -12237,9 +12258,7 @@ prompt_ss_port_input() {
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
         if valid_port "$input"; then
-            case "$((10#$input))" in
-                22|53|68|80|123|161|323|10085) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
-            esac
+            if is_reserved_port "$input"; then printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue; fi
             printf '%s\n' "$((10#$input))"
             return 0
         fi
@@ -26195,6 +26214,11 @@ EOF_SVC
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
+        # S2-NEW-03: refresh the subscription export so the deployed node
+        # set is what subscribers see; without this the files keep serving
+        # dead links until menu E. Best-effort (see helper): the deploy
+        # already committed, so an export failure warns but must not fail it.
+        refresh_subscription_after_deploy || true
         view_config deploy
     fi
 }
@@ -27091,6 +27115,11 @@ EOF_SVC
         register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
@@ -27319,6 +27348,11 @@ deploy_xray_trojan_landing() {
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     # N1: trojan-path REALITY notice (trojan-variant mihomo line; no YAML here).
     show_reality_mlkem_notice 0 1
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -27495,6 +27529,11 @@ EOF_SVC
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 
@@ -27702,6 +27741,11 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "$(tprintf sl_node_port 'TUIC' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 
@@ -27882,6 +27926,11 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "$(tprintf sl_node_port 'AnyTLS-Reality' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 
@@ -28084,6 +28133,11 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "$(tprintf sl_node_port 'ShadowTLS' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 # ================= Argo / CDN front (sing-box WS + cloudflared) =================
@@ -31412,6 +31466,11 @@ EOF_SVC
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
 }
 
 
@@ -32155,6 +32214,11 @@ EOF_SVC
     _n1_flags=$(xray_config_reality_flags "$XRAY_SLOT_CFG" || true)
     read -r _n1_reality _n1_xhttp <<< "${_n1_flags:-0 0}"
     if [[ "$_n1_reality" == '1' ]]; then show_reality_mlkem_notice "$_n1_xhttp" 0; fi
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
     view_config deploy
 }
 
@@ -32323,6 +32387,11 @@ EOF_SVC
     # link. Best-effort: the deploy already committed, so a failure
     # warns but must not fail it.
     users_reg_reconcile_after_deploy sing-box || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # S2-NEW-03: refresh the subscription export so the deployed node
+    # set is what subscribers see; without this the files keep serving
+    # dead links until menu E. Best-effort (see helper): the deploy
+    # already committed, so an export failure warns but must not fail it.
+    refresh_subscription_after_deploy || true
     view_config deploy
 }
 
@@ -37627,6 +37696,22 @@ users_link_combo() {
         *) return 1 ;;
     esac
     return 0
+}
+
+# S2-NEW-03: subscription files are deployment products. Refresh the
+# export at the end of every deploy so subscribers never keep serving
+# links the deploy just deleted or rotated (a stale file otherwise
+# survives until menu E). Best-effort: the deploy already committed,
+# so an export failure warns but must not fail it; callers use `|| true`.
+refresh_subscription_after_deploy() {
+    local _n
+    _n=$(users_export_all || true)
+    if [[ -n "$_n" ]]; then
+        msg "${GREEN}Subscription export refreshed: ${_n} link(s) (uri-list.txt / subscription.base64)${NC}"
+        return 0
+    fi
+    msg "${YELLOW}[!] Subscription export refresh failed; subscription files may be stale until the next multi-user export (menu E).${NC}" >&2
+    return 1
 }
 
 # Export every enabled user's link (all registries) in the subscription

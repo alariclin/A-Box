@@ -40535,6 +40535,12 @@ _resolved_dns_probe_any() {
         _tok="${_tok%%#*}"
         _host="$_tok"; _port=53
         case "$_tok" in
+            # N-3 (H-25 hardening): bracketed IPv6 with port, e.g.
+            # [::1]:5353 -- the *.*:* arm below cannot split it (no dot),
+            # and without this arm the whole token becomes the host with
+            # port 53. Unreachable today (no caller emits this form), and
+            # dns_probe_once would fail-closed on the bad host anyway.
+            \[*\]:*) _host="${_tok#\[}"; _host="${_host%%\]*}"; _port="${_tok##*:}" ;;
             *.*:*) _host="${_tok%:*}"; _port="${_tok##*:}" ;;
         esac
         [[ "$_port" =~ ^[0-9]+$ ]] || _port=53

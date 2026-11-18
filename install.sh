@@ -14819,6 +14819,69 @@ users_registries_remove_core() {
     return 0
 }
 
+# F-NEW-01A: per-tag survivorship for a numbered second instance
+# (tag-<n>, e.g. trojan-landing-2). A numbered instance registers its
+# link under the tag itself (users_link_stem falls through for
+# tag-<n>), so the family-level survivor (_standalone_link_survivor)
+# cannot judge it: a surviving base instance must not keep a deleted
+# surviving -2 must not be deleted with the base. Either core may
+# serve the tag, so both configs are consulted; the link dies only
+# when both confirm the tag absent.
+# Returns 0 when either core still serves the tag, 1 when both
+# confirm it gone, 2 when survivorship is unverifiable (jq failed or
+# missing, empty config) -- callers must only delete on rc 1.
+_standalone_numbered_link_survivor() {
+    local tag="$1" _cfg='' _jq_rc=0 _unverifiable=0
+    command -v jq >/dev/null 2>&1 || return 2
+    for _cfg in "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json; do
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || continue
+        if [[ ! -s "$_cfg" ]]; then
+            msg "${YELLOW}[!] standalone link '$tag': survivorship unverifiable (empty config); keeping the link.${NC}" >&2
+            _unverifiable=1
+            continue
+        fi
+        _jq_rc=0
+        jq -s -e --arg t "$tag" '([.[] | .inbounds[]? | select((.tag // "") == $t)] | length) > 0' "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
+        case "$_jq_rc" in
+            0) return 0 ;;
+            1) : ;;
+            *) msg "${YELLOW}[!] standalone link '$tag': survivorship unverifiable (jq rc ${_jq_rc}); keeping the link.${NC}" >&2; _unverifiable=1 ;;
+        esac
+    done
+    (( _unverifiable == 1 )) && return 2
+    return 1
+}
+
+# F-NEW-01A: delete a numbered link only on confirmed rc 1 (mirror of
+# _standalone_link_prune_if_gone).
+_standalone_numbered_link_prune_if_gone() {
+    local stem="$1" link="$2" _rc=0
+    _standalone_numbered_link_survivor "$stem" || _rc=$?
+    if [[ "$_rc" == 1 ]]; then rm -f -- "$link" 2>/dev/null || true; fi
+    return 0
+}
+
+# F-NEW-01A: sweep numbered second-instance links (tag-<n>) out of a
+# standalone-links dir. The fixed-key loops in _prune_standalone_links
+# never name these stems, so an overwrite left the orphan .link file
+# for menu 12 to reprint as a dead node. Only stems of families that
+# deploy_with_instance_choice can number are swept; anything else
+# (hy2, argo, latest-*, non-numeric suffixes) is left alone. A link
+# dies only when _standalone_numbered_link_survivor confirms its tag
+# gone from both cores. Best-effort, always returns 0.
+_prune_numbered_standalone_links() {
+    local dir="$1" _f='' _stem=''
+    [[ -d "$dir" && ! -L "$dir" ]] || return 0
+    for _f in "$dir"/*.link; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        _stem="${_f##*/}"; _stem="${_stem%.link}"
+        if [[ "$_stem" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+$ ]]; then
+            _standalone_numbered_link_prune_if_gone "$_stem" "$_f" || true
+        fi
+    done
+    return 0
+}
+
 # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
 # Mirrors _protocol_removed_side_effects: remove a family's standalone
 # link files when no live inbound still references them. The Argo link
@@ -14826,6 +14889,14 @@ users_registries_remove_core() {
 # unconditionally, mirroring _remove_hy2_official.
 _prune_standalone_links() {
     local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ws_out=''
+    # F-NEW-01A: numbered second instances (tag-<n>) register their
+    # link under the tag itself, so the fixed-key loops below never
+    # name them. Sweep them first: the sweep is independent of the
+    # per-core loops (disjoint stems) and must still run when the
+    # sing-box branch below returns early on a ws-query failure.
+    if [[ "$srv" == 'xray' || "$srv" == 'sing-box' ]]; then
+        _prune_numbered_standalone_links "$dir" || true
+    fi
     case "$srv" in
         xray)
             for key in trojan-xray socks5-xray; do

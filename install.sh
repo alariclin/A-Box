@@ -27130,6 +27130,10 @@ deploy_singbox_socks5_landing() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box socks5-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -27207,6 +27211,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R7-13: a pre-existing binary does not imply a service unit exists
     # (e.g. the R4C8-04 seed branch never writes one); ensure it here,
     # before the config merge and restart.
@@ -27417,6 +27422,10 @@ deploy_xray_trojan_landing() {
     fi
 
     # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "xray trojan-landing"
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
@@ -27448,6 +27457,7 @@ deploy_xray_trojan_landing() {
         fi
         rm -f "$tmp_json"
     fi
+    abox_fetch_guard_stop
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
     # Reality keypair + SNI (reuse A-Box flow).
@@ -27550,6 +27560,10 @@ deploy_singbox_trojan_landing() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box trojan-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -27630,6 +27644,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -27740,6 +27755,10 @@ deploy_singbox_tuic() {
     uuid=$(generate_robust_uuid) || die 'TUIC UUID generation failed.'
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box tuic"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -27820,6 +27839,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -27937,6 +27957,10 @@ deploy_singbox_anytls() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box anytls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -28017,6 +28041,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -28118,6 +28143,10 @@ deploy_singbox_shadowtls() {
     [[ -n "$inner" ]] || die 'ShadowTLS SS password generation failed.'
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box shadowtls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -28198,6 +28227,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -31513,6 +31543,10 @@ deploy_socks5_landing() {
     fi
 
     # Minimal Xray install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "xray socks5-landing"
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
@@ -31584,6 +31618,7 @@ EOF_SVC
             chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
     fi
+    abox_fetch_guard_stop
 
     # R6-F09-7: a pre-existing binary does not imply a service unit exists.
     # Ensure it here, before the config merge and restart (R7-13 precedent
@@ -54652,6 +54687,16 @@ PY_CLASH_REALPATH
     # Nothing to deliver unless a VLESS Reality leg exists for this node.
     if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then _has_vision=1; fi
     if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then _has_xhttp=1; fi
+    # S1-Low-1 (final-round follow-up): a deploy with no VLESS leg (SS /
+    # HY2-only / ...) must not leave a stale single-user file behind: the
+    # file can only ever hold Vision / XHTTP nodes, so any content in it
+    # is dead the moment this node has no such leg. Reached only after
+    # the symlink / non-regular guards above, so $out here is either
+    # absent or a regular file under $ABOX_DIR. Best-effort: a removal
+    # failure must not fail the deploy (the file is advisory only).
+    if (( _has_vision == 0 && _has_xhttp == 0 )) && [[ -f "$out" ]]; then
+        rm -f -- "$out" 2>/dev/null || true
+    fi
     (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
     tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
     {

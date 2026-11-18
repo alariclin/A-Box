@@ -12905,7 +12905,10 @@ init_system_environment() {
                 # to disagree with openrc_cron_service_name returning 'crond'.
                 # Explicit 'tar' pulls GNU tar so backup fixtures and archives support
                 # GNU long options where needed.
-                deps=(bash curl jq openssl bc unzip iptables tar psmisc lsof ca-certificates iproute2 coreutils logrotate util-linux bind-tools procps iptables-openrc python3 shadow)
+                # M-27: tzdata provides /usr/share/zoneinfo; without it
+                # valid_timezone_name (TZif magic check) fails for every
+                # zone including UTC on Alpine.
+                deps=(bash curl jq openssl bc unzip iptables tar psmisc lsof ca-certificates iproute2 coreutils logrotate util-linux bind-tools procps iptables-openrc python3 shadow tzdata)
                 # H-20(a): ip6tables ships in its own APK package on
                 # Alpine 3.18 (pkgs.alpinelinux.org: ip6tables 1.8.9-r2
                 # provides /sbin/ip6tables*). Whether 3.19+ still ships
@@ -39334,6 +39337,10 @@ timezone_apply_with_rollback() {
         fi
         return 1
     }
+    # M-27 note: this overwrites the previous .tz-rollback, so only a
+    # single rollback step is kept by design. Multi-step rollback
+    # would need a separate design (retention + selection); out of
+    # scope for this batch, recorded as a design limitation.
     rm -rf -- "$ABOX_DIR/.tz-rollback"
     mv -- "$stage" "$ABOX_DIR/.tz-rollback" || {
         if ! restore_timezone_snapshot "$snap"; then
@@ -46942,14 +46949,18 @@ backup_current_config() {
         # catches same-device bind mounts that --one-file-system cannot detect.
         path_tree_has_nested_mountpoint "$ABOX_DIR" && backup_failed=1
         # C-04: Exclude .tz-rollback/.dns-backup (contain symlinks from cp -a of /etc/localtime, /etc/resolv.conf). R28-OBS-S1-05: also exclude .dns-backup.new.* staging dirs (same symlinked resolv.conf copy); a leaked staging dir must not abort the backup.
-        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o -path "$ABOX_DIR/.dns-backup.new.*" -prune -o "${backup_find_prune[@]}" -type l -print 2>/dev/null) || backup_failed=1
+        # M-27: also prune .tz-snap.* (snapshot staging, symlinked
+        # /etc/localtime copy), .tz-rollback-new.* and
+        # .tune-backup-new.* staging dirs; a leaked staging dir must
+        # not abort the backup, like .dns-backup.new.* above.
+        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o -path "$ABOX_DIR/.dns-backup.new.*" -prune -o -path "$ABOX_DIR/.tz-snap.*" -prune -o -path "$ABOX_DIR/.tz-rollback-new.*" -prune -o -path "$ABOX_DIR/.tune-backup-new.*" -prune -o "${backup_find_prune[@]}" -type l -print 2>/dev/null) || backup_failed=1
         if [[ -n "${_abox_links:-}" ]]; then
             backup_failed=1
         else
             mkdir -p "$root$ABOX_DIR" || backup_failed=1
             [[ "$backup_failed" == 0 ]] && (cd "$ABOX_DIR" && tar \
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
-                --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' \
+                --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' --exclude='./.tz-snap.*' --exclude='./.tz-rollback-new.*' --exclude='./.tune-backup-new.*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \

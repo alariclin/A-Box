@@ -34916,6 +34916,19 @@ users_registries_wipe() {
         # M-29(3): same sidecar cleanup as users_registry_remove.
         if [[ -f "${_f}.sync-pending" && ! -L "${_f}.sync-pending" ]]; then rm -f -- "${_f}.sync-pending" || return 1; fi
     done
+    # M-29 follow-up (wipe orphan sidecar): the loop above only visits
+    # *.json, so a sidecar whose registry is already gone is never seen
+    # and survives the wipe. Sweep *.sync-pending too and delete the
+    # sidecar when no corresponding .json exists in any form (a
+    # symlinked .json is deliberately never deleted, so its debt marker
+    # must survive with it).
+    local _s='' _j=''
+    for _s in "$_dir"/*.sync-pending; do
+        [[ -f "$_s" && ! -L "$_s" ]] || continue
+        _j="${_s%.sync-pending}"
+        case "$_j" in *.json) ;; *) _j="${_j}.json" ;; esac
+        if [[ ! -e "$_j" && ! -L "$_j" ]]; then rm -f -- "$_s" || return 1; fi
+    done
     return 0
 }
 

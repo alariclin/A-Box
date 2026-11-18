@@ -23415,10 +23415,19 @@ bantime.maxtime = 86400'
         # the global `fail2ban-client -t` fail). Per-jail
         # `backend = polling` below still overrides this for A-Box
         # jails, which read log files.
-        cat >> "$jail_tmp" <<'EOF_F2B_DEFAULT' || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
+        # M-23 (follow-up N1): only pin backend=systemd when this host
+        # is systemd AND the python3-systemd bindings are confirmed
+        # importable (checked with -I so a stray systemd.py in cwd or
+        # PYTHONPATH cannot fake it). Anywhere else -- non-systemd, or
+        # systemd without the bindings (dnf/yum/apk hosts have no
+        # install path for them) -- the block is omitted and stock
+        # file-log jails keep backend=auto.
+        if [[ "${INIT_SYS:-}" == 'systemd' ]] && python3 -I -c 'import systemd' >/dev/null 2>&1; then
+            cat >> "$jail_tmp" <<'EOF_F2B_DEFAULT' || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
 [DEFAULT]
 backend = systemd
 EOF_F2B_DEFAULT
+        fi
         if [[ -n "$tcp_ports" ]]; then
             local -a tcp_groups=()
             if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi

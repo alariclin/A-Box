@@ -22845,6 +22845,7 @@ validate_fail2ban_config() {
         sample=$(umask 077; mktemp /tmp/A-Box-f2b-sample.XXXXXX) || { printf '%s\n' "${RED}[!] Fail2Ban sample creation failed.${NC}" >&2; return 1; }
         cat > "$sample" <<'EOF_F2B_SAMPLE' || { rm -f -- "$sample"; printf '%s\n' "${RED}[!] Fail2Ban sample write failed.${NC}" >&2; return 1; }
 +0000 2026-07-25 10:00:00 ERROR [1253312684 0ms] inbound/vless[vless-in]: process connection from 203.0.113.7:54321: unknown UUID: 99999999-8888-4777-8666-555555555555
+-0800 2026-07-25 10:00:00 ERROR [1253312684 0ms] inbound/vless[vless-in]: process connection from 203.0.113.12:54326: unknown UUID: 99999999-8888-4777-8666-555555555555
 2026/07/25 10:00:01.123456 from 203.0.113.8:54322 rejected  proxy/vless/encoding: invalid request user id: 99999999-8888-4777-8666-555555555555
 +0000 2026-07-25 10:00:02 ERROR [2126696436 0ms] inbound/shadowsocks[ss-in]: process connection from 203.0.113.9:54323: shadowsocks: serve TCP from 203.0.113.9:54323: cipher: message authentication failed
 +0000 2026-07-25 10:00:03 ERROR [2451458976 3.60s] inbound/vless[vless-in]: process connection from 203.0.113.10:54324: EOF
@@ -22857,6 +22858,14 @@ EOF_F2B_SAMPLE
             return 1
         }
         rm -f "$sample"
+        # T-3 (follow-up): a -0800 sing-box line (TZ=America/Los_Angeles)
+        # must still yield a date hit; the old ^\+ datepattern matched
+        # the failregex but detected no date, so the line was silently
+        # dropped from banning. Fail closed if the Date template hits
+        # section parses to zero hits.
+        local _f2b_date_hits
+        _f2b_date_hits=$(sed -n '/^Date template hits:/,/^`-$/p' <<< "$out" | grep -cE '^[|] +\[1-9][0-9]*\]' || true)
+        [[ "$_f2b_date_hits" =~ ^[0-9]+$ ]] && (( _f2b_date_hits >= 1 )) || { printf '%s\n' "$out" >&2; printf '%s\n' "${RED}[!] Fail2Ban date detection failed for a sample log line.${NC}" >&2; return 1; }
         local summary matched_count missed_count matched_lines
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
         matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$summary")
@@ -23326,12 +23335,12 @@ EOF_LOGROTATE
 [Definition]
 # H-19: datepatterns for the two real log formats (verified with
 # fail2ban-regex 1.0.2 against live sing-box 1.14.3 / Xray 26.7.28
-# output): sing-box timestamp:true lines start "+0000 YYYY-MM-DD
+# output): sing-box timestamp:true lines start "+0000/-0800 YYYY-MM-DD
 # HH:MM:SS"; Xray access/error.log lines start "YYYY/MM/DD
 # HH:MM:SS.micro". Without these, no date is detected at all.
 # Hysteria is deliberately absent: at default level info it logs no
 # auth-failure line at all (core/v2.13.0 falls through to masquerade).
-datepattern = ^\+[0-9]{4} %%Y-%%m-%%d %%H:%%M:%%S
+datepattern = ^[-+][0-9]{4} %%Y-%%m-%%d %%H:%%M:%%S
               ^%%Y/%%m/%%d %%H:%%M:%%S
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
             ^.*(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:).*?(?:authentication failed|message authentication failed).*$

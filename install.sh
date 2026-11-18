@@ -426,6 +426,7 @@ HY2_ACME_OWNER_MARKER='/etc/hysteria/acme/.A-Box-managed'
 PUBLIC_IP_CONNECT_TIMEOUT=${PUBLIC_IP_CONNECT_TIMEOUT:-3}
 PUBLIC_IP_MAX_TIME=${PUBLIC_IP_MAX_TIME:-6}
 ABOX_DEPLOY_TX_ACTIVE=0
+ABOX_DEPLOY_TX_OWNER=''
 ABOX_DEPLOY_TX_TARGETS=''
 ABOX_DEPLOY_TX_REASON=''
 ABOX_DEPLOY_TX_BACKUP=''
@@ -887,8 +888,17 @@ rebuild_standalone_links() {
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
-        if ! "$ABOX_DIE_HOOK" "$*"; then
-            printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+        # H-17: only the transaction owner process (or a top-level shell)
+        # may run the rollback hook. A die() inside a command substitution
+        # runs in a child shell whose BASHPID differs from the transaction
+        # owner; running the hook there would roll back (destructively)
+        # while the parent keeps deploying with empty values. The subshell
+        # still exits 1, so the parent's || die fires the hook exactly
+        # once, in the right process.
+        if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
+            if ! "$ABOX_DIE_HOOK" "$*"; then
+                printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+            fi
         fi
     fi
     exit 1
@@ -12472,7 +12482,7 @@ load_optional_abox_env_or_die() {
 
 rand_alnum() {
     local len="$1" out='' chunk attempt target max_attempts
-    valid_positive_int "$len" && (( 10#$len <= 4096 )) || die "$(tr_msg rnd_len)"
+    valid_positive_int "$len" && (( 10#$len <= 4096 )) || { printf '%s\n' "$(tr_msg rnd_len)" >&2; return 1; }
     target=$((10#$len))
     # The previous fixed 16 rounds could never produce 4096 alphanumeric chars.
     max_attempts=$(( (target + 255) / 256 + 16 ))
@@ -12480,7 +12490,7 @@ rand_alnum() {
         chunk=$(openssl rand -base64 256 2>/dev/null | tr -dc 'a-zA-Z0-9') || chunk=''
         [[ -n "$chunk" ]] && out+="$chunk"
     done
-    (( ${#out} >= target )) || die "$(tr_msg rnd_src)"
+    (( ${#out} >= target )) || { printf '%s\n' "$(tr_msg rnd_src)" >&2; return 1; }
     printf '%s\n' "${out:0:target}"
 }
 
@@ -12503,7 +12513,7 @@ generate_robust_uuid() {
     {
         local u variant
         u=$(openssl rand -hex 16 2>/dev/null) || u=''
-        [[ ${#u} -eq 32 ]] || die "$(tr_msg rnd_uuid)"
+        [[ ${#u} -eq 32 ]] || { printf '%s\n' "$(tr_msg rnd_uuid)" >&2; return 1; }
         case "${u:16:1}" in
             0|1|2|3) variant=8 ;;
             4|5|6|7) variant=9 ;;
@@ -13053,7 +13063,7 @@ wildcard_listen_address() {
             return 0
             ;;
         ipv6)
-            has_ipv6 || die "$(tr_msg wl_v6_only)"
+            has_ipv6 || { printf '%s\n' "$(tr_msg wl_v6_only)" >&2; return 1; }
             printf '::'
             return 0
             ;;
@@ -24768,7 +24778,7 @@ json_sockopt_xray() {
 
 build_xray_config() {
     local mode="$1" sockopt_json inbounds_json out="${2:-/usr/local/etc/xray/config.json}" tmp_out listen_addr
-    listen_addr=$(wildcard_listen_address)
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     sockopt_json=$(json_sockopt_xray)
     inbounds_json=$(jq -n \
         --arg mode "$mode" \
@@ -25164,7 +25174,7 @@ singbox_apply_loopback_guard() {
 
 build_singbox_config() {
     local mode="$1" inbounds_json ka_obj cert_cn='localhost' out="${2:-/etc/sing-box/config.json}" tmp_out listen_addr
-    listen_addr=$(wildcard_listen_address)
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     [[ -n "${HY2_DOMAIN:-}" ]] && cert_cn="$HY2_DOMAIN"
     if [[ "${ENABLE_KEEPALIVE:-}" == true ]]; then ka_obj='{"tcp_keep_alive":"45s","tcp_keep_alive_interval":"45s"}'; else ka_obj='{}'; fi
     # HY2_UP/HY2_DOWN are client-facing rates. On the server endpoint,
@@ -25539,8 +25549,8 @@ deploy_official_hy2() {
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/hysteria version >/dev/null 2>&1 || die "$(tr_msg hy2b_exec)"
 
-    HY2_PASS=$(rand_alnum 20)
-    HY2_OBFS=$(rand_alnum 16)
+    HY2_PASS=$(rand_alnum 20) || die 'Hysteria 2 password generation failed.'
+    HY2_OBFS=$(rand_alnum 16) || die 'Hysteria 2 obfuscation password generation failed.'
 
     if [[ -n "${HY2_DOMAIN:-}" ]]; then
         prepare_hysteria_acme_dir_ownership || die "$(tr_msg hy2b_acme)"
@@ -25988,6 +25998,7 @@ deployment_transaction_rollback_inner() {
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
     # rollback truly completes so an incomplete recovery remains diagnosable.
     ABOX_DEPLOY_TX_ACTIVE=0
+    ABOX_DEPLOY_TX_OWNER=''
     ABOX_DIE_HOOK=''
     msg "${YELLOW}[!] ${reason} failed; restoring the exact pre-operation snapshot.${NC}"
 
@@ -26073,6 +26084,7 @@ deployment_transaction_rollback_inner() {
     ABOX_DEPLOY_TX_BACKUP_DIR=''
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    ABOX_DEPLOY_TX_OWNER=''
     return 0
 }
 
@@ -26101,6 +26113,7 @@ begin_deployment_transaction() {
     ABOX_DEPLOY_TX_REASON="$reason"
     ABOX_DEPLOY_TX_TARGETS="$*"
     ABOX_DEPLOY_TX_BACKUP="$ABOX_LAST_BACKUP"
+    ABOX_DEPLOY_TX_OWNER=$BASHPID
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
 }
@@ -26115,6 +26128,7 @@ commit_deployment_transaction() {
     ABOX_DEPLOY_TX_BACKUP_DIR=''
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    ABOX_DEPLOY_TX_OWNER=''
     ABOX_DIE_HOOK=''
     restore_deployment_transaction_traps
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
@@ -26165,9 +26179,9 @@ setup_socks5_params() {
         [[ $_tries -gt 20 ]] && break
     done
     SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port'); [${default_port}]: " port "$default_port") || return 1
-    SOCKS_USER="abox_$(rand_alnum 6)"
+    SOCKS_USER="abox_$(rand_alnum 6)" || die 'SOCKS5 username generation failed.'
     [[ "${#SOCKS_USER}" -eq 11 ]] || die 'SOCKS5 username generation failed.'
-    SOCKS_PASS="$(rand_alnum 16)"
+    SOCKS_PASS="$(rand_alnum 16)" || die 'SOCKS5 password generation failed.'
     [[ "${#SOCKS_PASS}" -eq 16 ]] || die 'SOCKS5 password generation failed.'
     if [[ "${CORE:-singbox}" == "singbox" ]]; then
         SOCKS_PROTO="mixed"
@@ -26512,7 +26526,8 @@ EOF_SVC
     ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
 
     # Build the socks/mixed inbound object.
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
         '{type:$proto,tag:$tag,listen:$listen_addr,listen_port:$port,
@@ -26758,7 +26773,8 @@ deploy_xray_trojan_landing() {
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
@@ -26951,7 +26967,8 @@ EOF_SVC
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object.
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
@@ -27153,7 +27170,8 @@ EOF_SVC
         || die "$(tr_msg dp_tuic_cert)"
 
     # Build the TUIC inbound object.
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
     jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" --arg cert "$_tuic_crt" --arg key "$_tuic_key" --arg listen_addr "$listen_addr" \
         '{type:"tuic",tag:$tag,listen:$listen_addr,listen_port:$port,
@@ -27332,7 +27350,8 @@ EOF_SVC
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the anytls+reality inbound object.
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
@@ -27507,7 +27526,8 @@ EOF_SVC
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" --arg listen_addr "$listen_addr" \
         '({type:"shadowtls",tag:$tag,listen:$listen_addr,listen_port:$port,version:3,strict_mode:true,
@@ -30784,7 +30804,8 @@ EOF_SVC
     # /usr/local/etc/xray/config.json to exist, and the seed is what
     # creates it when both the binary and the config are missing.
     prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
-    local listen_addr=$(wildcard_listen_address)
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
         '{tag:$tag,port:$port,listen:$listen_addr,protocol:"socks",
@@ -31499,7 +31520,7 @@ deploy_xray() {
     KEYPAIR=$(/usr/local/bin/xray x25519) || die "$(tr_msg dp_xray_keypair)"
     IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_xray_keyparse2)"
     [[ -n "$PK" && -n "$PBK" ]] || die "$(tr_msg dp_xray_keyempty2)"
-    UUID=$(generate_robust_uuid)
+    UUID=$(generate_robust_uuid) || die 'UUID generation failed.'
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
     [[ -n "$SS_PASS" ]] || die "$(tr_msg dp_ss_keygen)"
@@ -31645,14 +31666,14 @@ deploy_singbox() {
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
     IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_sb_keyparse)"
     [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die "$(tr_msg dp_sb_keyparse_empty)"
-    UUID=$(generate_robust_uuid)
+    UUID=$(generate_robust_uuid) || die 'UUID generation failed.'
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
     [[ -n "$SS_PASS" ]] || die "$(tr_msg dp_ss_keygen)"
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]]; then
-        HY2_PASS=$(rand_alnum 20)
-        HY2_OBFS=$(rand_alnum 16)
+        HY2_PASS=$(rand_alnum 20) || die 'Hysteria 2 password generation failed.'
+        HY2_OBFS=$(rand_alnum 16) || die 'Hysteria 2 obfuscation password generation failed.'
         [[ -n "${HY2_DOMAIN:-}" ]] && cert_cn="$HY2_DOMAIN"
         generate_self_signed_cert_atomically /etc/sing-box/hy2.key /etc/sing-box/hy2.crt "$cert_cn" "${LINK_IP:-}" || die "$(tr_msg dp_sb_hy2_cert)"
         HY2_CERT_SHA256_FP=$(pin_sha256_colon /etc/sing-box/hy2.crt | tr -d ':')
@@ -46773,6 +46794,7 @@ PY_RB_ENUM
     ABOX_DEPLOY_TX_TARGETS="${targets# }"
     ABOX_DEPLOY_TX_BACKUP="$ABOX_LAST_BACKUP"
     ABOX_DEPLOY_TX_TMP="$work"
+    ABOX_DEPLOY_TX_OWNER=$BASHPID
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
 

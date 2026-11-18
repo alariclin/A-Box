@@ -31376,18 +31376,23 @@ EOF_SVC
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
+        if service_restart_permitted xray; then restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tr_msg dp_xray_restart)"; }; fi
     else
-        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_socks5_add)"; }
+        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; fi; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
-    service_manager start xray 2>/dev/null || true
+    # H-23 (Carbon R3 GPT follow-up): only start when the desired state
+    # is RUNNING (the default with no state file, so fresh installs still
+    # start); a manually stopped stack stays stopped. Not
+    # service_restart_permitted: it requires is-active, which a fresh
+    # minimal install never satisfies.
+    if [[ "$(get_desired_state 2>/dev/null || printf 'invalid')" == RUNNING ]]; then service_manager start xray 2>/dev/null || true; fi
     # R2C10-02: verify liveness before claiming success. A swallowed start
     # failure must not yield a RUNNING state and a usable link; the backup
     # is kept until liveness is proven so a failed start can roll back.

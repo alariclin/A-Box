@@ -35380,6 +35380,35 @@ _standalone_link_prune_if_gone() {
     return 0
 }
 
+# L-NEW-11: a removed sing-box TUIC inbound owns its per-tag self-signed
+# cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/.key). Delete the pair
+# only when no tuic inbound remains in the live config (mirror of the Hy2
+# pair cleanup in _protocol_removed_side_effects below); a strip/jq failure,
+# a missing/empty config, or a surviving tuic inbound keeps the files.
+# Only regular files are removed, never symlinks; the legacy unprefixed
+# tuic.crt/tuic.key do not match tuic-*.crt/.key and stay. Best-effort,
+# always returns 0.
+_singbox_cleanup_tuic_certs_when_none_remain() {
+    local cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _sb_dir='' _stripped='' _tuic_jq_rc=0 _f=''
+    [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]] || return 0
+    _sb_dir=$(dirname -- "$cfg")
+    _stripped=$(mktemp /tmp/A-Box-sb-tuic-strip.XXXXXX) || return 0
+    if ! jsonc_strip_comments "$cfg" > "$_stripped" 2>/dev/null; then
+        rm -f -- "$_stripped"
+        return 0
+    fi
+    # 2gq: delete only when jq confirms no tuic inbound remains
+    # (one-pass Boolean, rc 1); a jq failure keeps the files.
+    jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' "$_stripped" >/dev/null 2>&1 || _tuic_jq_rc=$?
+    rm -f -- "$_stripped"
+    [[ "$_tuic_jq_rc" == 1 ]] || return 0
+    for _f in "$_sb_dir"/tuic-*.crt "$_sb_dir"/tuic-*.key; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        rm -f -- "$_f" 2>/dev/null || true
+    done
+    return 0
+}
+
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
     local tag='' cfg=''
@@ -35426,6 +35455,12 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                 [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
             fi
         fi
+    fi
+    # L-NEW-11: same ownership rule for TUIC: a removed sing-box TUIC
+    # inbound owns its per-tag self-signed cert/key pair; delete it
+    # only when no tuic inbound remains (helper is fail-closed).
+    if [[ "$core" == 'sing-box' ]]; then
+        _singbox_cleanup_tuic_certs_when_none_remain || true
     fi
     # U148: reconcile .env listener ports now, before the caller's
     # defense refresh rebuilds the fail2ban port list from .env.
@@ -35709,6 +35744,10 @@ clear_all_protocols() {
         # the ports, exactly like a skipped one did).
         sync_env_ports_after_removal || true
         argo_remove_unit argo || true
+        # L-NEW-11: also run when the sing-box config held no inbounds
+        # at clear time (side effects above are skipped for an empty
+        # tag list), so orphan TUIC certs cannot survive a clear-all.
+        _singbox_cleanup_tuic_certs_when_none_remain || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
         # R26-H-NF-04: the cleared stack has no core/mode anymore.
@@ -48982,36 +49021,9 @@ wallos_rollback_to_version() {
     _pre_rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
     _pre_rb_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
     _pre_rb_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
-    # R15C14-02: never trust a mutable local tag. Authenticate
-    # the local image against the versioned manifest digest; on
-    # match run by the immutable digest, else verified pull and
-    # run by the freshly loaded image ID.
-    local run_image='' _local_id='' _expected_digest=''
-    _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-    _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
-    if [[ "$_local_id" =~ ^sha256:[0-9a-f]{64}$ ]] &&
-       wallos_local_image_has_digest "$_local_id" "$_expected_digest"; then
-        run_image="$_local_id"
-    else
-        msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
-        # Use the versioned mirror path: temporarily override tag selection.
-        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
-        if ! _wallos_pull_versioned_image "$target_tag"; then
-            WALLOS_IMAGE_RESULT="$_saved_result"
-            msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
-            return 1
-        fi
-        # R11-C (R2-10-1): take the freshly loaded image's daemon
-        # store-native ID FIRST, then restore the saved global.
-        run_image="${WALLOS_IMAGE_RESULT:-}"
-        WALLOS_IMAGE_RESULT="$_saved_result"
-        [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
-    fi
-    # Stop and remove current container, restore latest backup, recreate.
-    port=$(wallos_state_value PORT 2>/dev/null || true)
-    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
-    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
-    valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
+    # L-NEW-07: the U112 backup gate runs HERE, right after the
+    # version is established and BEFORE any image fetch: with no
+    # usable backup the rollback refuses now instead of after a pull.
     # U112: select the newest backup whose recorded Wallos version is not
     # newer than the rollback target. Each backup's .abox-state carries the
     # IMAGE it was taken under; a backup from a newer Wallos may hold a
@@ -49047,6 +49059,36 @@ wallos_rollback_to_version() {
         break
     done
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; [[ -n "$_rb_skipped" ]] && msg "${YELLOW}Skipped backups newer than $target_tag or without a recorded version: ${_rb_skipped% }${NC}"; return 1; }
+    # R15C14-02: never trust a mutable local tag. Authenticate
+    # the local image against the versioned manifest digest; on
+    # match run by the immutable digest, else verified pull and
+    # run by the freshly loaded image ID.
+    local run_image='' _local_id='' _expected_digest=''
+    _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+    _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
+    if [[ "$_local_id" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+       wallos_local_image_has_digest "$_local_id" "$_expected_digest"; then
+        run_image="$_local_id"
+    else
+        msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
+        # Use the versioned mirror path: temporarily override tag selection.
+        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
+        if ! _wallos_pull_versioned_image "$target_tag"; then
+            WALLOS_IMAGE_RESULT="$_saved_result"
+            msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
+            return 1
+        fi
+        # R11-C (R2-10-1): take the freshly loaded image's daemon
+        # store-native ID FIRST, then restore the saved global.
+        run_image="${WALLOS_IMAGE_RESULT:-}"
+        WALLOS_IMAGE_RESULT="$_saved_result"
+        [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
+    fi
+    # Stop and remove current container, restore latest backup, recreate.
+    port=$(wallos_state_value PORT 2>/dev/null || true)
+    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
+    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
+    valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
     # R7-F14-2: pin the backup to a private copy before any validation or
     # restore reads it. The shared backups/ path is writable by root
     # processes outside this function; a swap between the version screen,

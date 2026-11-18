@@ -7631,18 +7631,18 @@ tr_msg() {
         ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог Sing-box.' ;;
         fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت Sing-box ناموفق بود.' ;;
         ja:dp_sb_tmpdir) echo 'Sing-box の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_unit) echo 'Sing-box systemd unit 原子写入失败。' ;;
-        zh-tw:dp_sb_unit) echo 'Sing-box systemd unit 原子寫入失敗。' ;;
-        en:dp_sb_unit) echo 'Failed to atomically write the Sing-box systemd unit.' ;;
-        ru:dp_sb_unit) echo 'Не удалось атомарно записать systemd-юнит Sing-box.' ;;
-        fa:dp_sb_unit) echo 'نوشتن اتمی یونیت systemd ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_unit_lc) echo 'sing-box systemd unit 原子写入失败。' ;;
-        zh-tw:dp_sb_unit_lc) echo 'sing-box systemd unit 原子寫入失敗。' ;;
-        en:dp_sb_unit_lc) echo 'Failed to atomically write the sing-box systemd unit.' ;;
-        ru:dp_sb_unit_lc) echo 'Не удалось атомарно записать systemd-юнит sing-box.' ;;
-        fa:dp_sb_unit_lc) echo 'نوشتن اتمی یونیت systemd ‏sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit_lc) echo 'sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_unit) echo 'Sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit) echo 'Sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit) echo 'Failed to prepare the Sing-box service unit.' ;;
+        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит Sing-box.' ;;
+        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットの準備に失敗しました。' ;;
+        zh:dp_sb_unit_lc) echo 'sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit_lc) echo 'sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit_lc) echo 'Failed to prepare the sing-box service unit.' ;;
+        ru:dp_sb_unit_lc) echo 'Не удалось подготовить systemd-юнит sing-box.' ;;
+        fa:dp_sb_unit_lc) echo 'آماده‌سازی یونیت systemd ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit_lc) echo 'sing-box の systemd ユニットの準備に失敗しました。' ;;
         zh:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 生成失败。' ;;
         zh-tw:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 產生失敗。' ;;
         en:dp_shadowtls_json) echo 'Failed to generate the ShadowTLS inbound JSON.' ;;
@@ -7829,12 +7829,12 @@ tr_msg() {
         ru:dp_xray_tmpdir) echo 'Не удалось создать временный каталог Xray.' ;;
         fa:dp_xray_tmpdir) echo 'ایجاد پوشه موقت Xray ناموفق بود.' ;;
         ja:dp_xray_tmpdir) echo 'Xray の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_xray_unit) echo 'Xray systemd unit 原子写入失败。' ;;
-        zh-tw:dp_xray_unit) echo 'Xray systemd unit 原子寫入失敗。' ;;
-        en:dp_xray_unit) echo 'Failed to atomically write the Xray systemd unit.' ;;
-        ru:dp_xray_unit) echo 'Не удалось атомарно записать systemd-юнит Xray.' ;;
-        fa:dp_xray_unit) echo 'نوشتن اتمی یونیت systemd ‏Xray ناموفق بود.' ;;
-        ja:dp_xray_unit) echo 'Xray の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_xray_unit) echo 'Xray 服务单元准备失败。' ;;
+        zh-tw:dp_xray_unit) echo 'Xray 服務單元準備失敗。' ;;
+        en:dp_xray_unit) echo 'Failed to prepare the Xray service unit.' ;;
+        ru:dp_xray_unit) echo 'Не удалось подготовить systemd-юнит Xray.' ;;
+        fa:dp_xray_unit) echo 'آماده‌سازی یونیت systemd ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_unit) echo 'Xray の systemd ユニットの準備に失敗しました。' ;;
         zh:mw_drop4_check) echo '无法检查 IPv4 SS DROP 规则： %s' ;;
         zh-tw:mw_drop4_check) echo '無法檢查 IPv4 SS DROP 規則： %s' ;;
         en:mw_drop4_check) echo 'Cannot check the IPv4 SS DROP rule: %s' ;;
@@ -27179,7 +27179,15 @@ depend() { need net; }
 EOF_SVC
         chmod +x /etc/init.d/sing-box || return 1
     fi
-    prepare_abox_runtime_permissions sing-box || return 1
+    # M41-NEW-02 (same class as xray): several landing deploys call
+    # ensure before the function-level config seed when the binary is
+    # present but the config is missing; a missing config must not fail
+    # unit creation. Skip the permission prep in that case — the caller
+    # re-runs the full prep after seeding and merging. When the config
+    # exists, prep still runs here, as before.
+    if [[ -e /etc/sing-box/config.json ]]; then
+        prepare_abox_runtime_permissions sing-box || return 1
+    fi
     return 0
 }
 
@@ -27497,7 +27505,15 @@ depend() { need net; }
 EOF_SVC
         chmod +x /etc/init.d/xray || return 1
     fi
-    prepare_abox_runtime_permissions xray || return 1
+    # M41-NEW-02: the config seed may not exist yet when a minimal
+    # landing install calls ensure before seeding (deploy_socks5_landing
+    # calls ensure before the seed); a missing config must not fail
+    # unit creation. Skip the permission prep in that case — the caller
+    # re-runs the full prep after seeding (S-SOCKS5-01). When the config
+    # exists, prep still runs here, as before.
+    if [[ -e /usr/local/etc/xray/config.json ]]; then
+        prepare_abox_runtime_permissions xray || return 1
+    fi
     return 0
 }
 

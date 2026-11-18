@@ -14961,7 +14961,9 @@ residue_takeover_clear() {
         if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
         # R6C6-01: refuse mounted trees before rm; a bind mount would
         # delete shared foreign data. Failures propagate (no || true).
-        if path_tree_has_mountpoint "$_path"; then _failed=1; continue; fi
+        # 3B-U3: ancestor-aware (same shape as R16-F05-02): a bind
+        # mount on an ancestor is invisible to the subtree-only check.
+        if path_tree_or_ancestors_mounted "$_path"; then _failed=1; continue; fi
         if [[ -d "$_path" && ! -L "$_path" ]]; then rm -rf -- "$_path" 2>/dev/null || _failed=1
         elif [[ -e "$_path" || -L "$_path" ]]; then rm -f -- "$_path" 2>/dev/null || _failed=1
         fi
@@ -23659,8 +23661,9 @@ xray_config_autorecover() {
     if (( test_rc == 0 )); then
         # R16-F07-03: a valid config does not clear a latch recorded
         # against the earlier broken config (restart-failed): the marker
-        # gate below keys on the current config's sha, so a recent
-        # "failed" record under any sha must hold the latch here, or the
+        # gate below is any-sha as well, but it is only consulted on the
+        # invalid-config path, so a recent "failed" record under any sha
+        # must hold the latch here, or the
         # probe restarts the service ~3 rounds later. The 3600s window
         # matches the existing failed/attempt cooldown and is anchored to
         # the original failure epoch: this path never appends a marker
@@ -23696,11 +23699,17 @@ xray_config_autorecover() {
     [[ -n "$bad_sha" ]] || return 1
     now=$(date +%s)
     if [[ -f "$marker" && ! -L "$marker" ]]; then
-        gate=$(awk -v s="$bad_sha" -v n="$now" '
-            $2 == s { st = $1; ep = $3 }
+        # 3B-U2: the gate must not key on the current config's sha:
+        # a changed sha bypassed both the cooldown and the restored
+        # doors. Like the R16-F07-03 latch above, it is any-sha now:
+        # the most recent marker entry of any sha decides, with the
+        # failed/attempt cooldown at 3600s and the restored door at
+        # 86400s (a stale restored must not latch recovery forever).
+        gate=$(awk -v n="$now" '
+            $1 == "failed" || $1 == "attempt" || $1 == "restored" { st = $1; ep = $3 }
             $1 == "restored" && (n - $3) < 86400 { rc24++ }
             END {
-                if (st == "restored") print "restored"
+                if (st == "restored" && (n - ep) < 86400) print "restored"
                 else if ((st == "failed" || st == "attempt") && (n - ep) < 3600) print "cooldown"
                 else if (rc24 >= 3) print "rate"
                 else print "go"
@@ -25709,11 +25718,15 @@ restore_cfg_backup() {
 # restore succeeded.
 restore_tuic_backups() {
     local key="$1" crt="$2" cfg_bak="${3:-}" cfg="$4" rc=0
+    # 3B-U16: same best-effort cleanup semantics as restore_cfg_backup
+    # (P1 Q3d): a copy success with a backup-cleanup failure only warns
+    # (rollback_cleanup_fail) and keeps rc=0; only a copy failure is a
+    # rollback failure (rollback_copy_fail below).
     if [[ -f "${key}.A-Box-bak" ]]; then
-        cp -f -- "${key}.A-Box-bak" "$key" 2>/dev/null && rm -f -- "${key}.A-Box-bak" || rc=1
+        restore_cfg_backup "${key}.A-Box-bak" "$key" || rc=1
     fi
     if [[ -f "${crt}.A-Box-bak" ]]; then
-        cp -f -- "${crt}.A-Box-bak" "$crt" 2>/dev/null && rm -f -- "${crt}.A-Box-bak" || rc=1
+        restore_cfg_backup "${crt}.A-Box-bak" "$crt" || rc=1
     fi
     if [[ -n "$cfg_bak" ]]; then
         restore_cfg_backup "$cfg_bak" "$cfg" || rc=1
@@ -33597,7 +33610,26 @@ traffic_quota_transaction_rollback() {
             return 2
         }
         IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 2
-        [[ "$current_vnstat" == "$expected_vnstat" ]] || {
+        # 3B-U9 (R14-F10-03 residual): '?' marks an unknown field
+        # (transient query failure), not a value, so it matches any
+        # counterpart on either side; only a known-field mismatch, or a
+        # field-count change, proves an external change. Compare
+        # field-wise (kind|name|active|enabled).
+        local -a _cur_vnstat_fields=() _exp_vnstat_fields=()
+        local _vnstat_match=1 _vnstat_i=0
+        IFS='|' read -r -a _cur_vnstat_fields <<< "$current_vnstat" || _vnstat_match=0
+        IFS='|' read -r -a _exp_vnstat_fields <<< "$expected_vnstat" || _vnstat_match=0
+        if (( ${#_cur_vnstat_fields[@]} != ${#_exp_vnstat_fields[@]} )); then
+            _vnstat_match=0
+        else
+            for _vnstat_i in "${!_cur_vnstat_fields[@]}"; do
+                if [[ "${_cur_vnstat_fields[$_vnstat_i]}" != "${_exp_vnstat_fields[$_vnstat_i]}" && "${_cur_vnstat_fields[$_vnstat_i]}" != '?' && "${_exp_vnstat_fields[$_vnstat_i]}" != '?' ]]; then
+                    _vnstat_match=0
+                    break
+                fi
+            done
+        fi
+        (( _vnstat_match )) || {
             printf '%s\n' "A-Box traffic rollback conflict: vnStat state changed externally; recovery state preserved at $tx_dir" >&2
             return 2
         }
@@ -38215,7 +38247,10 @@ users_core_generation() { # $1 = core -> generation string, or empty if undeterm
     fi
     pid=$(managed_service_pid "$svc" 2>/dev/null || true)
     [[ -n "$pid" ]] || return 0
-    start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)
+    # 3B-U8: robust starttime - a plain field-22 read shifts when the
+    # comm contains spaces; proc_starttime() strips through the last
+    # ')' and takes field 22 (position 20 after pid+comm).
+    start=$(proc_starttime "$pid" 2>/dev/null || true)
     [[ "$start" =~ ^[0-9]+$ && "$start" -gt 0 ]] || return 0
     printf 'proc:%s:%s' "$pid" "$start"
 }
@@ -44410,12 +44445,12 @@ inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:
 _INLINE_KEY_HEAD = (
     r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 _TEXT_KEY_HEAD = (
     r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 
 
@@ -44450,7 +44485,7 @@ def redact_text(value):
     return value
 
 
-_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
+_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)"
 _block_scalar_re = re.compile(
     r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
@@ -44645,13 +44680,13 @@ def _skip_id_gap(text, pos):
 _TEXT_KEY_CANDIDATE = (
     r"""["']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["']?"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)["']?"""
 )
 _INLINE_KEY_CANDIDATE = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
     r"""|authorization|proxy-authorization|cookie|set-cookie"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b["']?"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key)\b["']?"""
 )
 
 
@@ -44835,7 +44870,7 @@ except Exception:
         sys.stdout.write(_SUPPRESS_NOTICE + "\n")
         raise SystemExit(2)
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
         text,
     )

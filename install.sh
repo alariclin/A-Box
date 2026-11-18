@@ -22465,11 +22465,11 @@ validate_fail2ban_config() {
     if command -v fail2ban-regex >/dev/null 2>&1 && [[ -r /etc/fail2ban/filter.d/A-Box.conf ]]; then
         sample=$(umask 077; mktemp /tmp/A-Box-f2b-sample.XXXXXX) || { printf '%s\n' "${RED}[!] Fail2Ban sample creation failed.${NC}" >&2; return 1; }
         cat > "$sample" <<'EOF_F2B_SAMPLE' || { rm -f -- "$sample"; printf '%s\n' "${RED}[!] Fail2Ban sample write failed.${NC}" >&2; return 1; }
-2026-07-25T10:00:00Z process connection from 203.0.113.7:54321: message authentication failed
-2026-07-25T10:00:01Z authentication failed from [2001:db8::7]:443
-2026-07-25T10:00:02Z proxy/vless/inbound: invalid request from 198.51.100.9:44321 > proxy/vless/encoding
-2026-07-25T10:00:03Z client=198.51.100.8 rejected
-2026-07-25T10:00:04Z health check succeeded without authentication failure
++0000 2026-07-25 10:00:00 ERROR [1253312684 0ms] inbound/vless[vless-in]: process connection from 203.0.113.7:54321: unknown UUID: 99999999-8888-4777-8666-555555555555
+2026/07/25 10:00:01.123456 from 203.0.113.8:54322 rejected  proxy/vless/encoding: invalid request user id: 99999999-8888-4777-8666-555555555555
++0000 2026-07-25 10:00:02 ERROR [2126696436 0ms] inbound/shadowsocks[ss-in]: process connection from 203.0.113.9:54323: shadowsocks: serve TCP from 203.0.113.9:54323: cipher: message authentication failed
++0000 2026-07-25 10:00:03 ERROR [2451458976 3.60s] inbound/vless[vless-in]: process connection from 203.0.113.10:54324: EOF
+2026/07/25 10:00:04.123456 from 203.0.113.11:54325 accepted tcp:1.1.1.1:80 [direct]
 EOF_F2B_SAMPLE
         out=$(fail2ban-regex --print-all-matched --print-all-missed "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || {
             rm -f -- "$sample"
@@ -22932,9 +22932,19 @@ EOF_LOGROTATE
         write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg setup_active_defense_filter_write_fail)"; }
 # Managed by A-Box
 [Definition]
+# H-19: datepatterns for the two real log formats (verified with
+# fail2ban-regex 1.0.2 against live sing-box 1.14.3 / Xray 26.7.28
+# output): sing-box timestamp:true lines start "+0000 YYYY-MM-DD
+# HH:MM:SS"; Xray access/error.log lines start "YYYY/MM/DD
+# HH:MM:SS.micro". Without these, no date is detected at all.
+# Hysteria is deliberately absent: at default level info it logs no
+# auth-failure line at all (core/v2.13.0 falls through to masquerade).
+datepattern = ^\+[0-9]{4} %%Y-%%m-%%d %%H:%%M:%%S
+              ^%%Y/%%m/%%d %%H:%%M:%%S
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
             ^.*(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:).*?(?:authentication failed|message authentication failed).*$
-            ^.*invalid request from\s+\[?<HOST>\]?(?::[0-9]+)?(?:\s|>|:|$).*$
+            ^.*inbound/(?:vless|trojan|vmess|shadowsocks)\[[^]]*\]: process connection from\s+\[?<HOST>\]?(?::[0-9]+)?: (?:unknown UUID|unknown version|bad request).*$
+            ^.*from\s+\[?<HOST>\]?(?::[0-9]+)?\s+rejected\s+.*(?:invalid request|invalid user|not a valid user|failed to match an user).*$
 ignoreregex =
 EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
@@ -23026,6 +23036,7 @@ ignoreip = 127.0.0.1/8 ::1
 port = ${tcp_grp}
 filter = A-Box
 logpath = /var/log/A-Box-xray-error.log
+          /var/log/A-Box-xray-access.log
           /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
 backend = polling
@@ -23061,6 +23072,7 @@ ignoreip = 127.0.0.1/8 ::1
 port = ${udp_grp}
 filter = A-Box
 logpath = /var/log/A-Box-xray-error.log
+          /var/log/A-Box-xray-access.log
           /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
 backend = polling
@@ -25281,7 +25293,7 @@ build_singbox_config() {
         | ($rs_ob[0] | map(select(.type != "wireguard"))) as $obs
         | ($rs_rules[0] | map(.rule_set[]?) | unique) as $tags
         | {
-        log:{level:"warn", output:"/var/log/A-Box-singbox.log"},
+        log:{level:"warn", timestamp:true, output:"/var/log/A-Box-singbox.log"},
         route: ({rules: (([{network:["tcp"], action:"sniff"},{action:"resolve"},{ip_cidr:["127.0.0.0/8","::1/128"], action:"reject"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
             + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
                 url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
@@ -26494,7 +26506,7 @@ deploy_singbox_socks5_landing() {
         # U31: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -26580,7 +26592,7 @@ EOF_SVC
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         local _seed2_json
         _seed2_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$_seed2_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$_seed2_json" \
             || { rm -f "$_seed2_json"; die "$(tr_msg dp_sb_seed)"; }
         install_file_atomically "$_seed2_json" "$cfg" 600 || { rm -f "$_seed2_json"; die "$(tr_msg dp_sb_cfg)"; }
         rm -f "$_seed2_json"
@@ -26913,7 +26925,7 @@ deploy_singbox_trojan_landing() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -26979,7 +26991,7 @@ EOF_SVC
     # and the merge fails closed, it is not silently seeded over.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -27099,7 +27111,7 @@ deploy_singbox_tuic() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -27165,7 +27177,7 @@ EOF_SVC
     # and the merge fails closed, it is not silently seeded over.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -27296,7 +27308,7 @@ deploy_singbox_anytls() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -27362,7 +27374,7 @@ EOF_SVC
     # and the merge fails closed, it is not silently seeded over.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -27477,7 +27489,7 @@ deploy_singbox_shadowtls() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -27543,7 +27555,7 @@ EOF_SVC
     # and the merge fails closed, it is not silently seeded over.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -28327,7 +28339,7 @@ deploy_argo_temp() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -28389,7 +28401,7 @@ EOF_SVC
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -28557,7 +28569,7 @@ deploy_argo_fixed() {
         # overwrite a live commented config. A jq-invalid existing
         # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
@@ -28619,7 +28631,7 @@ EOF_SVC
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
@@ -49472,6 +49484,10 @@ wallos_bruteforce_protection() {
         write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER_HTTPS' || return 0
 # Managed by A-Box
 [Definition]
+# H-19: Caddy JSON access lines carry the time only as "ts":<epoch>;
+# without this datepattern fail2ban detects no date at all (verified
+# with fail2ban-regex 1.0.2 on real-format Caddy JSON lines).
+datepattern = "ts":\s*{EPOCH}
 failregex = "remote_ip":\s*"<HOST>".*"method":\s*"POST".*"uri":\s*"/login\.php(\?[^"]*)?".*"status":\s*200
 ignoreregex =
 EOF_WF2B_FILTER_HTTPS
@@ -49487,14 +49503,22 @@ failregex = ^<HOST> - \S+ \[[^\]]*\] "POST /login\.php(\?\S*)? HTTP/[0-9.]+" 200
 ignoreregex =
 EOF_WF2B_FILTER
     fi
-    if [[ "$wmode" != https ]] && command -v fail2ban-regex >/dev/null 2>&1; then
+    if command -v fail2ban-regex >/dev/null 2>&1; then
         # 2hp: prove the filter matches a real failed-login line before
         # the jail goes live; a filter that matches nothing (e.g. the
         # old \[[^\]]+\] after DateDetector strips the date) must never
         # again ship as protection. Fail closed: no jail, loud warning.
+        # H-19: https mode was previously skipped entirely; its sample
+        # is a real-format Caddy JSON access line (encoder format json;
+        # field order per Caddy docs: level, ts, logger, msg, request,
+        # duration, size, status).
         local _sample=''
         _sample=$(umask 077; mktemp /tmp/A-Box-wallos-f2b-sample.XXXXXX) || return 1
-        printf '%s\n' '203.0.113.7 - - [06/Nov/2026:10:00:00 +0000] "POST /login.php HTTP/1.1" 200 1234' > "$_sample" || { rm -f -- "$_sample"; return 1; }
+        if [[ "$wmode" == https ]]; then
+            printf '%s\n' '{"level":"info","ts":1781609400.1234,"logger":"http.log.access.wallos-access","msg":"handled request","request":{"remote_ip":"203.0.113.7","remote_port":"52314","client_ip":"203.0.113.7","proto":"HTTP/1.1","method":"POST","host":"203.0.113.5","uri":"/login.php","headers":{"Content-Type":["application/x-www-form-urlencoded"]}},"user_id":"","duration":0.002345,"size":1234,"status":200,"resp_headers":{"Content-Type":["text/html; charset=UTF-8"]}}' > "$_sample" || { rm -f -- "$_sample"; return 1; }
+        else
+            printf '%s\n' '203.0.113.7 - - [06/Nov/2026:10:00:00 +0000] "POST /login.php HTTP/1.1" 200 1234' > "$_sample" || { rm -f -- "$_sample"; return 1; }
+        fi
         if ! fail2ban-regex --print-all-matched "$_sample" A-Box-wallos 2>&1 | grep -q '203.0.113.7'; then
             rm -f -- "$_sample" "$jail" "$filter"
             msg "${YELLOW}[!] Wallos fail2ban jail NOT created: the login filter matches no failed-login line. Login brute-force protection is OFF.${NC}"
@@ -49540,8 +49564,8 @@ EOF_WF2B_FILTER
 actionstart =
 actionstop =
 actioncheck = iptables -n -L DOCKER-USER >/dev/null 2>&1
-actionban = iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable
-actionunban = iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable
+actionban = case "<ip>" in *:*) ip6tables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
+actionunban = case "<ip>" in *:*) ip6tables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
 
 [Init]
 port = 80
@@ -57682,7 +57706,10 @@ N11EOF
     grep -q 'if ! update_geo_ownership; then' <<< "$source_body" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
     grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' <<< "$source_body" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }
     grep -q 'Authorization: Bearer %s' <<< "$source_body" || { echo 'FAIL: GitHub bearer token config support missing'; failures=$((failures + 1)); }
-    grep -q 'invalid request from' <<< "$source_body" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
+    # H-19: the old assertion grepped the fabricated 'invalid request
+    # from' format Xray never emits; the new failregex covers real
+    # '... rejected ... invalid request|invalid user' access.log lines.
+    grep -Fq 'invalid request|invalid user' <<< "$source_body" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
     grep -q 'backend=\$(firewall_backend)' <<< "$source_body" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
     grep -q '^remove_abox_native_firewall_rule() {' "$0" || { echo 'FAIL: exact owned firewall port removal helper missing'; failures=$((failures + 1)); }
     grep -q '^forget_native_firewall_rule() {' "$0" || { echo 'FAIL: native firewall ownership-state removal helper missing'; failures=$((failures + 1)); }

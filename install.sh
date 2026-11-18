@@ -31216,7 +31216,20 @@ deploy_socks5_landing() {
     # EXIT trap is the only backstop. Cleared on the success path
     # below, once both files are removed explicitly. (Precedent: the
     # same EXIT-trap idiom is used elsewhere in this file.)
-    trap '[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true' EXIT
+    # M-24 (follow-up N2): save the pre-existing EXIT trap (installed
+    # by enter_runtime: runtime_lock_cleanup) and chain it into ours,
+    # instead of overwriting it; the success path restores it with
+    # restore_saved_trap instead of bare `trap - EXIT`. (Precedent:
+    # the _n2 temp-dir trap chain, same strip-and-eval idiom.)
+    local _socks5_prev_trap_exit='' _socks5_exit_trap_cmd='' _socks5_old_cmd=''
+    _socks5_prev_trap_exit=$(trap -p EXIT || true)
+    _socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_socks5_prev_trap_exit" ]]; then
+        _socks5_old_cmd="${_socks5_prev_trap_exit#trap -- }"
+        _socks5_old_cmd="${_socks5_old_cmd% EXIT}"
+        _socks5_exit_trap_cmd="$_socks5_exit_trap_cmd; eval $_socks5_old_cmd"
+    fi
+    trap "$_socks5_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31410,6 +31423,7 @@ EOF_SVC
     fi
     rm -f -- "$cfg_bak"
     trap - EXIT
+    restore_saved_trap EXIT "$_socks5_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip

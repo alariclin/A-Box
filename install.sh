@@ -51061,7 +51061,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # now a lasting one; record it for later switch/uninstall
     # reclaim (a later failure teardown removes the rule again and
     # the stale registry line is dropped on the next reclaim).
-    if (( _http80_new == 1 )); then wallos_fw_register_opened 80 tcp || true; fi
+    if (( _http80_new == 1 )); then wallos_fw_register_opened 80 tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening 80/tcp; a later uninstall may leave the port open.${NC}"; fi
     return 0
 }
 
@@ -52241,7 +52241,7 @@ _wallos_hy2_http01_keeps_80() {
 }
 
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
-    local reg line spec proto keep _k _removed=0 _kept=''
+    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _kept=''
     reg=$(wallos_fw_registry_file)
     [[ -f "$reg" && ! -L "$reg" ]] || return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -52255,14 +52255,24 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
             msg "${YELLOW}[!] 80/tcp is shared with the Hysteria HTTP-01 ACME challenge; keeping it open.${NC}"
             _kept+="${line}"$'\n'; continue
         fi
-        wallos_remove_abox_iptables_accept "$spec" "$proto" >/dev/null 2>&1 || true
-        remove_abox_native_firewall_rule "$spec" "$proto" >/dev/null 2>&1 || true
+        # M-28 (follow-up N4): both delete helpers verify their own
+        # removal (an absent rule is success), so a failure here means
+        # the rule may still be live: keep the registry line and fail,
+        # the same ledger principle as wallos_fw_rollback_added. Never
+        # deregister on an unverified delete.
+        _del_failed=0
+        wallos_remove_abox_iptables_accept "$spec" "$proto" >/dev/null 2>&1 || _del_failed=1
+        remove_abox_native_firewall_rule "$spec" "$proto" >/dev/null 2>&1 || _del_failed=1
+        if (( _del_failed == 1 )); then
+            msg "${YELLOW}[!] Failed to reclaim the Wallos firewall opening ${line}; keeping it registered for a later retry.${NC}"
+            _kept+="${line}"$'\n'; _failed=1; continue
+        fi
         _removed=1
     done < "$reg"
     printf '%s' "$_kept" > "$reg" || return 1
     chmod 600 "$reg" 2>/dev/null || true
     if (( _removed == 1 )); then save_firewall_rules || return 1; fi
-    return 0
+    (( _failed == 0 ))
 }
 
 wallos_fw_rollback_added() {
@@ -53005,7 +53015,7 @@ wallos_install_or_update() {
     local -a _fw_keep=()
     for _fw_entry in "${_fw_added[@]}"; do
         IFS='|' read -r _ _fw_spec _fw_proto _ <<< "$_fw_entry"
-        [[ -n "$_fw_spec" && -n "$_fw_proto" ]] && wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || true
+        if [[ -n "$_fw_spec" && -n "$_fw_proto" ]]; then wallos_fw_register_opened "$_fw_spec" "$_fw_proto" || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${_fw_spec}/${_fw_proto}; a later uninstall may leave the port open.${NC}"; fi
     done
     if [[ "$wmode" == https ]]; then _fw_keep=("${pubport}/tcp" '80/tcp');
     elif [[ "$wmode" == http ]]; then _fw_keep=("${port}/tcp"); fi

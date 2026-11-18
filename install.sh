@@ -17608,7 +17608,7 @@ reorder_one() {
             # run leaves a tmp-marked twin beside the canonical rule;
             # stripping the marker without dedup re-inserts both and the
             # rule count doubles on every interrupted run.
-            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
+            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment "?A-Box-tmp-[0-9]+-[0-9]+"?//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
             if [[ -z "${_rules_seen["$_stripped_rule"]+x}" ]]; then
                 _rules_seen["$_stripped_rule"]=1
                 rules+=("$_stripped_rule")
@@ -19875,7 +19875,7 @@ reorder_ss_whitelist_rules_one() {
             # run leaves a tmp-marked twin beside the canonical rule;
             # stripping the marker without dedup re-inserts both and the
             # rule count doubles on every interrupted run.
-            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment A-Box-tmp-[0-9]+-[0-9]+//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
+            _stripped_rule="$(printf '%s' "$line" | sed -E -e 's/ -m comment --comment "?A-Box-tmp-[0-9]+-[0-9]+"?//g' -e 's/:A-Box-tmp-[0-9]+-[0-9]+("?)([[:space:]]|$)/\1\2/g')"
             if [[ -z "${_rules_seen["$_stripped_rule"]+x}" ]]; then
                 _rules_seen["$_stripped_rule"]=1
                 rules+=("$_stripped_rule")

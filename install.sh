@@ -660,6 +660,19 @@ _tuic_cert_self_signed() {
 
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
+    # F-NEW-01 (final-round, defence in depth): rebuild used to only
+    # add missing links and never delete stale ones, so a same-core
+    # overwrite left orphaned .link files that menu 12 reprinted as
+    # dead nodes (the R30-AX5 class). Prune both cores' stale links
+    # first -- the survivor check deletes only a link whose inbound
+    # is confirmed gone from live config -- then the blocks below
+    # re-create any missing live link. Runs before the F_IP early
+    # return so stale links are pruned even when the IP is unknown.
+    # hysteria is deliberately not pruned here: hy2.link belongs to
+    # the retained Hy2 family and rebuild re-creates it from live
+    # config below.
+    _prune_standalone_links xray || true
+    _prune_standalone_links sing-box || true
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
@@ -31571,6 +31584,15 @@ EOF_SVC
     write_env xray "$MODE_IN"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
+    # F-NEW-01 (final-round): the cross-core prune above self-skips
+    # the core being deployed, so a same-core overwrite never cleaned
+    # this core's own standalone links and menu 12 reprinted them as
+    # dead nodes. Prune this core's own links now that the new config
+    # is on disk and the service is up; the survivor check inside
+    # only deletes a link whose inbound is confirmed gone from the
+    # live config, so live links are never removed. Best-effort: a
+    # prune failure must not fail the deploy.
+    _prune_standalone_links xray || true
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into
     # live config but never touched the user registries; re-adopt every
@@ -31754,6 +31776,15 @@ EOF_SVC
     write_env singbox "$MODE_IN"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
     prune_owned_core_families_except sing-box
+    # F-NEW-01 (final-round): the cross-core prune above self-skips
+    # the core being deployed, so a same-core overwrite never cleaned
+    # this core's own standalone links and menu 12 reprinted them as
+    # dead nodes. Prune this core's own links now that the new config
+    # is on disk and the service is up; the survivor check inside
+    # only deletes a link whose inbound is confirmed gone from the
+    # live config, so live links are never removed. Best-effort: a
+    # prune failure must not fail the deploy.
+    _prune_standalone_links sing-box || true
     setup_geo_cron
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into

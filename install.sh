@@ -16776,8 +16776,9 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     # entries). An inbound with an unparseable binding is kept
     # (fail-closed); only an inbound whose transports cover the dropped
     # proto AND whose port range covers the dropped port is filtered
-    # out. A dropped inbound's detour target goes with it (it was only
-    # captured as that inbound's detour).
+    # out. A dropped inbound's detour target goes with it only when no
+    # surviving inbound still references it: a detour shared with a kept
+    # inbound survives (it was captured as that inbound's detour too).
     if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
         if ! jq --arg drops "$ABOX_PRESERVE_DROP_PORTS" '
             def parse_range:
@@ -16820,7 +16821,9 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
                 end;
             ($drops | split(" ") | map(select(. != "")) | map(split(":") | {proto: .[0], port: (.[1] | tonumber)})) as $drop
             | ([.[] | select(is_dropped($drop)) | (.detour // empty)] | map(select(. != ""))) as $dd
-            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($dd | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
+            | ([.[] | select(is_dropped($drop) | not) | (.detour // empty)] | map(select(. != ""))) as $still
+            | ($dd - $still) as $ddx
+            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($ddx | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
             rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"
             msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
             return 1
@@ -23177,7 +23180,8 @@ ensure_fail2ban() {
     # Recommends are off, so the stock [sshd] jail fails to load.
     # Cover fresh and pre-installed fail2ban alike; fail-open, never
     # blocks setup. Only apt hosts (Debian/Ubuntu) carry this package.
-    if command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import systemd' >/dev/null 2>&1; then
+    # Probe with -I so a planted systemd.py (cwd/PYTHONPATH) cannot shadow the real bindings.
+    if command -v apt-get >/dev/null 2>&1 && ! python3 -I -c 'import systemd' >/dev/null 2>&1; then
         apt-get update -y -q >/dev/null 2>&1 || true
         apt-get -y install python3-systemd >/dev/null 2>&1 || true
     fi
@@ -31373,18 +31377,23 @@ EOF_SVC
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
+        if service_restart_permitted xray; then restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tr_msg dp_xray_restart)"; }; fi
     else
-        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_socks5_add)"; }
+        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; fi; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
-    service_manager start xray 2>/dev/null || true
+    # H-23 (Carbon R3 GPT follow-up): only start when the desired state
+    # is RUNNING (the default with no state file, so fresh installs still
+    # start); a manually stopped stack stays stopped. Not
+    # service_restart_permitted: it requires is-active, which a fresh
+    # minimal install never satisfies.
+    if [[ "$(get_desired_state 2>/dev/null || printf 'invalid')" == RUNNING ]]; then service_manager start xray 2>/dev/null || true; fi
     # R2C10-02: verify liveness before claiming success. A swallowed start
     # failure must not yield a RUNNING state and a usable link; the backup
     # is kept until liveness is proven so a failed start can roll back.

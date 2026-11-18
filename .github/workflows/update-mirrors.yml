@@ -515,7 +515,7 @@ jobs:
             printf 'Stable, fixed-name recovery assets for the Wallos installer.\n'
             printf 'The installer uses this Release only when upstream stable-release metadata or Docker Hub retrieval fails.\n'
             printf 'Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.\n'
-            printf 'Rollback assets: wallos-versions.txt, one wallos-manifest-vX.Y.Z.txt per retained version, and wallos-linux-$arch-vX.Y.Z.tar.gz archives, all recorded in SHA256SUMS.\n'
+            printf "Rollback assets: wallos-versions.txt, one wallos-manifest-vX.Y.Z.txt per retained version, and wallos-linux-\$arch-vX.Y.Z.tar.gz archives, all recorded in SHA256SUMS.\n"
             printf 'The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.\n'
           } > "$notes"
           # R6C19-03: last gate before publish: both signatures

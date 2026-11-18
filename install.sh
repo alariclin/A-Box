@@ -38163,6 +38163,9 @@ users_link_combo() {
 # links the deploy just deleted or rotated (a stale file otherwise
 # survives until menu E). Best-effort: the deploy already committed,
 # so an export failure warns but must not fail it; callers use `|| true`.
+# S2-NEW-03 follow-up: also called after a committed registry change
+# (users_apply_reg) and on a manual menu-12 reprint (view_config,
+# CALLER != deploy); the "after_deploy" name is historical.
 refresh_subscription_after_deploy() {
     local _n
     _n=$(users_export_all || true)
@@ -38385,6 +38388,15 @@ users_apply_reg() {
         return 1
     fi
     rm -f -- "${_reg}.sync-pending"
+    # S2-NEW-03 follow-up: a committed registry change is a users.d
+    # change, and the subscription export is built from the registries.
+    # Refresh it here so add/delete/toggle/quota/expiry/window/reset/
+    # reimport all land in uri-list.txt / subscription.base64 at once,
+    # instead of waiting for the next deploy or a manual menu-E export
+    # (a fresh deploy + add-user otherwise leaves 0-byte files).
+    # Best-effort (helper warns on failure): the user change already
+    # committed, so an export failure must not fail the apply.
+    refresh_subscription_after_deploy || true
     return 0
 }
 
@@ -55860,6 +55872,15 @@ view_config() {
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
+    # S2-NEW-03 follow-up: menu 12 reprints the YAML from the live
+    # state; refresh the subscription export alongside it so the two
+    # artifacts never disagree after an add-user. Deploy callers
+    # already refreshed just before this view (CALLER=deploy), so
+    # only the manual reprint path refreshes here (no double refresh
+    # at deploy end). Best-effort: a stale export must not fail the view.
+    if [[ "$CALLER" != 'deploy' ]]; then
+        refresh_subscription_after_deploy || true
+    fi
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_clash_full_config_title) ]${NC}"

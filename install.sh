@@ -55192,7 +55192,7 @@ r/R One-click Reality.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
 
-Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. By default Wallos is served over public HTTPS with an automatic Caddy certificate; plain HTTP is only a disaster-recovery fallback — never enter personal information on an HTTP URL.
+Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. Choose the access mode explicitly during installation; Caddy HTTPS is recommended, and plain HTTP is only a disaster-recovery fallback — never enter personal information on an HTTP URL.
 
 Toolbox test scripts use upstream-first download and explicit execution confirmation. When upstream is unavailable, a fixed-name A-Box Release snapshot is accepted only after SHA256 verification. If both sources fail, the script is not executed.
 EOF_USAGE
@@ -55226,7 +55226,7 @@ r/R Reality в один клик.
 
 BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
 
-Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. По умолчанию Wallos доступен по публичному HTTPS с автоматическим сертификатом Caddy; обычный HTTP — только аварийный запасной вариант, никогда не вводите личные данные по HTTP-адресу.
+Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. Во время установки явно выберите режим доступа; рекомендуется HTTPS через Caddy, а обычный HTTP — только аварийный запасной вариант, никогда не вводите личные данные по HTTP-адресу.
 
 Тестовые скрипты загружаются из upstream и требуют явного подтверждения. При недоступности upstream резервная копия A-Box принимается только после проверки SHA256. Если оба источника недоступны, скрипт не запускается.
 EOF_USAGE
@@ -55260,7 +55260,7 @@ r/R Reality با یک کلیک.
 
 BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
 
-Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. به‌صورت پیش‌فرض Wallos روی HTTPS عمومی با گواهی خودکار Caddy ارائه می‌شود؛ HTTP ساده فقط راه‌حل اضطراری بازیابی است — هرگز اطلاعات شخصی را روی URL ‏HTTP وارد نکنید.
+Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. در زمان نصب حالت دسترسی را صراحتاً انتخاب کنید؛ HTTPS با Caddy توصیه می‌شود و HTTP ساده فقط راه‌حل اضطراری بازیابی است — هرگز اطلاعات شخصی را روی URL ‏HTTP وارد نکنید.
 
 اسکریپت‌های آزمون ابتدا از upstream دریافت و اجرای آن‌ها با تأیید صریح انجام می‌شود. در صورت خرابی upstream، نسخه پشتیبان A-Box فقط پس از تطبیق SHA256 اجرا می‌شود. اگر هر دو منبع در دسترس نباشند، هیچ اسکریپتی اجرا نمی‌شود.
 EOF_USAGE
@@ -55294,7 +55294,7 @@ r/R 一鍵 Reality。
 
 協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
 
-Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。預設經公網 HTTPS 提供服務，由 Caddy 自動簽發憑證；純 HTTP 只是災備回退——切勿在 HTTP 位址上錄入個人資料。
+Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。安裝時請明確選擇存取模式；建議使用 Caddy HTTPS，純 HTTP 只是災備回退——切勿在 HTTP 位址上錄入個人資料。
 
 測速指令碼優先從上游下載，顯示 SHA256 並要求確認；上游不可用時，僅在 SHA256 校驗透過後使用 A-Box `test-tools-mirror`。兩處來源都失敗則不執行。
 EOF_USAGE
@@ -55328,7 +55328,7 @@ r/R ワンクリック Reality。
 
 プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
 
-Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。既定では Caddy の自動証明書による公開 HTTPS で提供され、平文 HTTP は災害復旧時のフォールバック専用です。HTTP の URL には個人情報を入力しないでください。
+Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。インストール時にアクセスモードを明示的に選択してください。Caddy による HTTPS を推奨します。平文 HTTP は災害復旧時のフォールバック専用です。HTTP の URL には個人情報を入力しないでください。
 
 テストスクリプトは upstream からのダウンロードを優先し、SHA256 を表示して確認を求めます；upstream が利用できない場合、SHA256 検証に合格した後にのみ A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
 EOF_USAGE
@@ -55362,7 +55362,7 @@ r/R 一键 Reality。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
 
-Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。默认经公网 HTTPS 提供服务，由 Caddy 自动签发证书；纯 HTTP 只是灾备回退——切勿在 HTTP 地址上录入个人数据。
+Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。安装时请明确选择访问模式；推荐使用 Caddy HTTPS，纯 HTTP 只是灾备回退——切勿在 HTTP 地址上录入个人数据。
 
 测速脚本优先从上游下载，显示 SHA256 并要求确认；上游不可用时，仅在 SHA256 校验通过后使用 A-Box `test-tools-mirror`。两处来源都失败则不执行。
 EOF_USAGE

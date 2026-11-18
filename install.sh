@@ -5027,12 +5027,12 @@ tr_msg() {
         fa:mu_reg_bad) echo 'خواندن فهرست کاربران این گره ممکن نیست.' ;;
         zh-tw:mu_reg_bad) echo '無法讀取該節點的用戶名單。' ;;
         ja:mu_reg_bad) echo 'このノードのユーザーリストを読み取れません。' ;;
-        zh:mu_note_sb) echo '注：sing-box 官方二进制无按用户流量统计，该核心的流量限额不生效（到期/时段仍生效）。' ;;
-        en:mu_note_sb) echo 'Note: the official sing-box binary has no per-user traffic stats, so quotas do not apply on this core (expiry and time windows still apply).' ;;
-        ru:mu_note_sb) echo 'Примечание: официальный sing-box не ведёт статистику по пользователям, лимиты трафика на этом ядре не действуют (срок и расписание действуют).' ;;
-        fa:mu_note_sb) echo 'توجه: باینری رسمی sing-box آمار ترافیک هر کاربر را ندارد، بنابراین سهمیه ترافیک در این هسته اعمال نمی‌شود (انقضا و بازه زمانی اعمال می‌شود).' ;;
-        zh-tw:mu_note_sb) echo '注：sing-box 官方版無按用戶流量統計，本核心的流量限額不生效（到期/時段仍生效）。' ;;
-        ja:mu_note_sb) echo '注: sing-box 公式バイナリにはユーザー別の流量統計がないため、このコアでは流量制限は効きません（有効期限と時間帯は有効）。' ;;
+        zh:mu_note_sb) echo '注：sing-box 与 Hy2 官方二进制均无按用户流量统计，这两个核心的流量限额不生效（到期/时段仍生效）。' ;;
+        en:mu_note_sb) echo 'Note: the official sing-box and Hysteria 2 binaries have no per-user traffic stats, so quotas do not apply on these cores (expiry and time windows still apply).' ;;
+        ru:mu_note_sb) echo 'Примечание: официальные sing-box и Hysteria 2 не ведут статистику по пользователям, лимиты трафика на этих ядрах не действуют (срок и расписание действуют).' ;;
+        fa:mu_note_sb) echo 'توجه: باینری‌های رسمی sing-box و Hysteria 2 آمار ترافیک هر کاربر را ندارند، بنابراین سهمیه ترافیک در این هسته‌ها اعمال نمی‌شود (انقضا و بازه زمانی اعمال می‌شود).' ;;
+        zh-tw:mu_note_sb) echo '注：sing-box 與 Hy2 官方版均無按用戶流量統計，這兩個核心的流量限額不生效（到期/時段仍生效）。' ;;
+        ja:mu_note_sb) echo '注: sing-box 公式バイナリと公式 Hysteria 2 バイナリにはユーザー別の流量統計がないため、これらのコアでは流量制限は効きません（有効期限と時間帯は有効）。' ;;
         zh:mu_st_ok) echo '正常' ;;
         en:mu_st_ok) echo 'active' ;;
         ru:mu_st_ok) echo 'активен' ;;
@@ -37849,7 +37849,7 @@ users_inbound_menu() {
     while true; do
         clear
         msg "${BOLD}${GREEN}$(protocol_label "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
-        if [[ "$core" == 'sing-box' ]]; then
+        if [[ "$core" == 'sing-box' || "$core" == 'hy2' ]]; then
             msg "${YELLOW}$(tr_msg mu_note_sb)${NC}"
         fi
         msg "--------------------------------------------------------------------------------"
@@ -39057,6 +39057,7 @@ user_guard_tick() {
         [[ -n "$rcore" && -n "$rtag" ]] || continue
         case "$rcore" in
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
+            hy2) stats=''; have=0; gen='' ;;  # M-38: Hy2 has no per-user stats source; only expiry/window are enforced, quota never triggers
             *) stats=''; have=0; gen='' ;;
         esac
         users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end"
@@ -55168,7 +55169,7 @@ show_usage() {
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
 [Operations]
-11 Toolbox: the A-Check IP checker, benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings and Wallos.
+11 Toolbox: the A-Check IP checker, benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, multi-user/subscription export, node-SNI change, SS-2022 whitelist, custom shortcuts, BBR/FQ apply/rollback, host settings and Wallos.
 12 Display node parameters and client exports.
 13 This manual.
 14 Script OTA, Xray Geo data and core-only upgrade.
@@ -55182,7 +55183,7 @@ r/R One-click Reality.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
 
-Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. Use HTTPS before entering personal information; the initial HTTP URL is not encrypted.
+Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. By default Wallos is served over public HTTPS with an automatic Caddy certificate; plain HTTP is only a disaster-recovery fallback — never enter personal information on an HTTP URL.
 
 Toolbox test scripts use upstream-first download and explicit execution confirmation. When upstream is unavailable, a fixed-name A-Box Release snapshot is accepted only after SHA256 verification. If both sources fail, the script is not executed.
 EOF_USAGE
@@ -55202,7 +55203,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
 
 [Обслуживание]
-11 Инструменты: проверка IP A-Check, тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста и Wallos.
+11 Инструменты: проверка IP A-Check, тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, экспорт пользователей/подписок, смена SNI узла, белый список SS-2022, свои ярлыки, BBR/FQ и откат, настройки хоста и Wallos.
 12 Параметры узлов и экспорт клиентских конфигураций.
 13 Это руководство.
 14 OTA скрипта, Geo-данные Xray и отдельное обновление ядер.
@@ -55216,7 +55217,7 @@ r/R Reality в один клик.
 
 BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
 
-Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. До ввода личных данных настройте HTTPS: начальный HTTP URL не шифруется.
+Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. По умолчанию Wallos доступен по публичному HTTPS с автоматическим сертификатом Caddy; обычный HTTP — только аварийный запасной вариант, никогда не вводите личные данные по HTTP-адресу.
 
 Тестовые скрипты загружаются из upstream и требуют явного подтверждения. При недоступности upstream резервная копия A-Box принимается только после проверки SHA256. Если оба источника недоступны, скрипт не запускается.
 EOF_USAGE
@@ -55236,7 +55237,7 @@ EOF_USAGE
 10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
 
 [عملیات]
-11 جعبه ابزار: بررسی‌گر IP ‏A-Check، آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان و Wallos.
+11 جعبه ابزار: بررسی‌گر IP ‏A-Check، آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، خروجی چندکاربره/اشتراک، تغییر SNI نود، فهرست مجاز SS-2022، میانبرهای سفارشی، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان و Wallos.
 12 نمایش پارامترهای نود و خروجی کلاینت.
 13 همین راهنما.
 14 OTA اسکریپت، داده Geo برای Xray و ارتقای مستقل هسته.
@@ -55250,7 +55251,7 @@ r/R Reality با یک کلیک.
 
 BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
 
-Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. URL اولیه HTTP رمزگذاری ندارد؛ پیش از ورود اطلاعات شخصی HTTPS را تنظیم کنید.
+Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. به‌صورت پیش‌فرض Wallos روی HTTPS عمومی با گواهی خودکار Caddy ارائه می‌شود؛ HTTP ساده فقط راه‌حل اضطراری بازیابی است — هرگز اطلاعات شخصی را روی URL ‏HTTP وارد نکنید.
 
 اسکریپت‌های آزمون ابتدا از upstream دریافت و اجرای آن‌ها با تأیید صریح انجام می‌شود. در صورت خرابی upstream، نسخه پشتیبان A-Box فقط پس از تطبیق SHA256 اجرا می‌شود. اگر هر دو منبع در دسترس نباشند، هیچ اسکریپتی اجرا نمی‌شود.
 EOF_USAGE
@@ -55270,7 +55271,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【運維類】
-11 綜合工具箱：A-Check IP 檢測、測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定和 Wallos。
+11 綜合工具箱：A-Check IP 檢測、測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、多用戶/訂閱匯出、節點 SNI 修改、SS-2022 白名單、自訂快捷指令、BBR/FQ 應用與回滾、主機設定和 Wallos。
 12 顯示節點引數與客戶端配置。
 13 當前說明書。
 14 指令碼 OTA、Xray Geo 資料與核心單獨升級。
@@ -55284,7 +55285,7 @@ r/R 一鍵 Reality。
 
 協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
 
-Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映象；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。初始 HTTP URL 沒有 TLS 加密，錄入個人資料前請配置 HTTPS。
+Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。預設經公網 HTTPS 提供服務，由 Caddy 自動簽發憑證；純 HTTP 只是災備回退——切勿在 HTTP 位址上錄入個人資料。
 
 測速指令碼優先從上游下載，顯示 SHA256 並要求確認；上游不可用時，僅在 SHA256 校驗透過後使用 A-Box `test-tools-mirror`。兩處來源都失敗則不執行。
 EOF_USAGE
@@ -55304,7 +55305,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
 【運用】
-11 ツールボックス：A-Check IP チェック、ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定と Wallos。
+11 ツールボックス：A-Check IP チェック、ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、マルチユーザー / 購読エクスポート、ノード SNI 変更、SS-2022 ホワイトリスト、カスタムショートカット、BBR/FQ の適用とロールバック、ホスト設定と Wallos。
 12 ノードのパラメーターとクライアント設定を表示します。
 13 現在の説明書を表示します。
 14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
@@ -55318,7 +55319,7 @@ r/R ワンクリック Reality。
 
 プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
 
-Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。初期 HTTP URL には TLS 暗号化がないため、個人情報を入力する前に HTTPS を設定してください。
+Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。既定では Caddy の自動証明書による公開 HTTPS で提供され、平文 HTTP は災害復旧時のフォールバック専用です。HTTP の URL には個人情報を入力しないでください。
 
 テストスクリプトは upstream からのダウンロードを優先し、SHA256 を表示して確認を求めます；upstream が利用できない場合、SHA256 検証に合格した後にのみ A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
 EOF_USAGE
@@ -55338,7 +55339,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【运维类】
-11 综合工具箱：A-Check IP 检测、测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置和 Wallos。
+11 综合工具箱：A-Check IP 检测、测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、多用户/订阅导出、节点 SNI 修改、SS-2022 白名单、自定义快捷命令、BBR/FQ 应用与回滚、主机设置和 Wallos。
 12 显示节点参数与客户端配置。
 13 当前说明书。
 14 脚本 OTA、Xray Geo 数据与核心单独升级。
@@ -55352,7 +55353,7 @@ r/R 一键 Reality。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
 
-Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。初始 HTTP URL 没有 TLS 加密，录入个人数据前请配置 HTTPS。
+Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。默认经公网 HTTPS 提供服务，由 Caddy 自动签发证书；纯 HTTP 只是灾备回退——切勿在 HTTP 地址上录入个人数据。
 
 测速脚本优先从上游下载，显示 SHA256 并要求确认；上游不可用时，仅在 SHA256 校验通过后使用 A-Box `test-tools-mirror`。两处来源都失败则不执行。
 EOF_USAGE

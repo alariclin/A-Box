@@ -12897,6 +12897,15 @@ init_system_environment() {
                 # Explicit 'tar' pulls GNU tar so backup fixtures and archives support
                 # GNU long options where needed.
                 deps=(bash curl jq openssl bc unzip iptables tar psmisc lsof ca-certificates iproute2 coreutils logrotate util-linux bind-tools procps iptables-openrc python3 shadow)
+                # H-20(a): ip6tables ships in its own APK package on
+                # Alpine 3.18 (pkgs.alpinelinux.org: ip6tables 1.8.9-r2
+                # provides /sbin/ip6tables*). Whether 3.19+ still ships
+                # it is unverified, so only add it on 3.18; the
+                # ensure_commands command -v gate below is the final
+                # check on every release.
+                if [[ "$(cut -d. -f1,2 /etc/alpine-release 2>/dev/null || true)" == '3.18' ]]; then
+                    deps+=(ip6tables)
+                fi
                 ;;
         esac
         if [[ "$release" == 'centos' ]] && command -v dnf >/dev/null 2>&1; then
@@ -12999,6 +13008,14 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" iptables iptables iptables iptables)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    # H-20(a): same 3.18-only rule as the deps list above: only
+    # request the standalone ip6tables package where it is known to
+    # exist (Alpine 3.18). On other releases the command -v gate
+    # below is the final check.
+    if [[ "${release:-}" != 'alpine' ]] || [[ "$(cut -d. -f1,2 /etc/alpine-release 2>/dev/null || true)" == '3.18' ]]; then
+        _pkg=$(__abox_missing_pkg_for "$release" ip6tables iptables iptables ip6tables)
+        [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    fi
     _pkg=$(__abox_missing_pkg_for "$release" ss iproute2 iproute iproute2)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" lsof lsof lsof lsof)
@@ -13025,7 +13042,7 @@ ensure_commands() {
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die "$(tr_msg ec_reinstall)"
     fi
-    local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
+    local required=(curl jq openssl bc unzip tar iptables ip6tables ss lsof crontab logrotate python3 flock cmp)
     local c
     for c in "${required[@]}"; do
         type -aP -- "$c" >/dev/null 2>&1 || die "$(tprintf ec_missing "$c")"

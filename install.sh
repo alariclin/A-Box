@@ -45959,6 +45959,10 @@ write_private_sidecar() {
     # another user could plant a symlink at $dest after the early
     # check above.
     [[ ! -L "$dest" ]] || { rm -f -- "$tmp"; return 1; }
+    # N-8 (H-27 follow-up): re-check the directory case too -- a directory
+    # planted at $dest after the entry check would make mv install the
+    # tmp file INSIDE it and still report success.
+    [[ ! -d "$dest" ]] || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
 }
 

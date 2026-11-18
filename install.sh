@@ -31147,11 +31147,35 @@ warp_undeploy() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    if [[ -z "$core" ]]; then
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+    if [[ -n "$core" ]]; then
+        routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+        msg "$(tr_msg warp_removed)"
+        return 0
+    fi
+    # L6-NEW-01: no core in .env (e.g. after 16->2 clear, CORE is empty)
+    # used to abort here AFTER the state entry was already deleted, so
+    # the menu showed "deployed" (the live config still held warp-out)
+    # with a 0 rule count, and no path could clean it up without
+    # redeploying a stack. Apply to whichever live config actually
+    # holds warp-out instead: routing_apply_live on its own prefers
+    # the xray config when both exist, which would miss a sing-box-only
+    # warp-out and report a success that left the residue in place.
+    # When no live config holds it, the state deletion above is the
+    # whole cleanup, so this is a success, not an abort.
+    local _cfg _holder _rc=0
+    for _cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || continue
+        jsonc_strip_comments "$_cfg" 2>/dev/null | jq -e --arg t 'warp-out' '(.outbounds[]?, .endpoints[]?) | select(.tag == $t)' >/dev/null 2>&1 || continue
+        case "$_cfg" in
+            *xray*) _holder='xray' ;;
+            *) _holder='singbox' ;;
+        esac
+        routing_apply_live "$_holder" 'warp-out' || _rc=1
+    done
+    if (( _rc != 0 )); then
+        msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"
         return 1
     fi
-    routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
     msg "$(tr_msg warp_removed)"
 }
 

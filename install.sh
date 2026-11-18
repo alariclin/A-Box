@@ -40093,7 +40093,11 @@ restore_dns_snapshot_body() {
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     fi
-    if (( _dns_no_systemd == 0 )) && [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
+    # M-26 (follow-up N3): no _dns_no_systemd gate here -- nmcli needs
+    # no systemd bus, and the application path uses nmcli on non-systemd
+    # hosts too. The systemctl gate stays only on steps that truly need
+    # the bus (resolved restart / socket reload below).
+    if [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
         connection=$(cat "$dir/nm-connection")
         for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
             value=$(cat "$dir/nm-${key//./-}" 2>/dev/null || true)

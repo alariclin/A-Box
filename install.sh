@@ -37767,6 +37767,37 @@ _str_dwidth() {
 
 # Write a mutated registry and sync it; roll the registry back when the
 # sync fails. $1=core $2=tag $3=new-json $4=old-json
+# Fold one live-counters snapshot into EVERY registry of a core.
+# M-29 follow-up: users_apply_reg's sync restarts the whole core
+# service, zeroing all tags' in-memory counters, so a snapshot taken
+# here must be folded into all of the core's registries, not just the
+# one being applied. Same delta rule as the guard's normal branch and
+# the old single-registry fold (live >= last: delta; live < last, i.e.
+# a counter reset: add the live value, never a negative delta).
+# $1=core $2=snapshot-json. Best effort per registry: an unreadable or
+# unwritable registry is skipped, never fails the caller.
+users_fold_all_core_counters() {
+    local _core="$1" _snap="$2" _dir="${ABOX_USERS_DIR:-$USERS_DIR}" _f='' _c='' _t='' _folded=''
+    [[ -n "$_snap" ]] || return 0
+    [[ -d "$_dir" ]] || return 0
+    for _f in "$_dir"/"$(users_reg_encode_component "$_core")"__*.json; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        _c=$(jq -r '.core // ""' "$_f" 2>/dev/null) || continue
+        _t=$(jq -r '.tag // ""' "$_f" 2>/dev/null) || continue
+        [[ "$_c" == "$_core" && -n "$_t" ]] || continue
+        _folded=$(jq -c --argjson stats "$_snap" '
+            .users |= map(
+                if (.email // "") != "" and ($stats[.email] != null) then
+                    .used_up += (if $stats[.email].up >= (.last_up // 0) then $stats[.email].up - (.last_up // 0) else $stats[.email].up end)
+                    | .used_down += (if $stats[.email].down >= (.last_down // 0) then $stats[.email].down - (.last_down // 0) else $stats[.email].down end)
+                    | .last_up = $stats[.email].up | .last_down = $stats[.email].down
+                else . end
+            )' "$_f" 2>/dev/null || true)
+        [[ -n "$_folded" ]] && users_reg_write "$_c" "$_t" "$_folded" >/dev/null 2>&1 || true
+    done
+    return 0
+}
+
 users_apply_reg() {
     # SYD-B E21: collapse duplicate names (keep the first) before
     # writing; a duplicated registry must not reach sync. This is
@@ -37793,22 +37824,15 @@ users_apply_reg() {
     # guard's normal branch; best effort: a failed snapshot (core
     # down / API error) leaves the registry as written and the sync
     # proceeds exactly as before.
+    # M-29 follow-up (single-registry fold): the sync below restarts
+    # the WHOLE core service, not one tag, so folding only this
+    # registry strands every other tag's delta since the last tick.
+    # Fold one service-wide snapshot into every registry of this core.
     if [[ "$1" == 'xray' ]] && is_service_running xray 2>/dev/null; then
         local _snap=''
         _snap=$(users_stats_snapshot /usr/local/bin/xray 10085 2>/dev/null || true)
         if [[ -n "$_snap" ]]; then
-            local _folded=''
-            _folded=$(jq -c --argjson stats "$_snap" '
-                .users |= map(
-                    if (.email // "") != "" and ($stats[.email] != null) then
-                        .used_up += (if $stats[.email].up >= (.last_up // 0) then $stats[.email].up - (.last_up // 0) else $stats[.email].up end)
-                        | .used_down += (if $stats[.email].down >= (.last_down // 0) then $stats[.email].down - (.last_down // 0) else $stats[.email].down end)
-                        | .last_up = $stats[.email].up | .last_down = $stats[.email].down
-                    else . end
-                )' "$_reg" 2>/dev/null || true)
-            if [[ -n "$_folded" ]]; then
-                users_reg_write "$1" "$2" "$_folded" >/dev/null 2>&1 || true
-            fi
+            users_fold_all_core_counters "$1" "$_snap" >/dev/null 2>&1 || true
         fi
     fi
     local _sync_rc=0

@@ -3040,18 +3040,30 @@ tr_msg() {
         fa:wl_rb_unknown_ver) echo 'تعیین نسخه نصب‌شده Wallos ممکن نیست (%s)؛ بازگشت بدون بررسی «دقیقاً قدیمی‌تر» رد می‌شود.' ;;
         zh-tw:wl_rb_unknown_ver) echo '無法確定已安裝的 Wallos 版本（%s）；無嚴格舊於檢查時拒絕回滾。' ;;
         ja:wl_rb_unknown_ver) echo 'インストール済みの Wallos バージョンを特定できません（%s）。厳密に古いことの確認なしにロールバックを拒否します。' ;;
-        zh:wl_rb_fetching) echo '本地没有 Wallos 镜像 %s，正在从镜像源拉取…' ;;
-        en:wl_rb_fetching) echo 'Wallos image %s not present locally; fetching from mirror...' ;;
-        ru:wl_rb_fetching) echo 'Образ Wallos %s отсутствует локально; загрузка с зеркала...' ;;
-        fa:wl_rb_fetching) echo 'تصویر Wallos %s به‌صورت محلی موجود نیست؛ در حال دریافت از آینه...' ;;
-        zh-tw:wl_rb_fetching) echo '本機沒有 Wallos 映像 %s，正在從鏡像源拉取…' ;;
-        ja:wl_rb_fetching) echo 'Wallos イメージ %s がローカルにありません。ミラーから取得しています...' ;;
+        zh:wl_rb_fetching) echo '本地映像 %s 未通过镜像摘要鉴权，正在从镜像源拉取…' ;;
+        en:wl_rb_fetching) echo 'Local Wallos image %s failed mirror digest authentication; fetching from mirror...' ;;
+        ru:wl_rb_fetching) echo 'Локальный образ Wallos %s не прошёл проверку дайджеста зеркала; загрузка с зеркала...' ;;
+        fa:wl_rb_fetching) echo 'تصویر محلی Wallos %s احراز هویت خلاصه آینه را نگذراند؛ در حال دریافت از آینه...' ;;
+        zh-tw:wl_rb_fetching) echo '本機映像 %s 未通過鏡像摘要鑑權，正在從鏡像源拉取…' ;;
+        ja:wl_rb_fetching) echo 'ローカルの Wallos イメージ %s はミラーのダイジェスト認証に失敗しました。ミラーから取得しています...' ;;
         zh:wl_rb_fetch_fail) echo '无法从镜像源拉取 Wallos %s。' ;;
         en:wl_rb_fetch_fail) echo 'Could not fetch Wallos %s from the mirror.' ;;
         ru:wl_rb_fetch_fail) echo 'Не удалось загрузить Wallos %s с зеркала.' ;;
         fa:wl_rb_fetch_fail) echo 'دریافت Wallos %s از آینه ممکن نشد.' ;;
         zh-tw:wl_rb_fetch_fail) echo '無法從鏡像源拉取 Wallos %s。' ;;
         ja:wl_rb_fetch_fail) echo 'ミラーから Wallos %s を取得できませんでした。' ;;
+        zh:wl_rb_mirror_list_fail) echo '无法获取镜像版本清单，回滚不可用。' ;;
+        en:wl_rb_mirror_list_fail) echo 'Could not fetch the mirror version list; rollback unavailable.' ;;
+        ru:wl_rb_mirror_list_fail) echo 'Не удалось получить список версий зеркала; откат недоступен.' ;;
+        fa:wl_rb_mirror_list_fail) echo 'دریافت فهرست نسخه‌های آینه ممکن نشد؛ بازگشت در دسترس نیست.' ;;
+        zh-tw:wl_rb_mirror_list_fail) echo '無法取得鏡像版本清單，回滾不可用。' ;;
+        ja:wl_rb_mirror_list_fail) echo 'ミラーのバージョン一覧を取得できませんでした。ロールバックは利用できません。' ;;
+        zh:wl_rb_local_only) echo '以下版本仅来自本地映像，未经镜像摘要鉴权，回滚可能失败：' ;;
+        en:wl_rb_local_only) echo 'The versions below come from local images only, without mirror digest authentication; rollback may fail:' ;;
+        ru:wl_rb_local_only) echo 'Версии ниже — только из локальных образов, без проверки дайджеста зеркала; откат может не удаться:' ;;
+        fa:wl_rb_local_only) echo 'نسخه‌های زیر فقط از تصاویر محلی هستند، بدون احراز هویت خلاصه آینه؛ بازگشت ممکن است ناموفق باشد:' ;;
+        zh-tw:wl_rb_local_only) echo '以下版本僅來自本機映像，未經鏡像摘要鑑權，回滾可能失敗：' ;;
+        ja:wl_rb_local_only) echo '以下のバージョンはローカルイメージのみのもので、ミラーのダイジェスト認証を受けていません。ロールバックに失敗する可能性があります:' ;;
         zh:wl_rb_bad_port) echo 'Wallos 保存的端口无效，拒绝回滚。' ;;
         en:wl_rb_bad_port) echo 'Wallos persisted port is invalid; refusing rollback.' ;;
         ru:wl_rb_bad_port) echo 'Сохранённый порт Wallos недопустим; откат отклонён.' ;;
@@ -47510,14 +47522,17 @@ wallos_candidate_version_allowed() {
 }
 
 # N-11: Fetch the retained version list from the A-Box wallos-mirror.
-# Outputs one version per line, newest first. Empty on failure.
+# Outputs one version per line, newest first. Empty on failure; returns 1
+# when the list cannot be fetched, so callers can tell 'unavailable' from 'empty'.
 wallos_mirror_version_list() {
     local work versions_url
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
     versions_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
-    if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
-        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
+    if ! curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
+        rm -rf -- "$work"
+        return 1
     fi
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
     rm -rf -- "$work"
 }
 
@@ -52045,9 +52060,22 @@ _wallos_manual_rollback() {
         return $?
     fi
     # Interactive: list retained versions from the mirror (newest first).
-    mapfile -t versions < <(wallos_mirror_version_list 2>/dev/null || true)
+    # L3-11-15: a failed mirror-list fetch is loud, never a silent empty
+    # list. Capture the list to a temp file so the function's exit status
+    # stays observable (mapfile + process substitution would hide it).
+    local _mirror_list_failed=0 _local_fallback=0 _vlist_tmp
+    _vlist_tmp=$(mktemp /tmp/A-Box-Wallos-verlist.XXXXXX) || return 1
+    if ! wallos_mirror_version_list >"$_vlist_tmp" 2>/dev/null; then
+        _mirror_list_failed=1
+    fi
+    mapfile -t versions <"$_vlist_tmp"
+    rm -f -- "$_vlist_tmp"
+    if (( _mirror_list_failed == 1 )); then
+        msg "${RED}$(tr_msg wl_rb_mirror_list_fail)${NC}"
+    fi
     if ((${#versions[@]} == 0)); then
         # Fall back to locally available images.
+        _local_fallback=1
         # X-12: POSIX field-numeric sort instead of GNU sort -V (BusyBox may lack -V).
         mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | LC_ALL=C sort -t. -k1,1nr -k2,2nr -k3,3nr | uniq | sed 's/^/v/' || true)
     fi
@@ -52083,6 +52111,11 @@ _wallos_manual_rollback() {
         return 1
     fi
     versions=("${_rb_versions[@]}")
+    # L3-11-15: a local-fallback list is annotated at the menu, so "locally
+    # present" is never misread as "the mirror can provide it".
+    if (( _local_fallback == 1 )); then
+        msg "${YELLOW}$(tr_msg wl_rb_local_only)${NC}"
+    fi
     local i=1
     for v in "${versions[@]}"; do
         msg "${YELLOW}$i. $v${NC}"

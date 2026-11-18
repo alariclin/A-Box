@@ -34746,6 +34746,9 @@ users_registry_remove() { # $1 = core, $2 = tag
     # users_registries_wipe does (`rm -f ... || return 1`); the old
     # unconditional `return 0` reported a surviving registry as deleted.
     if [[ -f "$_f" && ! -L "$_f" ]]; then rm -f -- "$_f" || return 1; fi
+    # M-29(3): the guard's retry sidecar is part of the registry; leaving
+    # it behind resurrects a sync debt for a registry that no longer exists.
+    if [[ -f "${_f}.sync-pending" && ! -L "${_f}.sync-pending" ]]; then rm -f -- "${_f}.sync-pending" || return 1; fi
     return 0
 }
 
@@ -34764,6 +34767,8 @@ users_registries_wipe() {
     for _f in "$_dir"/*.json; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
         rm -f -- "$_f" || return 1
+        # M-29(3): same sidecar cleanup as users_registry_remove.
+        if [[ -f "${_f}.sync-pending" && ! -L "${_f}.sync-pending" ]]; then rm -f -- "${_f}.sync-pending" || return 1; fi
     done
     return 0
 }
@@ -34892,13 +34897,22 @@ sync_env_ports_after_removal() {
 # or is missing) — callers must only delete on rc 1.
 _standalone_link_survivor() {
     local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
+<<<<<<< HEAD
     local _cfg='' _prog='' _jq_rc=0 _stripped=''
+=======
+    local _cfg='' _prog='' _jq_rc=0
+    # M-29(3): one .link file per base tag -- the survivor test must
+    # match that tag exactly, not the whole -2 family. socks5-sb stays
+    # type-based (mixed-in/socks-in genuinely share one link) and the
+    # xray keys stay protocol-based (old xray configs may be untagged;
+    # a tag match there could delete a live link).
+>>>>>>> b07da16 (update)
     case "$key" in
         trojan-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "trojan")' ;;
-        trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' ;;
-        tuic) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))' ;;
-        anytls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))' ;;
-        shadowtls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))' ;;
+        trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") == "trojan-landing")' ;;
+        tuic) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") == "tuic-in")' ;;
+        anytls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") == "anytls-in")' ;;
+        shadowtls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") == "shadowtls-in")' ;;
         socks5-sb) _cfg="$scfg"; _prog='.inbounds[]? | select(.type == "socks" or .type == "mixed")' ;;
         socks5-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "socks")' ;;
         *) return 1 ;;
@@ -34961,8 +34975,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         # just kept a link: when $tag is itself a prune key, the link
         # is owned by _standalone_link_prune_if_gone (delete only on
         # confirmed rc 1); the generic rm would delete it unconditionally.
+        # M-29(3): these inbound tags' links are owned by
+        # _standalone_link_prune_if_gone above under a different
+        # filename (tuic-in -> tuic.link, trojan-landing ->
+        # trojan-sb.link, ...); the generic rm would delete a
+        # nonexistent ${tag}.link and must not run for them.
         case "$tag" in
-            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray) ;;
+            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-landing|tuic-in|anytls-in|shadowtls-in|socks-in|mixed-in|socks5-landing|vmess-ws-in|vless-ws-in) ;;
             *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
         esac
         users_registry_remove "$core" "$tag"
@@ -37169,6 +37188,7 @@ users_link_stem() {
         sing-box:tuic-in) printf '%s' 'tuic' ;;
         sing-box:anytls-in) printf '%s' 'anytls' ;;
         sing-box:shadowtls-in) printf '%s' 'shadowtls' ;;
+        sing-box:vmess-ws-in|sing-box:vless-ws-in) printf '%s' 'argo' ;;
         sing-box:mixed-in|sing-box:socks-in) printf '%s' 'socks5-sb' ;;
         hy2:*) printf '%s' 'hy2' ;;
         *) printf '%s' "$tag" ;;
@@ -37176,11 +37196,23 @@ users_link_stem() {
 }
 
 users_registered_link() {
-    local stem='' f=''
+    # $1=core $2=tag [$3=line-number, default by tag]
+    # argo.link packs two URIs (register_standalone_link writes the
+    # title first, then URIs in argo_links_for order): line 2 = vmess,
+    # line 3 = vless. Every other stem carries one URI on line 2.
+    local stem='' f='' _line="${3:-}"
     stem=$(users_link_stem "$1" "$2") || return 1
+    if [[ -z "$_line" ]]; then
+        case "$1:$2" in
+            sing-box:vmess-ws-in) _line=2 ;;
+            sing-box:vless-ws-in) _line=3 ;;
+            *) _line=2 ;;
+        esac
+    fi
+    [[ "$_line" =~ ^[1-9][0-9]*$ ]] || return 1
     f="${ABOX_DIR:-/etc/ddr}/standalone-links.d/${stem}.link"
     [[ -f "$f" && ! -L "$f" ]] || return 1
-    sed -n '2p' "$f" | tr -d '\r'
+    sed -n "${_line}p" "$f" | tr -d '\r'
 }
 
 users_b64url_dec() { printf '%s' "$1" | tr '_-' '/+' | awk '{l=length($0); if (l%4==2) print $0"=="; else if (l%4==3) print $0"="; else print $0}' | base64 -d 2>/dev/null; }
@@ -37565,6 +37597,32 @@ users_apply_reg() {
     [[ -n "$_reg" ]] || return 1
     : > "${_reg}.sync-pending" || return 1
     users_reg_write "$1" "$2" "$_new" || { rm -f -- "${_reg}.sync-pending"; return 1; }
+    # M-29(2): fold the live Xray counters into the registry BEFORE the
+    # sync restarts the core. A restart zeroes the in-memory
+    # StatsService counters, so traffic between the last guard tick and
+    # this restart would otherwise never be counted (the guard only
+    # snapshots on its own tick, L38285). Same delta rule as the
+    # guard's normal branch; best effort: a failed snapshot (core
+    # down / API error) leaves the registry as written and the sync
+    # proceeds exactly as before.
+    if [[ "$1" == 'xray' ]] && is_service_running xray 2>/dev/null; then
+        local _snap=''
+        _snap=$(users_stats_snapshot /usr/local/bin/xray 10085 2>/dev/null || true)
+        if [[ -n "$_snap" ]]; then
+            local _folded=''
+            _folded=$(jq -c --argjson stats "$_snap" '
+                .users |= map(
+                    if (.email // "") != "" and ($stats[.email] != null) then
+                        .used_up += (if $stats[.email].up >= (.last_up // 0) then $stats[.email].up - (.last_up // 0) else $stats[.email].up end)
+                        | .used_down += (if $stats[.email].down >= (.last_down // 0) then $stats[.email].down - (.last_down // 0) else $stats[.email].down end)
+                        | .last_up = $stats[.email].up | .last_down = $stats[.email].down
+                    else . end
+                )' "$_reg" 2>/dev/null || true)
+            if [[ -n "$_folded" ]]; then
+                users_reg_write "$1" "$2" "$_folded" >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
     local _sync_rc=0
     users_sync "$1" "$2" || _sync_rc=$?
     if (( _sync_rc != 0 )); then

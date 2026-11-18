@@ -14603,34 +14603,129 @@ users_registries_remove_core() {
 # Mirrors _protocol_removed_side_effects: remove a family's standalone
 # link files when no live inbound still references them. The Argo link
 # dies with the sing-box ws inbounds; the hysteria links are removed
-# unconditionally, mirroring _remove_hy2_official.
-_prune_standalone_links() {
-    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ws_out=''
-    case "$srv" in
-        xray)
-            for key in trojan-xray socks5-xray; do
-                _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
-            done
-            ;;
-        sing-box)
-            for key in trojan-sb tuic anytls shadowtls socks5-sb; do
-                _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
-            done
-            if [[ ! -f /etc/sing-box/config.json ]]; then
-                rm -f -- "$dir/argo.link" 2>/dev/null || true
-            else
-                if ! _ws_out=$(jq -r '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' /etc/sing-box/config.json 2>/dev/null); then
-                    return 1
-                fi
-                if [[ -z "$_ws_out" ]]; then
-                    rm -f -- "$dir/argo.link" 2>/dev/null || true
-                fi
-            fi
-            ;;
-        hysteria)
-            rm -f -- "$dir/hy2.link" "$dir/hysteria.link" 2>/dev/null || true
-            ;;
+# only once the Hysteria config is confirmed gone (H-26(3)).
+# H-26(3): exact-tag survivorship for a -N instance link (e.g. the
+# tuic-in-2.link / trojan-landing-2.link files, whose stem is the raw
+# tag). The family survivor regex would count the BASE instance as
+# evidence for the -N link, so the -N stem needs its own check: rc 0 =
+# the exact tag is still served, rc 1 = confirmed absent (a missing
+# config counts as absent, as in _standalone_link_survivor), rc 2 =
+# unverifiable (empty / unparseable config) -- callers must only delete
+# on rc 1.
+_standalone_link_tag_survivor() {
+    local _tag="$1" _cfg="$2" _stripped='' _jq_rc=0
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    [[ -s "$_cfg" ]] || return 2
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e --arg tag "$_tag" '([.[] | (.inbounds[]? | select((.tag // "") == $tag))] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
     esac
+}
+
+# H-26(3): map one on-disk link stem to its survivor key(s) and delete
+# only when EVERY candidate survivor confirms rc 1. An unmapped stem is
+# left alone (fail-closed). Ambiguous stems (trojan-landing-N,
+# socks5-landing-N) can belong to either core, so both survivors must
+# confirm "gone" before the link is deleted. -N instance stems are
+# checked by exact tag (_standalone_link_tag_survivor): the family
+# regex would count the base instance as evidence for the -N link.
+# Always returns 0.
+_prune_standalone_link_file() {
+    local srv="$1" stem="$2" link="$3" _key='' _rc=0 _all_gone=1 _tag='' _cfg=''
+    local -a _keys=() _cfgs=()
+    case "$stem" in
+        trojan-xray) [[ "$srv" == xray ]] || return 0; _keys=(trojan-xray) ;;
+        socks5-xray) [[ "$srv" == xray ]] || return 0; _keys=(socks5-xray) ;;
+        trojan-sb) [[ "$srv" == sing-box ]] || return 0; _keys=(trojan-sb) ;;
+        tuic) [[ "$srv" == sing-box ]] || return 0; _keys=(tuic) ;;
+        anytls) [[ "$srv" == sing-box ]] || return 0; _keys=(anytls) ;;
+        shadowtls) [[ "$srv" == sing-box ]] || return 0; _keys=(shadowtls) ;;
+        socks5-sb) [[ "$srv" == sing-box ]] || return 0; _keys=(socks5-sb) ;;
+        trojan-landing)
+            [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
+            _keys=(trojan-xray trojan-sb) ;;
+        trojan-landing-[0-9]*)
+            [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
+            _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
+        socks5-landing)
+            [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
+            _keys=(socks5-xray socks5-sb) ;;
+        socks5-landing-[0-9]*)
+            [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
+            _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
+        tuic-in) [[ "$srv" == sing-box ]] || return 0; _keys=(tuic) ;;
+        tuic-in-[0-9]*) [[ "$srv" == sing-box ]] || return 0; _tag="$stem"; _cfgs=(/etc/sing-box/config.json) ;;
+        anytls-in) [[ "$srv" == sing-box ]] || return 0; _keys=(anytls) ;;
+        anytls-in-[0-9]*) [[ "$srv" == sing-box ]] || return 0; _tag="$stem"; _cfgs=(/etc/sing-box/config.json) ;;
+        shadowtls-in) [[ "$srv" == sing-box ]] || return 0; _keys=(shadowtls) ;;
+        shadowtls-in-[0-9]*) [[ "$srv" == sing-box ]] || return 0; _tag="$stem"; _cfgs=(/etc/sing-box/config.json) ;;
+        mixed-in) [[ "$srv" == sing-box ]] || return 0; _keys=(socks5-sb) ;;
+        mixed-in-[0-9]*|socks-in-[0-9]*) [[ "$srv" == sing-box ]] || return 0; _tag="$stem"; _cfgs=(/etc/sing-box/config.json) ;;
+        socks-in) [[ "$srv" == sing-box ]] || return 0; _keys=(socks5-sb) ;;
+        *) return 0 ;;
+    esac
+    if [[ -n "$_tag" ]]; then
+        # -N instance stem: only the exact tag counts as a survivor;
+        # every owning config must confirm rc 1 before deleting.
+        for _cfg in "${_cfgs[@]}"; do
+            _rc=0
+            _standalone_link_tag_survivor "$_tag" "$_cfg" || _rc=$?
+            [[ "$_rc" == 1 ]] || _all_gone=0
+        done
+    else
+        for _key in "${_keys[@]}"; do
+            _rc=0
+            _standalone_link_survivor "$_key" || _rc=$?
+            [[ "$_rc" == 1 ]] || _all_gone=0
+        done
+    fi
+    if [[ "$_all_gone" == 1 ]]; then rm -f -- "$link" 2>/dev/null || true; fi
+    return 0
+}
+
+_prune_standalone_links() {
+    local srv="$1" dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" link='' stem='' _ws_out=''
+    [[ -d "$dir" ]] || return 0
+    # H-26(3): sweep the links actually on disk (base stems AND -N
+    # variants such as tuic-in-2.link, whose stem is the raw tag) and
+    # delete only on confirmed rc 1 via _prune_standalone_link_file.
+    # latest-*.link is out of scope here; argo.link is handled below.
+    for link in "$dir"/*.link; do
+        [[ -e "$link" || -L "$link" ]] || continue
+        stem="${link##*/}"; stem="${stem%.link}"
+        case "$stem" in
+            latest-*) continue ;;
+            argo) continue ;;
+            hy2|hysteria)
+                [[ "$srv" == hysteria ]] || continue
+                # H-26(3): no longer unconditional. Only delete once
+                # the Hysteria config is confirmed gone; a config
+                # that survived removal keeps its links.
+                if [[ ! -e /etc/hysteria/config.yaml ]]; then
+                    rm -f -- "$link" 2>/dev/null || true
+                fi
+                ;;
+            *) _prune_standalone_link_file "$srv" "$stem" "$link" ;;
+        esac
+    done
+    if [[ "$srv" == sing-box ]]; then
+        if [[ ! -f /etc/sing-box/config.json ]]; then
+            rm -f -- "$dir/argo.link" 2>/dev/null || true
+        else
+            # H-26(3): strip JSONC before jq (bare jq fails rc 5 on a
+            # commented config). A jq failure is unverifiable, so the
+            # link is kept; only a clean "no ws inbound" deletes it.
+            if ! _ws_out=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null | jq -r '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' 2>/dev/null); then
+                :
+            elif [[ -z "$_ws_out" ]]; then
+                rm -f -- "$dir/argo.link" 2>/dev/null || true
+            fi
+        fi
+    fi
     return 0
 }
 
@@ -16569,13 +16664,73 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     # R16-F05-04: strip JSONC comments before jq: the live config may
     # legally carry // or /* */ comments (the same R14-F01-01 class as
     # the other live-config readers, which all strip first).
-    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})(-[0-9]+)?$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
         rm -f -- "$out"; rm -rf -- "$tmpd"
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
     fi
+    # H-26(2): drop inbounds the wizard user explicitly released for a
+    # port conflict (ABOX_PRESERVE_DROP_PORTS holds "proto:port"
+    # entries). An inbound with an unparseable binding is kept
+    # (fail-closed); only an inbound whose transports cover the dropped
+    # proto AND whose port range covers the dropped port is filtered
+    # out. A dropped inbound's detour target goes with it (it was only
+    # captured as that inbound's detour).
+    if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
+        if ! jq --arg drops "$ABOX_PRESERVE_DROP_PORTS" '
+            def parse_range:
+              if type == "number" then [., .]
+              elif type == "string" then
+                if test("^[0-9]+$") then [(tonumber), (tonumber)]
+                elif test("^[0-9]+-[0-9]+$") then
+                  (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
+                else null end
+              else null end;
+            def transport_set:
+              if (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+              elif (.streamSettings.network // null) != null then
+                (.streamSettings.network
+                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                   elif . == "kcp" or . == "quic" then ["udp"]
+                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                   else ["tcp"] end)
+              elif (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+              # R14-F05-02: a sing-box shadowsocks inbound with no
+              # .network listens on tcp+udp by default; ["tcp"]
+              # would miss UDP conflicts.
+              elif (.type // null) != null then
+                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+              else ["tcp"] end;
+            def binding:
+              ((.listen_port // .port) as $ps
+               | if $ps == null then null
+                 else
+                   (($ps | parse_range) as $r
+                    | if $r == null then {addr: (.listen // "0.0.0.0"), transports: transport_set, range: null, unparseable: true}
+                      else {addr: (.listen // "0.0.0.0"), transports: transport_set, range: $r, unparseable: false} end)
+                 end);
+            def is_dropped($drop):
+              (binding) as $b
+              | if $b == null or $b.unparseable then false
+                else ([$drop[] | select((.proto as $pr | ($b.transports | index($pr) != null)) and (.port >= $b.range[0] and .port <= $b.range[1]))] | length > 0)
+                end;
+            ($drops | split(" ") | map(select(. != "")) | map(split(":") | {proto: .[0], port: (.[1] | tonumber)})) as $drop
+            | ([.[] | select(is_dropped($drop)) | (.detour // empty)] | map(select(. != ""))) as $dd
+            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($dd | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
+            rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"
+            msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+            return 1
+        fi
+        mv -- "$out.drop" "$out" || { rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
+    fi
     n=$(jq 'length' "$out" 2>/dev/null) || { rm -f -- "$out"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
     if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
+        # H-26(1): print what was captured, so a dropped -N variant
+        # is visible at snapshot time instead of surfacing as a
+        # silent loss at restore time.
+        msg "[*] Preserved standalone inbounds ($n): $(jq -r '[.[].tag] | join(", ")' "$out" 2>/dev/null)"
         ABOX_PRESERVE_FILE="$out"
         export ABOX_PRESERVE_FILE
         ABOX_PRESERVE_DIR="$tmpd"
@@ -16601,7 +16756,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; return 1; }
     for attempt in full nost; do
         if [[ "$attempt" == nost ]]; then
-            jq '[.[] | select(.tag != "shadowtls-in")]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
+            jq '[.[] | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$") | not)]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
         else
             cp -- "$ABOX_PRESERVE_FILE" "$keepf" || continue
         fi
@@ -20228,6 +20383,91 @@ ss_holder_is_abox_owned() {
     return 0
 }
 
+# H-26(2): preserve-mode port conflict. The selected port is held by an
+# A-Box-owned process AND preserve mode would restore a standalone
+# inbound onto the same port; silently tolerating it (same-port
+# reinstall) lets restore drop that node without the user knowing.
+# Ask the user: 1 release the preserved inbound on this port (recorded
+# in ABOX_PRESERVE_DROP_PORTS; standalone_preserve_snapshot filters it
+# out), 2 change port (die so the wizard is re-run with another port),
+# 3 abandon preserve (the whole preserve set is dropped). A failed or
+# closed read dies fail-closed. Returns 0 on 1/3.
+_preserve_port_conflict() {
+    local proto="$1" p="$2" _ans='' _prompt='' _rel_msg='' _aban_msg=''
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${RED}[!] Port ${p}/${proto} is held by an A-Box-owned process, but preserve mode would restore a standalone inbound onto the same port; that node would be lost on restore.${NC}"
+            msg "  1) Release the preserved inbound on ${p}/${proto} and continue"
+            msg "  2) Change port (stop here and pick another port)"
+            msg "  3) Abandon preserve and continue (no preserved nodes will be restored)"
+            _prompt='Choose [1/2/3]: '
+            _rel_msg="Preserved inbound on ${p}/${proto} will not be restored."
+            _aban_msg='Preserve mode abandoned; no standalone nodes will be restored.'
+            ;;
+        ru)
+            msg "${RED}[!] Порт ${p}/${proto} занят собственным процессом A-Box, а режим сохранения восстановит на этот же порт отдельный узел; при восстановлении этот узел будет потерян.${NC}"
+            msg "  1) Освободить сохранённый узел на порту ${p}/${proto} и продолжить"
+            msg "  2) Сменить порт (остановиться и выбрать другой порт)"
+            msg "  3) Отказаться от сохранения и продолжить (сохранённые узлы не будут восстановлены)"
+            _prompt='Выберите [1/2/3]: '
+            _rel_msg="Сохранённый узел на порту ${p}/${proto} не будет восстановлен."
+            _aban_msg='Режим сохранения отменён; сохранённые узлы не будут восстановлены.'
+            ;;
+        fa)
+            msg "${RED}[!] پورت ${p}/${proto} توسط فرایند متعلق به A-Box اشغال شده است و حالت حفظ، یک گره مستقل را روی همین پورت بازمی‌گرداند؛ آن گره هنگام بازیابی از دست می‌رود.${NC}"
+            msg "  1) گره حفظ‌شده روی ${p}/${proto} را آزاد کن و ادامه بده"
+            msg "  2) تغییر پورت (اینجا توقف و انتخاب پورتی دیگر)"
+            msg "  3) انصراف از حفظ و ادامه (هیچ گره حفظ‌شده‌ای بازیابی نمی‌شود)"
+            _prompt='انتخاب کنید [1/2/3]: '
+            _rel_msg="گره حفظ‌شده روی ${p}/${proto} بازیابی نمی‌شود."
+            _aban_msg='حالت حفظ کنار گذاشته شد؛ هیچ گره حفظ‌شده‌ای بازیابی نمی‌شود.'
+            ;;
+        zh-tw)
+            msg "${RED}[!] 連接埠 ${p}/${proto} 正由 A-Box 自有處理程序佔用，且保留模式會把一個獨立節點恢復到同一連接埠；恢復時會丟掉該節點。${NC}"
+            msg "  1) 釋放該連接埠上的保留節點並繼續"
+            msg "  2) 改連接埠（停在這裡，重新選連接埠）"
+            msg "  3) 放棄保留並繼續（全部保留節點都不恢復）"
+            _prompt='請選擇 [1/2/3]： '
+            _rel_msg="該連接埠上的保留節點將不再恢復。"
+            _aban_msg='已放棄保留模式；全部保留節點都不恢復。'
+            ;;
+        ja)
+            msg "${RED}[!] ポート ${p}/${proto} は A-Box 自身のプロセスが使用しており、保持モードでは同じポートにスタンドアロンノードが復元されるため、そのノードは復元時に失われます。${NC}"
+            msg "  1) このポート上の保持ノードを解放して続行"
+            msg "  2) ポートを変更（ここで停止し、別のポートを選択）"
+            msg "  3) 保持を破棄して続行（保持ノードはすべて破棄）"
+            _prompt='選択してください [1/2/3]: '
+            _rel_msg="ポート ${p}/${proto} 上の保持ノードは復元されません。"
+            _aban_msg='保持モードを破棄しました。保持ノードは復元されません。'
+            ;;
+        *)
+            msg "${RED}[!] 端口 ${p}/${proto} 正由 A-Box 自有进程占用，且保留模式会把一个独立节点恢复到同一端口；恢复时会丢掉该节点。${NC}"
+            msg "  1) 释放该端口上的保留节点并继续"
+            msg "  2) 改端口（停在这里，重新选端口）"
+            msg "  3) 放弃保留并继续（全部保留节点都不恢复）"
+            _prompt='请选择 [1/2/3]： '
+            _rel_msg="该端口上的保留节点将不再恢复。"
+            _aban_msg='已放弃保留模式；全部保留节点都不恢复。'
+            ;;
+    esac
+    read -r -p "$_prompt" _ans || { die "$(tr_msg dp_cancelled)"; return 1; }
+    case "$_ans" in
+        1)
+            ABOX_PRESERVE_DROP_PORTS="${ABOX_PRESERVE_DROP_PORTS:+$ABOX_PRESERVE_DROP_PORTS }${proto}:${p}"
+            export ABOX_PRESERVE_DROP_PORTS
+            msg "${YELLOW}[*] ${_rel_msg}${NC}"
+            ;;
+        2) die "$(tprintf pt_release_manual "${p}/${proto}")" ;;
+        3)
+            ABOX_PRESERVE_STANDALONE=0
+            export ABOX_PRESERVE_STANDALONE
+            msg "${YELLOW}[*] ${_aban_msg}${NC}"
+            ;;
+        *) die "$(tr_msg dp_cancelled)" ;;
+    esac
+    return 0
+}
+
 check_selected_ports_free() {
     msg "${YELLOW}[*] $(tr_msg check_selected_ports_free_checking)${NC}"
     local pairs pair proto p holder dup line _foreign_holder
@@ -20272,6 +20512,14 @@ check_selected_ports_free() {
         # (still listening until release_ports runs after the wizard);
         # same-port reinstall must not die on it.
         if ss_holder_is_abox_owned "$holder"; then
+            if [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]]; then
+                # H-26(2): in preserve mode this port belongs to a
+                # standalone inbound that will be restored; the old
+                # same-port tolerance would let restore silently drop
+                # it. Treat it as a hard conflict instead.
+                _preserve_port_conflict "$proto" "$p" || return 1
+                continue
+            fi
             msg "${YELLOW}[*] $(tprintf check_selected_ports_free_owned_process "${p}" "${proto}")${NC}"
             continue
         fi
@@ -34603,7 +34851,7 @@ sync_env_ports_after_removal() {
 # or is missing) — callers must only delete on rc 1.
 _standalone_link_survivor() {
     local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
-    local _cfg='' _prog='' _jq_rc=0
+    local _cfg='' _prog='' _jq_rc=0 _stripped=''
     case "$key" in
         trojan-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "trojan")' ;;
         trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' ;;
@@ -34624,7 +34872,13 @@ _standalone_link_survivor() {
     # (jq 1.6 parse-fail is rc 4, jq 1.7 is rc 5 — both land in *.)
     [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
     [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
-    jq -s -e "([.[] | (${_prog})] | length) > 0" "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
+    # H-26(3): strip JSONC comments before jq: the live config may
+    # legally carry // or /* */ comments, and a bare jq read fails
+    # (rc 5) on them. An empty result after stripping is
+    # unverifiable, not "confirmed gone".
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (cannot strip comments); keeping the link.${NC}" >&2; return 2; }
+    [[ -n "${_stripped//[[:space:]]/}" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config after stripping comments); keeping the link.${NC}" >&2; return 2; }
+    printf '%s' "$_stripped" | jq -s -e "([.[] | (${_prog})] | length) > 0" >/dev/null 2>&1 || _jq_rc=$?
     case "$_jq_rc" in
         0) return 0 ;;
         1) return 1 ;;

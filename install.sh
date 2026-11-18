@@ -11672,6 +11672,7 @@ initial_language_select() {
     echo '5. Русский'
     echo '6. فارسی'
     read -r -p 'Select [1-6, default 1]: ' c || true
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         2) ABOX_LANG='zh-tw' ;;
         3) ABOX_LANG='en' ;;
@@ -11698,6 +11699,7 @@ language_menu() {
     msg "${CYAN}0.${NC} $(tr_msg language_menu_back)"
     local c
     read -r -p 'Select [0-6]: ' c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         2) ABOX_LANG='zh-tw'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
@@ -16262,6 +16264,7 @@ shortcut_custom_menu() {
         printf '%s\n' "$(tr_msg sc_tb_opt0)" >&2
         printf '%s' "$(tr_msg sc_tb_choice)" >&2
         IFS= read -r _choice || return 0
+        _choice=$(normalize_fa_ar_digits "${_choice:-}")
         case "$_choice" in
             1)
                 printf '%s' "$(tr_msg sc_custom_prompt)" >&2
@@ -16610,6 +16613,7 @@ confirm_deployment_replacement() {
     # stored a partial answer (e.g. '1' with no trailing newline,
     # then EOF): only a successful read counts as confirmation.
     read -r -p "$(tr_msg dp_choice_prompt)" answer || { die "$(tr_msg dp_cancelled)"; return 1; }
+    answer=$(normalize_fa_ar_digits "${answer:-}")
     case "$answer" in
         2)
             # SYD-B E3: preserve never covered the main stack itself.
@@ -26844,9 +26848,11 @@ deploy_singbox_socks5_landing() {
     fi
     local _proto_choice=''
     read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || die "$(tr_msg pi_input_closed)"
+    _proto_choice=$(normalize_fa_ar_digits "$_proto_choice")
     case "$_proto_choice" in
+        1|'') proto='mixed' ;;
         2) proto='socks' ;;
-        *) proto='mixed' ;;
+        *) die "$(tr_msg invalid_input): $_proto_choice" ;;
     esac
     # R8C8-02: mixed emits an http:// link; HTTP Basic splits on
     # the first ':', so a colon in the username misaligns
@@ -27466,10 +27472,12 @@ deploy_singbox_tuic() {
     fi
     local cc_choice=''
     read -r -p "$(tr_msg tuic_cc_prompt)" cc_choice || cc_choice=''
+    cc_choice=$(normalize_fa_ar_digits "$cc_choice")
     case "$cc_choice" in
+        1|'') cc='bbr' ;;
         2) cc='cubic' ;;
         3) cc='new_reno' ;;
-        *) cc='bbr' ;;
+        *) die "$(tr_msg invalid_input): $cc_choice" ;;
     esac
     uuid=$(generate_robust_uuid) || die 'TUIC UUID generation failed.'
 
@@ -29286,6 +29294,7 @@ argo_menu() {
         msg "${CYAN}4.${NC}  $(tr_msg argo_m_uninstall)"
         msg "${CYAN}0.${NC}  $(tr_msg argo_m_back)"
         read -r -p "$(tr_msg argo_prompt)" choice || choice=0
+        choice=$(normalize_fa_ar_digits "${choice:-}")
         case "$choice" in
             1) deploy_argo_temp; pause_return ;;
             2) deploy_argo_fixed; pause_return ;;
@@ -29325,6 +29334,7 @@ deploy_with_instance_choice() {
     msg "${CYAN}1.${NC} $(tr_msg mu_inst_replace)   ${CYAN}2.${NC} $(tr_msg mu_inst_add)   ${CYAN}0.${NC} $(tr_msg mu_inst_cancel)"
     local ch=''
     read -r -p 'Select [0-2]: ' ch || return 0
+    ch=$(normalize_fa_ar_digits "$ch")
     case "$ch" in
         1) "$@" ;;
         2)
@@ -29344,9 +29354,11 @@ trojan_toolbox_entry() {
     fi
     read -r -p "$(tr_msg trojan_core_prompt) [${_default}]: " _core_choice || _core_choice=''
     _core_choice="${_core_choice:-$_default}"
+    _core_choice=$(normalize_fa_ar_digits "$_core_choice")
     case "$_core_choice" in
+        1) deploy_with_instance_choice xray trojan-landing deploy_xray_trojan_landing ;;
         2) deploy_with_instance_choice sing-box trojan-landing deploy_singbox_trojan_landing ;;
-        *) deploy_with_instance_choice xray trojan-landing deploy_xray_trojan_landing ;;
+        *) msg "${RED}$(tr_msg invalid_input): $_core_choice${NC}"; return 1 ;;
     esac
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
@@ -30971,6 +30983,7 @@ warp_split_menu() {
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
+    choice=$(normalize_fa_ar_digits "${choice:-}")
     case "$choice" in
         1) warp_deploy; pause_return ;;
         2) warp_preset_menu ;;
@@ -31001,6 +31014,7 @@ warp_preset_menu() {
     msg "${CYAN}0.${NC} $(tr_msg back_to_parent)"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-3]: " choice || return 0
+    choice=$(normalize_fa_ar_digits "${choice:-}")
     case "$choice" in
         1) warp_apply_preset streaming; pause_return ;;
         2) warp_apply_preset cn-direct; pause_return ;;
@@ -31016,6 +31030,7 @@ split_add_socks_interactive() {
     read -r -p "$(tr_msg split_ip_prompt): " ip || return 0
     [[ -n "$ip" ]] || { msg "${RED}$(tr_msg invalid_input)${NC}"; return 1; }
     read -r -p "$(tprintf split_port_prompt '1080'): " port || return 0
+    port=$(normalize_fa_ar_digits "$port")
     port="${port:-1080}"
     IFS= read -r -p "$(tr_msg split_user_prompt): " user || return 0
     IFS= read -r -s -p "$(tr_msg split_pass_prompt): " pass || return 0; echo
@@ -31053,6 +31068,7 @@ split_rules_menu() {
     msg "${CYAN}0.${NC} $(tr_msg back_to_parent)"
     local choice
     read -r -p "$(tr_msg select_prompt) [a/d/s/m/i/0]: " choice || return 0
+    choice=$(normalize_fa_ar_digits "${choice:-}")
     case "$choice" in
         a|A) split_rule_add_interactive ;;
         d|D) split_rule_del_interactive ;;
@@ -33844,11 +33860,14 @@ PY_TRAFFIC_DASH
     msg "${CYAN}2.${NC}  $(tr_msg traffic_management_menu_remove_limit)"
     msg "${CYAN}0.${NC}  $(tr_msg traffic_management_menu_back)"
     read -r -p "$(tr_msg tf_pick)" tr_choice || return 0
+    tr_choice=$(normalize_fa_ar_digits "${tr_choice:-}")
     case "$tr_choice" in
         1)
             read -r -p "$(tr_msg tf_limit_prompt)" limit_gb
+            limit_gb=$(normalize_fa_ar_digits "$limit_gb")
             valid_traffic_limit_gb "$limit_gb" || { msg "${RED}[!] $(tr_msg traffic_management_menu_limit_range)${NC}"; pause_return; return; }
             read -r -p "$(tr_msg tf_mode_prompt)" mode_choice
+            mode_choice=$(normalize_fa_ar_digits "${mode_choice:-}")
             mode_choice=${mode_choice:-total}
             [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] $(tr_msg traffic_management_menu_mode_invalid)${NC}"; pause_return; return; }
             # R6C10-03: drop any stale rollback from a previous round
@@ -34095,6 +34114,7 @@ manage_ss_whitelist() {
     msg "${CYAN}4.${NC} $(tr_msg manage_ss_whitelist_open_all)"
     msg "${CYAN}0.${NC} $(tr_msg manage_ss_whitelist_back_to_menu)"
     read -r -p "$(tr_msg wl_pick_prompt)" wl_choice
+    wl_choice=$(normalize_fa_ar_digits "${wl_choice:-}")
     local add_ip del_ip rule found proto
     case "$wl_choice" in
         1)
@@ -35178,6 +35198,7 @@ remove_single_protocol_menu() {
         msg "${YELLOW}${_idxf}.  ${label} · ${core} · :${port:-—}${NC}"
     done
     read -r -p "$(tr_msg cl_select)" choice || return 0
+    choice=$(normalize_fa_ar_digits "$choice")
     # Length-gated first: an unbounded digit string wraps in bash
     # arithmetic (2^64+1 becomes 1) and would select the first row.
     # 10# stays for the octal rule (08 errors, 010 selects index 7).
@@ -35412,6 +35433,7 @@ cleanup_protocols_menu() {
         msg "${CYAN}3.${NC}  $(tr_msg cl_m_reset)"
         msg "${CYAN}0.${NC}  $(tr_msg back_main)"
         read -r -p "$(tr_msg cl_select)" c || return 0
+        c=$(normalize_fa_ar_digits "$c")
         case "$c" in
             1) remove_single_protocol_menu; pause_return ;;
             2) clear_all_protocols; pause_return ;;
@@ -35949,6 +35971,7 @@ one_click_reality_deploy() {
     esac
     msg "${CYAN}0.${NC} $(tr_msg one_click_reality_deploy_cancel_back)"
     read -r -p 'Select [0-2]: ' choice || return 0
+    choice=$(normalize_fa_ar_digits "${choice:-}")
     case "$choice" in 1|2) ;; *) return 0 ;; esac
     load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || true
     if deployment_evidence_exists || [[ -n "${CORE:-}" || -n "${MODE:-}" ]]; then
@@ -36022,6 +36045,7 @@ ux_mode_menu() {
             msg "${CYAN}0.${NC} 返回" ;;
     esac
     read -r -p 'Select [0-3]: ' c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) save_fast_mode 0; pause_return ;;
         2) save_fast_mode 1; pause_return ;;
@@ -37756,6 +37780,7 @@ users_pick_user() {
     local i=0 n=''
     while IFS= read -r n; do i=$((i + 1)); printf '%3d. %s\n' "$i" "$n" >&2; done <<< "$names"
     read -r -p "$2" sel || return 1
+    sel=$(normalize_fa_ar_digits "$sel")
     total=$(printf '%s\n' "$names" | wc -l | tr -d '[:space:]')
     # Length-gated first: an unbounded digit string wraps in bash
     # arithmetic (2^64+1 becomes 1) and would select the first user.
@@ -37830,6 +37855,7 @@ users_inbound_menu() {
         done
         local c=''
         read -r -p "$(tr_msg select_prompt) [0-9]: " c || return 0
+        c=$(normalize_fa_ar_digits "$c")
         local old='' new='' nm='' now=''
         old=$(cat "$reg" 2>/dev/null) || return 1
         now=$(date +%s)
@@ -37883,6 +37909,7 @@ users_inbound_menu() {
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local gb=''
                 read -r -p "$(tr_msg mu_gb_prompt)" gb || continue
+                gb=$(normalize_fa_ar_digits "$gb")
                 [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson g "$gb" '
                     .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and $g == 0 then .blocked = "" else . end) else . end)') || continue
@@ -37893,6 +37920,7 @@ users_inbound_menu() {
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local days=''
                 read -r -p "$(tr_msg mu_days_prompt)" days || continue
+                days=$(normalize_fa_ar_digits "$days")
                 valid_decimal_upto "$days" 36500 || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 days=$((10#$days))
                 local expat=0
@@ -37906,6 +37934,7 @@ users_inbound_menu() {
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local w=''
                 read -r -p "$(tr_msg mu_win_prompt)" w || continue
+                w=$(normalize_fa_ar_digits "$w")
                 if [[ -n "$w" && ! "$w" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
                     msg "${RED}$(tr_msg mu_win_bad)${NC}"; pause_return; continue
                 fi
@@ -38007,6 +38036,7 @@ multi_user_menu() {
         msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"
         local c=''
         read -r -p "$(tr_msg select_prompt) [0-${i}/E]: " c || return 0
+        c=$(normalize_fa_ar_digits "$c")
         case "$c" in
             0) return 0 ;;
             E|e)
@@ -38885,6 +38915,7 @@ node_sni_menu() {
         msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"
         local c=''
         read -r -p "$(tr_msg select_prompt) [0-${i}]: " c || return 0
+        c=$(normalize_fa_ar_digits "$c")
         case "$c" in
             0|'') return 0 ;;
             *[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
@@ -39091,6 +39122,7 @@ ip_preference_menu() {
     msg "${CYAN}3.${NC} $dual"
     msg "${CYAN}0.${NC} $back"
     read -r -p "$(tr_msg ip_select_0_3)" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) save_ip_pref ipv4 ;;
         2)
@@ -39189,6 +39221,7 @@ host_network_menu() {
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) ip_preference_menu ;;
         2) dns_menu ;;
@@ -39564,6 +39597,7 @@ timezone_choose_from_list() {
         first=$((page*page_size)); last=$((first+page_size)); ((last>${#filtered[@]})) && last=${#filtered[@]}
         for ((idx=first; idx<last; idx++)); do printf '%4d. %s\n' "$((idx+1))" "${filtered[$idx]}"; done
         read -r -p "$number_prompt" input || return 0
+        input=$(normalize_fa_ar_digits "${input:-}")
         case "${input,,}" in
             n|next) ((last<${#filtered[@]})) && page=$((page+1)) ;;
             p|prev) ((page>0)) && page=$((page-1)) ;;
@@ -39615,6 +39649,7 @@ timezone_choose_locale() {
         first=$((page*page_size)); last=$((first+page_size)); ((last>${#locales[@]})) && last=${#locales[@]}
         for ((i=first; i<last; i++)); do printf '%4d. %s\n' "$((i+1))" "${locales[$i]}"; done
         read -r -p "$prompt" value || return 0
+        value=$(normalize_fa_ar_digits "${value:-}")
         case "${value,,}" in
             n|next) ((last<${#locales[@]})) && page=$((page+1)) ;;
             p|prev) ((page>0)) && page=$((page-1)) ;;
@@ -39721,6 +39756,7 @@ timezone_locale_ntp_menu() {
     msg "${CYAN}0.${NC} $back_word"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) timezone_choose_from_list '' ;;
         2) local query search_prompt; case "${ABOX_LANG:-zh}" in en) search_prompt='Timezone search: ' ;; ru) search_prompt='Поиск часового пояса: ' ;; fa) search_prompt='جست‌وجوی منطقه زمانی: ' ;; zh-tw) search_prompt='時區關鍵詞: ' ;; ja) search_prompt='タイムゾーンを検索: ' ;; *) search_prompt='时区关键词: ' ;; esac; read -r -p "$search_prompt" query || return 0; timezone_choose_from_list "$query" ;;
@@ -42478,6 +42514,7 @@ dns_menu() {
     msg "${CYAN}0.${NC} $(tr_msg dns_menu_back)"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-10]: ' ;; ru) prompt='Выберите [0–10]: ' ;; fa) prompt='انتخاب [۰ تا ۱۰]: ' ;; ja) prompt='選択してください [0-10]: ' ;; zh-tw) prompt='請選擇 [0-10]：' ;; *) prompt='请选择 [0-10]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) dns_auto_prefer ;;
         2) dns_dot_prefer ;;
@@ -42503,11 +42540,12 @@ dns_menu() {
             msg "${CYAN}3.${NC} Quad9 (9.9.9.9)"
             msg "${CYAN}4.${NC} $dot_custom_word"
             read -r -p "$dot_preset_prompt" dot_preset
+            dot_preset=$(normalize_fa_ar_digits "$dot_preset")
             case "$dot_preset" in
                 1) apply_host_dns dot '1.1.1.1' '2606:4700:4700::1111' 'cloudflare-dns.com'; pause_return ;;
                 2) apply_host_dns dot '8.8.8.8' '2001:4860:4860::8888' 'dns.google'; pause_return ;;
                 3) apply_host_dns dot '9.9.9.9' '2620:fe::fe' 'dns.quad9.net'; pause_return ;;
-                *)
+                4)
             local dot_name dot_ipv4_prompt dot_ipv6_prompt dot_host_prompt dot_host_error
             case "${ABOX_LANG:-zh}" in
                 en) dot_ipv4_prompt='DoT resolver IPv4: '; dot_ipv6_prompt='DoT resolver IPv6 (optional): '; dot_host_prompt='TLS authentication hostname (e.g. dns.google): '; dot_host_error='Invalid DoT TLS hostname.' ;;
@@ -42525,6 +42563,7 @@ dns_menu() {
             read -r -p "$dot_host_prompt" dot_name
             valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
             apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
+                *) msg "${RED}$(tr_msg invalid_input): $dot_preset${NC}"; pause_return; return 1 ;;
             esac ;;
         7) if host_has_usable_ipv6 2>/dev/null; then apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; else apply_host_dns plain '1.1.1.1' ''; fi; pause_return ;;
         8) if host_has_usable_ipv6 2>/dev/null; then apply_host_dns plain '9.9.9.9' '2620:fe::fe'; else apply_host_dns plain '9.9.9.9' ''; fi; pause_return ;;
@@ -42582,6 +42621,7 @@ tune_vps() {
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
@@ -44332,6 +44372,7 @@ swap_menu() {
         msg " ${CYAN}5.${NC}  $(tr_msg swap_opt_5)"
         msg " ${CYAN}0.${NC}  $(tr_msg swap_opt_0)"
         read -r -p "$(tr_msg swap_select_0_5)" choice || return 0
+        choice=$(normalize_fa_ar_digits "$choice")
         case "$choice" in
             1) setup_zram_swap ;;
             2) setup_swap_2g ;;
@@ -47601,6 +47642,7 @@ PY_RB_ENUM
     clear
     for i in "${!backups[@]}"; do printf '%2d. %s\n' "$((i+1))" "${backups[$i]}"; done
     read -r -p "$(tr_msg rb_select)" choice
+    choice=$(normalize_fa_ar_digits "${choice:-}")
     [[ "$choice" == 0 ]] && return
     if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || ! valid_decimal_upto "$choice" "${#backups[@]}"; then
         msg "${RED}[!] $(tr_msg rb_invalid)${NC}"
@@ -47799,6 +47841,7 @@ backup_restore_menu() {
     esac
     local c
     read -r -p "$(tr_msg bk_select_0_4)" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) backup_current_config; pause_return ;;
         2) restore_from_backup ;;
@@ -52184,6 +52227,31 @@ wallos_fw_rollback_added() {
     (( _failed == 0 ))
 }
 
+# M-36: explicit Wallos access-mode choice. Persian/Arabic-Indic digits
+# are normalized; an unknown choice is rejected and re-prompted instead
+# of silently defaulting to public HTTPS (a publish authorization).
+# EOF (Ctrl-D) cancels (return 1). Sets the caller's `wmode` via
+# dynamic scope; the caller sets _bind_chosen=1 only on success.
+wallos_choose_access_mode() {
+    local _ans=''
+    while true; do
+        case "${ABOX_LANG:-zh}" in
+            *) msg "$(tr_msg wl_mode_title)"; msg "$(tr_msg wl_mode_1)"; msg "$(tr_msg wl_mode_2)"; msg "$(tr_msg wl_mode_3)"; msg "$(tr_msg wl_mode_4)"; printf '%s' "$(tr_msg wl_choose)" ;;
+        esac
+        if ! read -r _ans; then
+            return 1
+        fi
+        _ans=$(normalize_fa_ar_digits "$_ans")
+        case "$_ans" in
+            1) wmode='https'; return 0 ;;
+            2) wmode='local'; return 0 ;;
+            3) wmode='cftunnel'; return 0 ;;
+            4) wmode='http'; return 0 ;;
+            *) msg "${RED}$(tr_msg invalid_input): $_ans${NC}" ;;
+        esac
+    done
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
@@ -52308,19 +52376,11 @@ wallos_install_or_update() {
         _bind_chosen=1
         [[ "$bind_address" == 0.0.0.0 ]] && wmode='https'
     elif [[ -t 0 ]]; then
-        local _ans=''
-        case "${ABOX_LANG:-zh}" in
-            *) msg "$(tr_msg wl_mode_title)"; msg "$(tr_msg wl_mode_1)"; msg "$(tr_msg wl_mode_2)"; msg "$(tr_msg wl_mode_3)"; msg "$(tr_msg wl_mode_4)"; printf '%s' "$(tr_msg wl_choose)" ;;
-        esac
-        # R16-F15-01: EOF (Ctrl-D) is a cancel, never a choice. The old
-        # `|| _ans=''` fell through to `*) wmode='https'` with
-        # _bind_chosen=1, skipping the confirm gate below and treating
-        # EOF as a public-publish authorization.
-        if ! read -r _ans; then
-            return 0
-        fi
+        # R16-F15-01: EOF (Ctrl-D) is a cancel, never a choice. The
+        # helper returns 1 on EOF, _bind_chosen stays unset and the
+        # confirm gate below is not skipped.
+        wallos_choose_access_mode || return 0
         _bind_chosen=1
-        case "$_ans" in 2) wmode='local' ;; 3) wmode='cftunnel' ;; 4) wmode='http' ;; *) wmode='https' ;; esac
     elif [[ "$_old_mode" == https && "$_old_pubport" =~ ^[0-9]+$ ]]; then
         # Non-interactive rerun of an HTTPS install: keep HTTPS.
         wmode='https'; pubport="$_old_pubport"; _bind_chosen=1
@@ -53138,6 +53198,7 @@ _wallos_manual_rollback() {
         *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
     esac
     read -r -p "$prompt" sel || return 1
+    sel=$(normalize_fa_ar_digits "${sel:-}")
     if (( _rb_no_default == 1 )) && [[ -z "$sel" ]]; then
         msg "${RED}$(tr_msg wl_rb_no_default)${NC}"; return 1
     fi
@@ -53168,6 +53229,7 @@ wallos_menu() {
     msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
     local c prompt_confirm
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
+    c=$(normalize_fa_ar_digits "${c:-}")
 
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: ' ;;
@@ -53298,6 +53360,7 @@ other_protocols_menu() {
     local op_choice select_prompt
     case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-6]: ' ;; ru) select_prompt='Выберите [0–6]: ' ;; fa) select_prompt='انتخاب [۰ تا ۶]: ' ;; ja) select_prompt='選択してください [0-6]: ' ;; zh-tw) select_prompt='請選擇 [0-6]：' ;; *) select_prompt='请选择 [0-6]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
+    op_choice=$(normalize_fa_ar_digits "${op_choice:-}")
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
         2) deploy_with_instance_choice sing-box tuic-in deploy_singbox_tuic; pause_return ;;
@@ -53488,6 +53551,7 @@ vps_benchmark_menu() {
     local bench_choice select_prompt
     case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-17]: ' ;; ru) select_prompt='Выберите [0–17]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۷]: ' ;; ja) select_prompt='選択してください [0-17]: ' ;; zh-tw) select_prompt='請選擇 [0-17]：' ;; *) select_prompt='请选择 [0-17]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
+    bench_choice=$(normalize_fa_ar_digits "${bench_choice:-}")
     case "$bench_choice" in
         1) run_acheck_tool; pause_return ;;
         2) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -53526,9 +53590,11 @@ socks5_toolbox_entry() {
     fi
     read -r -p "$(tr_msg socks5_core_prompt) [${_default}]: " _core_choice || _core_choice=''
     _core_choice="${_core_choice:-$_default}"
+    _core_choice=$(normalize_fa_ar_digits "$_core_choice")
     case "$_core_choice" in
+        1) deploy_with_instance_choice xray socks5-landing deploy_socks5_landing ;;
         2) deploy_with_instance_choice sing-box socks5-landing deploy_singbox_socks5_landing ;;
-        *) deploy_with_instance_choice xray socks5-landing deploy_socks5_landing ;;
+        *) msg "${RED}$(tr_msg invalid_input): $_core_choice${NC}"; return 1 ;;
     esac
 }
 clean_uninstall_menu() {
@@ -53540,6 +53606,7 @@ clean_uninstall_menu() {
     msg "${CYAN}2.${NC} $(tr_msg um_item2)"
     msg "${CYAN}0.${NC} $(tr_msg um_back)"
     read -r -p "$(tr_msg um_prompt)" un_choice
+    un_choice=$(normalize_fa_ar_digits "${un_choice:-}")
     case "$un_choice" in
         1) auto_backup_prompt bk_op_keep '/root/A-Box-backups'; do_cleanup wipe ;;
         2) auto_backup_prompt bk_op_full '/root/A-Box-backups'; do_cleanup full ;;
@@ -56914,6 +56981,7 @@ ota_and_geo_menu() {
         msg "${CYAN}5.${NC} DANGER: try upstream latest cores (auto-rollback) [U3]"
         msg "${CYAN}0.${NC} Back"
         read -r -p 'Select [0-5]: ' ota_choice || return 0
+        ota_choice=$(normalize_fa_ar_digits "$ota_choice")
             ;;
         ru)
         msg "${BOLD}${GREEN}OTA, Geo и обновление только ядер${NC}"
@@ -60369,6 +60437,7 @@ main_loop() {
             flock -u 9 2>/dev/null && _menu_lock_released=1 || true
         fi
         read -r -p "$(tr_msg main_command)" choice || exit 0
+        choice=$(normalize_fa_ar_digits "${choice:-}")
         if [[ "${_menu_lock_released:-0}" == 1 ]]; then
             # A-07: Wait up to 15s for lock (cron helpers hold it briefly); -n caused spurious menu exits.
             flock -w 15 9 || die "$(tr_msg main_loop_relock_failed)"

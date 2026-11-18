@@ -20385,7 +20385,7 @@ clean_nat_rules() {
             done
         else
             ipv6_nat_error=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>&1 >/dev/null || true)
-            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported" <<< "$ipv6_nat_error"; then
+            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
                 failed=1
             fi
         fi
@@ -59083,6 +59083,26 @@ N11EOF
         ! clean_nat_rules
     ); then
         echo 'FAIL: clean_nat_rules must remain fail-closed on IPv6 firewall permission errors'; failures=$((failures + 1))
+    fi
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' "ip6tables v1.8.7 (nf_tables): table 'nat' is incompatible, use 'nft' tool." >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must tolerate an nft-incompatible IPv6 NAT table'; failures=$((failures + 1))
+    fi
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' "can't initialize ip6tables table 'nat': Permission denied (you must be root)" >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        ! clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must remain fail-closed on ip6tables initialization permission errors'; failures=$((failures + 1))
     fi
     mkdir -p "$tmp/atomic-dest-dir"
     printf '%s\n' 'payload' > "$tmp/atomic.src2"

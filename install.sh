@@ -14837,7 +14837,7 @@ prune_owned_core_families_except() {
         [[ "$allowed" == *" $srv "* ]] && continue
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
-        remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
+        remove_owned_core_family "$srv" 0 1 || die "$(tprintf pr_remove "$srv")"
         # R23 F-ARGO-ORPHAN: the sing-box stack owns the Argo tunnels
         # (argo-vless/argo-vmess temp units and the shared fixed `argo`
         # unit all serve its ws inbounds). Pruning the stack deletes
@@ -15261,6 +15261,168 @@ core_family_binary_orphaned() {
     [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]]
 }
 
+# S2-NEW-05: re-register a core family whose recorded files changed after
+# registration, when the ONLY defect is content change. Refuses (rc 1) on
+# every other defect: unrecorded children, symlinks, ownership/mode
+# violations, mountpoints, a missing/tampered manifest, or no changed
+# file at all. Deletes nothing itself; the caller retries the verified
+# removal after a successful re-registration. Runtime identity must
+# resolve; if the service user/group is gone, refuse (fail closed).
+core_family_reregister_changed() {
+    local srv="$1" _u='' _g='' _uid='' _gid=''
+    case "$srv" in xray|sing-box|hysteria|xray-latest) ;; *) return 1 ;; esac
+    [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || return 1
+    IFS=$'\t' read -r _u _g < <(abox_runtime_identity "$srv") || return 1
+    _uid=$(id -u "$_u" 2>/dev/null || true)
+    _gid=$(getent group "$_g" 2>/dev/null | awk -F: '{print $3}')
+    [[ "$_uid" =~ ^[0-9]+$ && "$_gid" =~ ^[0-9]+$ ]] || return 1
+    python3 -I - "$srv" "$ABOX_CORE_OWNERSHIP" "$_uid" "$_gid" "$ABOX_DIR" <<'PY_CORE_REREGISTER'
+import hashlib, os, re, stat, sys, tempfile
+srv, manifest, runtime_uid, runtime_gid, abox_dir = sys.argv[1:]
+runtime_uid = int(runtime_uid)
+runtime_gid = int(runtime_gid)
+try:
+    _mst = os.lstat(manifest)
+except OSError:
+    raise SystemExit(1)
+if (not stat.S_ISREG(_mst.st_mode) or stat.S_ISLNK(_mst.st_mode)
+        or _mst.st_uid != 0 or _mst.st_gid != 0
+        or (_mst.st_mode & 0o7777) != 0o600 or _mst.st_size > 4194304):
+    raise SystemExit(1)
+rows = []
+with open(manifest, 'r', encoding='utf-8') as f:
+    for line in f:
+        p=line.rstrip('\n').split('\t')
+        if len(p)!=4 or p[0] not in {'F','D'} or not p[2].startswith('/') or '\x00' in line:
+            raise SystemExit(1)
+        rows.append(p)
+fam = [r for r in rows if r[1] == srv]
+if not fam:
+    raise SystemExit(1)
+if len({(r[0], r[1], r[2]) for r in rows}) != len(rows):
+    raise SystemExit(1)
+files = {r[2]: r[3] for r in fam if r[0] == 'F'}
+dirs = {r[2] for r in fam if r[0] == 'D'}
+expected = set(files) | dirs
+def _is_mountpoint(path):
+    path = os.path.abspath(os.path.normpath(path))
+    if os.path.islink(path):
+        return False
+    try:
+        with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as mf:
+            for line in mf:
+                fields = line.rstrip('\n').split(' ')
+                if len(fields) < 5:
+                    continue
+                mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), fields[4])
+                mp = os.path.abspath(os.path.normpath(mp))
+                if mp == path:
+                    return True
+    except (OSError, UnicodeError):
+        raise SystemExit(1)
+    return False
+_trusted = set()
+for _p in os.environ.get('ABOX_TRUSTED_UNINSTALL_ANCESTORS', '').split(':'):
+    if not _p:
+        continue
+    if not os.path.isabs(_p):
+        raise SystemExit(1)
+    _trusted.add(os.path.abspath(os.path.normpath(_p)))
+def _ancestors_mounted(path):
+    recorded = os.path.abspath(os.path.normpath(path))
+    cur = recorded
+    while cur != '/':
+        if _is_mountpoint(cur):
+            if cur == recorded or cur not in _trusted:
+                return True
+        cur = os.path.dirname(cur)
+    return False
+try:
+    _ad_st = os.lstat(abox_dir)
+except OSError:
+    raise SystemExit(1)
+if stat.S_ISLNK(_ad_st.st_mode) or not stat.S_ISDIR(_ad_st.st_mode):
+    raise SystemExit(1)
+changed = []
+for path in sorted(expected, key=os.fsencode):
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        continue
+    if _ancestors_mounted(path):
+        raise SystemExit(1)
+    acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
+    uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
+    gid_ok = st.st_gid in ({0, runtime_gid})
+    group_write_ok = acme and path == '/etc/hysteria/acme' and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
+    if (not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode)
+            or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok)):
+        raise SystemExit(1)
+    if path in files:
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+            raise SystemExit(1)
+        h = hashlib.sha256()
+        try:
+            with open(path, 'rb') as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                    h.update(chunk)
+        except OSError:
+            raise SystemExit(1)
+        if h.hexdigest() != files[path]:
+            changed.append(path)
+    else:
+        if not stat.S_ISDIR(st.st_mode):
+            raise SystemExit(1)
+        try:
+            names = os.listdir(path)
+        except OSError:
+            raise SystemExit(1)
+        for name in names:
+            if os.path.join(path, name) not in expected:
+                raise SystemExit(1)
+if not changed:
+    raise SystemExit(1)
+new_files = dict(files)
+for path in changed:
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    new_files[path] = h.hexdigest()
+    print(f"[!] Re-registering changed {srv} file (content only): {path}", file=sys.stderr)
+dirname = os.path.dirname(manifest)
+fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.', dir=dirname, text=True)
+try:
+    with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+        for row in rows:
+            if row[0] == 'F' and row[1] == srv and row[2] in new_files:
+                row = ['F', srv, row[2], new_files[row[2]]]
+            f.write('\t'.join(row) + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o600)
+    os.chown(tmp, 0, 0)
+    os.replace(tmp, manifest)
+except Exception:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
+PY_CORE_REREGISTER
+}
+
+# S2-NEW-05: after a failed verified removal (rc 3), try the narrow
+# re-registration (pure content changes only) and retry the verified
+# removal once. Returns 0 only when the retry removal succeeds.
+_remove_owned_core_family_after_reregister() {
+    local srv="$1" rc
+    core_family_reregister_changed "$srv" || return 1
+    msg "${YELLOW}[!] Re-registered changed ${srv} files (content only); retrying the verified removal.${NC}"
+    remove_recorded_core_family "$srv"; rc=$?
+    (( rc == 0 ))
+}
+
 remove_owned_core_family() {
     # $2 force_heal: only explicit callers (menu 17 / full uninstall) may pass 1.
     # Ambient ABOX_HEAL_MISSING_MANIFEST from the environment is never consulted.
@@ -15294,6 +15456,18 @@ remove_owned_core_family() {
                     msg "${YELLOW}[!] $(tprintf remove_owned_core_family_no_manifest_legacy "${srv}")${NC}"
                     remove_core_family_force "$srv" || return 1
                     return 0
+                    ;;
+                3)
+                    if [[ "$force_heal" == 1 ]]; then
+                        msg "${YELLOW}[!] One or more ${srv} files changed after ownership registration; force-heal is removing the known core-family paths.${NC}"
+                        remove_core_family_force "$srv" || return 1
+                        return 0
+                    fi
+                    if [[ "${3:-0}" == 1 ]] && _remove_owned_core_family_after_reregister "$srv"; then
+                        return 0
+                    fi
+                    msg "${RED}[!] $(tprintf remove_owned_core_family_manifest_failed "${srv}")${NC}"
+                    return 1
                     ;;
                 *)
                     msg "${RED}[!] $(tprintf remove_owned_core_family_manifest_failed "${srv}")${NC}"
@@ -15330,6 +15504,14 @@ remove_owned_core_family() {
             return 1
             ;;
         3)
+            if [[ "$force_heal" == 1 ]]; then
+                msg "${YELLOW}[!] One or more ${srv} files changed after ownership registration; force-heal is removing the known core-family paths.${NC}"
+                remove_core_family_force "$srv" || return 1
+                return 0
+            fi
+            if [[ "${3:-0}" == 1 ]] && _remove_owned_core_family_after_reregister "$srv"; then
+                return 0
+            fi
             msg "${RED}[!] One or more ${srv} files changed after ownership registration; they were preserved instead of being deleted.${NC}"
             return 1
             ;;
@@ -15358,7 +15540,7 @@ remove_owned_core_families_for_restore() {
         if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
             continue
         fi
-        remove_owned_core_family "$srv" 0 || failed=1
+        remove_owned_core_family "$srv" 0 1 || failed=1
     done
     (( failed == 0 ))
 }
@@ -53365,14 +53547,29 @@ wallos_install_or_update() {
         _fw_open_out=$(_wallos_fw_open_tracked "$pubport" tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        # R3-NEW-03: _wallos_fw_open_tracked only reports NEW ufw/firewalld
+        # ledger entries; on the iptables backend it prints nothing even
+        # though allowPort just added the rule, so the registration loop
+        # below would never see this port. Register it directly once the
+        # open succeeded: reclaim only removes A-Box-owned rules
+        # (comment/ledger-gated), so registering an already-open foreign
+        # port is a harmless no-op.
+        wallos_fw_register_opened "$pubport" tcp || true
         _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        # R3-NEW-03: same ledger gap as the public port above (and 80/tcp
+        # may already be open from wallos_https_setup's own allowPort,
+        # which also leaves no ledger entry). Register directly.
+        wallos_fw_register_opened 80 tcp || true
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
         _fw_open_out=$(_wallos_fw_open_tracked "$port" tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        # R3-NEW-03: same ledger gap as the https ports above; the http
+        # container port (e.g. 29503) would otherwise never be registered.
+        wallos_fw_register_opened "$port" tcp || true
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     fi
     # S143: the upgrade journal is the rollback material. It must not be
@@ -53757,6 +53954,31 @@ wallos_menu() {
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
+                    # R3-NEW-03: the menu delete never reclaimed the firewall
+                    # openings. Seed the registry from the live state
+                    # first (a pre-fix install never wrote .fw-opened),
+                    # then reclaim everything registered. 80/tcp stays
+                    # when the Hysteria HTTP-01 challenge still needs it
+                    # (guard inside the reclaim helper).
+                    local _wl_pub='' _wl_port='' _wf=''
+                    _wl_pub=$(wallos_state_value PUBPORT 2>/dev/null || true)
+                    _wl_port=$(wallos_state_value PORT 2>/dev/null || true)
+                    [[ -n "$_wl_pub" ]] && wallos_fw_register_opened "$_wl_pub" tcp || true
+                    [[ -n "$_wl_port" ]] && wallos_fw_register_opened "$_wl_port" tcp || true
+                    wallos_fw_reclaim_registered || msg "${YELLOW}[!] Failed to reclaim a Wallos firewall opening during uninstall; check the firewall rules manually.${NC}"
+                    # R3-NEW-03 (low observation): deleting the container
+                    # left the A-Box-wallos fail2ban jail/filter loaded.
+                    # Remove the managed pair and reload so the jail
+                    # drops now (same marker gate as full uninstall).
+                    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
+                        if [[ -f "$_wf" ]] && grep -Fxq '# Managed by A-Box' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
+                    done
+                    if command -v fail2ban-client >/dev/null 2>&1; then
+                        fail2ban-client reload >/dev/null 2>&1 || true
+                        if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+                            fail2ban-client restart >/dev/null 2>&1 || true
+                        fi
+                    fi
                 else
                     msg "${RED}$(tr_msg wl_remove_fail)${NC}"
                 fi

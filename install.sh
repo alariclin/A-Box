@@ -39728,6 +39728,14 @@ nm_reapply_connection() {
 restore_dns_snapshot_body() {
     local dir="$1" backend state key value connection iface dnscrypt_state _dnscrypt_dir_mode=''
     [[ -f "$dir/COMPLETE" ]] || return 1
+    # M-26(2): in a non-systemd container systemctl exists but there is
+    # no bus/PID 1. disable/is-enabled/list-unit-files are offline
+    # operations and succeed there, so they must NOT be treated as the
+    # failure point; the fatal steps are restart/stop/is-active. Only
+    # the file-level rollback (resolv.conf, drop-ins, symlinks, state
+    # files) runs when systemd is unavailable.
+    local _dns_no_systemd=0
+    systemd_available 2>/dev/null || _dns_no_systemd=1
     backend=$(tr -d '[:space:]' < "$dir/backend" 2>/dev/null || true)
     if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then
         # FIX: cp -a follows a symlink at the destination and would overwrite
@@ -39805,7 +39813,7 @@ restore_dns_snapshot_body() {
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     fi
-    if [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
+    if (( _dns_no_systemd == 0 )) && [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
         connection=$(cat "$dir/nm-connection")
         for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
             value=$(cat "$dir/nm-${key//./-}" 2>/dev/null || true)
@@ -39827,14 +39835,14 @@ restore_dns_snapshot_body() {
         if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] && grep -q 'Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null; then
             rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || true
             rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
-            if command -v systemctl >/dev/null 2>&1; then
+            if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
                 systemctl daemon-reload >/dev/null 2>&1 || true
                 systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null && systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
             fi
         fi
     fi
-    if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
-    if command -v systemctl >/dev/null 2>&1; then
+    if (( _dns_no_systemd == 0 )) && [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
+    if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
         local _dnscrypt_units=''
         _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
         if awk -v wanted='dnscrypt-proxy.service' '$1 == wanted { found=1 } END { exit !found }' <<< "$_dnscrypt_units"; then
@@ -40495,10 +40503,35 @@ EOF_DNS
             [[ -n "$iface" ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_no_iface)"; }
             connection=$(nmcli --escape no -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
             [[ -n "$connection" && "$connection" != '--' ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_no_conn)"; }
-            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
-            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
+            # M-26(1): NetworkManager verify() refuses dns/dns-search
+            # on a family whose method is disabled/link-local/shared
+            # (the profile can never apply). Read both methods first
+            # and skip the forbidden family instead of writing a
+            # combination that fails at apply time. A method nmcli
+            # fails to report fails open (empty = no restriction).
+            local _nm_methods='' _nm_v4method='' _nm_v6method=''
+            local _nm_skip_v4=0 _nm_skip_v6=0 _nm_eff_v4="$v4" _nm_eff_v6="${v6:-}"
+            _nm_methods=$(nmcli --escape no -g ipv4.method,ipv6.method connection show "$connection" 2>/dev/null || true)
+            _nm_v4method=$(printf '%s' "$_nm_methods" | sed -n '1p')
+            _nm_v6method=$(printf '%s' "$_nm_methods" | sed -n '2p')
+            case "$_nm_v4method" in disabled|link-local|shared) _nm_skip_v4=1; _nm_eff_v4='' ;; esac
+            case "$_nm_v6method" in disabled|link-local|shared) _nm_skip_v6=1; _nm_eff_v6='' ;; esac
+            if (( _nm_skip_v4 == 1 )) && (( _nm_skip_v6 == 1 )); then
+                dns_rollback_drop_staging "$dns_snap_tmp"
+                die "NetworkManager connection '$connection' has both IPv4 and IPv6 disabled; no DNS family can be applied."
+            fi
+            if (( _nm_skip_v4 == 1 )); then
+                msg "${YELLOW}[!] IPv4 is disabled on NetworkManager connection '$connection'; IPv4 DNS was not applied.${NC}"
+            else
+                nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
+            fi
+            if (( _nm_skip_v6 == 1 )); then
+                [[ -n "${v6:-}" ]] && msg "${YELLOW}[!] IPv6 is disabled on NetworkManager connection '$connection'; IPv6 DNS was not applied.${NC}"
+            else
+                nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
+            fi
             nmcli device reapply "$iface" >/dev/null 2>&1 || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
-            nm_dns_verify_applied "$connection" "$v4" "$v6" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
+            nm_dns_verify_applied "$connection" "$_nm_eff_v4" "$_nm_eff_v6" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
             ;;
         *)
             [[ ! -L /etc/resolv.conf ]] || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_resolv_symlink)"; }
@@ -42320,8 +42353,8 @@ dns_menu() {
             valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
             apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
             esac ;;
-        7) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
-        8) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
+        7) if host_has_usable_ipv6 2>/dev/null; then apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; else apply_host_dns plain '1.1.1.1' ''; fi; pause_return ;;
+        8) if host_has_usable_ipv6 2>/dev/null; then apply_host_dns plain '9.9.9.9' '2620:fe::fe'; else apply_host_dns plain '9.9.9.9' ''; fi; pause_return ;;
         6) dns_enable_doh; pause_return ;;
         9) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then if restore_dns_snapshot "$DNS_BACKUP_DIR"; then msg "${GREEN}DNS restored.${NC}"; else msg "${RED}DNS rollback failed.${NC}"; fi; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
         10) dns_setup_tri_mode ;;

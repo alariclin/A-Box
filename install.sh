@@ -6514,6 +6514,12 @@ tr_msg() {
         fa:bk_postdeploy_fail) echo 'گرفتن تصویر پس از استقرار ناموفق بود؛ استقرار از قبل ثبت شده و آسیبی ندیده است.' ;;
         zh-tw:bk_postdeploy_fail) echo '部署後快照失敗；部署已提交，本次部署不受影響。' ;;
         ja:bk_postdeploy_fail) echo 'デプロイ後のスナップショットに失敗しました。デプロイは既に確定済みで影響はありません。' ;;
+        zh:trojan_env_port_fail) echo 'Trojan 端口 %s 未能记入 .env；自愈覆盖检查将暂不期待该端口。' ;;
+        zh-tw:trojan_env_port_fail) echo 'Trojan 連接埠 %s 未能記入 .env；自愈覆蓋檢查將暫不期待該連接埠。' ;;
+        en:trojan_env_port_fail) echo 'Trojan port %s could not be recorded in .env; the self-heal coverage check will not expect this port yet.' ;;
+        ru:trojan_env_port_fail) echo 'Порт Trojan %s не удалось записать в .env; проверка покрытия самовосстановления пока не будет ожидать этот порт.' ;;
+        fa:trojan_env_port_fail) echo 'پورت Trojan %s در .env ثبت نشد؛ بررسی پوشش خودترمیمی فعلا این پورت را انتظار نخواهد داشت.' ;;
+        ja:trojan_env_port_fail) echo 'Trojan ポート %s を .env に記録できませんでした。自己修復のカバレッジチェックは当面このポートを期待しません。' ;;
         zh:bk_created) echo '备份已创建：' ;;
         en:bk_created) echo 'Backup created:' ;;
         ru:bk_created) echo 'Резервная копия создана:' ;;
@@ -10114,6 +10120,12 @@ tr_msg() {
         ru:sni_fail) echo 'Этот домен не прошёл проверку TLS 1.3, h2 или SAN сертификата; подключения могут не удаться.' ;;
         fa:sni_fail) echo 'این دامنه بررسی TLS 1.3، h2 یا SAN گواهی را با موفقیت پشت سر نگذاشت؛ اتصال‌ها ممکن است ناموفق شوند.' ;;
         ja:sni_fail) echo 'このドメインは TLS 1.3、h2、または証明書 SAN チェックに合格しませんでした。接続に失敗する可能性があります。' ;;
+        zh:sni_unresolvable) echo '域名 %s 无法解析（DNS 无结果）；该 SNI 无法完成 Reality 握手，已拒绝使用。' ;;
+        zh-tw:sni_unresolvable) echo '網域 %s 無法解析（DNS 無結果）；該 SNI 無法完成 Reality 握手，已拒絕使用。' ;;
+        en:sni_unresolvable) echo 'Domain %s does not resolve (no DNS result); it cannot complete a Reality handshake, so this SNI was refused.' ;;
+        ru:sni_unresolvable) echo 'Домен %s не разрешается (нет результата DNS); он не сможет завершить рукопожатие Reality, поэтому этот SNI отклонён.' ;;
+        fa:sni_unresolvable) echo 'دامنه %s در DNS یافت نشد؛ این SNI برای Reality قابل استفاده نیست و رد شد.' ;;
+        ja:sni_unresolvable) echo 'ドメイン %s は解決できません（DNS 結果なし）。Reality ハンドシェイクを完了できないため、この SNI は拒否されました。' ;;
         zh:sni_ok_tier) echo '当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 %s。' ;;
         zh-tw:sni_ok_tier) echo '目前 VPS 實測通過 TLS 1.3、h2 和憑證 SAN 檢查；相容檔位 %s。' ;;
         en:sni_ok_tier) echo 'This VPS passed the TLS 1.3, h2 and certificate SAN checks; compatibility tier %s.' ;;
@@ -11974,6 +11986,28 @@ default_sni_for_port() {
     fi
 }
 
+# F-NEW-03: DNS resolvability gate for a typed SNI. rc 0 = the domain
+# resolves, rc 1 = it positively does not resolve, rc 2 = resolution
+# cannot be tested on this host (no getent/python3). A resolving answer
+# is necessary, not sufficient: TLS/SAN tiering still applies afterwards.
+# getent is preferred; python3 (already a hard dependency) is the fallback
+# for hosts without it (e.g. musl-based systems).
+sni_dns_resolvable() {
+    local domain="${1:-}"
+    [[ -n "$domain" ]] || return 1
+    valid_domain "$domain" || return 1
+    if command -v getent >/dev/null 2>&1; then
+        if command -v timeout >/dev/null 2>&1; then
+            if timeout 10 getent ahosts "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+        fi
+        if getent ahosts "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -I -c 'import socket,sys; socket.getaddrinfo(sys.argv[1], 443, 0, socket.SOCK_STREAM)' "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+    fi
+    return 2
+}
+
 sni_probe_candidate_tier() {
     local domain="${1:-}" workdir='' raw='' raw_sorted='' verified='' timeout_s=2
     local score actual_domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
@@ -12035,7 +12069,7 @@ sni_verified_amazon_fallback() {
 }
 
 prompt_reality_sni() {
-    local label="$1" port="$2" default_sni input answer prompt warned custom_tier
+    local label="$1" port="$2" default_sni input answer prompt warned custom_tier dns_rc
     default_sni=$(default_sni_for_port "$port")
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
@@ -12055,6 +12089,15 @@ prompt_reality_sni() {
             warned=1
         fi
         if [[ "$input" != "$default_sni" ]]; then
+            # F-NEW-03: a custom SNI that does not resolve can never pass
+            # a Reality handshake (the server cannot dial its target), so
+            # it is refused outright instead of warned-and-confirmed.
+            # An untestable resolver falls through to tiering below.
+            sni_dns_resolvable "$input"; dns_rc=$?
+            if (( dns_rc == 1 )); then
+                printf '%s\n' "${RED}[SNI custom] $(tprintf sni_unresolvable "$input")$NC" >&2
+                continue
+            fi
             custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
             case "$custom_tier" in
                 A|B|C)
@@ -12288,7 +12331,7 @@ clear_abox_env_vars() {
     unset HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END INGRESS_IF ENABLE_KEEPALIVE
     unset TRAFFIC_LIMIT_GB TRAFFIC_LIMIT_MODE
-    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO TROJAN_PORT
 }
 
 validate_abox_env_semantics() {
@@ -12304,7 +12347,7 @@ validate_abox_env_semantics() {
             *) return 1 ;;
         esac
     fi
-    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
+    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT TROJAN_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1
     done
@@ -12412,6 +12455,7 @@ allowed = {
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
     "SS_WHITELIST_IP", "SOCKS_PORT", "SOCKS_USER", "SOCKS_PASS", "SOCKS_PROTO",
+    "TROJAN_PORT",
 }
 seen = set()
 with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
@@ -22139,7 +22183,7 @@ reset_protocol_vars() {
     unset HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT
     unset HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END ENABLE_KEEPALIVE
-    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO TROJAN_PORT
 }
 
 path_parent_chain_safe() {
@@ -22373,6 +22417,7 @@ PY_WRITE_ENV_OLD
         printf 'SS_PORT=%s\n' "$(shell_quote "${SS_PORT:-}")"
         printf 'SS_WHITELIST_IP=%s\n' "$(shell_quote "${SS_WHITELIST_IP:-}")"
         printf 'SOCKS_PORT=%s\n' "$(shell_quote "${SOCKS_PORT:-}")"
+        printf 'TROJAN_PORT=%s\n' "$(shell_quote "${TROJAN_PORT:-}")"
         printf 'SOCKS_USER=%s\n' "$(shell_quote "${SOCKS_USER:-}")"
         printf 'SOCKS_PASS=%s\n' "$(shell_quote "${SOCKS_PASS:-}")"
         printf 'SOCKS_PROTO=%s\n' "$(shell_quote "${SOCKS_PROTO:-}")"
@@ -22406,6 +22451,27 @@ PY_WRITE_ENV_OLD
     if (( _write_rc != 0 )); then rm -f -- "$tmp"; die "$(tr_msg we_write)"; fi
     chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
     mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
+}
+
+# F-NEW-04/CD (U5/NF-06(a)): record the standalone Trojan listener port in
+# .env so the self-heal coverage gate can expect it. Single-key upsert
+# (replace-or-append) so a standalone deploy never rewrites the whole
+# .env the way write_env does. Best-effort for callers: rc 0 recorded,
+# rc 1 not recorded (missing/symlink .env, invalid port, write failure).
+env_set_trojan_port() {
+    local _port="${1:-}" _envf="${ABOX_ENV:-/etc/ddr/.env}"
+    valid_canonical_port "$_port" || return 1
+    [[ -f "$_envf" && ! -L "$_envf" ]] || return 1
+    if grep -q '^TROJAN_PORT=' "$_envf" 2>/dev/null; then
+        sed -i "s/^TROJAN_PORT=.*/TROJAN_PORT='$_port'/" "$_envf" 2>/dev/null || return 1
+    else
+        if [[ -n "$(tail -c 1 "$_envf" 2>/dev/null)" ]]; then
+            printf '\n' >> "$_envf" 2>/dev/null || return 1
+        fi
+        printf "TROJAN_PORT='%s'\n" "$_port" >> "$_envf" 2>/dev/null || return 1
+    fi
+    TROJAN_PORT="$_port"
+    return 0
 }
 
 validate_fail2ban_config() {
@@ -23220,28 +23286,32 @@ _xrc_stop_xray() {
     return 0
 }
 
-# R27-H-NF-06 (GPT-arbitrated A): tri-state coverage check for an xray
-# config against the currently expected data inbounds (.env listener
-# ports). Existential, not complete, coverage: a multi-protocol deploy
-# may legitimately restore only a subset of its protocols.
-# rc 0 = verified match, or genuinely no expected ports defined
+# R27-H-NF-06 (GPT-arbitrated A), F-NEW-04/CD: tri-state coverage check
+# for an xray config against the currently expected data inbounds (.env
+# listener ports). Set comparison, not existential: EVERY expected port
+# must be present, so a backup that drops the newest protocol (e.g. a
+# pre-Trojan backup after a Trojan deploy) is a mismatch, not a cover.
+# rc 0 = verified full cover, or genuinely no expected ports defined
 #        (vacuous pass: fresh host / trojan-landing-only stack);
-# rc 1 = verification succeeded and NO expected data inbound matched
+# rc 1 = verification succeeded and at least one expected port is missing
 #        (an empty config is a mismatch whenever expectations exist);
 # rc 2 = verification could not be completed (unreadable .env, jq
-#        missing or failed). Callers: a candidate is installed only on
-# rc 0; a valid live config enters recovery only on rc 1.
+#        missing or failed). Callers: a covering candidate is installed
+#        on rc 0; a valid live config enters recovery only on rc 1; a
+#        verified mismatch (rc 1) is kept as a fallback and installed only
+#        when no covering candidate exists, with the drop recorded by the
+#        post-restore divergence check.
 # The dokodemo-door api inbound (tag "api", 127.0.0.1:10085) is
 # infrastructure, never an expected data inbound: it is excluded by
 # tag before ports are compared, so an api-only config never counts
 # as covering. .env is parsed, never sourced.
 _xrc_config_has_expected_data_inbound() {
     local cfg="$1" envf="${ABOX_ENV:-/etc/ddr/.env}"
-    local _var _val _ports _p _e
-    local -a _expected=()
+    local _var _val _ports _p _e _found
+    local -a _expected=() _live_ports=()
     [[ -e "$envf" ]] || return 0
     [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]] || return 2
-    for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT; do
+    for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
         _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ "$_val" =~ ^[0-9]+$ ]] || continue
         [[ "${#_val}" -le 5 ]] || continue
@@ -23254,11 +23324,73 @@ _xrc_config_has_expected_data_inbound() {
     while IFS= read -r _p; do
         [[ "$_p" =~ ^[0-9]+$ ]] || continue
         [[ "${#_p}" -le 5 ]] || continue
-        for _e in "${_expected[@]}"; do
-            (( 10#$_p == _e )) && return 0
-        done
+        _live_ports+=("$((10#$_p))")
     done <<< "$_ports"
-    return 1
+    for _e in "${_expected[@]}"; do
+        _found=0
+        for _p in "${_live_ports[@]}"; do
+            (( 10#$_p == _e )) && { _found=1; break; }
+        done
+        (( _found == 1 )) || return 1
+    done
+    return 0
+}
+
+# F-NEW-04/CD: post-restore divergence check. Compares the restored xray
+# config against the .env expected listener ports and the xray standalone
+# links; a registered/linked protocol the restored config no longer serves
+# is recorded in the status file (and warned loudly), never dropped
+# silently. No automatic rebuild is attempted here: a Reality inbound
+# cannot be rebuilt from its link (the link carries only the public key,
+# never the private key), so the durable protection is the
+# post-deployment backup plus the covering-candidate gate above.
+# $1 = restored config path, $2 = status file to append to.
+# rc 0 = no divergence, rc 1 = divergence recorded, rc 2 = unverifiable.
+_xrc_restore_divergence_check() {
+    local _cfg="$1" _statusf="$2" _envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _var _val _ports _p _e _key _rc _found _missing=''
+    local -a _expected=() _live_ports=()
+    [[ -f "$_cfg" && ! -L "$_cfg" && -r "$_cfg" ]] || return 2
+    [[ -n "$_statusf" ]] || return 2
+    command -v jq >/dev/null 2>&1 || return 2
+    if [[ -f "$_envf" && ! -L "$_envf" && -r "$_envf" ]]; then
+        for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
+            _val=$(sed -n "s/^${_var}=//p" "$_envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+            [[ "$_val" =~ ^[0-9]+$ ]] || continue
+            [[ "${#_val}" -le 5 ]] || continue
+            (( 10#$_val >= 1 && 10#$_val <= 65535 )) || continue
+            _expected+=("$((10#$_val))")
+        done
+    fi
+    _ports=$(jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' "$_cfg" 2>/dev/null) || return 2
+    while IFS= read -r _p; do
+        [[ "$_p" =~ ^[0-9]+$ ]] || continue
+        [[ "${#_p}" -le 5 ]] || continue
+        _live_ports+=("$((10#$_p))")
+    done <<< "$_ports"
+    if (( ${#_expected[@]} )); then
+        for _e in "${_expected[@]}"; do
+            _found=0
+            for _p in "${_live_ports[@]}"; do
+                (( 10#$_p == _e )) && { _found=1; break; }
+            done
+            (( _found == 1 )) || _missing+="expected-port:${_e} "
+        done
+    fi
+    for _key in trojan-xray socks5-xray; do
+        [[ -f "${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_key}.link" && ! -L "${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_key}.link" ]] || continue
+        XRAY_SLOT_CFG="$_cfg" _standalone_link_survivor "$_key"; _rc=$?
+        if (( _rc == 1 )); then
+            _missing+="link:${_key} "
+        fi
+    done
+    if [[ -n "$_missing" ]]; then
+        msg "${RED}[!] xray config auto-restore DIVERGENCE: restored config is missing ${_missing}(re-deploy the missing protocol or restore a newer backup)${NC}" >&2
+        printf '%s xray config auto-restore DIVERGENCE: restored config is missing: %s\n' "$(date -u +%FT%TZ)" "$_missing" >> "$_statusf" 2>/dev/null || true
+        printf '%s xray config auto-restore DIVERGENCE: a missing Reality inbound cannot be rebuilt from its link (the link carries only the public key, never the private key); re-deploy the protocol or restore a newer backup.\n' "$(date -u +%FT%TZ)" >> "$_statusf" 2>/dev/null || true
+        return 1
+    fi
+    return 0
 }
 
 xray_config_autorecover() {
@@ -23353,7 +23485,7 @@ xray_config_autorecover() {
         (( _xrc_rc == 2 )) && return 2
         return 1
     }
-    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp
+    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src=''
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
     chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
     local _list
@@ -23418,16 +23550,46 @@ PY_XRC_ENUM
         else
             XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$_good" >/dev/null 2>&1 || { _good=''; continue; }
         fi
-        # R27-H-NF-06 (GPT-arbitrated A): a trusted candidate that
-        # passes the offline test but carries no expected data inbound
-        # is the pre-deployment empty backup, not a recovery: skip it
-        # and keep looking. Only a verified cover (helper rc 0) is
-        # installed; a verified mismatch (1) or an unverifiable
-        # candidate (2) is skipped, never installed.
-        _xrc_config_has_expected_data_inbound "$_good" || { _good=''; continue; }
-        _good_src="$_cand"
-        break
+        # R27-H-NF-06 (GPT-arbitrated A), F-NEW-04/CD: a trusted
+        # candidate that passes the offline test but does not cover
+        # every expected port is a pre-deployment (or pre-protocol)
+        # backup, not a full recovery: keep it as a fallback and keep
+        # looking for a covering candidate. Only a verified cover
+        # (helper rc 0) is installed outright; a verified mismatch (1)
+        # is installed only when no covering candidate exists (with the
+        # drop recorded by the post-restore divergence check); an
+        # unverifiable candidate (2) is skipped, never installed.
+        _xrc_config_has_expected_data_inbound "$_good"; _cov_rc=$?
+        case "$_cov_rc" in
+            0)
+                _good_src="$_cand"
+                break
+                ;;
+            1)
+                if [[ -z "${_fallback_good:-}" ]]; then
+                    if cp -f -- "$_good" "$_work/fallback-config.json" 2>/dev/null; then
+                        _fallback_good="$_work/fallback-config.json"
+                        _fallback_src="$_cand"
+                    fi
+                fi
+                _good=''
+                continue
+                ;;
+            *)
+                _good=''
+                continue
+                ;;
+        esac
     done
+    if [[ -z "$_good" && -n "${_fallback_good:-}" ]]; then
+        # F-NEW-04/CD: no candidate covers the full expected set; fall
+        # back to the newest trusted, valid backup instead of stopping
+        # with no recovery at all. The drop is not silent: the
+        # post-restore divergence check below records the missing
+        # protocols in the status file.
+        _good="$_fallback_good"
+        _good_src="$_fallback_src"
+    fi
     if [[ -z "$_good" ]]; then
         _xrc_marker_append "$marker" failed "$bad_sha" "no-trusted-good-backup" || true
         _xrc_stop_xray "$statusf" "$bad_sha" "no trusted backup with a valid xray config"
@@ -23480,6 +23642,9 @@ PY_XRC_ENUM
         _st_tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || true
         if [[ -n "$_st_tmp" ]]; then
             printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" > "$_st_tmp" || true
+            # F-NEW-04/CD: record any protocol the restored config no
+            # longer serves; a missing protocol must never be silent.
+            _xrc_restore_divergence_check "$cfg" "$_st_tmp" || true
             chmod 600 -- "$_st_tmp" 2>/dev/null || true
             mv -f -- "$_st_tmp" "$statusf" 2>/dev/null || rm -f -- "$_st_tmp"
         fi
@@ -23583,7 +23748,6 @@ acquire_abox_runtime_guard() {
         exit 0
     fi
 }
-acquire_abox_runtime_guard
 load_state() {
     local parsed key value uid gid mode
     [[ -r "$ENV" && -f "$ENV" && ! -L "$ENV" ]] || return 1
@@ -23824,6 +23988,13 @@ if [[ -z "$failed_srv" && -n "${SOCKS_PORT:-}" ]]; then
     check_socket_or_fail tcp "$SOCKS_PORT" "$MAIN_PID" "$MAIN_SRV"
 fi
 if [[ -z "$failed_srv" ]]; then rm -f "$STATE"; exit 0; fi
+# F-NEW-04/CD: narrow the runtime-guard window. The read-only checks
+# above run without the runtime lock, so a healthy per-minute probe
+# never contends with an interactive session (the occasional
+# "another A-Box instance is running" refusal). Only a failed service
+# needs the guard (auto-restore + restart below), so take it here;
+# a contender at this point makes the probe yield this round.
+acquire_abox_runtime_guard
 count=0; last=0
 [[ -r "$STATE" ]] && read -r count last < "$STATE" || true
 [[ "$count" =~ ^[0-9]+$ ]] || count=0
@@ -26611,6 +26782,7 @@ EOF_SVC
         register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: socks5 (sing-box)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
@@ -26823,6 +26995,11 @@ deploy_xray_trojan_landing() {
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     # N1: trojan-path REALITY notice (trojan-variant mihomo line; no YAML here).
     show_reality_mlkem_notice 0 1
+    # F-NEW-04/CD (U5/NF-06(a)): record the Trojan port so self-heal
+    # expects it, then snapshot so the newest trusted backup carries
+    # this inbound. Best-effort: the deploy already committed.
+    env_set_trojan_port "$port" || msg "${YELLOW}[!] $(tprintf trojan_env_port_fail "$port")${NC}"
+    auto_backup_silent "post-deployment snapshot: trojan (xray)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -26998,6 +27175,11 @@ EOF_SVC
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    # F-NEW-04/CD (U5/NF-06(a)): record the Trojan port so self-heal
+    # expects it, then snapshot so the newest trusted backup carries
+    # this inbound. Best-effort: the deploy already committed.
+    env_set_trojan_port "$port" || msg "${YELLOW}[!] $(tprintf trojan_env_port_fail "$port")${NC}"
+    auto_backup_silent "post-deployment snapshot: trojan (sing-box)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 
@@ -27202,6 +27384,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "$(tprintf sl_node_port 'TUIC' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: tuic" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 
@@ -27381,6 +27564,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "$(tprintf sl_node_port 'AnyTLS-Reality' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: anytls" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 
@@ -27582,6 +27766,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "$(tprintf sl_node_port 'ShadowTLS' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: shadowtls" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 # ================= Argo / CDN front (sing-box WS + cloudflared) =================
@@ -30852,6 +31037,7 @@ EOF_SVC
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: socks5 (xray)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
 }
 
 
@@ -34399,7 +34585,7 @@ sync_env_ports_after_removal() {
     if (( _read_failed == 1 )); then
         return 1
     fi
-    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
+    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT TROJAN_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
         # R6C11-02: evaluate numeric/range/list specs, not literal
@@ -38194,7 +38380,7 @@ node_sni_menu() {
             *[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
             *)
                 if valid_decimal_upto "$c" "$i" && (( 10#$c >= 1 && 10#$c <= i )); then
-                    local _ix=$((10#$c - 1)) _probe2='' _k2='' _c2='' _new='' _shown=''
+                    local _ix=$((10#$c - 1)) _probe2='' _k2='' _c2='' _new='' _shown='' _dns_rc=0 _tier='' _answer=''
                     _probe2=$(_nsni_probe "${_cs[$_ix]}" "${_ts[$_ix]}")
                     IFS='|' read -r _ _ _k2 _c2 _ <<< "$_probe2"
                     printf '%s: %s\n' "$(tr_msg nsni_cur)" "${_os[$_ix]}"
@@ -38202,6 +38388,25 @@ node_sni_menu() {
                     _new=$(printf '%s' "$_new" | tr -d '[:space:]')
                     [[ -n "$_new" ]] || continue
                     if ! valid_sni "$_new"; then msg "${RED}$(tr_msg nsni_invalid)${NC}"; pause_return; continue; fi
+                    # F-NEW-03: same three-tier gate as deploy-time SNI input.
+                    sni_dns_resolvable "$_new"; _dns_rc=$?
+                    if (( _dns_rc == 1 )); then
+                        msg "${RED}[SNI] $(tprintf sni_unresolvable "$_new")${NC}"
+                        pause_return; continue
+                    fi
+                    _tier=$(sni_probe_candidate_tier "$_new" 2>/dev/null || printf 'N')
+                    case "$_tier" in
+                        A|B|C) ;;
+                        *)
+                            case "$_tier" in
+                                R) msg "${YELLOW}[SNI] $(tr_msg sni_risky)${NC}" ;;
+                                D) msg "${YELLOW}[SNI] $(tr_msg sni_fail)${NC}" ;;
+                                *) msg "${YELLOW}[SNI] $(tr_msg sni_untestable)${NC}" ;;
+                            esac
+                            read -r -p "$(tprintf continue_or_reset 'SNI')" _answer || continue
+                            is_yes "$_answer" || continue
+                            ;;
+                    esac
                     if _shown=$(_nsni_apply "${_cs[$_ix]}" "${_ts[$_ix]}" "${_ks[$_ix]}" "${_cfgs[$_ix]}" "${_os[$_ix]}" "$_new" "$_k2" "$_c2"); then
                         msg "${GREEN}$(tr_msg nsni_done)${NC}"
                         [[ -n "$_shown" ]] && msg "${LBLW}${_shown}${NC}"
@@ -42552,15 +42757,47 @@ sni_auto_select_default() {
 # a typed domain is validated and used instead. Prompts go to
 # stderr so the result can be captured with $(...).
 sni_prompt_or_auto() {
-    local _in=''
-    printf '%s' "$(tr_msg sni_custom_prompt)" >&2
-    read -r _in || _in=''
-    _in=$(printf '%s' "$_in" | tr -d '[:space:]')
-    if [[ -n "$_in" ]]; then
-        if valid_sni "$_in"; then printf '%s' "$_in"; return 0; fi
-        printf '%s\n' "$(tr_msg sni_custom_invalid)" >&2
-    fi
-    sni_auto_select_default 2>/dev/null || { printf '%s\n' '[SNI auto] No verified SNI candidate is available; refusing to substitute an unverified fallback.' >&2; return 1; }
+    local _in='' _tier='' _answer='' _dns_rc=0
+    while true; do
+        printf '%s' "$(tr_msg sni_custom_prompt)" >&2
+        read -r _in || _in=''
+        _in=$(printf '%s' "$_in" | tr -d '[:space:]')
+        # Empty input, or an unparseable typed value, keeps the legacy
+        # behaviour: fall back to the verified auto-select.
+        if [[ -z "$_in" ]] || ! valid_sni "$_in"; then
+            [[ -n "$_in" ]] && printf '%s\n' "$(tr_msg sni_custom_invalid)" >&2
+            sni_auto_select_default 2>/dev/null || { printf '%s\n' '[SNI auto] No verified SNI candidate is available; refusing to substitute an unverified fallback.' >&2; return 1; }
+            return 0
+        fi
+        # F-NEW-03: a typed domain that does not resolve can never
+        # complete a Reality handshake, so it is refused outright and
+        # the user is re-prompted (Enter still falls back to auto-select).
+        sni_dns_resolvable "$_in"; _dns_rc=$?
+        if (( _dns_rc == 1 )); then
+            printf '%s\n' "${RED}[SNI custom] $(tprintf sni_unresolvable "$_in")$NC" >&2
+            continue
+        fi
+        _tier=$(sni_probe_candidate_tier "$_in" 2>/dev/null || printf 'N')
+        case "$_tier" in
+            A|B|C)
+                printf '%s\n' "${GREEN}[SNI custom] $(tprintf sni_ok_tier "$_tier")$NC" >&2
+                printf '%s' "$_in"
+                return 0
+                ;;
+            R)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_risky)$NC" >&2
+                ;;
+            D)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_fail)$NC" >&2
+                ;;
+            *)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_untestable)$NC" >&2
+                ;;
+        esac
+        # R/D/N: loud warning above; explicit second confirmation, default refuse.
+        read -r -p "$(tprintf continue_or_reset 'Trojan-Reality')" _answer || continue
+        is_yes "$_answer" && { printf '%s' "$_in"; return 0; }
+    done
 }
 
 

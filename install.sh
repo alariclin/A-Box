@@ -274,6 +274,11 @@ jq() {
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
 SCRIPT_URL='https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh'
+# ABOX_DIR is FIXED at /etc/ddr and is NOT customisable: this
+# assignment is unconditional, so an ABOX_DIR exported in the
+# environment has no effect. The ABOX_DIR default-value fallbacks
+# elsewhere are same-value defensive reads, not a customisation
+# hook -- do not "fix" them by parameterising the directory.
 ABOX_DIR='/etc/ddr'
 ABOX_ENV='/etc/ddr/.env'
 ABOX_FW_STATE='/etc/ddr/.firewall-native.rules'

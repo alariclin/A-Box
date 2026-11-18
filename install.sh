@@ -868,7 +868,7 @@ rebuild_standalone_links() {
         # R16-F01-02: same trailing-LF sentinel as the obfs branch
         # below: jq -r + $() strips a trailing LF from the password,
         # caching a wrong credential for a password that ends in LF.
-        _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+        _pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
         _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
         _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
@@ -25753,7 +25753,9 @@ EOF_SVC
     # missing file, so it never healed the stale one. This runs in
     # both modes, after service start + hop check, before the
     # NORMAL-only tail, so menu 4 keeps register-then-view order.
-    _hy2_url=$(hy2_standalone_url "${HY2_PASS:-}" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
+    _hy2_eff_pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
+    _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
+    _hy2_url=$(hy2_standalone_url "$_hy2_eff_pass" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
     if [[ -n "$_hy2_url" ]]; then
         IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
         [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "$(tprintf sl_node_port 'Hysteria 2' "$_hy2_port")" "$_hy2_url"
@@ -35640,22 +35642,58 @@ list_extra_uuids() {
     ' "$EXTRA_UUID_FILE" 2>/dev/null
 }
 
+# H-24 (Carbon R3): UUIDs carried by multi-user registries
+# (${ABOX_USERS_DIR:-/etc/ddr/users.d}/*.json). Prints one UUID per
+# line, in glob order. Fail-closed like list_extra_uuids: a corrupt
+# or symlinked registry file is a hard failure (return 1), never an
+# empty list. A missing directory is an empty list.
+list_usersd_uuids() {
+    local dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" f='' _u=''
+    [[ -d "$dir" ]] || return 0
+    [[ ! -L "$dir" ]] || return 1
+    for f in "$dir"/*.json; do
+        [[ -e "$f" || -L "$f" ]] || continue
+        [[ ! -L "$f" ]] || return 1
+        [[ -f "$f" && -r "$f" ]] || return 1
+        _u=$(jq -r '.users[]? | select((.uuid // "") != "") | .uuid | select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' "$f" 2>/dev/null) || return 1
+        printf '%s\n' "$_u"
+    done
+    return 0
+}
+
 # Write the full UUID list (primary UUID first, then extras) to $1.
 # Returns 1 if the extra-UUID list is unreadable/untrusted. Callers MUST
 # abort on failure; never treat a failed read as an empty list.
 # (TRAP-7: do NOT use `done < <(list_extra_uuids)` -- process substitution
 # swallows the exit status. Use this helper with an explicit status check.)
 write_full_uuid_list_to_file() {
-    local out="$1"
+    local out="$1" _tmp='' _rc=0
     # TRAP-7(c): declare first, assign separately -- `local x=$(cmd)` masks
     # the exit code (local always returns 0).
-    local _rc
+    _tmp=$(umask 077; mktemp /tmp/A-Box-uuid-merge.XXXXXX) || return 1
+    # H-24 (Carbon R3): three UUID sources, merged (parent decision: no
+    # silent dropping of multi-user UUIDs). Each list read is checked
+    # explicitly: the block's exit status would only reflect the last
+    # command and mask an earlier failure.
     {
         printf '%s\n' "${UUID:-}"
-        list_extra_uuids
-    } > "$out"
-    _rc=$?
-    return "$_rc"
+        list_extra_uuids || _rc=1
+        list_usersd_uuids || _rc=1
+    } > "$_tmp"
+    if (( _rc != 0 )); then
+        rm -f -- "$_tmp"
+        return 1
+    fi
+    # Dedupe case-insensitively, preserving first-seen order; drop
+    # empty lines (an unset $UUID prints one). A users.d UUID equal to
+    # $UUID or an extra UUID cannot produce a duplicate node name.
+    awk '{
+        if ($0 == "") next
+        k = tolower($0)
+        if (!seen[k]++) print $0
+    }' "$_tmp" > "$out" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp"
+    return 0
 }
 
 sync_uuids_into_xray_config() {
@@ -35663,16 +35701,20 @@ sync_uuids_into_xray_config() {
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     primary="${UUID:-}"
     [[ -n "$primary" ]] || return 1
-    # FINAL-AUDIT: PIPESTATUS[0] catches a list_extra_uuids failure that the
-    # pipeline would otherwise mask (jq's exit code wins). Never sync a
-    # config built from an untrusted/empty UUID list.
-    local _uuid_list_rc=0
-    extras_json=$(list_extra_uuids | jq -R . | jq -s -c 'map(select(length>0))')
-    _uuid_list_rc=${PIPESTATUS[0]:-0}
-    if (( _uuid_list_rc != 0 )); then
-        msg "${RED}Extra UUID list is unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
+    # H-24 (Carbon R3): sync the MERGED uuid list (primary + extras +
+    # users.d), so every UUID the Clash YAML / subscription emits is
+    # also a live client in the xray config; otherwise the emitted
+    # users.d nodes would be dead. write_full_uuid_list_to_file fails
+    # closed on an unreadable list (never sync an untrusted list).
+    local _uuid_list_tmp=''
+    _uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-list.XXXXXX) || return 1
+    if ! write_full_uuid_list_to_file "$_uuid_list_tmp"; then
+        rm -f -- "$_uuid_list_tmp"
+        msg "${RED}UUID list unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
         return 1
     fi
+    extras_json=$(jq -R . "$_uuid_list_tmp" | jq -s -c --arg p "${primary}" 'map(select(length > 0 and (. | ascii_downcase) != ($p | ascii_downcase)))')
+    rm -f -- "$_uuid_list_tmp"
     [[ -n "$extras_json" ]] || extras_json='[]'
     tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
     if ! jq --rawfile p <(printf '%s' "$primary") --slurpfile extras <(printf '%s' "$extras_json") '
@@ -52811,6 +52853,55 @@ ss_effective_password() {
     return 1
 }
 
+# H-24 (Carbon R3): the effective Hy2 credential for display/export.
+# userpass with >= 2 users needs "login:secret" (the server
+# authenticates by .login // .name, R10-10); a single userpass user
+# and password mode need the bare secret. Mirrors
+# ss_effective_password's fail-open: when the live config cannot be
+# read (or yields no usable credential), fall back to $HY2_PASS;
+# return 1 only when neither yields a credential. On success prints
+# the credential followed by __ABOX_TRAILING_NL_KEEP__ (no trailing
+# newline): callers strip the suffix, which keeps a trailing-newline
+# secret intact through $(...) (same sentinel convention as
+# users_hy2_yaml_scalar / rebuild_standalone_links).
+hy2_effective_password() {
+    local cfg='/etc/hysteria/config.yaml' users='' pw_only='' nusers=0 login='' secret=''
+    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
+    if [[ -n "$users" && "$users" != '[]' ]]; then
+        nusers=$(printf '%s' "$users" | jq -r 'length' 2>/dev/null || echo 0)
+        pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
+        if [[ "$pw_only" == 'true' ]]; then
+            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=${secret%__ABOX_TRAILING_NL_KEEP__}
+            if [[ -n "$secret" ]]; then
+                printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
+                return 0
+            fi
+        elif (( nusers >= 2 )); then
+            login=$(printf '%s' "$users" | jq -r '((.[0].login // .[0].name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            login=${login%__ABOX_TRAILING_NL_KEEP__}
+            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=${secret%__ABOX_TRAILING_NL_KEEP__}
+            if [[ -n "$login" && -n "$secret" ]]; then
+                printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
+                return 0
+            fi
+        else
+            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=${secret%__ABOX_TRAILING_NL_KEEP__}
+            if [[ -n "$secret" ]]; then
+                printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
+                return 0
+            fi
+        fi
+    fi
+    if [[ -n "${HY2_PASS:-}" ]]; then
+        printf '%s__ABOX_TRAILING_NL_KEEP__' "${HY2_PASS:-}"
+        return 0
+    fi
+    return 1
+}
+
 build_ss2022_uri() {
     local host="$1" port="$2" pass="$3"
     # SIP002/SIP022: AEAD-2022 userinfo must not be Base64URL encoded;
@@ -53272,15 +53363,38 @@ def socks_xray(inbound, inbounds):
     return {"node": node}
 
 
+def tagged_all(inbounds, tag):
+    # H-24 (Carbon R3): prefix match for multi-instance inbounds
+    # (tag == base or tag == base + "-<digits>", the same
+    # (-[0-9]+)?$ morphology _standalone_link_survivor uses). Returns
+    # (inbound, suffix) pairs in config order; the suffix ("", "-2",
+    # "-3", ...) is appended to the node name so instances never
+    # collide. tagged() stays exact for the ShadowTLS detour lookup.
+    out = []
+    for i in inbounds:
+        t = i.get("tag")
+        if t == tag:
+            out.append((i, ""))
+        elif isinstance(t, str) and t.startswith(tag + "-"):
+            suffix = t[len(tag) + 1:]
+            if re.fullmatch(r"[0-9]+", suffix):
+                out.append((i, "-" + suffix))
+    return out
+
+
 def export(inbounds, label, tag, builder):
-    try:
-        inbound = tagged(inbounds, tag)
-        if inbound is None:
-            return
-        record = builder(inbound, inbounds)
-        print(json.dumps(record, ensure_ascii=False))
-    except Bad as exc:
-        warning(label + "/" + tag + " omitted: " + str(exc))
+    # H-24: export every matching instance, not just the exact tag.
+    # Each instance is tried independently: one bad instance is
+    # omitted with a warning instead of dropping the others.
+    for inbound, suffix in tagged_all(inbounds, tag):
+        try:
+            record = builder(inbound, inbounds)
+            node = record["node"]
+            if suffix:
+                node["name"] = node["name"] + suffix
+            print(json.dumps(record, ensure_ascii=False))
+        except Bad as exc:
+            warning(label + "/" + tag + suffix + " omitted: " + str(exc))
 
 
 sb = load(sb_path, "sing-box")
@@ -53384,9 +53498,18 @@ write_clash_yaml() {
         (( clash_mlkem_rc == 1 )) || return 1
     fi
     [[ -n "$out" && "$out" == /* ]] || return 1
+    # H-24: a bad Hy2 port configuration skips the Hy2 node (and warns)
+    # instead of failing the whole YAML (menu 12 must not die on one
+    # protocol's port problem).
+    local _hy2_ports_bad=0
     if [[ "${HY2_HOP:-}" == true && ( "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ) ]]; then
-        valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_hy2_ports_invalid)${NC}"; return 1; }
-        valid_canonical_port "${HY2_BASE_PORT:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_base_port_invalid)${NC}"; return 1; }
+        if ! valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || ! valid_canonical_port "${HY2_BASE_PORT:-}"; then
+            msg "${YELLOW}[!] Hy2 Clash ports are invalid; skipping the Hy2 node in Clash YAML.${NC}" >&2
+            _hy2_ports_bad=1
+        fi
+    elif [[ -n "${HY2_BASE_PORT:-}" ]] && ! valid_canonical_port "${HY2_BASE_PORT:-}"; then
+        msg "${YELLOW}[!] Hy2 base port '${HY2_BASE_PORT}' is invalid; skipping the Hy2 node in Clash YAML.${NC}" >&2
+        _hy2_ports_bad=1
     fi
     [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
     clash_hop_port="${HY2_BASE_PORT:-443}"
@@ -53427,7 +53550,12 @@ PY_CLASH_REALPATH
         return 1
     fi
     # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
-    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # H-24: the YAML password is the effective Hy2 credential
+    # (login:secret for multi-user userpass), not the stale .env value.
+    local _hy2_eff_pass=''
+    _hy2_eff_pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
+    _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
+    hy2_pass_yaml=$(json_escape "$_hy2_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     ss_pass_yaml=$(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
@@ -53451,6 +53579,27 @@ PY_CLASH_REALPATH
         elif [[ -n "$hy2_fp_yaml" ]]; then
             hy2_yaml_emit=true
         fi
+    fi
+    # H-24: Hy2 emission also honors the port flag (a bad port skips
+    # the node even when a fingerprint is available).
+    if (( _hy2_ports_bad == 1 )); then hy2_yaml_emit=false; fi
+    # H-24: per-protocol port gates for the Clash YAML. A port is
+    # skipped only when it is set but invalid; an empty port keeps
+    # the historical :-default (443/8443/2053). Warnings are plain
+    # English (precedent: the cached-fingerprint warning above).
+    local _vless_port_ok=1 _xhttp_port_ok=1 _ss_port_ok=1
+    local _vision_emit=0 _xhttp_emit=0 _ss_emit=0
+    if [[ -n "${VLESS_PORT:-}" ]] && ! valid_canonical_port "${VLESS_PORT:-}"; then
+        msg "${YELLOW}[!] VLESS port '${VLESS_PORT}' is invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+        _vless_port_ok=0
+    fi
+    if [[ -n "${XHTTP_PORT:-}" ]] && ! valid_canonical_port "${XHTTP_PORT:-}"; then
+        msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT}' is invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+        _xhttp_port_ok=0
+    fi
+    if [[ -n "${SS_PORT:-}" ]] && ! valid_canonical_port "${SS_PORT:-}"; then
+        msg "${YELLOW}[!] SS port '${SS_PORT}' is invalid; skipping the SS node in Clash YAML.${NC}" >&2
+        _ss_port_ok=0
     fi
     # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
     clash_country=$(_detect_vps_country 2>/dev/null || true)
@@ -53511,9 +53660,10 @@ dns:
 
 proxies:
 EOF_CLASH
-        if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _vless_port_ok == 1 )); then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
+                _vision_emit=1
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
@@ -53538,9 +53688,10 @@ EOF_CLASH
 EOF_CLASH
             done < "$_clash_uuid_list_tmp"
         fi
-        if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+        if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && (( _xhttp_port_ok == 1 )); then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
+                _xhttp_emit=1
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
@@ -53570,7 +53721,9 @@ EOF_CLASH
             done < "$_clash_uuid_list_tmp"
         fi
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
-            if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
+            if (( _hy2_ports_bad == 1 )); then
+                echo '  # Hy2 omitted: port configuration invalid; refusing to emit a node with a bad port.'
+            elif [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
                 if [[ "${HY2_HOP:-}" == 'true' ]]; then
                     cat <<EOF_CLASH
   - name: "$hy2_name"
@@ -53636,7 +53789,8 @@ EOF_CLASH
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             fi
         fi
-        if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )); then
+            _ss_emit=1
             cat <<EOF_CLASH
   - name: "SS"
     type: ss
@@ -53661,15 +53815,18 @@ proxy-groups:
     type: select
     proxies:
 EOF_CLASH
-        [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - Vision'
-        [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - XHTTP'
+        # H-24: proxy-groups list only nodes actually emitted above
+        # (emission flags), never MODE alone: a skipped protocol must
+        # not leave a dangling group entry.
+        (( _vision_emit == 1 )) && echo '      - Vision'
+        (( _xhttp_emit == 1 )) && echo '      - XHTTP'
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
-            [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - Vision-$client_uuid"
-            [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - XHTTP-$client_uuid"
+            (( _vision_emit == 1 )) && echo "      - Vision-$client_uuid"
+            (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
         [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
-        [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - SS'
+        (( _ss_emit == 1 )) && echo '      - SS'
         cat -- "$_clash_standalone_groups_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
                 "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -53686,6 +53843,19 @@ EOF_CLASH
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
         return 1
     }
+    # H-24: fail-closed on an empty export. When every protocol was
+    # skipped (e.g. MODE=HY2 with an incomplete port-hop state), the
+    # YAML would contain no proxies at all: refuse to emit an empty
+    # client config instead of writing a useless file. This keeps the
+    # self-test's 'client export accepted incomplete port-hop state'
+    # assertion (rc=1, no file) while the per-protocol skip still
+    # applies whenever at least one other node is emitted.
+    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && [[ "$hy2_yaml_emit" != true ]] && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
+        msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+        return 1
+    fi
     rm -f -- "$_clash_uuid_list_tmp" \
         "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
@@ -53846,15 +54016,23 @@ view_config() {
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
-    IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die "$(tr_msg view_config_hy2_uri_port_invalid)"
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok
+    # H-24: a bad Hy2 port endpoint skips the Hy2 blocks below (and warns)
+    # instead of killing the whole view (menu 12 must not die on one
+    # protocol's port problem).
+    IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || { msg "${YELLOW}[!] Hy2 port endpoint is invalid; Hy2 links skipped in this view.${NC}"; HY2_URI_PORT=''; HY2_QUERY_PREFIX=''; }
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] $(tr_msg view_config_public_ip_unavailable)${NC}"
     VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
     XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
     SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
-    HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
+    # H-24: the URL userinfo carries the effective Hy2 credential
+    # (login:secret for multi-user userpass); urlencode turns the ':'
+    # into %3A in one pass over the composite string.
+    _hy2_eff_pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
+    _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
+    HY2_PASS_E=$(urlencode "$_hy2_eff_pass")
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
     # SYD-B3 E15: pinSHA256 is the whole-certificate fingerprint in
@@ -53875,13 +54053,44 @@ view_config() {
         [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     fi
     HY2_PIN_E=$(urlencode "${HY2_PIN_E:-}")
+    # H-24: per-protocol port gates (parent decision: skip the block and
+    # warn, never die the whole view). A port is skipped when it is set
+    # but invalid; an empty port is invalid here because view_config
+    # emits the raw value with no default (unlike the Clash YAML's
+    # :-defaults). The UUID is required for the VLESS URLs as well.
+    _vless_ok=1; _xhttp_ok=1; _ss_ok=1; _hy2_json_ok=1; _sb_json_started=0
+    if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if ! valid_canonical_port "${VLESS_PORT:-}" || [[ -z "${UUID:-}" ]]; then
+            msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is invalid or UUID is missing; Vision link skipped.${NC}"
+            _vless_ok=0
+        fi
+    fi
+    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+        if ! valid_canonical_port "${XHTTP_PORT:-}" || [[ -z "${UUID:-}" ]]; then
+            msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is invalid or UUID is missing; XHTTP link skipped.${NC}"
+            _xhttp_ok=0
+        fi
+    fi
+    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if ! valid_canonical_port "${SS_PORT:-}"; then
+            msg "${YELLOW}[!] SS port '${SS_PORT:-}' is invalid; Shadowsocks link skipped.${NC}"
+            _ss_ok=0
+        fi
+    fi
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+        [[ -z "$HY2_URI_PORT" ]] && _hy2_json_ok=0
+        if [[ "${HY2_HOP:-}" != 'true' ]] && ! valid_canonical_port "${HY2_BASE_PORT:-443}"; then
+            msg "${YELLOW}[!] Hy2 base port '${HY2_BASE_PORT:-}' is invalid; sing-box Hy2 example skipped.${NC}"
+            _hy2_json_ok=0
+        fi
+    fi
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE}")${NC}"
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}$(tr_msg view_config_engine_stack_label)${NC} $CORE | ${BOLD}$(tr_msg view_config_mode_label)${NC} $MODE"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_single_node_uri_title) ]${NC}"
-    if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _vless_ok == 1 )); then
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
         msg "${BOLD}${CYAN}── $(tprintf view_config_vless_vision_reality_port "${VLESS_PORT}")${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
@@ -53890,13 +54099,13 @@ view_config() {
         fi
         generate_qr "$VLESS_URL"
     fi
-    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && (( _xhttp_ok == 1 )); then
         XHTTP_URL="vless://$UUID@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
         msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT}")${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]]; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
@@ -53916,7 +54125,7 @@ view_config() {
         generate_qr "$HY2_URL"
         fi
     fi
-    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_ok == 1 )); then
         SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
         msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT}")${NC}"
         msg "${GREEN}${SS_URL}${NC}"
@@ -53948,7 +54157,7 @@ view_config() {
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && (( _hy2_json_ok == 1 )); then
         S_IP="$LINK_IP"
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
@@ -53958,13 +54167,14 @@ view_config() {
                 # dangling comma and a missing tls block on failure.
                 _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] $(tr_msg view_config_singbox_tls_failed_skip)${NC}"
                 if [[ -n "$_hy2_tls_json" ]]; then
+                if (( _sb_json_started == 0 )); then printf '    [\n'; _sb_json_started=1; else printf '    ,\n'; fi
                 cat <<EOF_SB
     {
       "type": "hysteria2",
       "server": "$S_IP",
       "server_ports": ["$HY2_SB_PORTS"],
       "hop_interval": "30s",
-      "password": $(json_escape "$HY2_PASS"),
+      "password": $(json_escape "$_hy2_eff_pass"),
 ${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
@@ -53979,12 +54189,13 @@ EOF_SB
         else
             _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] $(tr_msg view_config_singbox_tls_failed_skip)${NC}"
             if [[ -n "$_hy2_tls_json" ]]; then
+            if (( _sb_json_started == 0 )); then printf '    [\n'; _sb_json_started=1; else printf '    ,\n'; fi
             cat <<EOF_SB
     {
       "type": "hysteria2",
       "server": "$S_IP",
       "server_port": ${HY2_BASE_PORT:-443},
-      "password": $(json_escape "$HY2_PASS"),
+      "password": $(json_escape "$_hy2_eff_pass"),
 ${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
@@ -53995,7 +54206,8 @@ EOF_SB
             fi
         fi
     fi
-    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_ok == 1 )); then
+        if (( _sb_json_started == 0 )); then printf '    [\n'; _sb_json_started=1; else printf '    ,\n'; fi
         cat <<EOF_SB
     {
       "type": "shadowsocks",
@@ -54006,7 +54218,8 @@ EOF_SB
     }
 EOF_SB
     fi
-    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+    if (( _sb_json_started == 1 )); then printf '    ]\n'; fi
+    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && (( _xhttp_ok == 1 )); then
         printf '\n%s\n' "${YELLOW}--- v2rayN / v2rayNG XHTTP JSON ---${NC}"
         cat <<EOF_V2N
 {

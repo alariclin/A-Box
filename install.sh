@@ -54550,6 +54550,38 @@ ss_effective_password() {
     return 1
 }
 
+# Per-user effective SS-2022 client password (H-24(3) follow-up).
+# Mirrors ss_effective_password but for the named registry user:
+# clients-form (server_secret set) -> "serverKey:userSecret" when
+# the live inbound's server key matches the registry key (the
+# OBS-S1-08 guard, fail-open when live is unreadable); legacy
+# single-password (no server_secret) -> the user's bare secret.
+# Prints the password; rc 1 when the user is missing/disabled, has
+# no secret, or the live server key positively mismatches the
+# registry key (emitting either form would be a dead node, so the
+# caller skips that user instead of guessing a credential).
+# $1 = user name; $2 = optional core override (as ss_effective_password).
+ss_effective_password_for_user() {
+    local name="$1" want="${2:-}" core='' reg='' ssecret='' secret=''
+    [[ -n "$name" ]] || return 1
+    case "${want:-${CORE:-}}" in
+        sing-box|singbox) core='sing-box' ;;
+        *) core='xray' ;;
+    esac
+    reg=$(users_reg_file "$core" 'ss')
+    [[ -f "$reg" && ! -L "$reg" ]] || return 1
+    secret=$(jq -r --arg n "$name" '.users[] | select(.name == $n and .disabled != true and ((.blocked // "") == "")) | .secret // ""' "$reg" 2>/dev/null | head -1 || true)
+    [[ -n "$secret" ]] || return 1
+    ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null || true)
+    if [[ -n "$ssecret" ]]; then
+        _ss_live_server_key_matches "$core" "$ssecret" || return 1
+        printf '%s' "${ssecret}:${secret}"
+        return 0
+    fi
+    printf '%s' "$secret"
+    return 0
+}
+
 # H-24 (Carbon R3): the effective Hy2 credential for display/export.
 # userpass needs "login:secret" (the server authenticates by
 # .login // .name, R10-10), whatever the user count; only password
@@ -55208,6 +55240,52 @@ with open(groups_path, "a", encoding="utf-8") as groups:
     return "$_rc"
 }
 
+# H-24(3): print one compact JSON object per ENABLED user of a
+# registry file ({name, secret, login}), in registry order.
+# Returns 1 when the registry is missing, a symlink, unreadable,
+# or not parseable as a users registry (callers treat a missing
+# file as "no multi-user data" and any other failure as fail-closed).
+_clash_registry_users_json() {
+    local reg="$1"
+    [[ -f "$reg" && ! -L "$reg" && -r "$reg" ]] || return 1
+    jq -c '.users[] | select(.disabled != true and ((.blocked // "") == "")) | {name: (.name // ""), secret: (.secret // ""), login: (.login // .name // "")}' "$reg" 2>/dev/null || return 1
+    return 0
+}
+
+# H-24(3): effective Hy2 password for one YAML user. Mirrors the
+# users_link hy2 branch: live config first (userpass ->
+# "login:secret" of THIS user, password-only -> the bare server
+# password); when live is unreadable or lacks the user, registry
+# fallback (multi-user -> "login:secret", single user -> bare
+# secret). On sing-box core Hy2 is password-only even multi-user
+# (R1-11-F05), so the bare registry secret is used directly and no
+# live lookup is attempted. Prints the password (no trailing
+# newline); rc 1 when no credential can be determined.
+# $1 = login (.login // .name); $2 = registry secret;
+# $3 = enabled user count; $4 = core (${CORE}).
+_clash_hy2_user_password() {
+    local login="$1" reg_secret="$2" encount="${3:-1}" core="${4:-${CORE:-}}" _eff=''
+    [[ -n "$login" ]] || return 1
+    if [[ "$core" == 'singbox' || "$core" == 'sing-box' ]]; then
+        [[ -n "$reg_secret" ]] || return 1
+        printf '%s' "$reg_secret"
+        return 0
+    fi
+    _eff=$(hy2_effective_password_for_user "$login" "${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" 2>/dev/null || true)
+    if [[ -n "$_eff" ]]; then
+        _eff=${_eff%__ABOX_TRAILING_NL_KEEP__}
+        printf '%s' "$_eff"
+        return 0
+    fi
+    if (( encount >= 2 )) && [[ -n "$reg_secret" ]]; then
+        printf '%s' "${login}:${reg_secret}"
+        return 0
+    fi
+    [[ -n "$reg_secret" ]] || return 1
+    printf '%s' "$reg_secret"
+    return 0
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
@@ -55279,7 +55357,11 @@ PY_CLASH_REALPATH
     _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
     hy2_pass_yaml=$(json_escape "$_hy2_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
-    ss_pass_yaml=$(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # H-24(3): keep the raw SS password too: the single-user node
+    # below is emitted from the resolved (name, password) lists.
+    local _ss_eff_pass=''
+    _ss_eff_pass=$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")
+    ss_pass_yaml=$(json_escape "$_ss_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
     # else the stored 64-hex fingerprint; empty means unusable.
@@ -55313,6 +55395,10 @@ PY_CLASH_REALPATH
     # above).
     local _vless_port_ok=1 _xhttp_port_ok=1 _ss_port_ok=1
     local _vision_emit=0 _xhttp_emit=0 _ss_emit=0 _vision_base_emit=0 _xhttp_base_emit=0
+    # H-24(3): nodes actually emitted (multi-user lists below).
+    local _hy2_emit=0
+    local -a _hy2_names=() _hy2_passes=() _ss_names=() _ss_passes=()
+    local -a _hy2_emit_names=() _ss_emit_names=()
     if ! valid_canonical_port "${VLESS_PORT:-}"; then
         msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
         _vless_port_ok=0
@@ -55343,6 +55429,75 @@ PY_CLASH_REALPATH
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
         return 1
     fi
+    # H-24(3): resolve the Hy2/SS node lists (name, raw password) from
+    # the multi-user registries. Arrays need no temp-file cleanup.
+    # A registry that EXISTS but cannot be parsed fails the whole
+    # YAML (fail-closed: an untrusted user list must not silently
+    # drop users); a missing registry, or fewer than two enabled
+    # users, keeps the legacy single node. When a multi-user registry
+    # is present but NO user's credential resolves, no node is
+    # emitted for that protocol (the legacy single node would carry
+    # a bare password that cannot authenticate in userpass /
+    # clients-form mode); the per-user warnings above already say so.
+    local _hy2_reg='' _hy2_tag='hy2-official' _hy2_core='hy2' _ss_reg='' _ss_core='xray'
+    local _hy2_users_json='' _ss_users_json=''
+    local _hy2_multi=0 _ss_multi=0 _hy2_count=0 _ss_count=0
+    if [[ "${CORE:-}" == 'singbox' ]]; then _hy2_core='sing-box'; _hy2_tag='hy2'; _ss_core='sing-box'; fi
+    _hy2_reg=$(users_reg_file "$_hy2_core" "$_hy2_tag")
+    _ss_reg=$(users_reg_file "$_ss_core" 'ss')
+    if [[ -e "$_hy2_reg" || -L "$_hy2_reg" ]]; then
+        if ! _hy2_users_json=$(_clash_registry_users_json "$_hy2_reg" 2>/dev/null); then
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            msg "${RED}Hy2 user registry unreadable; refusing to generate incomplete Clash config.${NC}" >&2
+            return 1
+        fi
+        _hy2_count=$(printf '%s' "$_hy2_users_json" | grep -c . || true)
+        if (( _hy2_count >= 2 )); then
+            _hy2_multi=1
+            local _u='' _uname='' _usecret='' _ulogin='' _upass=''
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                _uname=$(printf '%s' "$_u" | jq -r '.name // ""' 2>/dev/null || true)
+                _usecret=$(printf '%s' "$_u" | jq -r '.secret // ""' 2>/dev/null || true)
+                _ulogin=$(printf '%s' "$_u" | jq -r '.login // ""' 2>/dev/null || true)
+                [[ -n "$_uname" ]] || continue
+                [[ -n "$_ulogin" ]] || _ulogin="$_uname"
+                if ! _upass=$(_clash_hy2_user_password "$_ulogin" "$_usecret" "$_hy2_count" "${CORE:-}" 2>/dev/null); then
+                    msg "${YELLOW}[!] Skipping Hy2 user '$_uname': no usable credential.${NC}" >&2
+                    continue
+                fi
+                _hy2_names+=("$_uname")
+                _hy2_passes+=("$_upass")
+            done <<< "$_hy2_users_json"
+        fi
+    fi
+    if [[ -e "$_ss_reg" || -L "$_ss_reg" ]]; then
+        if ! _ss_users_json=$(_clash_registry_users_json "$_ss_reg" 2>/dev/null); then
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            msg "${RED}SS user registry unreadable; refusing to generate incomplete Clash config.${NC}" >&2
+            return 1
+        fi
+        _ss_count=$(printf '%s' "$_ss_users_json" | grep -c . || true)
+        if (( _ss_count >= 2 )); then
+            _ss_multi=1
+            local _u='' _uname='' _upass=''
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                _uname=$(printf '%s' "$_u" | jq -r '.name // ""' 2>/dev/null || true)
+                [[ -n "$_uname" ]] || continue
+                if ! _upass=$(ss_effective_password_for_user "$_uname" 2>/dev/null); then
+                    msg "${YELLOW}[!] Skipping SS user '$_uname': no usable credential.${NC}" >&2
+                    continue
+                fi
+                _ss_names+=("$_uname")
+                _ss_passes+=("$_upass")
+            done <<< "$_ss_users_json"
+        fi
+    fi
+    if (( _hy2_multi == 0 )); then _hy2_names=('main'); _hy2_passes=("$_hy2_eff_pass"); fi
+    if (( _ss_multi == 0 )); then _ss_names=('main'); _ss_passes=("$_ss_eff_pass"); fi
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -55447,76 +55602,105 @@ EOF_CLASH
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
                 echo '  # Hy2 omitted: port configuration invalid; refusing to emit a node with a bad port.'
-            elif [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
-                if [[ "${HY2_HOP:-}" == 'true' ]]; then
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$HY2_DOMAIN"
-    port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS}
-    hop-interval: 30
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    sni: "$HY2_DOMAIN"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                else
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$HY2_DOMAIN"
-    port: ${HY2_BASE_PORT:-443}
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    sni: "$HY2_DOMAIN"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                fi
-            elif [[ "$hy2_yaml_emit" == true ]]; then
-                if [[ "${HY2_HOP:-}" == 'true' ]]; then
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$S_IP"
-    port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS}
-    hop-interval: 30
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    skip-cert-verify: true
-    fingerprint: "$hy2_fp_yaml"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                else
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$S_IP"
-    port: ${HY2_BASE_PORT:-443}
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    skip-cert-verify: true
-    fingerprint: "$hy2_fp_yaml"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                fi
-            else
+            elif [[ "$hy2_yaml_emit" != true ]]; then
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
+            else
+                # H-24(3): one node per resolved Hy2 user. The domain
+                # branch implies hy2_yaml_emit (see above), so gating
+                # on it first keeps the two branches' behaviour
+                # identical while the loop drives all four templates.
+                # Single-user lists hold exactly the legacy pair, so
+                # the single node is byte-identical to before.
+                local _hy2_i=0
+                for (( _hy2_i = 0; _hy2_i < ${#_hy2_names[@]}; _hy2_i++ )); do
+                    if [[ "${_hy2_names[$_hy2_i]}" == 'main' ]]; then hy2_name='Hy2'; else hy2_name="Hy2-${_hy2_names[$_hy2_i]}"; fi
+                    hy2_pass_yaml=$(json_escape "${_hy2_passes[$_hy2_i]}") || {
+                        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+                        return 1
+                    }
+                    _hy2_emit=1
+                    _hy2_emit_names+=("$hy2_name")
+                    if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
+                        if [[ "${HY2_HOP:-}" == 'true' ]]; then
+                            cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$HY2_DOMAIN"
+    port: $clash_hop_port
+    ports: ${HY2_CLASH_PORTS}
+    hop-interval: 30
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    sni: "$HY2_DOMAIN"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                        else
+                            cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$HY2_DOMAIN"
+    port: ${HY2_BASE_PORT:-443}
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    sni: "$HY2_DOMAIN"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                        fi
+                    elif [[ "${HY2_HOP:-}" == 'true' ]]; then
+                        cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$S_IP"
+    port: $clash_hop_port
+    ports: ${HY2_CLASH_PORTS}
+    hop-interval: 30
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    skip-cert-verify: true
+    fingerprint: "$hy2_fp_yaml"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                    else
+                        cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$S_IP"
+    port: ${HY2_BASE_PORT:-443}
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    skip-cert-verify: true
+    fingerprint: "$hy2_fp_yaml"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                    fi
+                done
             fi
         fi
         if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )); then
-            _ss_emit=1
-            cat <<EOF_CLASH
-  - name: "SS"
+            # H-24(3): one node per resolved SS user; the single-user
+            # list holds exactly the legacy pair, so the single node
+            # is byte-identical to before.
+            local _ss_i=0 _ss_node_name=''
+            for (( _ss_i = 0; _ss_i < ${#_ss_names[@]}; _ss_i++ )); do
+                if [[ "${_ss_names[$_ss_i]}" == 'main' ]]; then _ss_node_name='SS'; else _ss_node_name="SS-${_ss_names[$_ss_i]}"; fi
+                ss_pass_yaml=$(json_escape "${_ss_passes[$_ss_i]}") || {
+                    rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                        "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+                    return 1
+                }
+                _ss_emit=1
+                _ss_emit_names+=("$_ss_node_name")
+                cat <<EOF_CLASH
+  - name: "$_ss_node_name"
     type: ss
     server: "${LINK_IP:-}"
     port: ${SS_PORT:-2053}
@@ -55526,6 +55710,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
+            done
         fi
         cat -- "$_clash_standalone_nodes_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
@@ -55552,8 +55737,9 @@ EOF_CLASH
             (( _vision_emit == 1 )) && echo "      - Vision-$client_uuid"
             (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
-        [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
-        (( _ss_emit == 1 )) && echo '      - SS'
+        # H-24(3): list exactly the Hy2/SS nodes emitted above.
+        for proxy_name in "${_hy2_emit_names[@]}"; do echo "      - $proxy_name"; done
+        for proxy_name in "${_ss_emit_names[@]}"; do echo "      - $proxy_name"; done
         cat -- "$_clash_standalone_groups_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
                 "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -55577,7 +55763,7 @@ EOF_CLASH
     # self-test's 'client export accepted incomplete port-hop state'
     # assertion (rc=1, no file) while the per-protocol skip still
     # applies whenever at least one other node is emitted.
-    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && [[ "$hy2_yaml_emit" != true ]] && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
+    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
         msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
         rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"

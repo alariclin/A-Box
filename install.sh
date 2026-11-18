@@ -113,6 +113,28 @@ _jq_prog_has_literal_name() {
     done
     return 1
 }
+# L-12(2): probe the jq version once and cache it in
+# _ABOX_JQ_RAWFILE_SHIM (exported, so $(...) subshells -- which inherit
+# exported variables via fork -- see it). Without this, every command
+# substitution re-probed: a subshell's assignment never flows back to
+# the parent, so the parent's variable stayed empty forever. Leaves the
+# variable unset when no jq binary exists, so the lazy probe inside
+# jq() still runs later if jq is installed mid-run.
+_abox_jq_probe_rawfile_shim() {
+    [[ -n "${_ABOX_JQ_RAWFILE_SHIM:-}" ]] && return 0
+    local _ver _maj _min
+    _ver=$(command jq --version 2>/dev/null || echo '')
+    if [[ "$_ver" =~ ^jq-([0-9]+)\.([0-9]+) ]]; then
+        _maj="${BASH_REMATCH[1]}"
+        _min="${BASH_REMATCH[2]}"
+        if (( _maj > 1 || (_maj == 1 && _min >= 6) )); then
+            _ABOX_JQ_RAWFILE_SHIM=0
+        else
+            _ABOX_JQ_RAWFILE_SHIM=1
+        fi
+        export _ABOX_JQ_RAWFILE_SHIM
+    fi
+}
 jq() {
     if [[ -z "${_ABOX_JQ_RAWFILE_SHIM:-}" ]]; then
         local _ver _maj _min
@@ -132,10 +154,6 @@ jq() {
     if [[ "$_ABOX_JQ_RAWFILE_SHIM" == 0 ]]; then
         command jq "$@"
         return $?
-    fi
-    if [[ -z "${_ABOX_JQ_RAWFILE_WARNED:-}" ]]; then
-        _ABOX_JQ_RAWFILE_WARNED=1
-        printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --slurpfile; values no longer pass through argv." >&2
     fi
     local -a _all=( "$@" ) _args=() _raw_names=() _raw_files=() _raw_slurp=() _slurp_names=()
     local _n=${#_all[@]} _i=0 _a='' _prog_idx=-1 _ri=0 _rn='' _rf='' _tmpf='' _content='' _prog='' _prog_new='' _jq_tmpdir=''
@@ -160,6 +178,12 @@ jq() {
                 _i=$(( _i + 1 )) ;;
         esac
     done
+    # L-12(2): warn only when the shim will actually rewrite
+    # (--rawfile present); plain jq calls on old jq need no warning.
+    if (( ${#_raw_names[@]} > 0 )) && [[ -z "${_ABOX_JQ_RAWFILE_WARNED:-}" ]]; then
+        _ABOX_JQ_RAWFILE_WARNED=1
+        printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --slurpfile; values no longer pass through argv." >&2
+    fi
     # Decide per name: slurpfile + rewrite, or --arg fallback.
     if (( ${#_raw_names[@]} > 0 )); then
         _prog=''
@@ -275,6 +299,9 @@ jq() {
     [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null
     return "$_rc"
 }
+
+# L-12(2): one startup probe (see _abox_jq_probe_rawfile_shim above).
+_abox_jq_probe_rawfile_shim
 
 
 # Display width: accurate for CJK, symbols, 2-byte Latin/Cyrillic, emoji

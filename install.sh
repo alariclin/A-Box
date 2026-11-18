@@ -25371,12 +25371,39 @@ xray_hot_add_inbound() {
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
-    if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+    # M-24(3): the live config may carry // and /* */ comments (Xray
+    # accepts JSONC); bare jq rejects it. Strip comments first, like
+    # the snapshot path does.
+    if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' >/dev/null 2>&1; then
         return 1  # duplicate tag already persisted
+    fi
+    # M-24(1): probe-bind the new inbound's port BEFORE overwriting the
+    # live config. `xray run -test` only validates syntax, it never
+    # binds: without this, a port already held by another process is
+    # only discovered when the api-add fails, after which the restart
+    # loads a config that cannot bind and the whole Xray dies. Refuse
+    # here instead, leaving disk and the running daemon untouched.
+    # (No python3 -> no probe; the api-add + restart fallback below
+    # still applies, as before. TCP probe only; the SOCKS UDP twin
+    # shares the same port number.)
+    local _hot_port='' _hot_listen=''
+    _hot_port=$(jq -r '.port // empty' "$json_file" 2>/dev/null || true)
+    _hot_listen=$(jq -r '.listen // "0.0.0.0"' "$json_file" 2>/dev/null || true)
+    if [[ "$_hot_port" =~ ^[0-9]+$ ]] && command -v python3 >/dev/null 2>&1; then
+        python3 -I - "$_hot_listen" "$_hot_port" <<'PY_HOT_BIND' 2>/dev/null || return 1
+import socket, sys
+host, port = sys.argv[1], int(sys.argv[2])
+fam = socket.AF_INET6 if ':' in host else socket.AF_INET
+s = socket.socket(fam, socket.SOCK_STREAM)
+try:
+    s.bind((host, port))
+finally:
+    s.close()
+PY_HOT_BIND
     fi
     tmpd=$(mktemp -d /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
     tmp="$tmpd/config.json"
-    if ! jq --slurpfile nb "$json_file" '.inbounds += $nb' "$cfg" > "$tmp" 2>/dev/null; then
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --slurpfile nb "$json_file" '.inbounds += $nb' > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
@@ -25408,9 +25435,9 @@ xray_hot_remove_inbound() {
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     # A corrupt config must never be reported as "nothing to delete":
     # parse it first, then distinguish "tag absent" from "read failed".
-    jq empty "$cfg" >/dev/null 2>&1 || return 1
+    jsonc_strip_comments "$cfg" 2>/dev/null | jq empty >/dev/null 2>&1 || return 1
     local routes_reference_tag
-    routes_reference_tag=$(jq -r --arg t "$tag" '
+    routes_reference_tag=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r --arg t "$tag" '
         any(.routing.rules[]?;
             if (.inboundTag | type) == "array" then
                 (.inboundTag | index($t)) != null
@@ -25419,10 +25446,10 @@ xray_hot_remove_inbound() {
             else
                 false
             end)
-    ' "$cfg") || return 1
+    ') || return 1
     # Skip if tag not in config (avoid unnecessary restart)
     if [[ "$routes_reference_tag" == false ]] \
-       && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+       && ! jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' >/dev/null 2>&1; then
         # Tag absent from disk and no route references it: the API
         # cannot prove the running config is clean, so restart and
         # report a failed restart instead of false success.
@@ -25431,7 +25458,7 @@ xray_hot_remove_inbound() {
     fi
     tmpd=$(mktemp -d /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
     tmp="$tmpd/config.json"
-    if ! jq --arg t "$tag" '
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg t "$tag" '
         .inbounds = ((.inbounds // []) | map(select(.tag != $t)))
         | if (.routing.rules // null) then
             .routing.rules |= map(
@@ -25441,7 +25468,7 @@ xray_hot_remove_inbound() {
                     select(.inboundTag != $t)
                 else . end)
           else . end
-    ' "$cfg" > "$tmp" 2>/dev/null; then
+    ' > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
@@ -31044,6 +31071,13 @@ split_rule_del_interactive() {
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json inbound_json cfg_bak=''
+    # M-24(2): tmp_json holds the cleartext SOCKS5 password and cfg_bak
+    # a copy of the whole live config (all credentials). die() exits
+    # the process, so a RETURN trap never fires on those paths; an
+    # EXIT trap is the only backstop. Cleared on the success path
+    # below, once both files are removed explicitly. (Precedent: the
+    # same EXIT-trap idiom is used elsewhere in this file.)
+    trap '[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true' EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31211,7 +31245,7 @@ EOF_SVC
         prepare_abox_runtime_permissions xray 2>/dev/null || true
         restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
     else
-        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_socks5_add)"; }
+        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
@@ -31236,6 +31270,7 @@ EOF_SVC
         die "$(tr_msg dp_xray_restart)"
     fi
     rm -f -- "$cfg_bak"
+    trap - EXIT
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip

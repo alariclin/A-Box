@@ -671,13 +671,22 @@ rebuild_standalone_links() {
     # hysteria is deliberately not pruned here: hy2.link belongs to
     # the retained Hy2 family and rebuild re-creates it from live
     # config below.
+    # S1-NEW-02: the family blocks below used to build a link only
+    # when its file was missing, and each jq query read only the
+    # base tag, so deleting the base left a stale family link
+    # pointing at the dead instance (a surviving -2 kept the file
+    # via _standalone_link_survivor but never refreshed its
+    # content). Every family block now always rebuilds from the
+    # first surviving family instance (base first in config order,
+    # else the lowest surviving -N) and registers only on complete
+    # live data; incomplete/unverifiable data keeps the old file.
     _prune_standalone_links xray || true
     _prune_standalone_links sing-box || true
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
     if [[ -f "$_xc" ]]; then
-        if [[ ! -f "$_dir/trojan-xray.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
             _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
@@ -703,9 +712,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/socks5-xray.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
@@ -715,9 +724,9 @@ rebuild_standalone_links() {
         fi
     fi
     if [[ -f "$_sc" ]]; then
-        if [[ ! -f "$_dir/trojan-sb.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
@@ -740,9 +749,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/tuic.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
@@ -769,14 +778,14 @@ rebuild_standalone_links() {
                 # still registered, just without allow_insecure=1.
                 local _cert_inline_state='unknown' _cert_inline_present='' _inline_tmp=''
                 _cert_inline=''
-                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
+                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
                         true) _cert_inline_state='present' ;;
                         false) _cert_inline_state='absent' ;;
                     esac
                 fi
                 if [[ "$_cert_inline_state" == 'present' ]]; then
-                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
+                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
                     # R15-F01-02: the inline PEM goes through the same
@@ -793,9 +802,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/anytls.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
@@ -811,9 +820,9 @@ rebuild_standalone_links() {
         # _standalone_link_is_empty_shadowtls): that is the bad
         # link the old unchecked pipeline published, and the
         # next rebuild must retry it instead of skipping forever.
-        if [[ ! -f "$_dir/shadowtls.link" ]] || _standalone_link_is_empty_shadowtls "$_dir/shadowtls.link"; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor (empty-shadowtls retry subsumed)
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
@@ -857,9 +866,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/socks5-sb.link" ]]; then
+        if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"

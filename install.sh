@@ -26339,6 +26339,56 @@ exit 0
 EOF_XTABLES_GRANT
 }
 
+# S2-NEW-06: reconcile the running Hysteria with the config the
+# post-deploy registry reconcile may have rewritten under it.
+# $1 = sha256 of the config captured BEFORE
+# users_reg_reconcile_after_deploy ran; $2 = MainPID captured at the
+# same moment (may be empty when the PID is unreadable); $3 =
+# optional config path (default /etc/hysteria/config.yaml).
+# Returns 0 when the running process already serves the on-disk
+# config. When the reconcile rewrote the config without restarting
+# the service, restarts it and verifies the restart landed on the
+# current disk config. Any failure returns 1: a deploy that ends
+# with a stale Hysteria must fail loudly, never report success.
+# Why a restart can be missing at all: users_commit_cfg restarts
+# only when service_restart_permitted, which requires desired ==
+# RUNNING -- and a SILENT sub-deploy (four-in-one, deploy_xray ALL)
+# has not set RUNNING yet when its reconcile runs (the caller sets
+# it only after this function returns), so with a pre-redeploy
+# desired state of MANUAL_STOPPED the rewrite lands on disk while
+# the process keeps the pre-reconcile single-password config and
+# every Hy2 chain 404s until a manual restart.
+hy2_resync_running_config() {
+    local pre_sha="$1" pre_pid="${2:-}" cfg="${3:-/etc/hysteria/config.yaml}"
+    local post_sha='' post_pid='' restart_sha=''
+    [[ -n "$pre_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (pre-reconcile checksum unreadable)." >&2; return 1; }
+    post_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || post_sha=''
+    [[ -n "$post_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (config unreadable after reconcile)." >&2; return 1; }
+    [[ "$post_sha" == "$pre_sha" ]] && return 0
+    # The reconcile rewrote the config after the service started.
+    post_pid=$(managed_service_pid hysteria 2>/dev/null || true)
+    if [[ -z "$post_pid" ]]; then
+        msg "S2-NEW-06: Hysteria config changed after start but the service is not running; refusing to report a successful deploy." >&2
+        return 1
+    fi
+    # users_commit_cfg already restarts when its H-23 gate permits
+    # (desired RUNNING): a changed PID proves the running process
+    # already loaded the new config, so no second restart.
+    if [[ -n "$pre_pid" && "$post_pid" != "$pre_pid" ]]; then
+        return 0
+    fi
+    if ! restart_service_soft hysteria; then
+        msg "S2-NEW-06: Hysteria config changed after start and the restart onto the new config failed; the running service still serves the pre-reconcile config." >&2
+        return 1
+    fi
+    restart_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || restart_sha=''
+    if [[ -z "$restart_sha" || "$restart_sha" != "$post_sha" ]]; then
+        msg "S2-NEW-06: Hysteria config changed again during the resync restart; running state cannot be verified against disk." >&2
+        return 1
+    fi
+    return 0
+}
+
 deploy_official_hy2() {
     local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0} _hy2_url='' _hy2_port=''
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
@@ -26545,7 +26595,23 @@ EOF_SVC
     # stale credentials until a menu visit -- where the merge used to
     # duplicate main as main-2. Best-effort: the deploy already
     # committed, so a failure warns but must not fail it.
+    # S2-NEW-06: capture the config sha + service PID before the
+    # reconcile so the resync below can tell whether the reconcile
+    # rewrote the config under the running service without
+    # restarting it.
+    local _hy2_recon_cfg_sha='' _hy2_recon_svc_pid=''
+    _hy2_recon_cfg_sha=$(sha256sum -- /etc/hysteria/config.yaml 2>/dev/null | awk '{print $1}') || _hy2_recon_cfg_sha=''
+    _hy2_recon_svc_pid=$(managed_service_pid hysteria 2>/dev/null || true)
     users_reg_reconcile_after_deploy hy2 || msg "S2-NEW-04: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # S2-NEW-06: if the reconcile rewrote the config after the
+    # service started (preserved multi-user restore switches auth
+    # password -> userpass on disk) and nothing restarted the service
+    # onto it, restart now and verify -- otherwise the deploy ends
+    # with every Hy2 chain 404ing until a manual restart. Fail
+    # closed: in SILENT mode the caller turns this into a deploy
+    # failure (and transaction rollback); in NORMAL mode the menu
+    # reports the failure instead of a false success.
+    hy2_resync_running_config "$_hy2_recon_cfg_sha" "$_hy2_recon_svc_pid" || return 1
 }
 
 install_file_atomically() {

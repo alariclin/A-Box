@@ -21317,6 +21317,21 @@ verify_ed25519_detached() {
         rm -rf -- "$keydir"
         return 1
     fi
+    # H-14: the CLI path needs pkeyutl -rawin (OpenSSL 3.0+); on hosts
+    # without it (e.g. OpenSSL 1.1.1) delegate to the ctypes libcrypto
+    # verifier instead of rejecting every valid signature. rc 0 =
+    # verified; any other rc (invalid signature, or 2 = no verifier
+    # available) maps to 1, preserving the fail-closed contract of the
+    # direct callers (e.g. run_mirrored_test_script, which deliberately
+    # bypasses abox_verify_sig_gate).
+    if ! _openssl_has_ed25519; then
+        if verify_ed25519_detached_ctypes "$file" "$sigfile"; then
+            rm -rf -- "$keydir"
+            return 0
+        fi
+        rm -rf -- "$keydir"
+        return 1
+    fi
     for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
         label="${entry%%:*}"
         pubkey_b64="${entry#*:}"
@@ -23864,15 +23879,27 @@ xray_config_autorecover() {
     fi
     if (( test_rc == 0 )); then
         # R16-F07-03: a valid config does not clear a latch recorded
-        # against the earlier broken config (restart-failed): the marker
-        # gate below keys on the current config's sha, so a recent
-        # "failed" record under any sha must hold the latch here, or the
-        # probe restarts the service ~3 rounds later. The 3600s window
-        # matches the existing failed/attempt cooldown and is anchored to
-        # the original failure epoch: this path never appends a marker
+        # against the earlier broken config (restart-failed): the probe
+        # must not restart a service whose restored config failed to
+        # come up, or it restarts the service ~3 rounds later.
+        # L-07(B): the latch fires ONLY on a recent, well-formed
+        # "failed" record whose detail proves a bring-up of the live
+        # config failed ("restart-failed": the restored config was
+        # installed but the service did not come up;
+        # "restore-perm-failed": the restored config was installed but
+        # its runtime permissions could not be set). A record with any
+        # other detail ("no-trusted-good-backup",
+        # "backup-enumeration-failed") only says recovery of the
+        # then-broken config failed; once the live config tests valid
+        # that config is gone and the record is spent. A record with no
+        # detail is malformed (every writer emits one) and is never
+        # latch evidence. The 3600s window matches the existing
+        # failed/attempt cooldown and is anchored to the original
+        # failure epoch; a future-dated record cannot be a recent
+        # failure and never latches. This path never appends a marker
         # record, so it cannot refresh the latch.
         now=$(date +%s)
-        if [[ -f "$marker" && ! -L "$marker" ]] && _latched=$(awk -v n="$now" '$1 == "failed" && (n - $3) < 3600 { print "latched"; exit }' "$marker" 2>/dev/null || true) && [[ "$_latched" == latched ]]; then
+        if [[ -f "$marker" && ! -L "$marker" ]] && _latched=$(awk -v n="$now" '$1 == "failed" && ($4 == "restart-failed" || $4 == "restore-perm-failed") && ($3 <= n) && (n - $3) < 3600 { print "latched"; exit }' "$marker" 2>/dev/null || true) && [[ "$_latched" == latched ]]; then
             _cur_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || _cur_sha=''
             [[ -n "$_cur_sha" ]] || return 2
             _xrc_stop_xray "$statusf" "$_cur_sha" "auto-recovery latch still active (earlier restart failed); manual restore required"
@@ -28880,11 +28907,44 @@ argo_unit_stopped_confirmed() { # $1 = unit name -> 0 iff confirmed stopped
     fi
 }
 
+# L-07(D): a log line proves the CURRENT tunnel only if its leading
+# timestamp is fresh (not older than $2, an epoch). The timestamp
+# must be a zone-qualified RFC3339 stamp (cloudflared's log format);
+# a line without one is stale, never fresh: an undated line can never
+# prove the current tunnel is up, and accepting it reopens the
+# stale-log false-ready. date -d parses RFC3339 on GNU and BusyBox
+# date; python3 is the fallback for runtimes whose date cannot.
+# Both failing is stale (fail closed).
+_argo_line_fresh() { # $1 = log line, $2 = earliest acceptable epoch -> 0 iff fresh
+    local _ts _ep
+    [[ "$1" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})) ]] || return 1
+    _ts="${BASH_REMATCH[1]}"
+    _ep=$(date -d "$_ts" +%s 2>/dev/null || true)
+    if [[ ! "$_ep" =~ ^[0-9]+$ ]]; then
+        _ep=$(python3 -I -c 'import sys; from datetime import datetime; print(int(datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")).timestamp()))' "$_ts" 2>/dev/null || true)
+    fi
+    [[ "$_ep" =~ ^[0-9]+$ ]] || return 1
+    (( _ep >= $2 ))
+}
+
 argo_capture_domain() { # $1 = log file -> domain on stdout
-    local i d
+    local i d _line _fresh_since
+    # L-07(D): only a domain logged by the CURRENT tunnel counts. The
+    # log is append-only across redeploys, so a line from a dead tunnel
+    # would otherwise be returned on the first poll. Lines logged up
+    # to 300s before this wait started still count (the unit was
+    # (re)started just before this call; a slow edge handshake can
+    # delay the first lines, and the second tunnel's wait starts only
+    # after the first tunnel's capture finishes).
+    _fresh_since=$(($(date +%s) - 300))
     for i in $(seq 1 45); do
         d=$(grep -aoE '[a-z0-9-]+\.trycloudflare\.com' "$1" 2>/dev/null | grep -v '^api\.trycloudflare\.com$' | tail -1)
-        [[ -n "$d" ]] && { printf '%s' "$d"; return 0; }
+        if [[ -n "$d" ]]; then
+            _line=$(grep -aF "$d" "$1" 2>/dev/null | tail -1)
+            if [[ -n "$_line" ]] && _argo_line_fresh "$_line" "$_fresh_since"; then
+                printf '%s' "$d"; return 0
+            fi
+        fi
         sleep 2
     done
     return 1
@@ -28908,13 +28968,20 @@ argo_links_for() { # $1 = vmess domain, $2 = vless domain
 # does not prove the tunnel can serve traffic. Mirrors
 # argo_wait_fixed_ready, parameterized by unit + log.
 argo_wait_temp_ready() { # $1=unit $2=log $3=timeout(sec, default 60)
-    local unit="$1" log="$2" timeout="${3:-60}" i
+    local unit="$1" log="$2" timeout="${3:-60}" i _line _fresh_since
+    # L-07(D): see argo_capture_domain: only a FRESH 'Registered
+    # tunnel connection' line proves the current tunnel. A stale
+    # auth-failure line likewise must not fail a new tunnel: only a
+    # fresh one fails the wait.
+    _fresh_since=$(($(date +%s) - 300))
     for i in $(seq 1 "$timeout"); do
-        if grep -q 'Registered tunnel connection' "$log" 2>/dev/null; then
+        _line=$(grep -a 'Registered tunnel connection' "$log" 2>/dev/null | tail -1)
+        if [[ -n "$_line" ]] && _argo_line_fresh "$_line" "$_fresh_since"; then
             argo_unit_active "$unit" || return 1
             return 0
         fi
-        if grep -qiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null; then
+        _line=$(grep -aiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null | tail -1)
+        if [[ -n "$_line" ]] && _argo_line_fresh "$_line" "$_fresh_since"; then
             return 1
         fi
         sleep 1
@@ -29230,13 +29297,19 @@ vless_domain=${d2}"
 # unit is still active; returns 1 on auth failure or timeout. A token
 # rejected by Cloudflare must fail the deploy, not commit mode=fixed.
 argo_wait_fixed_ready() { # $1=log $2=timeout(sec, default 60)
-    local log="$1" timeout="${2:-60}" i
+    local log="$1" timeout="${2:-60}" i _line _fresh_since
+    # L-07(D): see argo_capture_domain: only a FRESH 'Registered
+    # tunnel connection' line proves the current tunnel; only a fresh
+    # auth-failure line fails the wait.
+    _fresh_since=$(($(date +%s) - 300))
     for i in $(seq 1 "$timeout"); do
-        if grep -q 'Registered tunnel connection' "$log" 2>/dev/null; then
+        _line=$(grep -a 'Registered tunnel connection' "$log" 2>/dev/null | tail -1)
+        if [[ -n "$_line" ]] && _argo_line_fresh "$_line" "$_fresh_since"; then
             argo_unit_active argo || return 1
             return 0
         fi
-        if grep -qiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null; then
+        _line=$(grep -aiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null | tail -1)
+        if [[ -n "$_line" ]] && _argo_line_fresh "$_line" "$_fresh_since"; then
             return 1
         fi
         sleep 1
@@ -33367,6 +33440,12 @@ capture_pre_block_states() {
         printf '%s %s %s\n' "$srv" "$active" "$enabled_state" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
     done <<< "$list"
     [[ -s "$tmp" ]] || { rm -f -- "$tmp"; return 1; }
+    # L-07(C): stamp the capture epoch on the snapshot so a later
+    # capture_pre_block_states_once can tell this cycle's snapshot
+    # (fresh, reused on a failed-commit retry) from a leftover of an
+    # earlier cycle (stale, recaptured). The stamp is a trailing
+    # comment line; restore_pre_block_states skips '#' lines.
+    printf '# captured %s\n' "$(date +%s)" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
     chmod 600 -- "$tmp" 2>/dev/null || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
 }
@@ -33381,7 +33460,30 @@ capture_pre_block_states() {
 # documented start-all-owned fallback (restore_or_start_owned).
 capture_pre_block_states_once() {
     local file="${PRE_BLOCK_STATES_PREFIX}-${1:-}"
-    [[ -f "$file" ]] && return 0
+    local _snap_ts='' _now=0
+    if [[ -f "$file" ]]; then
+        # L-07(C): a snapshot for a block already in effect is this
+        # block's own: reuse it untouched (R9-04: a later capture would
+        # record post-block states). Only when NO block is in effect
+        # for this period can a pre-existing file be a leftover from
+        # an earlier cycle, and only then is it freshness-checked:
+        # reuse it iff its capture stamp is from this cycle's commit
+        # attempt (the monitor runs every minute, so a failed-commit
+        # retry lands ~60s later; 600s is 10 missed runs of margin).
+        # A stamp older than that, or no stamp at all (a snapshot
+        # written before this stamp existed), is stale: fall through
+        # and recapture, which overwrites the file atomically. The
+        # snapshot is never deleted while a block is in effect, so no
+        # "blocked without snapshot" (H-05) combination is created.
+        if [[ "$(read_desired 2>/dev/null)" == TRAFFIC_BLOCKED && "$(read_block_period 2>/dev/null)" == "${1:-}" ]]; then
+            return 0
+        fi
+        _snap_ts=$(grep -a '^# captured [0-9][0-9]*$' "$file" 2>/dev/null | tail -1 | awk '{print $3}' || true)
+        _now=$(date +%s 2>/dev/null || echo 0)
+        if [[ "$_snap_ts" =~ ^[0-9]+$ && "$_now" =~ ^[0-9]+$ ]] && (( _snap_ts <= _now )) && (( _now - _snap_ts < 600 )); then
+            return 0
+        fi
+    fi
     [[ -f "${file}.snapshot-failed" ]] && return 1
     if [[ "$(read_desired 2>/dev/null)" == TRAFFIC_BLOCKED && "$(read_block_period 2>/dev/null)" == "${1:-}" ]]; then
         return 1
@@ -33403,6 +33505,8 @@ restore_pre_block_states() {
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while read -r srv active enabled_state; do
         [[ -n "$srv" ]] || continue
+        # L-07(C): skip the '# captured <epoch>' stamp line.
+        [[ "$srv" == \#* ]] && continue
         owned "$srv" 2>/dev/null || continue
         case "$enabled_state" in
             enabled)
@@ -61097,6 +61201,13 @@ PY_F05_TPUB
                     if ! _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate rejected ctypes-valid signature under injected incapable state'; failures=$((failures + 1))
                     fi
+                    # H-14: the direct call (run_mirrored_test_script uses
+                    # verify_ed25519_detached directly, bypassing the gate)
+                    # must also fall back to ctypes when the CLI lacks
+                    # -rawin; a valid signature must verify.
+                    if ! _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
+                        echo 'FAIL: F-05 direct verify rejected valid signature under injected incapable state'; failures=$((failures + 1))
+                    fi
                     if _f05_gate_err=$(verify_ed25519_detached_ctypes() { return 2; }; _OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate did not fail-closed on stubbed no-verifier'; failures=$((failures + 1))
                     else
@@ -61111,6 +61222,11 @@ PY_F05_TPUB
                         grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no enforcement FATAL'; failures=$((failures + 1)); }
                     fi
                     printf 'F-05 CT TAMPERED\n' > "$_f05_tdir/ct-msg-bad.txt"
+                    # H-14 (fail-closed): the direct call must still reject
+                    # a tampered message when routing through ctypes.
+                    if _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
+                        echo 'FAIL: F-05 direct verify accepted tampered signature under injected incapable state'; failures=$((failures + 1))
+                    fi
                     if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
                         echo 'FAIL: F-05 gate accepted ctypes-tampered signature under injected incapable state'; failures=$((failures + 1))
                     else

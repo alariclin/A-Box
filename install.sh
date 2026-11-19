@@ -32667,6 +32667,28 @@ EOF_SVC
     _n1_flags=$(xray_config_reality_flags "$XRAY_SLOT_CFG" || true)
     read -r _n1_reality _n1_xhttp <<< "${_n1_flags:-0 0}"
     if [[ "$_n1_reality" == '1' ]]; then show_reality_mlkem_notice "$_n1_xhttp" 0; fi
+    # S2-NEW-03 follow-up (fresh-deploy segment): the refresh below
+    # exports registries only, and on a fresh install no registry
+    # exists yet -- main lives only in the live config, so the export
+    # is always 0 links. Adopt main into users.d FIRST (the same
+    # protocol_inventory + users_reg_ensure loop the guard tick
+    # runs), so the refresh runs AFTER main registration.
+    # Best-effort: the deploy already committed, so a failure warns
+    # but must not fail it.
+    local _s2n03_c='' _s2n03_t='' _s2n03_p='' _s2n03_pt=''
+    while IFS=$'\t' read -r _s2n03_c _s2n03_t _s2n03_p _s2n03_pt; do
+        # Only the stacks THIS deploy built: xray always, hy2 only
+        # when this deploy deployed it (ALL). Any other core's config
+        # left on disk belongs to a pruned stack -- adopting it here
+        # would resurrect its registry and export dead links.
+        case "$_s2n03_c" in
+            xray) ;;
+            hy2) [[ "$MODE_IN" == *'ALL'* ]] || continue ;;
+            *) continue ;;
+        esac
+        [[ -n "$_s2n03_t" && "$_s2n03_p" != 'shadowtls' ]] || continue
+        users_reg_ensure "$_s2n03_c" "$_s2n03_t" >/dev/null 2>&1 || true
+    done < <(protocol_inventory 2>/dev/null || true)
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -32674,6 +32696,7 @@ EOF_SVC
     refresh_subscription_after_deploy || true
     view_config deploy
 }
+
 
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
@@ -32840,6 +32863,24 @@ EOF_SVC
     # link. Best-effort: the deploy already committed, so a failure
     # warns but must not fail it.
     users_reg_reconcile_after_deploy sing-box || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # S2-NEW-03 follow-up (fresh-deploy segment): the refresh below
+    # exports registries only, and on a fresh install no registry
+    # exists yet -- main lives only in the live config, so the export
+    # is always 0 links. Adopt main into users.d FIRST (the same
+    # protocol_inventory + users_reg_ensure loop the guard tick
+    # runs), so the refresh runs AFTER main registration.
+    # Best-effort: the deploy already committed, so a failure warns
+    # but must not fail it.
+    local _s2n03_c='' _s2n03_t='' _s2n03_p='' _s2n03_pt=''
+    while IFS=$'\t' read -r _s2n03_c _s2n03_t _s2n03_p _s2n03_pt; do
+        # Only the stack THIS deploy built (sing-box). Any other
+        # core's config left on disk belongs to a pruned stack --
+        # adopting it here would resurrect its registry and export
+        # dead links.
+        [[ "$_s2n03_c" == 'sing-box' ]] || continue
+        [[ -n "$_s2n03_t" && "$_s2n03_p" != 'shadowtls' ]] || continue
+        users_reg_ensure "$_s2n03_c" "$_s2n03_t" >/dev/null 2>&1 || true
+    done < <(protocol_inventory 2>/dev/null || true)
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy

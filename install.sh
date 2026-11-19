@@ -472,6 +472,7 @@ ABOX_DEPLOY_TX_TARGETS=''
 ABOX_DEPLOY_TX_REASON=''
 ABOX_DEPLOY_TX_BACKUP=''
 ABOX_DEPLOY_TX_TMP=''
+ABOX_ROLLBACK_FALLBACK_RC=''
 ABOX_DEPLOY_TX_BACKUP_DIR=''
 ABOX_DEPLOY_TX_KEY_FILE=''
 ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
@@ -1103,7 +1104,11 @@ rebuild_standalone_links() {
 }
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
-    if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
+    # OBS-2: capture the hook name BEFORE invoking it. The hook itself
+    # (deployment_transaction_rollback_inner) clears ABOX_DIE_HOOK on
+    # entry, so formatting the message after the call printed ''.
+    local _die_hook="${ABOX_DIE_HOOK:-}"
+    if [[ -n "$_die_hook" ]] && declare -F "$_die_hook" >/dev/null 2>&1; then
         # H-17: only the transaction owner process (or a top-level shell)
         # may run the rollback hook. A die() inside a command substitution
         # runs in a child shell whose BASHPID differs from the transaction
@@ -1112,9 +1117,34 @@ die() {
         # still exits 1, so the parent's || die fires the hook exactly
         # once, in the right process.
         if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
-            if ! "$ABOX_DIE_HOOK" "$*"; then
-                printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+            if ! "$_die_hook" "$*"; then
+                # OBS-2: two tiers. When the deployment rollback ran its
+                # best-effort service restart from the snapshot
+                # (ABOX_ROLLBACK_FALLBACK_RC==0), the strong "manual
+                # recovery may be required" claim misleads: the services
+                # were restarted. Downgrade to a verify-first notice.
+                # When the restart itself failed (or no fallback ran),
+                # keep the strong warning.
+                if [[ "$_die_hook" == 'deployment_transaction_rollback' && "${ABOX_ROLLBACK_FALLBACK_RC:-}" == '0' ]]; then
+                    printf '%s\n' "${RED}[!] WARNING: rollback hook '$_die_hook' reported failure, but services were restarted from the pre-operation snapshot (best-effort); verify services before manual recovery.${NC}" >&2
+                else
+                    printf '%s\n' "${RED}[!] WARNING: rollback hook '$_die_hook' failed; manual recovery may be required.${NC}" >&2
+                fi
             fi
+        fi
+    fi
+    # OBS-1: a failed deploy must not leak its staging. The transaction
+    # rollback removes ABOX_DEPLOY_TX_TMP when it runs, but landing
+    # deploys run with no transaction, and the rollback itself can abort
+    # before reaching its staging cleanup. Remove this process's own
+    # staging here, under the same owner-process gate as the hook, so a
+    # die() inside a command substitution never deletes the parent's
+    # live staging. Only a /tmp/A-Box-* directory is ever removed (never
+    # /tmp itself, never a path with '..', never a symlink or a file).
+    if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
+        if [[ -n "${ABOX_DEPLOY_TX_TMP:-}" && "${ABOX_DEPLOY_TX_TMP}" == /tmp/A-Box-* && "${ABOX_DEPLOY_TX_TMP}" != /tmp/A-Box- && "${ABOX_DEPLOY_TX_TMP}" != *..* && -d "${ABOX_DEPLOY_TX_TMP}" && ! -L "${ABOX_DEPLOY_TX_TMP}" ]]; then
+            rm -rf -- "${ABOX_DEPLOY_TX_TMP}" 2>/dev/null || true
+            ABOX_DEPLOY_TX_TMP=''
         fi
     fi
     exit 1
@@ -4880,6 +4910,12 @@ tr_msg() {
         fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
         zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
         ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        zh:dp_cred_regen) echo '覆盖重部署将重生成主凭据，旧订阅链接随即失效，须重新导出。' ;;
+        en:dp_cred_regen) echo 'Overwrite redeploy regenerates the main credentials; old subscription links stop working and must be re-exported.' ;;
+        ru:dp_cred_regen) echo 'Переустановка с заменой повторно создаёт основные учётные данные; старые ссылки подписки перестают работать, их нужно экспортировать заново.' ;;
+        fa:dp_cred_regen) echo 'استقرار مجدد با بازنویسی، اعتبار اصلی را دوباره تولید می‌کند؛ پیوندهای اشتراک قدیمی از کار می‌افتند و باید دوباره صادر شوند.' ;;
+        zh-tw:dp_cred_regen) echo '覆寫重部署將重新產生主憑據，舊訂閱連結隨即失效，須重新匯出。' ;;
+        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古い購読リンクは無効になるため、再エクスポートが必要です。' ;;
         zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
         en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
         ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
@@ -6668,6 +6704,12 @@ tr_msg() {
         fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
+        zh:cl_all_fail) echo '全部清空未完成，请检查上方失败提示。' ;;
+        en:cl_all_fail) echo 'Clear-all did not complete; check the failure messages above.' ;;
+        ru:cl_all_fail) echo 'Полная очистка не завершена; проверьте сообщения об ошибках выше.' ;;
+        fa:cl_all_fail) echo 'پاک‌سازی کامل انجام نشد؛ پیام‌های خطای بالا را بررسی کنید.' ;;
+        zh-tw:cl_all_fail) echo '全部清除未完成，請檢查上方失敗提示。' ;;
+        ja:cl_all_fail) echo 'すべてクリアは完了しませんでした。上記の失敗メッセージを確認してください。' ;;
         zh:cl_desired_commit_fail) echo '无法记录清空后的期望状态（MANUAL_STOPPED），已中止清空；请先手动修复状态文件。' ;;
         en:cl_desired_commit_fail) echo 'Could not record the cleared desired state (MANUAL_STOPPED); clear aborted. Repair the state files manually first.' ;;
         ru:cl_desired_commit_fail) echo 'Не удалось записать желаемое состояние после очистки (MANUAL_STOPPED); очистка прервана. Сначала исправьте файлы состояния вручную.' ;;
@@ -17043,6 +17085,7 @@ confirm_deployment_replacement() {
         esac
     fi
     msg "${YELLOW}[!] $(tr_msg dp_stop_warn)${NC}"
+    msg "${YELLOW}[!] $(tr_msg dp_cred_regen)${NC}"
     msg "$(tprintf dp_current "$current" "${next_core}-${next_mode}")"
     # Critical when replacing existing config/services: never auto-yes in fast mode.
     print_port_occupancy
@@ -26191,7 +26234,7 @@ singbox_apply_loopback_guard() {
     _tmp=$(mktemp "$_dir/.A-Box-sb-guard.XXXXXX") || return 1
     if ! jq '
         [
-          {protocol: "tcp", action: "sniff"},
+          {network: ["tcp"], action: "sniff"},
           {action: "resolve"},
           {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"},
           {protocol: "bittorrent", action: "reject"}
@@ -26199,7 +26242,14 @@ singbox_apply_loopback_guard() {
         | if type != "object" then error("sing-box config must be an object") else . end
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
-        | .route.rules = ($base + (.route.rules | map(select(. != $base[0] and . != $base[1] and . != $base[2] and . != $base[3]))))
+        # OBS-3 (D1): $base[0] must be exactly what build_singbox_config
+        # emits ({network:["tcp"], action:"sniff"}). The old
+        # {protocol:"tcp", action:"sniff"} never matched it, so every
+        # routing_apply_live prepended a second sniff rule and the
+        # duplicate survived warp_undeploy and clear_all. The legacy
+        # protocol-form sniff is collapsed as well, so configs already
+        # duplicated by the old guard repair to canonical on next apply.
+        | .route.rules = ($base + (.route.rules | map(select(. != $base[0] and . != $base[1] and . != $base[2] and . != $base[3] and . != {protocol: "tcp", action: "sniff"}))))
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -27087,7 +27137,15 @@ rollback_restart_services_from_backup() {
     local backup="${1:-}" work state rc=0
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
     work=$(mktemp -d /tmp/A-Box-rollback-state.XXXXXX) || return 1
-    if tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null && [[ -f "$work/meta/services.state" ]]; then
+    # N6: do not gate on tar's exit code. A damaged compressed stream
+    # can still yield an intact meta/services.state (tar reports the
+    # gzip CRC error only at the end of the stream, rc=2); the state
+    # file's presence is the gate, not tar's rc. The state must also
+    # pass validate_services_state_file: the strict restore validates
+    # too, but the fallback below parses loosely and would otherwise
+    # start a service from a corrupt/truncated state line.
+    tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null || true
+    if [[ -f "$work/meta/services.state" ]] && validate_services_state_file "$work/meta/services.state"; then
         state="$work/meta/services.state"
         if restore_managed_service_state "$state"; then
             rc=0
@@ -27209,6 +27267,12 @@ deployment_transaction_rollback_inner() {
 # The wrapper guarantees the restore for all inner returns.
 deployment_transaction_rollback() {
     local _rc
+    # OBS-2: record whether the best-effort fallback restart ran and
+    # what it returned, so die() can tier its warning (restart
+    # attempted vs restart failed). Cleared on entry so a stale value
+    # can never downgrade an unrelated later failure. The rollback
+    # itself is unchanged: the failure rc is never masked.
+    ABOX_ROLLBACK_FALLBACK_RC=''
     deployment_transaction_rollback_inner "$@"
     _rc=$?
     # N6-A: the inner rollback can fail BEFORE any service restart
@@ -27219,7 +27283,11 @@ deployment_transaction_rollback() {
     # A-Box-owned services the snapshot marks active=1; restores no
     # files). The failure rc is never masked.
     if (( _rc != 0 )); then
-        rollback_restart_services_from_backup "${ABOX_DEPLOY_TX_BACKUP:-}" || true
+        if rollback_restart_services_from_backup "${ABOX_DEPLOY_TX_BACKUP:-}"; then
+            ABOX_ROLLBACK_FALLBACK_RC='0'
+        else
+            ABOX_ROLLBACK_FALLBACK_RC='1'
+        fi
     fi
     restore_deployment_transaction_traps
     return "$_rc"
@@ -27558,6 +27626,7 @@ deploy_singbox_socks5_landing() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -27572,6 +27641,7 @@ deploy_singbox_socks5_landing() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
         # U31: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -27857,6 +27927,7 @@ deploy_xray_trojan_landing() {
         local xray_tmp xray_zip xray_ext
         get_architecture
         xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$xray_tmp"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -27870,6 +27941,7 @@ deploy_xray_trojan_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
@@ -27892,12 +27964,14 @@ deploy_xray_trojan_landing() {
     if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
         local _geo_tmp
         _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$_geo_tmp"
         install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
         fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
         install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
         install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
         rm -rf -- "$_geo_tmp"
+        ABOX_DEPLOY_TX_TMP=''
     fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
@@ -28007,6 +28081,7 @@ deploy_singbox_trojan_landing() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28021,6 +28096,7 @@ deploy_singbox_trojan_landing() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -28200,6 +28276,7 @@ deploy_singbox_tuic() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28214,6 +28291,7 @@ deploy_singbox_tuic() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -28402,6 +28480,7 @@ deploy_singbox_anytls() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28416,6 +28495,7 @@ deploy_singbox_anytls() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -28588,6 +28668,7 @@ deploy_singbox_shadowtls() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28602,6 +28683,7 @@ deploy_singbox_shadowtls() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -31357,7 +31439,14 @@ warp_scrub_live_config() {
     for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
         stripped=$(mktemp) || return 1
-        tmp=$(mktemp) || { rm -f "$stripped"; return 1; }
+        # OBS-3 (D2) / S1-NEW-06: the xray validation below runs `xray run -test`
+        # on $tmp, and xray detects the config format from the filename
+        # extension: an extensionless mktemp file fails with rc 23
+        # ("Failed to get format"), so the scrub aborted at the xray
+        # step and never reached the sing-box config on any box with an
+        # xray binary. Give the temp file a .json suffix (same pattern
+        # as the other xray validation sites in this file).
+        tmp=$(mktemp /tmp/A-Box-scrub.XXXXXX.json) || { rm -f "$stripped"; return 1; }
         if ! jsonc_strip_comments "$cfg" > "$stripped" 2>/dev/null; then
             rm -f "$stripped" "$tmp"; return 1
         fi
@@ -31370,6 +31459,17 @@ warp_scrub_live_config() {
         fi
         rm -f "$stripped"
         jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        # S1-NEW-06: the jq filter above only deletes the
+        # reference shapes it knows (outbounds/endpoints/rules).
+        # Any other live reference to warp-out (e.g. an
+        # observatory subjectSelector) would survive the delete
+        # and still pass `xray run -test`, so the scrub would
+        # report success over a residue. Fail closed before
+        # installing: no exact "warp-out" string may remain
+        # anywhere in the new config.
+        if jq -e '[.. | strings | select(. == "warp-out")] | length > 0' "$tmp" >/dev/null 2>&1; then
+            rm -f "$tmp"; return 1
+        fi
         case "$cfg" in
             *xray*)
                 if [[ -x /usr/local/bin/xray ]]; then
@@ -32012,6 +32112,7 @@ deploy_socks5_landing() {
         local xray_tmp xray_zip xray_ext
         get_architecture
         xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$xray_tmp"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -32025,6 +32126,7 @@ deploy_socks5_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # R14-F09-03: check ownership BEFORE writing any unit below.
         # ensure_xray_service_unit passes vacuously once our own marker
         # is on disk, so the gate at the end of this function (R6-F09-7)
@@ -32091,12 +32193,14 @@ EOF_SVC
     if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
         local _geo_tmp
         _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$_geo_tmp"
         install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
         fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
         install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
         install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
         rm -rf -- "$_geo_tmp"
+        ABOX_DEPLOY_TX_TMP=''
     fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
@@ -36814,17 +36918,23 @@ clear_all_protocols() {
             # in this function touches the routing state or the
             # warp-out endpoint, so a cleared stack kept a live
             # warp-out + its rules while the menu kept reporting
-            # WARP as deployed. Drop the state entry and scrub both
-            # live configs (gated on wipe_ok: a partial wipe leaves
+            # WARP as deployed. Scrub both live configs, then drop
+            # the state entry (gated on wipe_ok: a partial wipe leaves
             # surviving nodes whose WARP routing must stay). Either
             # failure fails the clear instead of reporting success
             # over a residue.
             if (( wipe_ok == 1 )); then
-                if ! routing_outbound_del 'warp-out'; then
+                # S1-NEW-06: scrub BEFORE dropping the state entry
+                # (same order as warp_undeploy's no-core path): a
+                # scrub failure keeps the state flag, so the menu
+                # stays truthful (WARP still deployed) instead of
+                # reporting "not deployed" over a live warp-out.
+                # The state entry is dropped only after the live
+                # configs are actually clean.
+                if ! warp_scrub_live_config; then
                     msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
                     wipe_ok=0
-                fi
-                if ! warp_scrub_live_config; then
+                elif ! routing_outbound_del 'warp-out'; then
                     msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
                     wipe_ok=0
                 fi
@@ -36842,6 +36952,10 @@ clear_all_protocols() {
         msg "${GREEN}$(tr_msg cl_all_done)${NC}"
         return 0
     else
+        # S1-NEW-06: a failed clear used to end in a silent
+        # `return 1` here (the menu caller ignores the code),
+        # so the user saw no failure verdict at all. Always say so.
+        msg "${RED}[!] $(tr_msg cl_all_fail)${NC}"
         return 1
     fi
 }

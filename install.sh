@@ -32764,6 +32764,17 @@ EOF_SVC
     # live config, so live links are never removed. Best-effort: a
     # prune failure must not fail the deploy.
     _prune_standalone_links sing-box || true
+    # S1-NEW-03 (final-round followup 3): an overwrite redeploy rebuilds
+    # the sing-box config from scratch (build_singbox_config never emits
+    # TUIC inbounds), so removed TUIC nodes leave their per-tag cert/key
+    # pairs behind — the delete path runs this cleanup via
+    # _protocol_removed_side_effects, but this deploy path never did.
+    # Run it here, once the new config (incl. any preserved standalone
+    # inbounds) is on disk: the helper re-checks the live config and
+    # deletes the pairs only when no tuic inbound remains, so a
+    # preserved TUIC keeps its certs. Best-effort: a cleanup failure
+    # must not fail the deploy.
+    _singbox_cleanup_tuic_certs_when_none_remain || true
     setup_geo_cron
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into

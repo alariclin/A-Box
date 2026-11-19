@@ -16856,6 +16856,16 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     fi
     pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
     [[ -n "$pat" ]] || return 0
+    # S2-NEW-01: numbered second instances (tag-N) are standalone
+    # inbounds too, but the base tag set never names them, so a -2
+    # inbound was silently dropped from the snapshot and lost on the
+    # next deploy. Match the -N form of every base tag as well (any N,
+    # no hardcoded cap); only tags actually present in the live config
+    # can match, so this stays live-config-driven. The detour capture
+    # below keys off the same match, so a numbered inbound's detour
+    # target (e.g. shadowtls-ss-2) is kept as well. Still a single jq
+    # pass, so its failure still fail-closes (return 1) as before.
+    local patn="^(${pat})-[0-9]+$"
     if ! tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX); then
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
@@ -16868,7 +16878,7 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     # R16-F05-04: strip JSONC comments before jq: the live config may
     # legally carry // or /* */ comments (the same R14-F01-01 class as
     # the other live-config readers, which all strip first).
-    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})$" --arg patn "$patn" '([.inbounds[]? | select((.tag // "") | test($pat) or test($patn))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat) or test($patn)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
         rm -f -- "$out"; rm -rf -- "$tmpd"
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1

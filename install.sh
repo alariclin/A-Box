@@ -706,11 +706,24 @@ rebuild_standalone_links() {
     # M-35: a domain-only deployment (no usable public IP) must still
     # rebuild the Hy2 link from HY2_DOMAIN; return early only when
     # there is neither an IP nor a domain.
+    # M41-NEW-01 follow-up (S2-NEW-09/E62-NEW-02): rebuild used to
+    # only add missing links and never delete stale ones, so a
+    # same-core overwrite left orphaned .link files that menu 12
+    # reprinted as dead nodes. Prune both cores' stale links first --
+    # the survivor check deletes only a link whose inbound is
+    # confirmed gone from live config (H-26(3) rc-1-only semantics)
+    # -- then the blocks below re-create any missing live link.
+    # Runs before the early return so stale links are pruned even
+    # when the IP is unknown. Hysteria is not pruned here: hy2.link
+    # is refreshed from live config in the Hy2 block below (deleted
+    # there only once the Hysteria config is confirmed gone).
+    _prune_standalone_links xray || true
+    _prune_standalone_links sing-box || true
     [[ -n "$_ip" || -n "${HY2_DOMAIN:-}" ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
-        if [[ ! -f "$_dir/trojan-xray.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
             _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
@@ -736,9 +749,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/socks5-xray.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
@@ -748,9 +761,9 @@ rebuild_standalone_links() {
         fi
     fi
     if [[ -n "$_ip" && -f "$_sc" ]]; then
-        if [[ ! -f "$_dir/trojan-sb.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
@@ -773,9 +786,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/tuic.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
@@ -802,14 +815,14 @@ rebuild_standalone_links() {
                 # still registered, just without allow_insecure=1.
                 local _cert_inline_state='unknown' _cert_inline_present='' _inline_tmp=''
                 _cert_inline=''
-                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
+                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
                         true) _cert_inline_state='present' ;;
                         false) _cert_inline_state='absent' ;;
                     esac
                 fi
                 if [[ "$_cert_inline_state" == 'present' ]]; then
-                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
+                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
                     # R15-F01-02: the inline PEM goes through the same
@@ -826,9 +839,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/anytls.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
@@ -844,9 +857,9 @@ rebuild_standalone_links() {
         # _standalone_link_is_empty_shadowtls): that is the bad
         # link the old unchecked pipeline published, and the
         # next rebuild must retry it instead of skipping forever.
-        if [[ ! -f "$_dir/shadowtls.link" ]] || _standalone_link_is_empty_shadowtls "$_dir/shadowtls.link"; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor (empty-shadowtls retry subsumed)
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
@@ -890,9 +903,9 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/socks5-sb.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
@@ -903,19 +916,33 @@ rebuild_standalone_links() {
     fi
     # E19: official Hy2 never registered a standalone link, so menu 12 /
     # export showed no Hy2 node even though view_config prints the URL.
-    # Rebuild it from the live config when the file is missing (the
-    # deploy-time call below is the primary path; this is the safety net
-    # that also heals installs predating the fix). Secrets come from
-    # config.yaml itself, the port list from the environment (same source
-    # view_config uses); a missing/unusable pin refuses the link.
-    if [[ ! -f "$_dir/hy2.link" && -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+    # Secrets come from config.yaml itself, the port list from the
+    # environment (same source view_config uses); a missing/unusable
+    # pin refuses the link.
+    # M41-NEW-01 follow-up: the file is refreshed on every rebuild,
+    # not only when missing -- a deploy-time bare password goes stale
+    # the moment the server switches to userpass (the S1 404), and a
+    # link for a deleted server must not survive. The config path
+    # honours ABOX_HY2_CONFIG (fixture hook, same convention as
+    # hy2_effective_password_for_user); a symlinked config is
+    # unverifiable, so the old file is kept (fail-closed, same as
+    # the prune rc-2 rule), while a confirmed-gone config deletes it.
+    local _hycfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+    if [[ -L "$_hycfg" ]]; then
+        :
+    elif [[ ! -e "$_hycfg" ]]; then
+        rm -f -- "$_dir/hy2.link" 2>/dev/null || true
+    elif [[ -f "$_hycfg" ]]; then
         _pass=''; _obfs=''; _url=''; _port=''
         # R16-F01-02: same trailing-LF sentinel as the obfs branch
         # below: jq -r + $() strips a trailing LF from the password,
         # caching a wrong credential for a password that ends in LF.
+        # hy2_effective_password now prefers main (M41-NEW-01
+        # follow-up), so the refreshed link is main's composite in
+        # userpass mode, never the deploy-time bare password.
         _pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
         _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
-        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' "$_hycfg" 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
             _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null) || _obfs=''
             _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
@@ -38209,6 +38236,45 @@ _ss_b64_strict() {
     users_b64url_dec "$s"
 }
 
+# M41-NEW-01 follow-up (S2-NEW-09): does the live config still serve
+# (core, tag)? rc 0 = served, rc 1 = confirmed gone, rc 2 =
+# unverifiable (symlinked / empty / unparseable config). A missing
+# config file is confirmed gone: no inbound can exist without it.
+# hy2-family tags on xray/hy2 cores are served by the standalone
+# hysteria server, not by the xray config (xray has no hysteria2
+# inbound); the sing-box hy2 inbound is a real sing-box inbound, so
+# (sing-box, hy2) consults the sing-box config like any other tag.
+# Registries for deleted inbounds are deliberately preserved (the
+# S2-NEW-04 merge keeps their users, and the F06 snapshot path can
+# re-enable them), so callers must treat rc 1 as "link dead", never
+# as "registry broken". Callers must only refuse on rc 1; rc 2 keeps
+# the old fail-open behaviour. The hysteria config path honours
+# ABOX_HY2_CONFIG (fixture hook, same convention as
+# hy2_effective_password_for_user).
+_users_live_inbound_exists() {
+    local _core="$1" _tag="$2" _cfg='' _stripped='' _jq_rc=0
+    if [[ "$_core" == hy2 ]] || { [[ "$_core" == xray ]] && [[ "$_tag" == hy2* ]]; }; then
+        _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+        [[ -L "$_cfg" ]] && return 2
+        [[ -f "$_cfg" ]] || return 1
+        [[ -s "$_cfg" ]] || return 2
+        return 0
+    fi
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || echo '')
+    [[ -n "$_cfg" ]] || return 2
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
+    [[ -s "$_cfg" ]] || return 2
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e --arg t "$_tag" '([.[] | (.inbounds[]? | select((.tag // "") == $t))] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
 # Build the connection link for one registry user.
 # $1=core $2=tag $3=name -> prints link on stdout
 users_link() {
@@ -38226,6 +38292,19 @@ users_link() {
     secret=$(printf '%s' "$user" | jq -r '.secret // ""')
     use_uuid=$(printf '%s' "$user" | jq -r '.uuid // ""')
     [[ -n "$secret" ]] || return 1
+    # M41-NEW-01 follow-up (S2-NEW-09): a registry whose inbound is
+    # gone from the live config must not yield a link. The deploy
+    # preserves such registries deliberately (S2-NEW-04 merge), so
+    # the export layer has to skip them, or the subscription keeps
+    # serving the dead chain. Only a CONFIRMED absence refuses
+    # (rc 1); an unverifiable config (rc 2) keeps the old fail-open
+    # behaviour. The declare -F guard keeps pre-fix callers working
+    # (the helper is new; without it the gate is skipped).
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        local _live_rc=0
+        _users_live_inbound_exists "$core" "$tag" || _live_rc=$?
+        if [[ "$_live_rc" == 1 ]]; then return 1; fi
+    fi
     # Combo inbounds (either core) build from .env + live config values.
     if [[ "$tag" == 'vision' || "$tag" == 'xhttp' || "$tag" == 'ss' || "$tag" == 'hy2' ]] && [[ "$core" == 'xray' || "$core" == 'sing-box' ]]; then
         users_link_combo "$core" "$tag" "$name" "$secret" "$ssecret" "$proto" "$enabled_count"
@@ -54894,12 +54973,25 @@ ss_effective_password_for_user() {
 # secret intact through $(...) (same sentinel convention as
 # users_hy2_yaml_scalar / rebuild_standalone_links).
 hy2_effective_password() {
-    local cfg='/etc/hysteria/config.yaml' users='' pw_only='' login='' secret=''
+    # ABOX_HY2_CONFIG is the config-path override (fixture hook, same
+    # convention as hy2_effective_password_for_user).
+    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick=''
     users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
     if [[ -n "$users" && "$users" != '[]' ]]; then
-        pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
+        # M41-NEW-01 follow-up: the single-node/combo display must
+        # show main's credential, not the first registered user's.
+        # The live user list is in registration order (e62hy1 can
+        # precede main), so .[0] printed another user's composite
+        # link and main's composite link never appeared anywhere in
+        # menu 12. Prefer the user named "main"; fall back to .[0]
+        # when no main exists (single-user deploys, renamed main).
+        # The picked entry carries the password_only flag too
+        # (password mode has a single entry).
+        _pick=$(printf '%s' "$users" | jq -c '(first(.[] | select((.login // .name // "") == "main")) // .[0])' 2>/dev/null || true)
+        [[ -n "$_pick" && "$_pick" != 'null' ]] || _pick=$(printf '%s' "$users" | jq -c '.[0]' 2>/dev/null || true)
+        pw_only=$(printf '%s' "$_pick" | jq -r '.password_only // false' 2>/dev/null || echo false)
         if [[ "$pw_only" == 'true' ]]; then
-            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=$(printf '%s' "$_pick" | jq -r '((.secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             secret=${secret%__ABOX_TRAILING_NL_KEEP__}
             if [[ -n "$secret" ]]; then
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
@@ -54910,9 +55002,9 @@ hy2_effective_password() {
             # login/name, so even a single userpass user needs
             # "login:secret"; only password-only auth takes the
             # bare secret (handled above).
-            login=$(printf '%s' "$users" | jq -r '((.[0].login // .[0].name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            login=$(printf '%s' "$_pick" | jq -r '((.login // .name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             login=${login%__ABOX_TRAILING_NL_KEEP__}
-            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=$(printf '%s' "$_pick" | jq -r '((.secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             secret=${secret%__ABOX_TRAILING_NL_KEEP__}
             if [[ -n "$login" && -n "$secret" ]]; then
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
@@ -54928,8 +55020,8 @@ hy2_effective_password() {
 }
 # Per-user effective Hy2 password (H-24(1) follow-up): the server
 # authenticates ONE credential per connection. In userpass mode that
-# credential is "login:secret" OF THE TARGET USER (not the first
-# user's, which the no-arg hy2_effective_password returns); in
+# credential is "login:secret" OF THE TARGET USER (not main's, which
+# the no-arg hy2_effective_password returns); in
 # password-only mode it is the bare server password for every user.
 # Prints the effective password with the trailing-newline sentinel,
 # like hy2_effective_password. $1 = login (registry .login // .name);

@@ -34,21 +34,21 @@
 
 ## این چیست
 
-A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود ۵۹٬۱۸۵ خط) که سرویس‌های پروکسی و شبکه را روی یک VPS لینوکسی مستقر و نگهداری می‌کند. Xray و sing-box و سرور رسمی Hysteria 2 را نصب و پیکربندی می‌کند، پیکربندی کلاینت تولید می‌کند و کارهای روزمره — قوانین فایروال، محافظت Fail2Ban، تنظیمات DNS، پشتیبان‌گیری، به‌روزرسانی و عیب‌یابی — را در یک منوی تعاملی شش‌زبانه گرد هم می‌آورد. تا وقتی در منو انتخاب نکنید چیزی مستقر نمی‌شود و عملیات مخرب همیشه تأیید می‌خواهند.
+A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود ۶۱٬۴۱۹ خط) که سرویس‌های پروکسی و شبکه را روی یک VPS لینوکسی مستقر و نگهداری می‌کند. Xray و sing-box و سرور رسمی Hysteria 2 را نصب و پیکربندی می‌کند، پیکربندی کلاینت تولید می‌کند و کارهای روزمره — قوانین فایروال، محافظت Fail2Ban، تنظیمات DNS، پشتیبان‌گیری، به‌روزرسانی و عیب‌یابی — را در یک منوی تعاملی شش‌زبانه گرد هم می‌آورد. تا وقتی در منو انتخاب نکنید چیزی مستقر نمی‌شود و عملیات مخرب همیشه تأیید می‌خواهند.
 
 ## شروع سریع
 
 منبع رسمی، با دستور قفل‌شده روی یک کامیت تغییرناپذیر:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 آینه شخص ثالث همان فایل قفل‌شده (فقط مسیر انتقال است، نه یک درگاه رسمی). آن را مستقیم اجرا نکنید: ابتدا دانلود کنید، سپس بایت‌به‌بایت با منبع رسمی مقایسه کنید و تنها پس از تطابق اجرا کنید. آینه را فقط زمانی به کار ببرید که به پروکسی اعتماد دارید؛ فایل آینه بررسی‌نشده را هرگز در محیط واقعی اجرا نکنید:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -143,13 +143,17 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 |---|---|
 | `sudo bash A-Box.sh` | باز کردن منوی تعاملی |
 | `sudo bash A-Box.sh --help` | نمایش راهنمای خط فرمان |
+| `sudo bash A-Box.sh -h` | نمایش راهنمای خط فرمان (همان --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | شروع با زبان رابط مشخص |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | شروع با زبان رابط مشخص (همان --lang) |
 | `sudo bash A-Box.sh --self-test` | اجرای خودآزمون‌های داخلی |
 | `sudo bash A-Box.sh --status` | نمایش وضعیت سرویس‌ها و پیکربندی مدیریت‌شده |
 | `sudo bash A-Box.sh --start` / `--stop` | شروع یا توقف سرویس‌های مدیریت‌شده |
 | `sudo bash A-Box.sh --version` | نمایش شناسه ساخت اسکریپت |
+| `sudo bash A-Box.sh -V` | نمایش شناسه ساخت اسکریپت (همان --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | خروجی گرفتن از کلید بازیابی پشتیبان |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | تبدیل پشتیبان قالب قدیمی به قالب کنونی |
+| `sudo bash A-Box.sh --xray-config-autorecover` | بازیابی خودکار یک‌باره پیکربندی آسیب‌دیده Xray از پشتیبان مورد اعتماد (فراخوانی کاوشگر) |
 
 قبولی در خودآزمون جای نصب واقعی یا آزمون اتصال کلاینت را نمی‌گیرد.
 

@@ -34,21 +34,21 @@ More protocols (menu 18):
 
 ## What it is
 
-A-Box is a single-file Bash script (`install.sh`, about 59,185 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
+A-Box is a single-file Bash script (`install.sh`, about 61,419 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
 
 ## Quick start
 
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -143,13 +143,17 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 |---|---|
 | `sudo bash A-Box.sh` | Open the interactive menu |
 | `sudo bash A-Box.sh --help` | Show command-line help |
+| `sudo bash A-Box.sh -h` | Show command-line help (same as --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Start with a given UI language |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | Start with a given UI language (same as --lang) |
 | `sudo bash A-Box.sh --self-test` | Run the built-in self-tests |
 | `sudo bash A-Box.sh --status` | Show managed services and configuration status |
 | `sudo bash A-Box.sh --start` / `--stop` | Start or stop the managed services |
 | `sudo bash A-Box.sh --version` | Show the script build identifier |
+| `sudo bash A-Box.sh -V` | Show the script build identifier (same as --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Export the backup recovery key |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Convert a legacy backup to the current format |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Auto-recover a damaged Xray config once from a trusted backup (probe call) |
 
 A passing self-test does not replace a real installation or a client connectivity test.
 

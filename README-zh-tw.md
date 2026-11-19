@@ -34,21 +34,21 @@
 
 ## 這是什麼
 
-A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 59,185 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。
+A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 61,419 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。
 
 ## 快速開始
 
 官方來源，指令已鎖定到不可變的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方鏡像（與上面是同一個鎖定檔案，僅作傳輸通道，不是官方入口）。不要直接執行：先下載，再與官方來源逐位元組比對，通過後才執行。僅在信任該代理時使用鏡像；未經核對的鏡像檔案不得用於生產：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -143,13 +143,17 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 |---|---|
 | `sudo bash A-Box.sh` | 開啟互動選單 |
 | `sudo bash A-Box.sh --help` | 顯示命令行幫助 |
+| `sudo bash A-Box.sh -h` | 顯示命令行幫助（與 --help 相同） |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | 指定介面語言啟動 |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | 指定介面語言啟動（與 --lang 相同） |
 | `sudo bash A-Box.sh --self-test` | 執行內建自檢 |
 | `sudo bash A-Box.sh --status` | 顯示受管服務與配置狀態 |
 | `sudo bash A-Box.sh --start` / `--stop` | 啟動或停止受管服務 |
 | `sudo bash A-Box.sh --version` | 顯示腳本建置標識 |
+| `sudo bash A-Box.sh -V` | 顯示腳本建置標識（與 --version 相同） |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 匯出備份還原金鑰 |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目錄]` | 把舊格式備份轉換為現行格式 |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Xray 設定損壞時從可信備份自動恢復一次（探針呼叫） |
 
 自檢通過不等於真實安裝或用戶端連通驗證都通過。
 

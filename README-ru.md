@@ -34,21 +34,21 @@
 
 ## Что это
 
-A-Box — это один Bash-скрипт (`install.sh`, около 59 185 строк), который развёртывает и обслуживает прокси и сетевые службы на Linux VPS. Он устанавливает и настраивает Xray, sing-box и официальный сервер Hysteria 2, создаёт клиентские конфигурации и объединяет повседневные операции — правила межсетевого экрана, защиту Fail2Ban, настройки DNS, резервные копии, обновления и диагностику — в одном интерактивном меню на шести языках. Пока вы не выберете пункт меню, ничего не разворачивается, а разрушительные действия требуют подтверждения.
+A-Box — это один Bash-скрипт (`install.sh`, около 61 419 строк), который развёртывает и обслуживает прокси и сетевые службы на Linux VPS. Он устанавливает и настраивает Xray, sing-box и официальный сервер Hysteria 2, создаёт клиентские конфигурации и объединяет повседневные операции — правила межсетевого экрана, защиту Fail2Ban, настройки DNS, резервные копии, обновления и диагностику — в одном интерактивном меню на шести языках. Пока вы не выберете пункт меню, ничего не разворачивается, а разрушительные действия требуют подтверждения.
 
 ## Быстрый старт
 
 Официальный источник, команда закреплена за неизменяемым коммитом:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Стороннее зеркало того же закреплённого файла (только канал доставки, не официальный адрес). Не запускайте его напрямую: скачайте, побайтово сверьте с официальным источником и только потом запускайте. Используйте зеркало только если доверяете прокси; непроверенный файл из зеркала нельзя использовать в рабочей среде:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -143,13 +143,17 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 |---|---|
 | `sudo bash A-Box.sh` | Открыть интерактивное меню |
 | `sudo bash A-Box.sh --help` | Показать справку по командной строке |
+| `sudo bash A-Box.sh -h` | Показать справку по командной строке (то же, что --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Запуск с заданным языком интерфейса |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | Запуск с заданным языком интерфейса (то же, что --lang) |
 | `sudo bash A-Box.sh --self-test` | Запустить встроенные самотесты |
 | `sudo bash A-Box.sh --status` | Показать состояние управляемых служб и конфигурации |
 | `sudo bash A-Box.sh --start` / `--stop` | Запустить или остановить управляемые службы |
 | `sudo bash A-Box.sh --version` | Показать идентификатор сборки скрипта |
+| `sudo bash A-Box.sh -V` | Показать идентификатор сборки скрипта (то же, что --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Экспортировать ключ восстановления резервных копий |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Преобразовать резервную копию старого формата в текущий |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Однократно автоматически восстановить повреждённую конфигурацию Xray из доверенной резервной копии (вызов probe) |
 
 Пройденный самотест не заменяет реальную установку или проверку связности клиентом.
 

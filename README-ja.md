@@ -34,21 +34,21 @@
 
 ## 概要
 
-A-Box は単一ファイルの Bash スクリプト（`install.sh`、約59,185行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
+A-Box は単一ファイルの Bash スクリプト（`install.sh`、約61,419行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
 
 ## クイックスタート
 
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/148814b3cfa45cbecb249b7051a1437faea6599c/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d2b7ef5eb06caf76c2697e307321893e2ffd5d9/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -102,11 +102,11 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 | 1 | A-Check IP 品質チェック | 9 | ローカル SNI 最適化 |
 | 2 | システムベンチマークと速度測定 | 10 | ミニホスト SNI 最適化 |
 | 3 | IP品質 / ストリーミング / ルートテスト | 11 | SNI テスト記録 |
-| 4 | 診断パッケージのエクスポート | 12 | ノード SNI の変更 |
+| 4 | 匿名化診断パッケージのエクスポート | 12 | ノード SNI の変更 |
 | 5 | WARP と振り分け管理 | 13 | 設定のバックアップ / 復元 |
 | 6 | スワップメモリ（zram / Swap）| 14 | 複数ユーザー / サブスクリプション出力 |
 | 7 | VPS ワンクリック最適化 | 15 | Wallos インストール / 更新 / バックアップ |
-| 8 | IP / DNS / タイムゾーン設定 | 16 | SS-2022 アクセス許可リスト |
+| 8 | IP / DNS / タイムゾーン / ダウンロードソース設定 | 16 | SS-2022 アクセス許可リスト |
 | 0 | メインメニューに戻る | 17 | カスタムショートカット |
 
 項目 2・3 のテストスクリプトは、デフォルトで上流の最新版を取得し構造チェックを行います。取得またはチェックに失敗した場合は、検証済み `test-tools-mirror` リリース内の固定コピー（Ed25519 署名 + SHA-256 の二重検証）にフォールバックし、両方とも利用できない場合は何も実行しません。項目 1 の A-Check も同様に最新版をリアルタイム取得し、失敗時は署名済みミラーの固定コピー、次にローカルの検証済みキャッシュへフォールバックします。
@@ -143,13 +143,17 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 |---|---|
 | `sudo bash A-Box.sh` | 対話型メニューを開く |
 | `sudo bash A-Box.sh --help` | コマンドラインヘルプを表示 |
+| `sudo bash A-Box.sh -h` | コマンドラインヘルプを表示（--help と同じ） |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | UI 言語を指定して起動 |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | UI 言語を指定して起動（--lang と同じ） |
 | `sudo bash A-Box.sh --self-test` | 内蔵セルフテストを実行 |
 | `sudo bash A-Box.sh --status` | 管理対象サービスと設定の状態を表示 |
 | `sudo bash A-Box.sh --start` / `--stop` | 管理対象サービスを起動 / 停止 |
 | `sudo bash A-Box.sh --version` | スクリプトのビルド識別子を表示 |
+| `sudo bash A-Box.sh -V` | スクリプトのビルド識別子を表示（--version と同じ） |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | バックアップ復旧キーをエクスポート |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | 旧形式のバックアップを現行形式に変換 |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Xray 設定が破損したとき、信頼できるバックアップから一度だけ自動復旧する（プローブ呼び出し） |
 
 セルフテストの合格は、実際のインストール、クライアント接続確認の代わりにはなりません。
 

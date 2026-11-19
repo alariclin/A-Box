@@ -34,21 +34,21 @@
 
 ## 概要
 
-A-Box は単一ファイルの Bash スクリプト（`install.sh`、約61,535行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
+A-Box は単一ファイルの Bash スクリプト（`install.sh`、約61,575行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
 
 ## クイックスタート
 
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/74f5685f93e85a6460dee9c0afc8b40e4c7a5808/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/74f5685f93e85a6460dee9c0afc8b40e4c7a5808/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/74f5685f93e85a6460dee9c0afc8b40e4c7a5808/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -109,9 +109,9 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 | 8 | IP / DNS / タイムゾーン / ダウンロードソース設定 | 16 | SS-2022 アクセス許可リスト |
 | 0 | メインメニューに戻る | 17 | カスタムショートカット |
 
-項目 2・3 のテストスクリプトは、デフォルトで上流の最新版を取得し構造チェックを行います。取得またはチェックに失敗した場合は、検証済み `test-tools-mirror` リリース内の固定コピー（Ed25519 署名 + SHA-256 の二重検証）にフォールバックし、両方とも利用できない場合は何も実行しません。項目 1 の A-Check は `test-tools-mirror` の固定リリースからのみ取得し、Ed25519 署名と SHA-256 の検証を通ったものだけを実行します。リアルタイムの上流取得も、以前のキャッシュへのフォールバックもありません。いずれかの手順に失敗すれば何も実行しません。
+項目 2・3 のテストスクリプトは、デフォルトで上流の最新版を取得し構造チェックを行います。取得またはチェックに失敗した場合は、検証済み `test-tools-mirror` リリース内の固定コピー（Ed25519 署名 + SHA-256 の二重検証）にフォールバックし、両方とも利用できない場合は何も実行しません。項目 1 の A-Check も同様に最新版をリアルタイム取得し、失敗時は署名済みミラーの固定コピー、次にローカルの検証済みキャッシュへフォールバックします。
 
-項目 1 の **A-Check** は、姉妹プロジェクト [A-Check](https://github.com/alariclin/A-Check) の IP 評判チェッカーです。スクリプトは `test-tools-mirror` の固定リリースからのみ取得し、Ed25519 署名と SHA-256 を検証し、構造チェック（shebang、VERSION マーカー、サイズ、py_compile）を通った検証済みコピーを `/etc/ddr/tools` にインストールした上で、検証直後のファイルを実行します。A-Check リポジトリからのリアルタイム取得も、以前のキャッシュへのフォールバックもありません。いずれかの手順に失敗すれば何も実行しません。Python 3.8 以上が必要です。
+項目 1 の **A-Check** は、姉妹プロジェクト [A-Check](https://github.com/alariclin/A-Check) の IP 評判チェッカーです。スクリプトは A-Check リポジトリから最新版をリアルタイム取得し、実行前に構造チェック（shebang、VERSION マーカー、サイズ、py_compile）を行って `/etc/ddr/tools` にキャッシュします。取得に失敗した場合は、署名検証済みのミラー固定コピー、次にローカルの検証済みキャッシュへフォールバックします。Python 3.8 以上が必要です。
 
 **ユーザー管理（ツールボックス 14)。** デプロイ済みのすべてのノード（組み合わせ・単独プロトコルを問わず、Xray / sing-box / 公式 Hysteria 2）には、名前付きユーザーを複数追加でき、各ユーザーに専用の認証情報と共有リンク / QR コードが付きます。ユーザーごとに月間流量制限 (GB)、有効期限（日数）、利用可能時間帯を設定でき、5 分ごとのバックグラウンドチェックが自動執行します。期限切れ・制限超過・時間帯外のユーザーは自動的に失効します（Xray 系では再起動なしのホット失効）。ユーザー別統計と制限執行は Xray 系（StatsService）でのみ利用可能で、sing-box 公式バイナリにはユーザー別統計がないため、sing-box では期限と時間帯のルールのみが効きます。全ユーザーのリンクは購読ファイルとして一括エクスポートできます。
 

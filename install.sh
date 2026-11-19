@@ -27133,6 +27133,53 @@ _rollback_start_snapshot_services() {
     return 0
 }
 
+# N6-A: pre-deployment snapshot of services.state, kept OUTSIDE the
+# backup archive. The rollback restart gate reads meta/services.state
+# out of the backup tarball; an in-place tamper of the gzip stream
+# before that member (S2) makes the state unrecoverable and leaves
+# every service down. The snapshot is a private copy taken at
+# transaction begin, while the just-created archive is still intact.
+ABOX_DEPLOY_TX_STATE_SNAPSHOT=''
+
+# Drop the snapshot file (if any) and clear the pointer. Called on
+# commit and at the end of every rollback; begin also clears a stale
+# snapshot before taking a new one, so no stale state is ever reused.
+_tx_clear_services_state_snapshot() {
+    if [[ -n "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}" && -f "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" ]]; then
+        rm -f -- "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" 2>/dev/null || true
+    fi
+    ABOX_DEPLOY_TX_STATE_SNAPSHOT=''
+}
+
+# deployment_transaction_snapshot_services_state <backup>: copy the
+# backup's own recorded meta/services.state into a private file
+# outside the archive (mode 600, validated) and point
+# ABOX_DEPLOY_TX_STATE_SNAPSHOT at it. The copy records exactly the
+# state the rollback would have used. Fails closed (non-zero, no
+# pointer left) when the state cannot be extracted or fails
+# validation: deploying without the snapshot would silently reopen
+# the N6 hole. Tar's exit code is not the gate (see the N6 note in
+# rollback_restart_services_from_backup): file presence plus
+# validate_services_state_file decides.
+deployment_transaction_snapshot_services_state() {
+    local backup="${1:-}" snap work
+    _tx_clear_services_state_snapshot
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
+    snap=$(mktemp /tmp/A-Box-tx-services-state.XXXXXX) || return 1
+    chmod 600 "$snap" || { rm -f -- "$snap"; return 1; }
+    work=$(mktemp -d /tmp/A-Box-tx-state-extract.XXXXXX) || { rm -f -- "$snap"; return 1; }
+    tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null || true
+    if [[ ! -f "$work/meta/services.state" ]] || ! validate_services_state_file "$work/meta/services.state"; then
+        rm -rf -- "$work" "$snap"
+        return 1
+    fi
+    cp -- "$work/meta/services.state" "$snap" || { rm -rf -- "$work" "$snap"; return 1; }
+    chmod 600 "$snap" || { rm -rf -- "$work" "$snap"; return 1; }
+    rm -rf -- "$work"
+    ABOX_DEPLOY_TX_STATE_SNAPSHOT="$snap"
+    return 0
+}
+
 rollback_restart_services_from_backup() {
     local backup="${1:-}" work state rc=0
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
@@ -27158,6 +27205,21 @@ rollback_restart_services_from_backup() {
         fi
         rm -rf -- "$work"
         return $rc
+    fi
+    # N6-A: the archive's state could not be recovered (S2: gzip damage
+    # before the state member, or a corrupt in-archive state). Fall back
+    # to the pre-deployment snapshot taken at transaction begin.
+    # Restart-only: _rollback_start_snapshot_services only starts
+    # services the snapshot marks active=1, never restores files, and
+    # the snapshot itself must pass validate_services_state_file, so a
+    # corrupt/truncated snapshot starts nothing. The archive file must
+    # still exist (gate above): a missing archive fails closed.
+    if [[ -n "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}" && -f "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" && ! -L "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" ]] \
+        && validate_services_state_file "$ABOX_DEPLOY_TX_STATE_SNAPSHOT"; then
+        msg "[!] Rollback fallback: archive state unrecoverable; restarting services from the pre-deployment snapshot."
+        _rollback_start_snapshot_services "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" || true
+        rm -rf -- "$work"
+        return 0
     fi
     rm -rf -- "$work"
     return 1
@@ -27289,6 +27351,9 @@ deployment_transaction_rollback() {
             ABOX_ROLLBACK_FALLBACK_RC='1'
         fi
     fi
+    # N6-A: the snapshot served its purpose (or there was no failure to
+    # cover); drop it so a later transaction can never reuse stale state.
+    _tx_clear_services_state_snapshot
     restore_deployment_transaction_traps
     return "$_rc"
 }
@@ -27300,6 +27365,11 @@ begin_deployment_transaction() {
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir" || return 1
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || return 1
+    # N6-A: snapshot services.state outside the archive before any
+    # service is stopped, so a later in-place tamper of the tarball
+    # cannot take the restart fallback down with it. Fails closed: a
+    # transaction that cannot snapshot its pre-state must not start.
+    deployment_transaction_snapshot_services_state "$ABOX_LAST_BACKUP" || return 1
     ABOX_DEPLOY_TX_BACKUP_DIR="$backup_dir"
     ABOX_DEPLOY_TX_ACTIVE=1
     ABOX_DEPLOY_TX_REASON="$reason"
@@ -27312,6 +27382,7 @@ begin_deployment_transaction() {
 
 commit_deployment_transaction() {
     local tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    _tx_clear_services_state_snapshot
     ABOX_DEPLOY_TX_ACTIVE=0
     ABOX_DEPLOY_TX_TARGETS=''
     ABOX_DEPLOY_TX_REASON=''

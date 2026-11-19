@@ -26172,6 +26172,18 @@ xray_hot_remove_inbound() {
 # repairs an already-duplicated live config on the next apply
 # (warp_undeploy included); a single intact pair is left untouched
 # in place.
+# D-leg OBS-04: the guard pair alone is not the baseline. After a
+# prune, the first independent-instance deploy seeds a minimal
+# config with no .route at all, and this guard only ever added the
+# pair -- so live route rules sat at 2 (sniff and bittorrent-reject
+# missing) until a full-stack rebuild. Enforce the whole 4-rule
+# baseline build_singbox_config emits ([sniff, resolve,
+# loopback-reject, bittorrent-reject]) instead: every apply rebuilds
+# the rules as the baseline followed by the surviving non-baseline
+# rules, in order. A config that is already canonical rebuilds to
+# itself, so healthy configs are untouched; a duplicated baseline
+# (extra guard-pair copies after the first four) collapses to one.
+# The fail-closed refusals above are unchanged.
 singbox_apply_loopback_guard() {
     local src="$1" _tmp _dir
     [[ -f "$src" && ! -L "$src" ]] || return 1
@@ -26179,15 +26191,15 @@ singbox_apply_loopback_guard() {
     _tmp=$(mktemp "$_dir/.A-Box-sb-guard.XXXXXX") || return 1
     if ! jq '
         [
+          {protocol: "tcp", action: "sniff"},
           {action: "resolve"},
-          {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"}
-        ] as $guard
+          {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"},
+          {protocol: "bittorrent", action: "reject"}
+        ] as $base
         | if type != "object" then error("sing-box config must be an object") else . end
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
-        | (.route.rules | map(select(. == $guard[0] or . == $guard[1]))) as $present
-        | if ($present | length) == 2 and (.route.rules[0:2] == $guard or .route.rules[1:3] == $guard) then .
-          else .route.rules = ($guard + (.route.rules | map(select(. != $guard[0] and . != $guard[1])))) end
+        | .route.rules = ($base + (.route.rules | map(select(. != $base[0] and . != $base[1] and . != $base[2] and . != $base[3]))))
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -27199,6 +27211,16 @@ deployment_transaction_rollback() {
     local _rc
     deployment_transaction_rollback_inner "$@"
     _rc=$?
+    # N6-A: the inner rollback can fail BEFORE any service restart
+    # (pre-verification, retained pin, stop/firewall/remove failure)
+    # while the deploy already stopped the services. A failed rollback
+    # must never leave a service down that the snapshot marks active:
+    # best-effort restart from the transaction backup (starts only
+    # A-Box-owned services the snapshot marks active=1; restores no
+    # files). The failure rc is never masked.
+    if (( _rc != 0 )); then
+        rollback_restart_services_from_backup "${ABOX_DEPLOY_TX_BACKUP:-}" || true
+    fi
     restore_deployment_transaction_traps
     return "$_rc"
 }
@@ -32905,6 +32927,10 @@ EOF_SVC
     # warns but must not fail it (same posture as the post-deploy
     # snapshot below).
     users_reg_reconcile_after_deploy xray || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # O1 (followup6 B-leg): drop registries of inbounds this overwrite
+    # removed (Vision coverage over xray4 leaves stale ss/xhttp files
+    # that the export then skips). Best-effort like reconcile above.
+    users_reg_prune_stale_after_deploy xray || msg "O1: stale user registry prune after deploy failed; registries of removed inbounds may linger until the next user-management visit." >&2
     # R27-H-NF-06 (GPT-arbitrated B): snapshot the just-deployed config
     # so the newest trusted backup is no longer the pre-deployment
     # empty one; a later self-heal then restores nodes instead of an
@@ -33116,6 +33142,10 @@ EOF_SVC
     # link. Best-effort: the deploy already committed, so a failure
     # warns but must not fail it.
     users_reg_reconcile_after_deploy sing-box || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # O1 (followup6 B-leg): same stale-registry prune as the xray
+    # deploy above (single-protocol coverage drops the other tags'
+    # inbounds; their registries must not linger into the export).
+    users_reg_prune_stale_after_deploy sing-box || msg "O1: stale user registry prune after deploy failed; registries of removed inbounds may linger until the next user-management visit." >&2
     # S2-NEW-03 follow-up (fresh-deploy segment): the refresh below
     # exports registries only, and on a fresh install no registry
     # exists yet -- main lives only in the live config, so the export
@@ -36243,6 +36273,28 @@ remove_single_protocol_menu() {
     if (( _inv_rc != 0 )); then
         return 1
     fi
+    # D-leg O2 (same symptom as 124bfe8-leg O2): the inventory also
+    # lists the ShadowTLS inner detour inbounds (shadowtls-ss,
+    # shadowtls-in-2-ss), which have no listen_port, so the delete
+    # list showed them as "ShadowTLS · sing-box · :—" -- and selecting
+    # one deleted the live outer node with it (the deps query finds
+    # the outer inbound detouring to it). Helpers are never standalone
+    # nodes: drop them from the delete list, using the same regex
+    # view_config already uses (L30386/L30420). They are still removed
+    # together with their outer node via the E12 detour-target
+    # absorption below, never standalone.
+    if (( ${#rows[@]} > 0 )); then
+        local -a _rows_f=()
+        local _r='' _c='' _t='' _p='' _port=''
+        for _r in "${rows[@]}"; do
+            IFS=$'\t' read -r _c _t _p _port <<< "$_r"
+            if [[ "$_t" =~ ^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$ ]]; then
+                continue
+            fi
+            _rows_f+=("$_r")
+        done
+        rows=("${_rows_f[@]}")
+    fi
     if (( ${#rows[@]} == 0 )); then
         msg "${YELLOW}$(tr_msg cl_none)${NC}"
         return 0
@@ -38507,6 +38559,60 @@ users_reg_reconcile_after_deploy() {
     return "$rc"
 }
 
+# O1 (followup6 B-leg): prune stale user registries after an overwrite
+# deploy. deploy_xray/deploy_singbox rebuild the live config wholesale,
+# so tags the new config drops (e.g. Vision single-protocol coverage
+# over an xray4 stack drops ss/xhttp) leave registries behind that no
+# live inbound serves. users_reg_reconcile_after_deploy deliberately
+# leaves tag-gone registries alone (S2-NEW-04 merge / F06 snapshot
+# re-enable), and users_export_all then trips over them: users_link
+# refuses them via the M41-NEW-01 live gate, so every deploy prints
+# "Skipped user main (xray/ss)" / "(xray/xhttp)" noise (S1 O1).
+# This closes that gap at the deploy tail, after reconcile and after
+# standalone_preserve_restore, so a restored tag is live and kept.
+# Only a registry that is ALL of the following is removed:
+# - its JSON content reads as this core + a non-empty tag (identity
+#   from content, never the filename; unreadable identity is kept);
+# - it carries NO valid inbound_snapshot for its own tag (a snapshot
+#   is the F06 multi-user-menu re-enable candidate: users_reg_ensure
+#   admits it, so deleting it would destroy that path);
+# - _users_live_inbound_exists confirms the tag ABSENT from the live
+#   config (rc 1). A live tag (rc 0) is kept; an unverifiable config
+#   (rc 2) or a missing helper is kept (fail-closed).
+# Removal goes through users_registry_remove (encoder path + sidecar
+# cleanup). Returns 1 if the registry dir is a symlink or a removal
+# fails; deploy callers treat it as a best-effort warning, never a
+# deploy failure.
+users_reg_prune_stale_after_deploy() {
+    local core="$1" dir='' f='' c='' t='' _live_rc=0
+    dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
+    [[ ! -L "$dir" ]] || return 1
+    [[ -d "$dir" ]] || return 0
+    for f in "$dir/$core"__*.json; do
+        [[ -f "$f" && ! -L "$f" ]] || continue
+        c=$(jq -r '.core // ""' "$f" 2>/dev/null || true)
+        t=$(jq -r '.tag // ""' "$f" 2>/dev/null || true)
+        [[ "$c" == "$core" && -n "$t" ]] || continue
+        # F06 re-enable candidate: keep any registry whose snapshot
+        # names its own tag (users_reg_ensure admits exactly this).
+        if jq -e --arg t "$t" '.inbound_snapshot | type == "object" and .tag == $t' "$f" >/dev/null 2>&1; then
+            continue
+        fi
+        _live_rc=0
+        if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+            _users_live_inbound_exists "$core" "$t" || _live_rc=$?
+        else
+            continue
+        fi
+        # rc 1 = confirmed absent: stale, remove. rc 0 = live: keep.
+        # rc 2 = unverifiable: keep (fail-closed).
+        if [[ "$_live_rc" == 1 ]]; then
+            users_registry_remove "$core" "$t" || return 1
+        fi
+    done
+    return 0
+}
+
 # Ensure a registry exists for (core, tag): adopt from the live config
 # when missing, then merge in any config credentials the registry does
 # not know yet (out-of-band changes) as auto-named users.
@@ -39441,6 +39547,20 @@ users_apply_reg() {
         return 1
     fi
     rm -f -- "${_reg}.sync-pending"
+    # D-leg OBS-02: the xray E62-NEW-01 mirror writes a newly added
+    # Vision user into the live xhttp inbound, but the xhttp registry
+    # only catches up on the next multi_user_menu render (users_reg_
+    # ensure), while the subscription export below is built purely
+    # from the registries -- so the export lags by one chain and only
+    # self-heals on the next menu render. Pull that merge forward
+    # here (best-effort, sync already committed): users_reg_ensure is
+    # exactly the merge the menu already performs, so the registry /
+    # export state after an add is the same as after the next menu
+    # render -- just earlier. No-op when there is no xhttp inbound
+    # (vision-only stack: adopt fails, swallowed by || true).
+    if [[ "$1" == 'xray' && "$2" == 'vision' ]]; then
+        users_reg_ensure xray xhttp >/dev/null 2>&1 || true
+    fi
     # S2-NEW-03 follow-up: a committed registry change is a users.d
     # change, and the subscription export is built from the registries.
     # Refresh it here so add/delete/toggle/quota/expiry/window/reset/
@@ -61200,6 +61320,9 @@ N11EOF
     grep -Fq 'setup_zram_swap()' <<< "$source_body" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
     grep -Fq 'users_registries_wipe' <<< "$source_body" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
     grep -Fq 'users_registry_remove "$core" "$tag"' <<< "$source_body" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy' <<< "$source_body" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy xray' <<< "$source_body" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' <<< "$source_body" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
     grep -Fq '6) swap_menu ;;' <<< "$source_body" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
     grep -Fq '/usr/local/sbin/abox-zram' <<< "$source_body" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }

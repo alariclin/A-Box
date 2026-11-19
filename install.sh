@@ -38365,10 +38365,31 @@ users_link_combo() {
             _hy2_host="${acme_domain:-}"
             [[ -n "$_hy2_host" ]] || _hy2_host="${HY2_DOMAIN:-}"
             [[ -n "$_hy2_host" ]] || _hy2_host="$ip"
-            # R1-11-F05: sing-box Hy2 is password-only auth, even
-            # multi-user; the name:secret form fails authentication.
+            # M41-NEW-01 (Carbon R3 follow-up 2): mode-aware userinfo.
+            # The standalone hysteria server switches to
+            # `auth: type: userpass` once a second Hy2 user exists, and
+            # a bare password then has no matching user (live 404).
+            # Mirror the users_link core==hy2 path (H-24(1)): ask the
+            # live server config for THIS user's effective credential --
+            # "login:secret" as ONE urlencoded string in userpass mode,
+            # the bare server password in password mode. A lookup
+            # failure (no standalone server: a pure sing-box deploy
+            # prunes /etc/hysteria, and its own hysteria2 inbound is
+            # password-only with a display-only name, R1-11-F05) keeps
+            # the historical bare registry secret, so the sing-box link
+            # is byte-identical. The helper honors ABOX_HY2_CONFIG as
+            # its config-path override (fixture hook, same convention
+            # as _wallos_hy2_http01_keeps_80).
+            local _hy2_eff='' _hy2_userinfo=''
+            _hy2_eff=$(hy2_effective_password_for_user "$name" 2>/dev/null || true)
+            if [[ -n "$_hy2_eff" ]]; then
+                _hy2_eff=${_hy2_eff%__ABOX_TRAILING_NL_KEEP__}
+                _hy2_userinfo="$(urlencode "$_hy2_eff")"
+            else
+                _hy2_userinfo="$(urlencode "$secret")"
+            fi
             printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$_hy2_host")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
+                "$_hy2_userinfo" "$(uri_host "$_hy2_host")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         *) return 1 ;;
     esac
     return 0
@@ -54821,7 +54842,7 @@ hy2_effective_password() {
 # fixtures). Returns 1 when the live config has no such user (a link
 # built from the registry alone would 404) or is unreadable.
 hy2_effective_password_for_user() {
-    local login="$1" cfg="${2:-/etc/hysteria/config.yaml}" users='' pw_only='' entry='' secret=''
+    local login="$1" cfg="${2:-${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}}" users='' pw_only='' entry='' secret=''
     [[ -n "$login" ]] || return 1
     users=$(users_hy2_read_users "$cfg" 2>/dev/null) || return 1
     [[ -n "$users" && "$users" != '[]' ]] || return 1

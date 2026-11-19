@@ -41,14 +41,14 @@ A-Box は単一ファイルの Bash スクリプト（`install.sh`、約61,535�
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/27bf4dc5473bee45fa2b7ba626b7ed9bdf95f6ee/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/27bf4dc5473bee45fa2b7ba626b7ed9bdf95f6ee/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/27bf4dc5473bee45fa2b7ba626b7ed9bdf95f6ee/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0f071bb8b3472189c026328e1abc1f779c32109d/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

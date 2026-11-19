@@ -54992,8 +54992,6 @@ write_clash_standalone_yaml() {
     local _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}"
 
-    : > "$_nodes" || return 1
-    : > "$_groups" || return 1
     _rows=$(umask 077; mktemp "${_nodes%/*}/.A-Box-clash-records.XXXXXX") || return 1
 
     if ! python3 -I - "$_sc" "$_xc" "${LINK_IP:-}" > "$_rows" <<'PY_CLASH_STANDALONE'
@@ -55118,7 +55116,7 @@ def load(path, label):
         return []
     except (OSError, ValueError, UnicodeError):
         warning(label + " source omitted: unreadable, invalid, or untrusted config")
-        return []
+        raise
 
 
 def tagged(inbounds, tag):
@@ -55417,6 +55415,10 @@ PY_CLASH_STANDALONE
         rm -f -- "$_rows"
         return 1
     fi
+
+    # U17: truncate the caller files only after the render succeeded, so
+    # a render failure leaves any previous content untouched.
+    { : > "$_nodes" && : > "$_groups"; } || { rm -f -- "$_rows"; return 1; }
 
     while IFS= read -r _record; do
         [[ -n "$_record" ]] || continue

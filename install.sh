@@ -37986,6 +37986,22 @@ users_sync() {
                         .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if (.alterId // 0) > 0 then {alterId: .alterId} else {} end)]
                      else . end)
                 else . end)
+                # E62-NEW-01 (candidate A): Vision and XHTTP serve the
+                # same VLESS identity on two transports, and the YAML
+                # generator advertises every registry UUID on both. A
+                # Vision-only sync therefore left the live XHTTP inbound
+                # with just main while YAML advertised XHTTP-<mu UUID>:
+                # a dead chain by construction. Mirror the same enabled
+                # users into the XHTTP inbound (when it exists; the map
+                # is a no-op when it does not). No flow: XHTTP carries
+                # no xtls-rprx-vision flow. Email is rewritten into the
+                # xhttp/ namespace so stats attribution stays
+                # per-inbound. The xhttp registry itself catches up on
+                # the next users_reg_ensure via users_reg_merge_fresh
+                # (live -> registry merge from the adopted inbound).
+                | .inbounds |= map(if $t == "vision" and $proto == "vless" and .tag == "xhttp" then
+                    .settings.clients = [$users[0][] | {id: .secret, email: ("xhttp/" + (.name // "main"))}]
+                else . end)
             ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1

@@ -25993,9 +25993,19 @@ xray_hot_remove_inbound() {
 
 # R7-05B: enforce the loopback guard on a sing-box config file in place.
 # Prepends [{action:"resolve"}, {ip_cidr:[loopbacks], action:"reject"}]
-# to .route.rules (idempotent: no-op when the first two rules already
-# match). Refuses non-object configs and non-array route.rules. The
-# input file is never modified on failure.
+# to .route.rules (idempotent: no-op when the guard pair is already
+# present once, either at the front or in the built position just after
+# the sniff rule). Refuses non-object configs and non-array route.rules.
+# The input file is never modified on failure.
+# S2-NEW-03: build_singbox_config emits the base rules sniff-first
+# ([sniff, resolve, loopback-reject, bittorrent-reject]), so the old
+# "[0:2] == guard" check never matched a fresh build and the first
+# apply prepended a second guard pair (live 6 rules vs baseline 4);
+# routing_apply_live keeps non-state rules, so the duplicate survived
+# undeploy. A missing / partial / duplicated guard is therefore
+# rebuilt as exactly one pair at the front, which also repairs an
+# already-duplicated live config on the next apply (warp_undeploy
+# included); a single intact pair is left untouched in place.
 singbox_apply_loopback_guard() {
     local src="$1" _tmp _dir
     [[ -f "$src" && ! -L "$src" ]] || return 1
@@ -26009,7 +26019,9 @@ singbox_apply_loopback_guard() {
         | if type != "object" then error("sing-box config must be an object") else . end
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
-        | if .route.rules[0:2] == $guard then . else .route.rules = ($guard + .route.rules) end
+        | (.route.rules | map(select(. == $guard[0] or . == $guard[1]))) as $present
+        | if ($present | length) == 2 and (.route.rules[0:2] == $guard or .route.rules[1:3] == $guard) then .
+          else .route.rules = ($guard + (.route.rules | map(select(. != $guard[0] and . != $guard[1])))) end
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -47091,6 +47103,7 @@ backup_root_service_is_binary_missing_managed() {
 
 validate_extracted_backup_content() {
     local root="$1" srv path src work mode="${2:-restore}"
+    local live_state row
     work=$(dirname "$root")
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
@@ -47125,13 +47138,27 @@ validate_extracted_backup_content() {
                 xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
-            # S1-NEW-05 (backup creation only): a managed service whose
-            # binary is missing but whose config survives is recoverable
-            # (deploy refetches the binary; uninstall needs none), provided
-            # services.state does NOT claim it running. Anything else
-            # (missing config, foreign unit, running claim) still fails.
+            # S1-NEW-05 residual (followup5 A-leg): the binary can be
+            # deleted while the process is still alive (rm
+            # /usr/local/bin/xray, then straight into the menu), so the
+            # freshly captured services.state TRUTHFULLY claims running
+            # (|1|). Accept a |1| row only when it still matches the LIVE
+            # reading exactly (whole srv|1|enabled triple): a stale or
+            # forged |1| row — live stopped, live unqueryable, or live
+            # enablement differing — still fails closed. The |0| path is
+            # unchanged (no live query needed). Restore mode is
+            # untouched: a backup archive claiming |1| with no binary is
+            # still rejected there.
             if [[ "$mode" == backup ]] && backup_root_service_is_binary_missing_managed "$root" "$srv"; then
-                grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" || return 1
+                if grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    :
+                elif grep -Eq "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    live_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
+                    row=$(grep -E "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" 2>/dev/null) || return 1
+                    [[ "$live_state" == "$row" ]] || return 1
+                else
+                    return 1
+                fi
             else
                 backup_root_service_is_managed "$root" "$srv" || return 1
                 case "$srv" in
@@ -54057,6 +54084,49 @@ _ss_live_server_key_matches() {
     esac
 }
 
+# S2-NEW-04 (B): effective Hy2 credentials, live-first.
+# The official-Hysteria live config is the truth for the password and
+# the obfs password (menu 12 already rebuilds hy2.link from it since
+# FUP4); .env HY2_PASS/HY2_OBFS go stale whenever live changes without
+# a deploy that rewrites .env, so YAML and menu-12 readers that trust
+# .env alone serve a dead password. Read live first (user "main" first,
+# else the first user; password-only auth yields the bare password) and
+# fall back to .env when there is no official-Hy2 live config (the
+# sing-box core serves Hy2 from its own config, so a leftover
+# /etc/hysteria/config.yaml there would be stale), when live is
+# unreadable, or when either live secret is empty or invalid -- the
+# pair is never mixed across generations. Prints
+# "<pass>\t<obfs>\t<login-or-empty>" (login is empty under
+# password-only auth); rc 1 when no pair can be determined. Config path
+# honours ABOX_HY2_CFG (same override pattern as
+# rebuild_standalone_links) so the read is sandbox-coverable.
+hy2_effective_auth() {
+    local _cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" _users_json='' _user='' _pass='' _pwonly='' _obfs='' _obfs_raw=''
+    if [[ "${CORE:-}" != 'singbox' && -f "$_cfg" && ! -L "$_cfg" ]]; then
+        _users_json=$(users_hy2_read_users "$_cfg" 2>/dev/null || true)
+        if [[ -n "$_users_json" ]]; then
+            _tsv_split "$(printf '%s' "$_users_json" | jq -r '(map(select(.name == "main"))[0] // .[0] // {}) | [(.name // ""), ((.secret // "") + "__ABOX_TRAILING_NL_KEEP__"), ((.password_only // false) | tostring)] | @tsv' 2>/dev/null || true)" _user _pass _pwonly
+            _tsv_unescape "$_pass" _pass
+            _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
+            [[ "$_pwonly" == 'true' ]] && _user=''
+        fi
+        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' "$_cfg" 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+        if [[ -n "${_obfs_raw:-}" ]]; then
+            _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null || true)
+            _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
+        fi
+        if [[ -n "$_pass" && -n "$_obfs" ]] && valid_single_line_secret "$_pass" 512 && valid_single_line_secret "$_obfs" 512; then
+            printf '%s\t%s\t%s\n' "$_pass" "$_obfs" "$_user"
+            return 0
+        fi
+    fi
+    if [[ -n "${HY2_PASS:-}" && -n "${HY2_OBFS:-}" ]] && valid_single_line_secret "${HY2_PASS:-}" 512 && valid_single_line_secret "${HY2_OBFS:-}" 512; then
+        printf '%s\t%s\t%s\n' "${HY2_PASS:-}" "${HY2_OBFS:-}" ""
+        return 0
+    fi
+    return 1
+}
+
 # Effective SS-2022 client password for the primary (main) node user.
 # OBS-S1-07: once multi-user promotion stores a server_secret, the live
 # inbound is clients-form and a bare server key can never authenticate --
@@ -54723,6 +54793,7 @@ EOF_CLASH
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
+    local _hy2_eff_pass='' _hy2_eff_obfs='' _hy2_eff_user=''
     local clash_ns1 clash_ns2 clash_country
     local _clash_standalone_nodes_tmp='' _clash_standalone_groups_tmp=''
     if clash_reality_mlkem_enabled; then
@@ -54775,8 +54846,13 @@ PY_CLASH_REALPATH
         return 1
     fi
     # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
-    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
-    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # S2-NEW-04 (B): live-first Hy2 credentials (see hy2_effective_auth);
+    # .env values are the fallback, never the authority, so a live-only
+    # password change cannot leave the YAML serving a dead password.
+    IFS=$'\t' read -r _hy2_eff_pass _hy2_eff_obfs _hy2_eff_user < <(hy2_effective_auth 2>/dev/null || true) || true
+    [[ -n "$_hy2_eff_pass" && -n "$_hy2_eff_obfs" ]] || { _hy2_eff_pass="${HY2_PASS:-}"; _hy2_eff_obfs="${HY2_OBFS:-}"; }
+    hy2_pass_yaml=$(json_escape "$_hy2_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    hy2_obfs_yaml=$(json_escape "$_hy2_eff_obfs") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     ss_pass_yaml=$(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
@@ -55016,8 +55092,9 @@ write_mihomo_user_yaml() {
     local _uuid="${1:-${UUID:-}}" out="${2:-${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}}"
     local clash_mlkem=false clash_mlkem_rc tmp_out out_real base_real
     local _has_vision=0 _has_xhttp=0 _emit_rc=0
-    [[ -n "$_uuid" ]] || return 1
-    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
+    # S1-NEW-06: the UUID gate lives below the stale-file removal, not
+    # here: a UUID-less node (Hy2-only .env has UUID="") must still reach
+    # the removal branch, or its dead single-user file is never cleaned.
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
     else
@@ -55053,6 +55130,13 @@ PY_CLASH_REALPATH
     if (( _has_vision == 0 && _has_xhttp == 0 )) && [[ -f "$out" ]]; then
         rm -f -- "$out" 2>/dev/null || true
     fi
+    # S1-NEW-06: UUID gate (moved down from the top of this function so
+    # the removal above still runs for a UUID-less no-leg node). Still
+    # returns 1 on a bad UUID, so the caller warning is unchanged; the
+    # removal above already ran under the path guards, so $out here is
+    # either absent or a regular file under $ABOX_DIR.
+    [[ -n "$_uuid" ]] || return 1
+    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
     (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
     tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
     {
@@ -55240,6 +55324,19 @@ view_config() {
     clear
     [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}$(tr_msg view_config_no_persisted_vars)${NC}"; show_standalone_links; pause_return; return 0; }
     load_abox_env "$ABOX_ENV" || die "$(tr_msg view_config_state_file_invalid)"
+    # S2-NEW-04 (B): prefer the live Hy2 credentials for the single-node
+    # URI and the sing-box JSON block below (both read $HY2_PASS /
+    # $HY2_OBFS); a later IP-change write_env then also persists the
+    # live values into .env. _hy2_eff_user carries the userpass login
+    # for the URI userinfo (empty under password-only auth).
+    local _hy2_eff_pass='' _hy2_eff_obfs='' _hy2_eff_user=''
+    if IFS=$'\t' read -r _hy2_eff_pass _hy2_eff_obfs _hy2_eff_user < <(hy2_effective_auth 2>/dev/null || true); then
+        if [[ -n "$_hy2_eff_pass" && -n "$_hy2_eff_obfs" ]]; then
+            HY2_PASS="$_hy2_eff_pass"; HY2_OBFS="$_hy2_eff_obfs"
+        else
+            _hy2_eff_user=''
+        fi
+    fi
     local refreshed_ip
     refreshed_ip=$(refresh_public_ip || true)
     if [[ -n "$refreshed_ip" && "$refreshed_ip" != 'N/A' && "$refreshed_ip" != "${LINK_IP:-}" ]]; then
@@ -55262,6 +55359,10 @@ view_config() {
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
     SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
     HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
+    # S2-NEW-04 (B): under userpass live auth the URI userinfo is
+    # login:password (hy2_standalone_url already does this for the
+    # standalone link); password-only live auth keeps the bare form.
+    if [[ -n "${_hy2_eff_user:-}" ]]; then HY2_PASS_E="$(urlencode "$_hy2_eff_user"):$HY2_PASS_E"; fi
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
     # SYD-B3 E15: pinSHA256 is the whole-certificate fingerprint in

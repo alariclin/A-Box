@@ -14825,21 +14825,28 @@ users_registries_remove_core() {
     return 0
 }
 
-# F-NEW-01A: per-tag survivorship for a numbered second instance
-# (tag-<n>, e.g. trojan-landing-2). A numbered instance registers its
-# link under the tag itself (users_link_stem falls through for
-# tag-<n>), so the family-level survivor (_standalone_link_survivor)
-# cannot judge it: a surviving base instance must not keep a deleted
-# surviving -2 must not be deleted with the base. Either core may
-# serve the tag, so both configs are consulted; the link dies only
-# when both confirm the tag absent.
+# S1-NEW-01: per-tag survivorship for a numbered second instance
+# (tag-<n>, e.g. trojan-landing-2). Numbered links are per-core
+# (tag-<n>--xray / --sb, see users_link_stem), so the family-level
+# survivor (_standalone_link_survivor) cannot judge them: a surviving
+# base instance must not keep a deleted -2, and a surviving -2 must
+# not be deleted with the base. With no $2 both cores are consulted
+# (legacy shared-file semantics); with $2 only that core is.
 # Returns 0 when either core still serves the tag, 1 when both
 # confirm it gone, 2 when survivorship is unverifiable (jq failed or
 # missing, empty config) -- callers must only delete on rc 1.
 _standalone_numbered_link_survivor() {
-    local tag="$1" _cfg='' _jq_rc=0 _unverifiable=0
+    # $2 (optional) restricts the check to one core ('xray' or
+    # 'sing-box'); without it both cores are consulted (legacy
+    # shared-file semantics).
+    local tag="$1" _only_core="${2:-}" _core='' _cfg='' _jq_rc=0 _unverifiable=0
     command -v jq >/dev/null 2>&1 || return 2
-    for _cfg in "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json; do
+    for _core in xray sing-box; do
+        case "$_core" in
+            xray) _cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
+            sing-box) _cfg='/etc/sing-box/config.json' ;;
+        esac
+        [[ -n "$_only_core" && "$_core" != "$_only_core" ]] && continue
         [[ -f "$_cfg" && ! -L "$_cfg" ]] || continue
         if [[ ! -s "$_cfg" ]]; then
             msg "${YELLOW}[!] standalone link '$tag': survivorship unverifiable (empty config); keeping the link.${NC}" >&2
@@ -14861,8 +14868,11 @@ _standalone_numbered_link_survivor() {
 # F-NEW-01A: delete a numbered link only on confirmed rc 1 (mirror of
 # _standalone_link_prune_if_gone).
 _standalone_numbered_link_prune_if_gone() {
-    local stem="$1" link="$2" _rc=0
-    _standalone_numbered_link_survivor "$stem" || _rc=$?
+    # $3 (optional) restricts survivorship to one core (see
+    # _standalone_numbered_link_survivor); without it both cores
+    # are consulted (legacy shared-file semantics).
+    local stem="$1" link="$2" _core="${3:-}" _rc=0
+    _standalone_numbered_link_survivor "$stem" "$_core" || _rc=$?
     if [[ "$_rc" == 1 ]]; then rm -f -- "$link" 2>/dev/null || true; fi
     return 0
 }
@@ -14872,17 +14882,79 @@ _standalone_numbered_link_prune_if_gone() {
 # never name these stems, so an overwrite left the orphan .link file
 # for menu 12 to reprint as a dead node. Only stems of families that
 # deploy_with_instance_choice can number are swept; anything else
-# (hy2, argo, latest-*, non-numeric suffixes) is left alone. A link
-# dies only when _standalone_numbered_link_survivor confirms its tag
-# gone from both cores. Best-effort, always returns 0.
+# (hy2, argo, latest-*, non-numeric suffixes) is left alone. A legacy
+# shared link dies only when _standalone_numbered_link_survivor
+# confirms its tag gone from both cores; a per-core stem dies when
+# its own core confirms the tag gone. Best-effort, always returns 0.
+# S1-NEW-01: migrate a legacy shared numbered link (tag-<n>.link,
+# written before the per-core split) to its owning core's stem. The
+# file holds only one core's link, so the owner is identified by the
+# link's port: it must match exactly one core's live inbound port for
+# the tag. When the target stem file already exists the legacy file is
+# a stale duplicate and is removed. When the port matches neither live
+# inbound and BOTH configs were read authoritatively, the link is dead
+# and the file is removed. Anything else (shadowtls links carry no
+# visible port, a config missing/unreadable/empty, both cores claiming
+# the same port) leaves the file for the both-core survivor check.
+# Best-effort, always returns 0.
+_standalone_numbered_link_migrate_if_shared() {
+    local stem="$1" link="$2" _line='' _port='' _xport='' _sport='' _xok=0 _sok=0 _target='' _xcfg='' _scfg=''
+    [[ -f "$link" && ! -L "$link" ]] || return 0
+    _line=$(sed -n '2p' "$link" 2>/dev/null) || return 0
+    [[ "$_line" =~ :([0-9]+)([?#]|$) ]] || return 0
+    _port="${BASH_REMATCH[1]}"
+    _xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"; _scfg='/etc/sing-box/config.json'
+    if [[ -f "$_xcfg" && ! -L "$_xcfg" && -s "$_xcfg" ]]; then
+        _xport=$(jq -r --arg t "$stem" 'first(.inbounds[]? | select(.tag == $t) | (.port // empty)) // empty' "$_xcfg" 2>/dev/null) && _xok=1
+    fi
+    if [[ -f "$_scfg" && ! -L "$_scfg" && -s "$_scfg" ]]; then
+        _sport=$(jq -r --arg t "$stem" 'first(.inbounds[]? | select(.tag == $t) | (.listen_port // empty)) // empty' "$_scfg" 2>/dev/null) && _sok=1
+    fi
+    if [[ "$_port" == "$_xport" && "$_port" != "$_sport" ]]; then
+        _target="${stem}--xray"
+    elif [[ "$_port" == "$_sport" && "$_port" != "$_xport" ]]; then
+        _target="${stem}--sb"
+    elif [[ "$_xok" == 1 && "$_sok" == 1 && "$_port" != "$_xport" && "$_port" != "$_sport" ]]; then
+        rm -f -- "$link" 2>/dev/null || true
+        return 0
+    else
+        return 0
+    fi
+    local _dir="${link%/*}" _dest=''
+    _dest="$_dir/${_target}.link"
+    if [[ -e "$_dest" || -L "$_dest" ]]; then
+        rm -f -- "$link" 2>/dev/null || true
+    else
+        mv -f -- "$link" "$_dest" 2>/dev/null || true
+    fi
+    return 0
+}
+
 _prune_numbered_standalone_links() {
-    local dir="$1" _f='' _stem=''
+    local dir="$1" _f='' _stem='' _tag='' _core=''
     [[ -d "$dir" && ! -L "$dir" ]] || return 0
     for _f in "$dir"/*.link; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
         _stem="${_f##*/}"; _stem="${_stem%.link}"
-        if [[ "$_stem" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+$ ]]; then
-            _standalone_numbered_link_prune_if_gone "$_stem" "$_f" || true
+        # S1-NEW-01: per-core stems (tag-<n>--xray / --sb) are pruned
+        # by their own core's survivorship only, so one core's
+        # removal never deletes the other core's link.
+        if [[ "$_stem" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+--(xray|sb)$ ]]; then
+            _tag="${_stem%--*}"
+            case "${BASH_REMATCH[2]}" in
+                xray) _core='xray' ;;
+                *) _core='sing-box' ;;
+            esac
+            _standalone_numbered_link_prune_if_gone "$_tag" "$_f" "$_core" || true
+        elif [[ "$_stem" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+$ ]]; then
+            # Legacy shared file (pre-fix installs): migrate it to
+            # its owning core's stem when the link's port matches
+            # exactly one core's inbound for the tag; a dead port
+            # (neither core, both configs readable) is deleted by
+            # the migrate helper. Whatever file remains is judged
+            # by the old both-core survivorship.
+            _standalone_numbered_link_migrate_if_shared "$_stem" "$_f" || true
+            [[ -f "$_f" ]] && _standalone_numbered_link_prune_if_gone "$_stem" "$_f" || true
         fi
     done
     return 0
@@ -29724,7 +29796,16 @@ deploy_with_instance_choice() {
             local n=2
             while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
             msg "${CYAN}$(tr_msg mu_inst_tag): ${btag}-${n} ($(tr_msg mu_inst_port_note))${NC}"
-            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="${btag}-${n}" "$@" ;;
+            # S1-NEW-01: the link stem is per-core (see
+            # users_link_stem): both cores number a second instance
+            # to the same tag, and a shared stem makes the later
+            # deploy overwrite the earlier core's .link file.
+            local _stem="${btag}-${n}"
+            case "$core" in
+                xray) _stem="${_stem}--xray" ;;
+                sing-box) _stem="${_stem}--sb" ;;
+            esac
+            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="$_stem" "$@" ;;
         *) msg "$(tr_msg mu_cancelled)"; return 0 ;;
     esac
 }
@@ -35591,7 +35672,22 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         # confirmed rc 1); the generic rm would delete it unconditionally.
         case "$tag" in
             trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray) ;;
-            *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
+            *)
+                # S1-NEW-01: a numbered tag's link is per-core: delete
+                # only the removed core's file, never the other
+                # core's. (A legacy shared file is healed by the
+                # next menu-12 rebuild sweep, which migrates it by
+                # port; the direct rm here must not touch it.)
+                if [[ "$tag" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+$ ]]; then
+                    case "$core" in
+                        xray) rm -f -- "/etc/ddr/standalone-links.d/${tag}--xray.link" 2>/dev/null || true ;;
+                        sing-box) rm -f -- "/etc/ddr/standalone-links.d/${tag}--sb.link" 2>/dev/null || true ;;
+                        *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
+                    esac
+                else
+                    [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+                fi
+                ;;
         esac
         users_registry_remove "$core" "$tag"
     done
@@ -37777,6 +37873,17 @@ users_hy2_write_users() {
 # ---- per-user links ----
 users_link_stem() {
     local core="$1" tag="$2"
+    # S1-NEW-01: a numbered second instance (tag-<n>) must not share
+    # one .link file across cores: both cores number to the same tag,
+    # so the tag itself as stem makes the later deploy overwrite the
+    # earlier core's link and menu 12 loses a live node. Numbered
+    # stems are per-core; base stems below are unchanged.
+    if [[ "$tag" =~ ^(trojan-landing|tuic-in|anytls-in|shadowtls-in|socks5-landing|mixed-in|socks-in)-[0-9]+$ ]]; then
+        case "$core" in
+            xray) printf '%s' "${tag}--xray"; return 0 ;;
+            sing-box) printf '%s' "${tag}--sb"; return 0 ;;
+        esac
+    fi
     case "$core:$tag" in
         xray:trojan-landing) printf '%s' 'trojan-xray' ;;
         sing-box:trojan-landing) printf '%s' 'trojan-sb' ;;

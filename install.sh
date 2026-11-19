@@ -736,6 +736,7 @@ rebuild_standalone_links() {
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
     local _tj_row='' _tj_rows='' _tj_tag='' _tj_stem='' _tj_seen='' _tj_legacy_n='' _tj_n='' _tj_leg='' _tj_leg_port='' _tj_sfx='' _tj_pc='' _tj_pc_port=''
+    local _sk_row='' _sk_rows='' _sk_tag='' _sk_stem='' _sk_seen='' _sk_legacy_n='' _sk_n='' _sk_leg='' _sk_leg_port='' _sk_sfx='' _sk_pc='' _sk_pc_port=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
         _tj_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != "")) | [(.tag // ""), (.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null) || _tj_rows=''
         _tj_seen=''
@@ -780,14 +781,32 @@ rebuild_standalone_links() {
             fi
         done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
-            _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
-            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
-            elif [[ -n "$_port$_user$_pass" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-xray)${NC}" >&2
-            fi
+            _sk_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_seen=''
+            while IFS= read -r _sk_row; do
+                [[ -n "$_sk_row" ]] || continue
+                _port=''; _user=''; _pass=''
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                case "$_sk_tag" in
+                    socks5-landing|socks5-landing-[0-9]*) ;;
+                    *) _sk_tag='socks5-landing' ;;
+                esac
+                _sk_stem=$(users_link_stem xray "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
+                case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
+                _sk_seen+=" $_sk_stem"
+                case "$_sk_stem" in
+                    socks5-landing-[0-9]*)
+                        _sk_n="${_sk_stem#socks5-landing-}"
+                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
+                esac
+                _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
+                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                    register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                elif [[ -n "$_port$_user$_pass" ]]; then
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
+                fi
+            done <<< "$_sk_rows"
         fi
     fi
     if [[ -n "$_ip" && -f "$_sc" ]]; then
@@ -834,7 +853,7 @@ rebuild_standalone_links() {
         done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul _tuic_tag
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
@@ -880,20 +899,33 @@ rebuild_standalone_links() {
                 elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
                     if _tuic_cert_self_signed "$_cert"; then _insecure='allow_insecure=1'; fi
                 fi
-                register_standalone_link tuic "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
+                # N3 (followup5 D-leg): register under the matched
+                # inbound's own stem (tuic-in -> tuic, tuic-in-2 ->
+                # tuic-in-2). The old fixed stem `tuic` rewrote
+                # tuic.link from the -2 survivor, duplicating the
+                # tuic-in-2.link URI in menu 12 output.
+                _tuic_stem=$(users_link_stem sing-box "${_tuic_tag:-}" 2>/dev/null || printf '%s' 'tuic')
+                [[ -n "$_tuic_stem" ]] || _tuic_stem='tuic'
+                register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _anytls_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link anytls "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+                # N3 (followup5 D-leg): same fixed-stem defect as
+                # TUIC above: register under the matched inbound's
+                # own stem (anytls-in -> anytls, anytls-in-2 ->
+                # anytls-in-2).
+                _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
+                [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
+                register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
@@ -905,7 +937,7 @@ rebuild_standalone_links() {
         # next rebuild must retry it instead of skipping forever.
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor (empty-shadowtls retry subsumed)
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour _sh_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
@@ -937,7 +969,14 @@ rebuild_standalone_links() {
                        [[ -n "$_pb_json" ]] &&
                        _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
                        [[ -n "$_pb" ]]; then
-                        register_standalone_link shadowtls "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                        # N3 (followup5 D-leg): same fixed-stem
+                        # defect as TUIC above: register under the
+                        # matched inbound's own stem
+                        # (shadowtls-in -> shadowtls, shadowtls-in-2
+                        # -> shadowtls-in-2).
+                        _sh_stem=$(users_link_stem sing-box "${_sh_tag:-}" 2>/dev/null || printf '%s' 'shadowtls')
+                        [[ -n "$_sh_stem" ]] || _sh_stem='shadowtls'
+                        register_standalone_link "$_sh_stem" "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                     else
                         printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                     fi
@@ -950,14 +989,32 @@ rebuild_standalone_links() {
             fi
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
-            _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
-            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
-            elif [[ -n "$_port$_user$_pass" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-sb)${NC}" >&2
-            fi
+            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_seen=''
+            while IFS= read -r _sk_row; do
+                [[ -n "$_sk_row" ]] || continue
+                _port=''; _user=''; _pass=''
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                case "$_sk_tag" in
+                    socks5-landing|socks5-landing-[0-9]*) ;;
+                    *) _sk_tag='socks5-landing' ;;
+                esac
+                _sk_stem=$(users_link_stem sing-box "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
+                case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
+                _sk_seen+=" $_sk_stem"
+                case "$_sk_stem" in
+                    socks5-landing-[0-9]*)
+                        _sk_n="${_sk_stem#socks5-landing-}"
+                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
+                esac
+                _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
+                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                    register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                elif [[ -n "$_port$_user$_pass" ]]; then
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
+                fi
+            done <<< "$_sk_rows"
         fi
     fi
     # Trojan -2 migration: a pre-fix deploy wrote both cores' -2 chains
@@ -977,6 +1034,26 @@ rebuild_standalone_links() {
             _tj_pc_port=$(_standalone_link_port "$_tj_pc" 2>/dev/null || true)
             if [[ -n "$_tj_pc_port" && "$_tj_pc_port" == "$_tj_leg_port" ]]; then
                 rm -f -- "$_tj_leg" 2>/dev/null || true
+                break
+            fi
+        done
+    done
+    # SOCKS5 -2 migration: same shape as the Trojan -2 migration above
+    # (a pre-fix deploy wrote both cores' -2 chains into one ambiguous
+    # socks5-landing-N.link). Drop the legacy file only when its port
+    # matches a live per-core file, so a chain whose core did not
+    # rebuild this run is kept.
+    for _sk_n in $_sk_legacy_n; do
+        _sk_leg="$_dir/socks5-landing-${_sk_n}.link"
+        [[ -f "$_sk_leg" && ! -L "$_sk_leg" ]] || continue
+        _sk_leg_port=$(_standalone_link_port "$_sk_leg" 2>/dev/null || true)
+        [[ -n "$_sk_leg_port" ]] || continue
+        for _sk_sfx in sb xray; do
+            _sk_pc="$_dir/socks5-landing-${_sk_n}-${_sk_sfx}.link"
+            [[ -f "$_sk_pc" && ! -L "$_sk_pc" ]] || continue
+            _sk_pc_port=$(_standalone_link_port "$_sk_pc" 2>/dev/null || true)
+            if [[ -n "$_sk_pc_port" && "$_sk_pc_port" == "$_sk_leg_port" ]]; then
+                rm -f -- "$_sk_leg" 2>/dev/null || true
                 break
             fi
         done
@@ -14829,9 +14906,9 @@ _standalone_link_tag_survivor() {
 # confirm "gone" before the link is deleted. -N instance stems are
 # checked by exact tag (_standalone_link_tag_survivor): the family
 # regex would count the base instance as evidence for the -N link.
-# Per-core -N stems (trojan-landing-N-sb/-xray) belong to one core:
-# only that core's config is consulted; the legacy ambiguous stem
-# keeps the both-gone rule above.
+# Per-core -N stems (trojan-landing-N-sb/-xray, socks5-landing-N-sb/-xray)
+# belong to one core: only that core's config is consulted; the legacy
+# ambiguous stem keeps the both-gone rule above.
 # Always returns 0.
 _prune_standalone_link_file() {
     local srv="$1" stem="$2" link="$3" _key='' _rc=0 _all_gone=1 _tag='' _cfg=''
@@ -14859,6 +14936,12 @@ _prune_standalone_link_file() {
         socks5-landing)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _keys=(socks5-xray socks5-sb) ;;
+        socks5-landing-[0-9]*-sb)
+            [[ "$srv" == sing-box ]] || return 0
+            _tag="${stem%-sb}"; _cfgs=(/etc/sing-box/config.json) ;;
+        socks5-landing-[0-9]*-xray)
+            [[ "$srv" == xray ]] || return 0
+            _tag="${stem%-xray}"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}") ;;
         socks5-landing-[0-9]*)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
@@ -26074,9 +26157,21 @@ xray_hot_remove_inbound() {
 
 # R7-05B: enforce the loopback guard on a sing-box config file in place.
 # Prepends [{action:"resolve"}, {ip_cidr:[loopbacks], action:"reject"}]
-# to .route.rules (idempotent: no-op when the first two rules already
-# match). Refuses non-object configs and non-array route.rules. The
-# input file is never modified on failure.
+# to .route.rules (idempotent: no-op when the guard pair is already
+# present once, either at the front or in the built position just after
+# the sniff rule). Refuses non-object configs and non-array route.rules.
+# The input file is never modified on failure.
+# N4 (followup5 D-leg, same root cause as 4e83495-line S2-NEW-03):
+# build_singbox_config emits the base rules sniff-first
+# ([sniff, resolve, loopback-reject, bittorrent-reject]), so the old
+# "[0:2] == guard" check never matched a fresh build and the first
+# apply prepended a second guard pair (live 6 rules vs baseline 4);
+# routing_apply_live keeps non-state rules, so the duplicate survived
+# warp_undeploy and clear_all. A missing / partial / duplicated guard
+# is therefore rebuilt as exactly one pair at the front, which also
+# repairs an already-duplicated live config on the next apply
+# (warp_undeploy included); a single intact pair is left untouched
+# in place.
 singbox_apply_loopback_guard() {
     local src="$1" _tmp _dir
     [[ -f "$src" && ! -L "$src" ]] || return 1
@@ -26090,7 +26185,9 @@ singbox_apply_loopback_guard() {
         | if type != "object" then error("sing-box config must be an object") else . end
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
-        | if .route.rules[0:2] == $guard then . else .route.rules = ($guard + .route.rules) end
+        | (.route.rules | map(select(. == $guard[0] or . == $guard[1]))) as $present
+        | if ($present | length) == 2 and (.route.rules[0:2] == $guard or .route.rules[1:3] == $guard) then .
+          else .route.rules = ($guard + (.route.rules | map(select(. != $guard[0] and . != $guard[1])))) end
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -35979,7 +36076,7 @@ _standalone_link_prune_if_gone() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg='' _stem2=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0
     local _ld="${ABOX_DIR:-/etc/ddr}"
     for tag in "$@"; do
         case "$tag" in
@@ -35993,10 +36090,10 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             vmess-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vmess || true ;;
             vless-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vless || true ;;
             *trojan*) _standalone_link_prune_if_gone trojan-xray "${_ld}/standalone-links.d/trojan-xray.link"; _standalone_link_prune_if_gone trojan-sb "${_ld}/standalone-links.d/trojan-sb.link"; case "$tag" in trojan-landing-[0-9]*) _stem2=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag"); _prune_standalone_link_file "$core" "$_stem2" "${_ld}/standalone-links.d/${_stem2}.link" ;; esac ;;
-            *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link ;;
+            *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link; _tuic_removed=1 ;;
             *anytls*) _standalone_link_prune_if_gone anytls /etc/ddr/standalone-links.d/anytls.link ;;
             *shadowtls*) _standalone_link_prune_if_gone shadowtls /etc/ddr/standalone-links.d/shadowtls.link ;;
-            *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb /etc/ddr/standalone-links.d/socks5-sb.link; _standalone_link_prune_if_gone socks5-xray /etc/ddr/standalone-links.d/socks5-xray.link ;;
+            *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb "${_ld}/standalone-links.d/socks5-sb.link"; _standalone_link_prune_if_gone socks5-xray "${_ld}/standalone-links.d/socks5-xray.link"; case "$tag" in socks5-landing-[0-9]*|socks-in-[0-9]*|mixed-in-[0-9]*) _stem2=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag"); _prune_standalone_link_file "$core" "$_stem2" "${_ld}/standalone-links.d/${_stem2}.link"; _prune_standalone_link_file "$core" "$tag" "${_ld}/standalone-links.d/${tag}.link" ;; esac ;;
         esac
         # R16-F10-01: never let the generic delete undo a prune that
         # just kept a link: when $tag is itself a prune key, the link
@@ -36008,7 +36105,14 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         # trojan-sb.link, ...); the generic rm would delete a
         # nonexistent ${tag}.link and must not run for them.
         case "$tag" in
-            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-landing|trojan-landing-[0-9]*|tuic-in|anytls-in|shadowtls-in|socks-in|mixed-in|socks5-landing|vmess-ws-in|vless-ws-in) ;;
+            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-landing|trojan-landing-[0-9]*|tuic-in|anytls-in|shadowtls-in|socks-in|mixed-in|socks5-landing|socks5-landing-[0-9]*|socks-in-[0-9]*|mixed-in-[0-9]*|vmess-ws-in|vless-ws-in) ;;
+            # N5 (followup5 D-leg): the -N socks stems above are
+            # prune-owned like trojan-landing-[0-9]* (their one
+            # .link file is shared by both cores, so the generic
+            # rm below must not delete it unconditionally while
+            # the other core still serves the tag); the per-tag
+            # prune call in the *socks* arm deletes it only on
+            # confirmed both-cores-gone.
             *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
         esac
         users_registry_remove "$core" "$tag"
@@ -36027,6 +36131,28 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             if [[ "$_hy2_jq_rc" == 1 ]]; then
                 [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
                 [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+            fi
+        fi
+    fi
+    # N5 (followup5 D-leg): a removed sing-box TUIC inbound owns its
+    # per-tag cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/key,
+    # plus the .A-Box-bak a failed redeploy may have left). The Hy2
+    # block above has this cleanup; TUIC never did, so clear_all left
+    # orphaned pairs behind. Delete only files no live TUIC inbound
+    # still references (paths read from the live config, so a
+    # surviving inbound's pair is never touched); an unreadable or
+    # unparseable config keeps everything (fail-closed, same as Hy2).
+    if [[ "$core" == 'sing-box' && "$_tuic_removed" == 1 ]]; then
+        cfg='/etc/sing-box/config.json'
+        if [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]]; then
+            local _tuic_stripped='' _tuic_refs='' _tuic_cert_file='' _tuic_base=''
+            _tuic_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || _tuic_stripped=''
+            if [[ -n "${_tuic_stripped//[[:space:]]/}" ]] && _tuic_refs=$(printf '%s' "$_tuic_stripped" | jq -r '.inbounds[]? | select(.type == "tuic") | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null); then
+                for _tuic_cert_file in /etc/sing-box/tuic-*.crt /etc/sing-box/tuic-*.key /etc/sing-box/tuic-*.crt.A-Box-bak /etc/sing-box/tuic-*.key.A-Box-bak; do
+                    [[ -f "$_tuic_cert_file" && ! -L "$_tuic_cert_file" ]] || continue
+                    _tuic_base="${_tuic_cert_file%.A-Box-bak}"
+                    grep -Fxq -- "$_tuic_base" <<< "$_tuic_refs" 2>/dev/null || rm -f -- "$_tuic_cert_file" 2>/dev/null || true
+                done
             fi
         fi
     fi
@@ -37356,6 +37482,26 @@ list_usersd_uuids() {
         [[ ! -L "$f" ]] || return 1
         [[ -f "$f" && -r "$f" ]] || return 1
         _proto=$(jq -r '.protocol // ""' "$f" 2>/dev/null) || return 1
+        # O1 (followup5 D-leg): a registry whose inbound is confirmed
+        # gone from the live config must not contribute UUIDs -- after
+        # a cross-core overlay the other core's registries survive
+        # deliberately (S2-NEW-04 merge), and merging their UUIDs
+        # re-emits dead Vision nodes (old main UUID with new pbk/sid)
+        # in the YAML and the subscription. This mirrors the
+        # M41-NEW-01 export gate in users_link (rc 1 = confirmed
+        # absent drops; rc 2 / missing config keeps the old
+        # fail-open behaviour).
+        local _o1_reg_core='' _o1_reg_tag='' _o1_reg_cfg='' _o1_live_rc=0
+        _o1_reg_core=$(jq -r '.core // ""' "$f" 2>/dev/null) || return 1
+        _o1_reg_tag=$(jq -r '.tag // ""' "$f" 2>/dev/null) || return 1
+        if [[ ( "$_o1_reg_core" == 'xray' || "$_o1_reg_core" == 'sing-box' ) && -n "$_o1_reg_tag" ]] && declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+            _o1_reg_cfg=$(users_cfg_of "$_o1_reg_core" 2>/dev/null || printf '%s' '')
+            if [[ -n "$_o1_reg_cfg" && -f "$_o1_reg_cfg" && ! -L "$_o1_reg_cfg" ]]; then
+                _o1_live_rc=0
+                _users_live_inbound_exists "$_o1_reg_core" "$_o1_reg_tag" || _o1_live_rc=$?
+                [[ "$_o1_live_rc" == 1 ]] && continue
+            fi
+        fi
         _u=$(jq -r --arg proto "$_proto" '.users[]? | [(.uuid // ""), (if ($proto == "vless" or $proto == "vmess") then (.secret // "") else "" end)] | map(select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) | .[0] // empty' "$f" 2>/dev/null) || return 1
         printf '%s\n' "$_u"
     done
@@ -38659,6 +38805,8 @@ users_link_stem() {
         sing-box:trojan-landing-[0-9]*) printf 'trojan-landing-%s-sb' "${tag#trojan-landing-}" ;;
         xray:socks5-landing) printf '%s' 'socks5-xray' ;;
         sing-box:socks5-landing) printf '%s' 'socks5-sb' ;;
+        xray:socks5-landing-[0-9]*) printf 'socks5-landing-%s-xray' "${tag#socks5-landing-}" ;;
+        sing-box:socks5-landing-[0-9]*) printf 'socks5-landing-%s-sb' "${tag#socks5-landing-}" ;;
         sing-box:tuic-in) printf '%s' 'tuic' ;;
         sing-box:anytls-in) printf '%s' 'anytls' ;;
         sing-box:shadowtls-in) printf '%s' 'shadowtls' ;;
@@ -39039,7 +39187,26 @@ refresh_subscription_after_deploy() {
     # sets it; without this the rebuild early-returns when there is
     # no HY2_DOMAIN. Best-effort like the export itself: a rebuild
     # failure must not fail the deploy.
+    # S2-NEW-12 follow-up 5: LINK_IP is unset in a fresh-deploy
+    # process (main_loop loads .env only if it exists; deploy_xray's
+    # load_optional_abox_env_or_die clears it when there is no .env;
+    # pre_install_setup sets only GLOBAL_PUBLIC_IP; write_env writes
+    # LINK_IP to .env but never sets the shell variable), so deriving
+    # F_IP from LINK_IP alone left the rebuild early-returning and
+    # the deploy-time export without Hy2. Fall back through the
+    # sources that do exist on the deploy path: GLOBAL_PUBLIC_IP
+    # (set by pre_install_setup / main_loop), the LINK_IP just
+    # written to .env (single-key read -- never a full load_abox_env
+    # here: it clears every deploy variable on entry and wipes them
+    # again on any validation failure), then the public-IP cache.
+    # 'N/A' is treated as empty, like the view_config gate.
     local _s2n12_fip="${LINK_IP:-}"
+    [[ -n "$_s2n12_fip" ]] || _s2n12_fip="${GLOBAL_PUBLIC_IP:-}"
+    if [[ -z "$_s2n12_fip" && -f "${ABOX_ENV:-/etc/ddr/.env}" ]]; then
+        _s2n12_fip=$(sed -n 's/^LINK_IP="\([^"]*\)"$/\1/p' "${ABOX_ENV}" 2>/dev/null | head -1)
+    fi
+    [[ -n "$_s2n12_fip" ]] || _s2n12_fip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
     [[ "$_s2n12_fip" =~ : ]] && _s2n12_fip="[$_s2n12_fip]"
     local F_IP="$_s2n12_fip"
     rebuild_standalone_links || true
@@ -39055,7 +39222,7 @@ refresh_subscription_after_deploy() {
 # Export every enabled user's link (all registries) in the subscription
 # file formats the legacy exporter produced.
 users_export_all() {
-    local dir='' out='' count=0 reg='' core='' tag='' failed=0 skipped=0
+    local dir='' out='' count=0 reg='' core='' tag='' failed=0 skipped=0 seen=0
     dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
     mkdir -p "$dir" 2>/dev/null || return 1
     chmod 700 "$dir" 2>/dev/null || true
@@ -39063,6 +39230,7 @@ users_export_all() {
     tmp=$(umask 077; mktemp "$dir/.uri-list.XXXXXX") || return 1
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
+        seen=1
         core=$(jq -r '.core // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: core unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: tag unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         [[ -n "$core" && -n "$tag" ]] || { msg "${YELLOW}[!] Skipped registry $reg: missing core or tag.${NC}" >&2; skipped=$((skipped + 1)); continue; }
@@ -39087,6 +39255,16 @@ users_export_all() {
         msg "${YELLOW}[!] Subscription export: ${skipped} user(s) skipped and no links exported; stale subscription will be cleared.${NC}" >&2
     fi
     if (( count == 0 )); then
+        # N1 diagnostic (followup5): a zero-link export is silent by
+        # design when registries exist but all their links failed
+        # (those paths print Skipped lines above), but it is ALSO the
+        # signature of a wiped registry dir (menu 20 "all clear"), where
+        # no registry was seen at all. Tell the two apart so a
+        # transcript can self-explain which case it is. Export
+        # semantics are unchanged: the clear-out below still runs.
+        if (( seen == 0 )); then
+            msg "${YELLOW}[!] Subscription export: no user registries found (users.d empty or missing); clearing subscription to 0 links.${NC}" >&2
+        fi
         # No enabled users: stale links must not keep serving. Atomically
         # replace both files with empty content (the old code left the
         # previous users' links in place and only failed the export).
@@ -48175,6 +48353,7 @@ backup_root_service_is_binary_missing_managed() {
 
 validate_extracted_backup_content() {
     local root="$1" srv path src work mode="${2:-restore}"
+    local live_state row
     work=$(dirname "$root")
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
@@ -48217,13 +48396,27 @@ validate_extracted_backup_content() {
                 xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
-            # S1-NEW-05 (backup creation only): a managed service whose
-            # binary is missing but whose config survives is recoverable
-            # (deploy refetches the binary; uninstall needs none), provided
-            # services.state does NOT claim it running. Anything else
-            # (missing config, foreign unit, running claim) still fails.
+            # S1-NEW-05 residual (followup5 A-leg): the binary can be
+            # deleted while the process is still alive (rm
+            # /usr/local/bin/xray, then straight into the menu), so the
+            # freshly captured services.state TRUTHFULLY claims running
+            # (|1|). Accept a |1| row only when it still matches the LIVE
+            # reading exactly (whole srv|1|enabled triple): a stale or
+            # forged |1| row — live stopped, live unqueryable, or live
+            # enablement differing — still fails closed. The |0| path is
+            # unchanged (no live query needed). Restore mode is
+            # untouched: a backup archive claiming |1| with no binary is
+            # still rejected there.
             if [[ "$mode" == backup ]] && backup_root_service_is_binary_missing_managed "$root" "$srv"; then
-                grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" || return 1
+                if grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    :
+                elif grep -Eq "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    live_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
+                    row=$(grep -E "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" 2>/dev/null) || return 1
+                    [[ "$live_state" == "$row" ]] || return 1
+                else
+                    return 1
+                fi
             else
                 backup_root_service_is_managed "$root" "$srv" || return 1
                 case "$srv" in
@@ -56345,15 +56538,37 @@ PY_CLASH_REALPATH
     local -a _hy2_names=() _hy2_passes=() _ss_names=() _ss_passes=()
     local -a _hy2_emit_names=() _ss_emit_names=()
     if ! valid_canonical_port "${VLESS_PORT:-}"; then
-        msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): warn only when a Vision node could
+        # have been emitted (MODE scope, same as the emission gate
+        # below); a HY2-only deploy must not warn about a port it
+        # never uses. The flag still gates emission either way.
+        if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+            msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+        fi
         _vless_port_ok=0
     fi
     if ! valid_canonical_port "${XHTTP_PORT:-}"; then
-        msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): XHTTP is xray-only (emission gated
+        # on CORE == xray below); on a sing-box stack the warning is
+        # pure cross-stack noise, so suppress it there. The flag
+        # still gates emission either way.
+        if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+            msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+        fi
         _xhttp_port_ok=0
     fi
     if ! valid_canonical_port "${SS_PORT:-}"; then
-        msg "${YELLOW}[!] SS port '${SS_PORT:-}' is missing or invalid; skipping the SS node in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): warn only when an SS node could have
+        # been emitted (MODE scope, same as the emission gate below).
+        # NOTE: on a sing-box ALL overlay with an empty .env SS_PORT
+        # the warning still fires (MODE matches) and the live SS node
+        # on the 2053 default is still skipped from the YAML -- that
+        # is the deliberate H-24 rule (an empty port must not keep
+        # the historical default), not noise; fixing the underlying
+        # .env persistence gap is a separate item.
+        if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+            msg "${YELLOW}[!] SS port '${SS_PORT:-}' is missing or invalid; skipping the SS node in Clash YAML.${NC}" >&2
+        fi
         _ss_port_ok=0
     fi
     # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
@@ -56796,6 +57011,12 @@ hy2_standalone_url() {
     if [[ -z "$_host" ]]; then
         if [[ -n "${HY2_DOMAIN:-}" ]]; then _host="$HY2_DOMAIN";
         elif [[ -n "${LINK_IP:-}" ]]; then _host="$LINK_IP";
+        # S2-NEW-12 follow-up 5: LINK_IP/F_IP are unset in a
+        # fresh-deploy process, so the SILENT Hy2 sub-deploy's
+        # register step could build no host and never created
+        # hy2.link; GLOBAL_PUBLIC_IP is set by pre_install_setup
+        # before any deployer runs, so it is the live host here.
+        elif [[ -n "${GLOBAL_PUBLIC_IP:-}" ]]; then _host="$GLOBAL_PUBLIC_IP";
         else _host="${F_IP:-}"; fi
     fi
     [[ -n "$_host" && "$_host" != 'N/A' ]] || return 1

@@ -6467,12 +6467,18 @@ tr_msg() {
         fa:cl_env_ports_cleared) echo 'درگاه‌های زیر در .env هیچ inbound زنده‌ای ندارند و پاک شدند: %s.' ;;
         zh-tw:cl_env_ports_cleared) echo '以下 .env 連接埠已無存活入站，已清空：%s。' ;;
         ja:cl_env_ports_cleared) echo '次の .env ポートは存続するインバウンドがないためクリアしました：%s。' ;;
-        zh:cl_fail) echo '删除失败，配置已回滚未改动。' ;;
-        en:cl_fail) echo 'Deletion failed; the configuration was rolled back unchanged.' ;;
-        ru:cl_fail) echo 'Удаление не удалось; конфигурация откатана без изменений.' ;;
-        fa:cl_fail) echo 'حذف ناموفق بود؛ پیکربندی بدون تغییر بازگردانده شد.' ;;
-        zh-tw:cl_fail) echo '刪除失敗，配置已回滾未改動。' ;;
-        ja:cl_fail) echo '削除に失敗しました。設定は変更されずロールバックされました。' ;;
+        zh:cl_fail) echo '删除失败，配置未改动。' ;;
+        en:cl_fail) echo 'Deletion failed; the configuration was not changed.' ;;
+        ru:cl_fail) echo 'Не удалось удалить; конфигурация не изменена.' ;;
+        fa:cl_fail) echo 'حذف ناموفق بود؛ پیکربندی تغییر نکرد.' ;;
+        zh-tw:cl_fail) echo '刪除失敗，配置未改動。' ;;
+        ja:cl_fail) echo '削除に失敗しました。設定は変更されていません。' ;;
+        zh:cl_stop_fail) echo '停止失败，服务仍在运行（配置已清空）。' ;;
+        en:cl_stop_fail) echo 'Stop failed; the service is still running (configuration already cleared).' ;;
+        ru:cl_stop_fail) echo 'Не удалось остановить службу; она продолжает работать (конфигурация уже очищена).' ;;
+        fa:cl_stop_fail) echo 'توقف سرویس ناموفق بود؛ سرویس همچنان در حال اجراست (پیکربندی قبلاً پاک شده است).' ;;
+        zh-tw:cl_stop_fail) echo '停止失敗，服務仍在運行（配置已清空）。' ;;
+        ja:cl_stop_fail) echo '停止に失敗しました。サービスは実行中です（設定は既にクリアされています）。' ;;
         zh:cl_done) echo '已删除' ;;
         en:cl_done) echo 'Removed' ;;
         ru:cl_done) echo 'Удалено' ;;
@@ -24440,8 +24446,23 @@ restart_owned() {
     service_is_abox_managed "$srv" || return 1
     if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1; else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&-; fi
 }
+# M41-NEW-03: stop a ghost core — a service that is still running
+# although the stack was cleared (desired MANUAL_STOPPED, CORE already
+# empty). Only a service that is verifiably A-Box-managed AND active
+# with the expected exe is touched; anything else is left alone
+# (return 0: nothing to stop).
+stop_ghost_owned() {
+    local srv="$1"
+    service_active_owned "$srv" || return 0
+    if is_systemd; then
+        systemctl stop "$srv" >/dev/null 2>&1 || true
+        if systemctl is-active --quiet "$srv"; then return 1; else return 0; fi
+    else
+        rc-service "$srv" stop >/dev/null 2>&1 9>&- 10>&- || true
+        if rc-service "$srv" status >/dev/null 2>&1; then return 1; else return 0; fi
+    fi
+}
 load_state || exit 0
-[[ -n "${CORE:-}" ]] || exit 0
 desired=RUNNING
 if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
     # S23: a pair file that exists but fails safety checks is an error:
@@ -24463,7 +24484,18 @@ elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
     IFS= read -r desired < "$DESIRED" || exit 0
 fi
-[[ "$desired" == RUNNING ]] || { rm -f "$STATE"; exit 0; }
+if [[ "$desired" != RUNNING ]]; then
+    rm -f "$STATE"
+    if [[ "$desired" == MANUAL_STOPPED ]]; then
+        # M41-NEW-03: the stack was cleared (CORE already empty) but a
+        # core may still be running as a ghost; stop any running
+        # A-Box-owned core instead of leaving it serving cleared nodes.
+        # Other non-RUNNING states (TRAFFIC_BLOCKED/MAINTENANCE) are
+        # owned by the traffic monitor, not by this probe.
+        for _gs in xray sing-box hysteria; do stop_ghost_owned "$_gs" || true; done
+    fi
+    exit 0
+fi
 IPT=$(command -v iptables || echo /sbin/iptables)
 IPT6=$(command -v ip6tables || echo /sbin/ip6tables)
 has_ipv6() { local _p; _p=$(read_ip_pref 2>/dev/null || printf dual); [[ "$_p" == ipv4 ]] && return 1; ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' || ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; }
@@ -33130,9 +33162,81 @@ core_family_unit_registered() {
     return 1
 }
 
+# M41-NEW-03: live-process ownership evidence. When the unit-file marker
+# AND the ownership manifest are both gone, a running core must not be
+# treated as foreign by name alone — the running process itself is
+# evidence: its exe must be the A-Box core binary AND its command line
+# must reference the A-Box config path for that core. Anything else is
+# unverified and is never touched.
+_core_exe_and_config() {
+    case "$1" in
+        xray) printf '%s\n%s\n' /usr/local/bin/xray /usr/local/etc/xray/config.json ;;
+        sing-box) printf '%s\n%s\n' /usr/local/bin/sing-box /etc/sing-box/config.json ;;
+        hysteria) printf '%s\n%s\n' /usr/local/bin/hysteria /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+core_process_matches() {
+    local srv="$1" pid="$2" exe='' cfg='' cmdline=''
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    pid_exe_matches "$pid" "$exe" || return 1
+    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    [[ "$cmdline" == *"$cfg"* ]]
+}
+find_core_residual_pid() {
+    local srv="$1" exe='' cfg='' pid='' cmdline=''
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    for d in /proc/[0-9]*; do
+        pid="${d#/proc/}"
+        [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || continue
+        pid_exe_matches "$pid" "$exe" || continue
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        [[ "$cmdline" == *"$cfg"* ]] || continue
+        printf '%s\n' "$pid"
+        return 0
+    done
+    return 1
+}
+stop_core_residual_process() {
+    # M41-NEW-03: kill a residual core process that systemd no longer
+    # tracks (orphan: unit inactive / MainPID 0, process alive with the
+    # A-Box exe + config in its cmdline). Identity is re-verified before
+    # every signal (exe + cmdline + starttime), mirroring
+    # kill_managed_residual_pids; a PID reused in between is never
+    # signalled. Returns 0 iff no same-instance residual remains.
+    local srv="$1" pid='' start='' waited=0
+    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+    [[ -n "$pid" ]] || return 0
+    kill -0 "$pid" 2>/dev/null || return 0
+    start=$(proc_starttime "$pid" 2>/dev/null || true)
+    [[ -n "$start" ]] || return 1
+    core_process_matches "$srv" "$pid" || return 0
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    while (( waited < 50 )); do
+        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
+        if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then return 0; fi
+        core_process_matches "$srv" "$pid" || return 0
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    return 1
+}
 stop_owned() {
     local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
     u=$(managed_unit_path "$srv") || return 1
+    # M41-NEW-03 (hardening, not the observed mechanism): if INIT_SYS was
+    # never set in this process (e.g. stop_owned called before any init),
+    # re-derive it instead of silently taking the OpenRC branch on a
+    # systemd host. An explicit openrc value is never overridden.
+    if [[ -z "${INIT_SYS:-}" || "${INIT_SYS:-}" == unknown ]] && systemd_available; then
+        INIT_SYS='systemd'
+        u=$(managed_unit_path "$srv") || return 1
+    fi
     if ! owned "$srv"; then
         # R3-NEW-04: the marker gate above refuses a unit whose file lost
         # its marker (or went missing, or became a symlink) after
@@ -33146,14 +33250,32 @@ stop_owned() {
         # the post-stop verification below still has to confirm the
         # service is actually stopped before success is reported.
         if ! core_family_unit_registered "$srv"; then
-            # An existing but unmarked unit is outside A-Box ownership and cannot be
-            # changed. If the unit file is absent, still query the service manager:
-            # a previously loaded unit may remain active after its file was removed.
-            [[ ! -e "$u" && ! -L "$u" ]] || return 1
+            # M41-NEW-03: ownership is unproven (marker AND manifest
+            # both gone). Never stop a foreign service on name alone —
+            # but do not report failure for a service that is already
+            # stopped, and do not leave a RUNNING service that is
+            # verifiably the A-Box stack (live exe + config path) as a
+            # ghost. Query the service manager first:
+            #   inactive  -> already stopped: success (nothing to do);
+            #   active + live-verified -> fall through to the stop path;
+            #   active + unverified  -> refuse (foreign protection).
             if is_systemd; then
-                local load_state
-                load_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
-                case "$load_state" in inactive|failed|dead|not-found) return 0 ;; *) return 1 ;; esac
+                local _live_state _live_pid
+                _live_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+                case "$_live_state" in
+                    inactive|failed|dead|not-found) return 0 ;;
+                    active|activating|deactivating|reloading)
+                        _live_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
+                        if ! core_process_matches "$srv" "$_live_pid"; then
+                            # MainPID may be 0 while the service is
+                            # activating; fall back to a /proc scan for a
+                            # matching live process.
+                            _live_pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+                            core_process_matches "$srv" "$_live_pid" || return 1
+                        fi
+                        ;;
+                    *) return 1 ;;
+                esac
             else
                 rc-service "$srv" status >/dev/null 2>&1; rc=$?
                 case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
@@ -33170,7 +33292,13 @@ stop_owned() {
             active|activating|deactivating|reloading)
                 # Restart=always can race a failed stop. Disable first, then kill the
                 # unit cgroup and re-check actual activity before reporting success.
-                systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                # M41-NEW-03: a unit file deleted before this call (e.g.
+                # clear_all's own _remove_hy2_official deletes the
+                # hysteria unit, then this loop stops hysteria) cannot be
+                # disabled; disabling is moot once the file is gone.
+                if [[ -f "$u" && ! -L "$u" ]]; then
+                    systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                fi
                 systemctl kill --kill-who=all --signal=SIGKILL "$srv" >/dev/null 2>&1 || true
                 systemctl stop "$srv" >/dev/null 2>&1 || true
                 ;;
@@ -33185,9 +33313,13 @@ stop_owned() {
         esac
         _stop_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null) || return 1
         [[ "$_stop_pid" == 0 ]] || return 1
-        systemctl disable "$srv" >/dev/null 2>&1 || return 1
-        enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
-        [[ "$enabled_state" == disabled ]] || return 1
+        # M41-NEW-03: same absent-file tolerance as above — a stopped
+        # service with no unit file left is already disabled.
+        if [[ -f "$u" && ! -L "$u" ]]; then
+            systemctl disable "$srv" >/dev/null 2>&1 || return 1
+            enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
+            [[ "$enabled_state" == disabled ]] || return 1
+        fi
         # Hardening: a unit that was still activating may reach active
         # after the first check; re-verify before reporting success.
         _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
@@ -33195,6 +33327,11 @@ stop_owned() {
             inactive|failed) : ;;
             *) return 1 ;;
         esac
+        # M41-NEW-03: systemd may report stopped while a residual
+        # process keeps serving the wiped config (cgroup escapee /
+        # orphan). Verify no live A-Box-exe process remains; kill a
+        # verified residual, and fail if it survives.
+        stop_core_residual_process "$srv" || return 1
         return 0
     else
         rc-service "$srv" stop >/dev/null 2>&1 || true
@@ -33223,6 +33360,10 @@ stop_owned() {
             3|16|32) : ;;
             *) return 1 ;;
         esac
+        # M41-NEW-03: same residual-process verification as the systemd
+        # branch — an orphan core keeps serving the wiped config even
+        # after OpenRC reports it stopped.
+        stop_core_residual_process "$srv" || return 1
     fi
 }
 start_owned() {
@@ -35877,6 +36018,15 @@ clear_all_protocols() {
                 sed -i "s/^${_cmv}=.*/${_cmv}=\"\"/" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null || wipe_ok=0
             done
         fi
+        # M41-NEW-03: the subscription export still lists the cleared
+        # nodes; refresh it now (empty registries export as empty files)
+        # so a stale subscription cannot keep serving revoked links.
+        # Best-effort: if the refresh itself fails, delete both files
+        # outright (fail closed — a missing export is safe, a stale one
+        # is not); only if even that fails is the clear reported failed.
+        if ! refresh_subscription_after_deploy; then
+            rm -f -- "${SUBSCRIBE_DIR:-/etc/ddr/subscribe}/uri-list.txt" "${SUBSCRIBE_DIR:-/etc/ddr/subscribe}/subscription.base64" 2>/dev/null || wipe_ok=0
+        fi
         # H-23 (Carbon R3): the stack is now empty (all inbounds gone,
         # registries wiped, CORE/MODE cleared above); stop + disable
         # the core services explicitly so a cleared stack does not
@@ -35897,7 +36047,7 @@ clear_all_protocols() {
                 # the clear: the stack is not fully cleared while a
                 # core service keeps listening.
                 if ! stop_owned "$_clr_svc" >/dev/null 2>&1; then
-                    msg "${YELLOW}[!] ${_clr_svc}: $(tr_msg cl_fail)${NC}"
+                    msg "${YELLOW}[!] ${_clr_svc}: $(tr_msg cl_stop_fail)${NC}"
                     wipe_ok=0
                 fi
             done

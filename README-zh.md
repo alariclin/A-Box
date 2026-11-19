@@ -34,21 +34,21 @@
 
 ## 这是什么
 
-A-Box 是一个单文件 Bash 脚本（`install.sh`，约 61,575 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
+A-Box 是一个单文件 Bash 脚本（`install.sh`，约 61,694 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
 
 ## 快速开始
 
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/381a2fe19fefd117f6d6832848209114280afbff/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/4bcb5f0c71ca0212924904c9dcb35712d6cc31e2/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/381a2fe19fefd117f6d6832848209114280afbff/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/381a2fe19fefd117f6d6832848209114280afbff/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/4bcb5f0c71ca0212924904c9dcb35712d6cc31e2/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/4bcb5f0c71ca0212924904c9dcb35712d6cc31e2/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -109,9 +109,9 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 8 | IP / DNS / 时区 / 下载源设置 | 16 | SS-2022 访问白名单 |
 | 0 | 返回主菜单 | 17 | 自定义快捷键 |
 
-第 2、3 项的测试脚本默认拉取上游最新版并做结构校验；拉取或校验失败时，回退到经校验的 `test-tools-mirror` 发布中的钉版备份（Ed25519 签名与 SHA-256 双重校验）；两者都不可用时不执行任何脚本。第 1 项 A-Check 同样实时拉取最新版，失败时依次回退签名镜像钉版与本机已验证缓存。
+第 2、3 项的测试脚本默认拉取上游最新版并做结构校验；拉取或校验失败时，回退到经校验的 `test-tools-mirror` 发布中的钉版备份（Ed25519 签名与 SHA-256 双重校验）；两者都不可用时不执行任何脚本。第 1 项 A-Check 仅从 `test-tools-mirror` 钉版发布拉取，须通过 Ed25519 签名与 SHA-256 校验后才运行；无实时上游源、无旧缓存回退，任一环节失败即不执行。
 
-第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本从 A-Check 仓库实时拉取最新版，运行前做结构校验（shebang、VERSION 标记、大小、py_compile），并缓存在 `/etc/ddr/tools`；实时拉取失败时，依次回退到签名校验的镜像钉版与本机已验证缓存。需要 Python 3.8 或更高版本。
+第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本仅从 `test-tools-mirror` 钉版发布拉取，校验 Ed25519 签名与 SHA-256，通过后再做结构校验（shebang、VERSION 标记、大小、py_compile），将已验证副本安装到 `/etc/ddr/tools`，并运行刚验证过的临时文件；不从 A-Check 仓库实时拉取，也不回退到此前缓存的旧副本，任一环节失败即不执行。需要 Python 3.8 或更高版本。
 
 **多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
 

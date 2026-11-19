@@ -36849,6 +36849,25 @@ list_usersd_uuids() {
 # abort on failure; never treat a failed read as an empty list.
 # (TRAP-7: do NOT use `done < <(list_extra_uuids)` -- process substitution
 # swallows the exit status. Use this helper with an explicit status check.)
+# E62-NEW-01 (candidate B): UUIDs the live Xray XHTTP inbound actually
+# accepts, one per line. rc 0 iff the live config is readable and contains
+# an xhttp inbound (the list itself may be empty: then no user can auth
+# over XHTTP); rc 1 when the live state cannot be read or has no xhttp
+# inbound, in which case the caller falls back to the merged registry list
+# (the historical .env-driven behaviour, e.g. not-installed / self-test
+# contexts where no live inbound exists to be authoritative).
+list_xhttp_live_uuids() {
+    local cfg='' _jq_cfg=''
+    cfg=$(users_cfg_of xray 2>/dev/null) || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    _jq_cfg=$(mktemp /tmp/A-Box-xhttp-live.XXXXXX) || return 1
+    jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f -- "$_jq_cfg"; return 1; }
+    jq -e --arg t xhttp '[.inbounds[]? | select(.tag == $t)] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || { rm -f -- "$_jq_cfg"; return 1; }
+    jq -r --arg t xhttp '.inbounds[]? | select(.tag == $t) | .settings.clients[]?.id // empty' "$_jq_cfg" 2>/dev/null || { rm -f -- "$_jq_cfg"; return 1; }
+    rm -f -- "$_jq_cfg"
+    return 0
+}
 write_full_uuid_list_to_file() {
     local out="$1" _tmp='' _rc=0
     # TRAP-7(c): declare first, assign separately -- `local x=$(cmd)` masks
@@ -55630,6 +55649,21 @@ PY_CLASH_REALPATH
         msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete Clash config.${NC}" >&2
         return 1
     fi
+    # E62-NEW-01 (candidate B): XHTTP nodes are emitted only for UUIDs
+    # the live XHTTP inbound actually has. The merged registry list is
+    # the fallback when the live state cannot be read or has no xhttp
+    # inbound (not-installed / self-test contexts, where the YAML is
+    # .env-driven); a readable live xhttp inbound is authoritative even
+    # when its client list is empty. A plain variable needs no temp-file
+    # cleanup on the early returns below.
+    local _xhttp_uuid_list=''
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        if ! _xhttp_uuid_list=$(list_xhttp_live_uuids 2>/dev/null); then
+            _xhttp_uuid_list=$(cat "$_clash_uuid_list_tmp" 2>/dev/null || true)
+        fi
+    else
+        _xhttp_uuid_list=$(cat "$_clash_uuid_list_tmp" 2>/dev/null || true)
+    fi
     # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
     # H-24: the YAML password is the effective Hy2 credential
     # (login:secret for multi-user userpass), not the stale .env value.
@@ -55878,7 +55912,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
-            done < "$_clash_uuid_list_tmp"
+            done <<< "$_xhttp_uuid_list"
         fi
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
@@ -56013,11 +56047,18 @@ EOF_CLASH
         # base name must not appear.
         (( _vision_base_emit == 1 )) && echo '      - Vision'
         (( _xhttp_base_emit == 1 )) && echo '      - XHTTP'
+        # E62-NEW-01 (candidate B): Vision entries come from the merged
+        # registry list, XHTTP entries from the live XHTTP inbound list,
+        # matching the node loops above; a shared loop would re-advertise
+        # live-absent XHTTP UUIDs in the group.
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
             (( _vision_emit == 1 )) && echo "      - Vision-$client_uuid"
-            (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
+        while IFS= read -r client_uuid; do
+            [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
+            (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
+        done <<< "$_xhttp_uuid_list"
         # H-24(3): list exactly the Hy2/SS nodes emitted above.
         for proxy_name in "${_hy2_emit_names[@]}"; do echo "      - $proxy_name"; done
         for proxy_name in "${_ss_emit_names[@]}"; do echo "      - $proxy_name"; done

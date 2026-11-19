@@ -684,7 +684,7 @@ rebuild_standalone_links() {
     _prune_standalone_links sing-box || true
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
+    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta='' _hyc='' _pwonly='' _users_json=''
     if [[ -f "$_xc" ]]; then
         if true; then  # S1-NEW-02: always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
@@ -879,25 +879,48 @@ rebuild_standalone_links() {
     fi
     # E19: official Hy2 never registered a standalone link, so menu 12 /
     # export showed no Hy2 node even though view_config prints the URL.
-    # Rebuild it from the live config when the file is missing (the
-    # deploy-time call below is the primary path; this is the safety net
-    # that also heals installs predating the fix). Secrets come from
-    # config.yaml itself, the port list from the environment (same source
-    # view_config uses); a missing/unusable pin refuses the link.
-    if [[ ! -f "$_dir/hy2.link" && -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
-        _pass=''; _obfs=''; _url=''; _port=''
-        # R16-F01-02: same trailing-LF sentinel as the obfs branch
-        # below: jq -r + $() strips a trailing LF from the password,
-        # caching a wrong credential for a password that ends in LF.
-        _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
-        _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
-        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+    # Rebuild it from the live config (the deploy-time call below is
+    # the primary path; this is the safety net that also heals installs
+    # predating the fix). Secrets come from config.yaml itself, the port
+    # list from the environment (same source view_config uses); a
+    # missing/unusable pin refuses the link.
+    # FUP4: this block used to run only when hy2.link was missing, read
+    # only the FIRST config user (.[0]), emitted a bare password, and
+    # read a hard-coded /etc/hysteria/config.yaml. Under userpass auth
+    # that is a dead link (bare password never authenticates) that no
+    # rebuild ever healed. It now always refreshes from live (the
+    # S1-NEW-02 contract the other family blocks already follow:
+    # incomplete/unverifiable data keeps the old file), prefers the
+    # user named "main" (else the first entry -- one link per protocol,
+    # same single-link contract as the deploy registration and the
+    # menu-12 QR; per-user links already live in the subscription via
+    # users_export_all), and emits the user:pass composite unless the
+    # live auth is password-only (password_only entry), which keeps
+    # the bare form byte-identical. Config path honours ABOX_HY2_CFG
+    # (same override pattern as ABOX_XRAY_CFG/ABOX_SB_CFG) so the block
+    # is sandbox-coverable; it defaults to /etc/hysteria/config.yaml.
+    local _hyc="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}"
+    if [[ -f "$_hyc" && ! -L "$_hyc" ]]; then
+        _pass=''; _obfs=''; _url=''; _port=''; _user=''; _pwonly=''; _users_json=''
+        # R16-F01-02: same trailing-LF sentinel as the old .[0] read:
+        # jq -r + $() strips a trailing LF from the password, caching
+        # a wrong credential for a password that ends in LF.
+        _users_json=$(users_hy2_read_users "$_hyc" 2>/dev/null || true)
+        if [[ -n "$_users_json" ]]; then
+            _tsv_split "$(printf '%s' "$_users_json" | jq -r '(map(select(.name == "main"))[0] // .[0] // {}) | [(.name // ""), ((.secret // "") + "__ABOX_TRAILING_NL_KEEP__"), ((.password_only // false) | tostring)] | @tsv' 2>/dev/null || true)" _user _pass _pwonly
+            _tsv_unescape "$_pass" _pass
+            _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
+            # Password-only auth authenticates on the bare password;
+            # userpass auth needs the composite userinfo.
+            [[ "$_pwonly" == 'true' ]] && _user=''
+        fi
+        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' "$_hyc" 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
             _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null) || _obfs=''
             _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
         fi
         if [[ -n "$_pass" && -n "${_obfs:-}" ]]; then
-            _url=$(hy2_standalone_url "$_pass" "$_obfs" "$_ip" 2>/dev/null || true)
+            _url=$(hy2_standalone_url "$_pass" "$_obfs" "$_ip" "$_user" 2>/dev/null || true)
             if [[ -n "$_url" ]]; then
                 IFS=$'\t' read -r _port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
                 [[ -n "$_port" ]] && register_standalone_link hy2 "$(tprintf sl_node_port 'Hysteria 2' "$_port")" "$_url"
@@ -12474,12 +12497,19 @@ validate_abox_env_semantics() {
     [[ -z "${HY2_OBFS:-}" ]] || valid_single_line_secret "$HY2_OBFS" 512 || return 1
     [[ -z "${SS_PASS:-}" ]] || valid_single_line_secret "$SS_PASS" 512 || return 1
     # SOCKS5: validate port/user/pass/proto when enabled.
+    # S2-NEW-02: both-empty credentials are the anonymous SOCKS5 state
+    # (sing-box treats an empty users list as no-auth, so a preserved
+    # anonymous inbound is a legal live state, not corruption). One-sided
+    # credentials are still rejected as corrupt; non-empty pairs keep the
+    # single-line secret checks below.
     if [[ -n "${SOCKS_PORT:-}" ]]; then
         valid_canonical_port "$SOCKS_PORT" || return 1
-        [[ -n "${SOCKS_USER:-}" ]] || return 1
-        valid_single_line_secret "$SOCKS_USER" 64 || return 1
-        [[ -n "${SOCKS_PASS:-}" ]] || return 1
-        valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        if [[ -n "${SOCKS_USER:-}" || -n "${SOCKS_PASS:-}" ]]; then
+            [[ -n "${SOCKS_USER:-}" ]] || return 1
+            valid_single_line_secret "$SOCKS_USER" 64 || return 1
+            [[ -n "${SOCKS_PASS:-}" ]] || return 1
+            valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        fi
         [[ "${SOCKS_PROTO:-socks}" =~ ^(socks|mixed)$ ]] || return 1
         [[ "$SOCKS_PORT" != "${VLESS_PORT:-}" && "$SOCKS_PORT" != "${SS_PORT:-}" && "$SOCKS_PORT" != "${HY2_BASE_PORT:-}" && "$SOCKS_PORT" != "10085" ]] || return 1
     fi
@@ -35647,6 +35677,37 @@ _standalone_link_prune_if_gone() {
     return 0
 }
 
+# S1-NEW-04 (final-round followup 4): drop manifest rows for paths
+# that were just deleted from disk. The ownership manifest records
+# files that exist; a row for a deleted file drifts (a same-name,
+# same-hash rebuild would then compare against a stale row) and is
+# never healed until the next full record_core_family_ownership walk.
+# Callers pass the exact paths they deleted; only rows whose field 3
+# matches one of those paths are dropped, so live rows are untouched.
+# Same atomic-rewrite shape as _xl_legacy_drop_manifest_rows (mktemp
+# in place + 600 + mv). Best-effort, always returns 0: the file
+# deletion already happened, and a stale row is low-severity drift
+# that must never fail the caller's deploy/cleanup path.
+_manifest_drop_paths() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _tmp='' _list=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
+    [[ $# -gt 0 ]] || return 0
+    _tmp=$(mktemp "${_mf}.drop.XXXXXX" 2>/dev/null) || return 0
+    _list=$(mktemp "${_mf}.droplist.XXXXXX" 2>/dev/null) || { rm -f -- "$_tmp"; return 0; }
+    printf '%s\n' "$@" > "$_list" 2>/dev/null || { rm -f -- "$_tmp" "$_list"; return 0; }
+    # Exact match on field 3 via an associative set: paths may contain
+    # regex metacharacters, so they are never matched as patterns.
+    if ! awk -F'\t' 'NR==FNR {drop[$0]=1; next} !($3 in drop)' "$_list" "$_mf" > "$_tmp" 2>/dev/null; then
+        rm -f -- "$_tmp" "$_list"
+        return 0
+    fi
+    rm -f -- "$_list"
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    chown root:root -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_mf" 2>/dev/null || rm -f -- "$_tmp"
+    return 0
+}
+
 # L-NEW-11: a removed sing-box TUIC inbound owns its per-tag self-signed
 # cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/.key). Delete the pair
 # only when no tuic inbound remains in the live config (mirror of the Hy2
@@ -35669,10 +35730,17 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
     jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' "$_stripped" >/dev/null 2>&1 || _tuic_jq_rc=$?
     rm -f -- "$_stripped"
     [[ "$_tuic_jq_rc" == 1 ]] || return 0
+    # S1-NEW-04: a deleted file's manifest row must go with it, or
+    # the manifest drifts from disk (stale hash vs a same-name rebuild).
+    # Only rows for files this loop actually removed are dropped: a
+    # failed rm leaves the file (and its row) in place.
+    local _deleted=()
     for _f in "$_sb_dir"/tuic-*.crt "$_sb_dir"/tuic-*.key; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
         rm -f -- "$_f" 2>/dev/null || true
+        [[ -e "$_f" ]] || _deleted+=("$_f")
     done
+    (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
     return 0
 }
 
@@ -47000,8 +47068,29 @@ validate_services_state_file() {
     ' "$file"
 }
 
+# S1-NEW-05: a service whose managed unit and config survive but whose
+# binary was deleted (e.g. rm /usr/local/bin/xray) is NOT config-only
+# (A-04 requires no unit AND no binary), yet its backup is a faithful
+# snapshot: the deploy flow refetches the binary unconditionally, and
+# uninstall needs no binary at all. Only backup CREATION may treat this
+# shape as recoverable; restore gates stay strict (a restore must not
+# reinstall a service with no binary).
+backup_root_service_is_binary_missing_managed() {
+    local root="$1" srv="$2" bin cfg
+    case "$srv" in
+        xray) bin="$root/usr/local/bin/xray"; cfg="$root/usr/local/etc/xray/config.json" ;;
+        sing-box) bin="$root/usr/local/bin/sing-box"; cfg="$root/etc/sing-box/config.json" ;;
+        hysteria) bin="$root/usr/local/bin/hysteria"; cfg="$root/etc/hysteria/config.yaml" ;;
+        xray-latest) bin="$root/usr/local/bin/xray-latest"; cfg="$root/etc/ddr/xray-latest/config.json" ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$bin" && ! -L "$bin" ]] || return 1
+    [[ -f "$cfg" ]] || return 1
+    backup_root_service_is_managed "$root" "$srv"
+}
+
 validate_extracted_backup_content() {
-    local root="$1" srv path src work
+    local root="$1" srv path src work mode="${2:-restore}"
     work=$(dirname "$root")
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
@@ -47036,13 +47125,22 @@ validate_extracted_backup_content() {
                 xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
-            backup_root_service_is_managed "$root" "$srv" || return 1
-            case "$srv" in
-                xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
-                sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
-                hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
-                xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
-            esac
+            # S1-NEW-05 (backup creation only): a managed service whose
+            # binary is missing but whose config survives is recoverable
+            # (deploy refetches the binary; uninstall needs none), provided
+            # services.state does NOT claim it running. Anything else
+            # (missing config, foreign unit, running claim) still fails.
+            if [[ "$mode" == backup ]] && backup_root_service_is_binary_missing_managed "$root" "$srv"; then
+                grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" || return 1
+            else
+                backup_root_service_is_managed "$root" "$srv" || return 1
+                case "$srv" in
+                    xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
+                    sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
+                    hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+                    xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
+                esac
+            fi
         fi
     done
     local aux_paths=''
@@ -47655,7 +47753,7 @@ backup_current_config() {
     fi
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
-    validate_extracted_backup_content "$root" || { rm -rf "$work"; die 'Backup content validation failed.'; }
+    validate_extracted_backup_content "$root" backup || { rm -rf "$work"; die 'Backup content validation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
     # R13-03: create the archive as a private temp file in the same
     # directory (umask 077 mktemp, so no 0644-readable window under
@@ -55049,14 +55147,17 @@ build_hy2_uri_endpoint() {
 # E19: build the hysteria2:// standalone URL from live state — the same
 # shape view_config emits (same pin rule, same branch order). $1 = auth
 # password (raw), $2 = obfs password (raw), $3 = host override (IP or
-# domain; default HY2_DOMAIN, else LINK_IP/F_IP). Prints the URL on
-# stdout; returns 1 when no usable link can be built (missing secrets,
+# domain; default HY2_DOMAIN, else LINK_IP/F_IP). $4 = optional username:
+# when given, emit the user:pass composite the server expects under
+# userpass auth (a bare password is a dead link there); when empty,
+# emit the bare password (password auth, and all pre-existing callers).
+# Prints the URL on stdout; returns 1 when no usable link can be built (missing secrets,
 # bad port endpoint, or the SYD-B4 A3 pin refusal: no pin and (no domain
 # or sing-box core)). Callers register the result with
 # register_standalone_link; the link file is 600 and may carry the real
 # obfs password, like the other standalone links carry real secrets.
 hy2_standalone_url() {
-    local _pass="${1:-}" _obfs="${2:-}" _host="${3:-}" _port='' _qp='' _pin='' _pe='' _he='' _oe='' _de=''
+    local _pass="${1:-}" _obfs="${2:-}" _host="${3:-}" _user="${4:-}" _port='' _qp='' _pin='' _pe='' _he='' _oe='' _de='' _ui=''
     [[ -n "$_pass" && -n "$_obfs" ]] || return 1
     IFS=$'\t' read -r _port _qp < <(build_hy2_uri_endpoint 2>/dev/null || true) || return 1
     [[ -n "$_port" ]] || return 1
@@ -55076,12 +55177,16 @@ hy2_standalone_url() {
     # pin refuses this link only.
     if [[ -z "$_pe" ]] && [[ -z "${HY2_DOMAIN:-}" || "${CORE:-}" == 'singbox' ]]; then return 1; fi
     _he=$(urlencode "$_pass"); _oe=$(urlencode "$_obfs"); _de=$(urlencode "${HY2_DOMAIN:-}")
+    # FUP4: userpass auth needs the composite userinfo; password auth
+    # (and every pre-existing 3-arg caller) keeps the bare password.
+    _ui="$_he"
+    [[ -n "$_user" ]] && _ui="$(urlencode "$_user"):$_he"
     if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
-        printf 'hysteria2://%s@%s:%s/?%ssni=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_de" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%ssni=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_de" "$_oe"
     elif [[ -n "${HY2_DOMAIN:-}" ]]; then
-        printf 'hysteria2://%s@%s:%s/?%sinsecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%sinsecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
     else
-        printf 'hysteria2://%s@%s:%s/?%ssni=localhost&insecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%ssni=localhost&insecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
     fi
 }
 

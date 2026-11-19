@@ -700,6 +700,19 @@ _tuic_cert_self_signed() {
     return 1
 }
 
+# Port on line 2 of a standalone .link file (the URI's dial port), or
+# nothing when the file is missing/unreadable. Used by the Trojan -2
+# legacy migration: a port identifies the inbound, so a legacy
+# trojan-landing-N.link whose port matches a per-core file is that
+# inbound's duplicate/stale copy.
+_standalone_link_port() {
+    local _f="$1" _u=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _u=$(sed -n '2p' "$_f" 2>/dev/null) || return 1
+    [[ "$_u" =~ :([0-9]+)(\?|#|$) ]] || return 1
+    printf '%s' "${BASH_REMATCH[1]}"
+}
+
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ "$_ip" == 'N/A' ]] && _ip=''
@@ -722,13 +735,30 @@ rebuild_standalone_links() {
     [[ -n "$_ip" || -n "${HY2_DOMAIN:-}" ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
+    local _tj_row='' _tj_rows='' _tj_tag='' _tj_stem='' _tj_seen='' _tj_legacy_n='' _tj_n='' _tj_leg='' _tj_leg_port='' _tj_sfx='' _tj_pc='' _tj_pc_port=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
-        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+        _tj_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != "")) | [(.tag // ""), (.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null) || _tj_rows=''
+        _tj_seen=''
+        while IFS= read -r _tj_row; do
+            [[ -n "$_tj_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            _tsv_split "$_tj_row" _tj_tag _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            case "$_tj_tag" in
+                trojan-landing|trojan-landing-[0-9]*) ;;
+                *) _tj_tag='trojan-landing' ;;
+            esac
+            _tj_stem=$(users_link_stem xray "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
+            case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
+            _tj_seen+=" $_tj_stem"
+            case "$_tj_stem" in
+                trojan-landing-[0-9]*)
+                    _tj_n="${_tj_stem#trojan-landing-}"
+                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
+            esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (${_tj_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 # 2bf: emit the real transport instead of a wrong
                 # type=tcp — ws/xhttp clients dial the wrong transport
@@ -744,11 +774,11 @@ rebuild_standalone_links() {
                     [[ -n "$_xpath" ]] && _ttype="${_ttype}&path=$(urlencode "$_xpath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-xray "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link "$_tj_stem" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_tj_stem")${NC}" >&2
             fi
-        fi
+        done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _user=''; _pass=''
             _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$"))) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
@@ -761,12 +791,28 @@ rebuild_standalone_links() {
         fi
     fi
     if [[ -n "$_ip" && -f "$_sc" ]]; then
-        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+        _tj_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null) || _tj_rows=''
+        _tj_seen=''
+        while IFS= read -r _tj_row; do
+            [[ -n "$_tj_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_split "$_tj_row" _tj_tag _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            case "$_tj_tag" in
+                trojan-landing|trojan-landing-[0-9]*) ;;
+                *) _tj_tag='trojan-landing' ;;
+            esac
+            _tj_stem=$(users_link_stem sing-box "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
+            case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
+            _tj_seen+=" $_tj_stem"
+            case "$_tj_stem" in
+                trojan-landing-[0-9]*)
+                    _tj_n="${_tj_stem#trojan-landing-}"
+                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
+            esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (${_tj_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 # 2bf: same transport mapping as the Xray arm — a ws /
                 # xhttp / grpc trojan must not be emitted as type=tcp.
@@ -781,11 +827,11 @@ rebuild_standalone_links() {
                     [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-sb "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link "$_tj_stem" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_tj_stem")${NC}" >&2
             fi
-        fi
+        done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
             _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
@@ -914,6 +960,27 @@ rebuild_standalone_links() {
             fi
         fi
     fi
+    # Trojan -2 migration: a pre-fix deploy wrote both cores' -2 chains
+    # into one ambiguous trojan-landing-N.link. Once this rebuild has
+    # written the per-core stem files, the legacy file is a duplicate
+    # (same port) or stale (superseded by its own core's per-core
+    # file); drop it only when its port matches a live per-core file,
+    # so a chain whose core did not rebuild this run is kept.
+    for _tj_n in $_tj_legacy_n; do
+        _tj_leg="$_dir/trojan-landing-${_tj_n}.link"
+        [[ -f "$_tj_leg" && ! -L "$_tj_leg" ]] || continue
+        _tj_leg_port=$(_standalone_link_port "$_tj_leg" 2>/dev/null || true)
+        [[ -n "$_tj_leg_port" ]] || continue
+        for _tj_sfx in sb xray; do
+            _tj_pc="$_dir/trojan-landing-${_tj_n}-${_tj_sfx}.link"
+            [[ -f "$_tj_pc" && ! -L "$_tj_pc" ]] || continue
+            _tj_pc_port=$(_standalone_link_port "$_tj_pc" 2>/dev/null || true)
+            if [[ -n "$_tj_pc_port" && "$_tj_pc_port" == "$_tj_leg_port" ]]; then
+                rm -f -- "$_tj_leg" 2>/dev/null || true
+                break
+            fi
+        done
+    done
     # E19: official Hy2 never registered a standalone link, so menu 12 /
     # export showed no Hy2 node even though view_config prints the URL.
     # Secrets come from config.yaml itself, the port list from the
@@ -14762,6 +14829,9 @@ _standalone_link_tag_survivor() {
 # confirm "gone" before the link is deleted. -N instance stems are
 # checked by exact tag (_standalone_link_tag_survivor): the family
 # regex would count the base instance as evidence for the -N link.
+# Per-core -N stems (trojan-landing-N-sb/-xray) belong to one core:
+# only that core's config is consulted; the legacy ambiguous stem
+# keeps the both-gone rule above.
 # Always returns 0.
 _prune_standalone_link_file() {
     local srv="$1" stem="$2" link="$3" _key='' _rc=0 _all_gone=1 _tag='' _cfg=''
@@ -14777,6 +14847,12 @@ _prune_standalone_link_file() {
         trojan-landing)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _keys=(trojan-xray trojan-sb) ;;
+        trojan-landing-[0-9]*-sb)
+            [[ "$srv" == sing-box ]] || return 0
+            _tag="${stem%-sb}"; _cfgs=(/etc/sing-box/config.json) ;;
+        trojan-landing-[0-9]*-xray)
+            [[ "$srv" == xray ]] || return 0
+            _tag="${stem%-xray}"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}") ;;
         trojan-landing-[0-9]*)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
@@ -29874,7 +29950,11 @@ deploy_with_instance_choice() {
             local n=2
             while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
             msg "${CYAN}$(tr_msg mu_inst_tag): ${btag}-${n} ($(tr_msg mu_inst_port_note))${NC}"
-            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="${btag}-${n}" "$@" ;;
+            # Trojan -2 (and any family with a per-core stem): the link
+            # filename must be per-core, or both cores' -N deploys
+            # collide on one file (users_link_stem derives it; the
+            # fallback keeps the old raw-tag stem when unavailable).
+            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="$(users_link_stem "$core" "${btag}-${n}" 2>/dev/null || printf '%s' "${btag}-${n}")" "$@" ;;
         *) msg "$(tr_msg mu_cancelled)"; return 0 ;;
     esac
 }
@@ -31143,6 +31223,54 @@ routing_apply_live() {
 
 # ---------------- WARP one-click ----------------
 
+# L6-NEW-01: remove warp-out residue directly from the live core
+# configs on disk, with no core and no running service needed.
+# routing_apply_live is the normal retirement path, but it requires
+# a core; the no-core warp_undeploy path and clear_all have none, so
+# without this the endpoint and its route rules stay live forever
+# (_remove_inbounds_from_config only strips rules referencing
+# removed *inbounds*; warp-out is an outbound/endpoint, and its
+# rules reference it via outbound/outboundTag). Idempotent: a
+# missing config, or one without warp-out, is success. Never
+# restarts a service: the callers run with the stack stopped.
+warp_scrub_live_config() {
+    local cfg stripped tmp
+    for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
+        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        stripped=$(mktemp) || return 1
+        tmp=$(mktemp) || { rm -f "$stripped"; return 1; }
+        if ! jsonc_strip_comments "$cfg" > "$stripped" 2>/dev/null; then
+            rm -f "$stripped" "$tmp"; return 1
+        fi
+        if ! jq 'del(.outbounds[]? | select(.tag == "warp-out"))
+                | del(.endpoints[]? | select(.tag == "warp-out"))
+                | del(.routing.rules[]? | select(.outboundTag == "warp-out"))
+                | del(.route.rules[]? | select(.outbound == "warp-out"))' \
+                "$stripped" > "$tmp" 2>/dev/null; then
+            rm -f "$stripped" "$tmp"; return 1
+        fi
+        rm -f "$stripped"
+        jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        case "$cfg" in
+            *xray*)
+                if [[ -x /usr/local/bin/xray ]]; then
+                    XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                fi ;;
+            *sing-box*)
+                if [[ -x /usr/local/bin/sing-box ]]; then
+                    /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                fi ;;
+        esac
+        if ! install_file_atomically "$tmp" "$cfg" 600; then rm -f "$tmp"; return 1; fi
+        rm -f "$tmp"
+        case "$cfg" in
+            *xray*) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
+            *sing-box*) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
+        esac
+    done
+    return 0
+}
+
 # wgcf tracks the upstream latest release at runtime (no version pin).
 # Prints "<version> <sha256:hex>" for the latest ViRb3/wgcf release, bound
 # to a single resolution snapshot. Verification policy (A'): prefer the
@@ -31295,14 +31423,15 @@ warp_deploy() {
 }
 
 warp_deploy_inner() {
-    local workdir xray_json singbox_json core
+    local workdir xray_json singbox_json core _warp_state_snap=''
     workdir=$(mktemp -d) || return 1
     _warp_deploy_workdir="$workdir"
     msg "$(tr_msg warp_deploying)"
-    [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
-    warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }
-    routing_outbound_add 'warp-out' "$workdir/warp-xray.json" "$workdir/warp-singbox.json" \
-        || { msg "$(tr_msg warp_state_fail)"; return 1; }
+    # L6-NEW-01: resolve the core BEFORE registering warp-out in
+    # the routing state. An aborted deploy (no core) used to leave
+    # the state entry behind, so the menu reported WARP as deployed
+    # with nothing live; it also wasted a wgcf register on a deploy
+    # that could never apply.
     core="${CORE:-}"
     if [[ -z "$core" ]]; then
         load_optional_abox_env_or_die 2>/dev/null || true
@@ -31312,21 +31441,48 @@ warp_deploy_inner() {
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
         return 1
     fi
-    routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
+    [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
+    warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }
+    # Snapshot the state before replacing the warp-out entry: on an
+    # apply failure the live config is rolled back to the previous
+    # deployment, so the state must roll back with it instead of
+    # leaving a "deployed" flag (or dropping a still-live prior
+    # deployment) behind.
+    routing_state_init || { msg "$(tr_msg warp_state_fail)"; return 1; }
+    _warp_state_snap=$(mktemp) || { msg "$(tr_msg warp_state_fail)"; return 1; }
+    cp -- "$ROUTING_STATE_FILE" "$_warp_state_snap" 2>/dev/null || { rm -f "$_warp_state_snap"; msg "$(tr_msg warp_state_fail)"; return 1; }
+    routing_outbound_add 'warp-out' "$workdir/warp-xray.json" "$workdir/warp-singbox.json" \
+        || { rm -f "$_warp_state_snap"; msg "$(tr_msg warp_state_fail)"; return 1; }
+    if ! routing_apply_live "$core"; then
+        routing_state_put < "$_warp_state_snap" 2>/dev/null || true
+        rm -f "$_warp_state_snap"
+        msg "$(tr_msg warp_apply_fail)"; return 1
+    fi
+    rm -f "$_warp_state_snap"
     msg "$(tr_msg warp_done)"
 }
 
 warp_undeploy() {
-    routing_outbound_del 'warp-out' || return 1
     local core="${CORE:-}"
     if [[ -z "$core" ]]; then
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
     if [[ -z "$core" ]]; then
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
-        return 1
+        # L6-NEW-01: no core means no routing_apply_live to retire
+        # the endpoint/rules through, but the residue is still on
+        # disk and the menu has no other way to clear it (every
+        # no-core undeploy aborted here). Scrub the live configs
+        # directly, then drop the state entry: scrub first so a
+        # scrub failure keeps the state flag (truthful: the residue
+        # is still live) instead of reporting "not deployed" over
+        # a live warp-out.
+        warp_scrub_live_config || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+        routing_outbound_del 'warp-out' || return 1
+        msg "$(tr_msg warp_removed)"
+        return 0
     fi
+    routing_outbound_del 'warp-out' || return 1
     routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
     msg "$(tr_msg warp_removed)"
 }
@@ -35823,7 +35979,8 @@ _standalone_link_prune_if_gone() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg=''
+    local tag='' cfg='' _stem2=''
+    local _ld="${ABOX_DIR:-/etc/ddr}"
     for tag in "$@"; do
         case "$tag" in
             # R15-F10-03: the Argo source inbounds live in sing-box;
@@ -35835,7 +35992,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             # by the deletion that just ran.
             vmess-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vmess || true ;;
             vless-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vless || true ;;
-            *trojan*) _standalone_link_prune_if_gone trojan-xray /etc/ddr/standalone-links.d/trojan-xray.link; _standalone_link_prune_if_gone trojan-sb /etc/ddr/standalone-links.d/trojan-sb.link ;;
+            *trojan*) _standalone_link_prune_if_gone trojan-xray "${_ld}/standalone-links.d/trojan-xray.link"; _standalone_link_prune_if_gone trojan-sb "${_ld}/standalone-links.d/trojan-sb.link"; case "$tag" in trojan-landing-[0-9]*) _stem2=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag"); _prune_standalone_link_file "$core" "$_stem2" "${_ld}/standalone-links.d/${_stem2}.link" ;; esac ;;
             *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link ;;
             *anytls*) _standalone_link_prune_if_gone anytls /etc/ddr/standalone-links.d/anytls.link ;;
             *shadowtls*) _standalone_link_prune_if_gone shadowtls /etc/ddr/standalone-links.d/shadowtls.link ;;
@@ -35851,7 +36008,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         # trojan-sb.link, ...); the generic rm would delete a
         # nonexistent ${tag}.link and must not run for them.
         case "$tag" in
-            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-landing|tuic-in|anytls-in|shadowtls-in|socks-in|mixed-in|socks5-landing|vmess-ws-in|vless-ws-in) ;;
+            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-landing|trojan-landing-[0-9]*|tuic-in|anytls-in|shadowtls-in|socks-in|mixed-in|socks5-landing|vmess-ws-in|vless-ws-in) ;;
             *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
         esac
         users_registry_remove "$core" "$tag"
@@ -36473,6 +36630,27 @@ clear_all_protocols() {
                     wipe_ok=0
                 fi
             done
+            # L6-NEW-01: WARP routing state + live residue survive a
+            # clear-all: _remove_inbounds_from_config only strips
+            # rules referencing removed inbounds, and nothing else
+            # in this function touches the routing state or the
+            # warp-out endpoint, so a cleared stack kept a live
+            # warp-out + its rules while the menu kept reporting
+            # WARP as deployed. Drop the state entry and scrub both
+            # live configs (gated on wipe_ok: a partial wipe leaves
+            # surviving nodes whose WARP routing must stay). Either
+            # failure fails the clear instead of reporting success
+            # over a residue.
+            if (( wipe_ok == 1 )); then
+                if ! routing_outbound_del 'warp-out'; then
+                    msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
+                    wipe_ok=0
+                fi
+                if ! warp_scrub_live_config; then
+                    msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
+                    wipe_ok=0
+                fi
+            fi
             # In-memory CORE/MODE are stale after the wipe; main_loop
             # reloads .env on its next iteration, but reset them here
             # so nothing later in this iteration reads the old values.
@@ -38477,6 +38655,8 @@ users_link_stem() {
     case "$core:$tag" in
         xray:trojan-landing) printf '%s' 'trojan-xray' ;;
         sing-box:trojan-landing) printf '%s' 'trojan-sb' ;;
+        xray:trojan-landing-[0-9]*) printf 'trojan-landing-%s-xray' "${tag#trojan-landing-}" ;;
+        sing-box:trojan-landing-[0-9]*) printf 'trojan-landing-%s-sb' "${tag#trojan-landing-}" ;;
         xray:socks5-landing) printf '%s' 'socks5-xray' ;;
         sing-box:socks5-landing) printf '%s' 'socks5-sb' ;;
         sing-box:tuic-in) printf '%s' 'tuic' ;;
@@ -38848,6 +39028,21 @@ users_link_combo() {
 # CALLER != deploy); the "after_deploy" name is historical.
 refresh_subscription_after_deploy() {
     local _n
+    # S2-NEW-12: the deploy-time export used to run before any
+    # standalone link existed (rebuild_standalone_links runs only at
+    # the END of view_config), so the hy2 registry -- whose link comes
+    # from hy2.link, not from the combo builder -- was always skipped
+    # on a fresh deploy, until the first menu 12 reprint. Rebuild
+    # first so the export reads the same links menu 12 would print.
+    # F_IP is derived here because rebuild reads the caller's F_IP
+    # (bash dynamic scoping) and view_config is the only caller that
+    # sets it; without this the rebuild early-returns when there is
+    # no HY2_DOMAIN. Best-effort like the export itself: a rebuild
+    # failure must not fail the deploy.
+    local _s2n12_fip="${LINK_IP:-}"
+    [[ "$_s2n12_fip" =~ : ]] && _s2n12_fip="[$_s2n12_fip]"
+    local F_IP="$_s2n12_fip"
+    rebuild_standalone_links || true
     _n=$(users_export_all || true)
     if [[ -n "$_n" ]]; then
         msg "${GREEN}Subscription export refreshed: ${_n} link(s) (uri-list.txt / subscription.base64)${NC}"
@@ -47957,8 +48152,29 @@ validate_services_state_file() {
     ' "$file"
 }
 
+# S1-NEW-05: a service whose managed unit and config survive but whose
+# binary was deleted (e.g. rm /usr/local/bin/xray) is NOT config-only
+# (A-04 requires no unit AND no binary), yet its backup is a faithful
+# snapshot: the deploy flow refetches the binary unconditionally, and
+# uninstall needs no binary at all. Only backup CREATION may treat this
+# shape as recoverable; restore gates stay strict (a restore must not
+# reinstall a service with no binary).
+backup_root_service_is_binary_missing_managed() {
+    local root="$1" srv="$2" bin cfg
+    case "$srv" in
+        xray) bin="$root/usr/local/bin/xray"; cfg="$root/usr/local/etc/xray/config.json" ;;
+        sing-box) bin="$root/usr/local/bin/sing-box"; cfg="$root/etc/sing-box/config.json" ;;
+        hysteria) bin="$root/usr/local/bin/hysteria"; cfg="$root/etc/hysteria/config.yaml" ;;
+        xray-latest) bin="$root/usr/local/bin/xray-latest"; cfg="$root/etc/ddr/xray-latest/config.json" ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$bin" && ! -L "$bin" ]] || return 1
+    [[ -f "$cfg" ]] || return 1
+    backup_root_service_is_managed "$root" "$srv"
+}
+
 validate_extracted_backup_content() {
-    local root="$1" srv path src work
+    local root="$1" srv path src work mode="${2:-restore}"
     work=$(dirname "$root")
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
@@ -48001,13 +48217,22 @@ validate_extracted_backup_content() {
                 xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
-            backup_root_service_is_managed "$root" "$srv" || return 1
-            case "$srv" in
-                xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
-                sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
-                hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
-                xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
-            esac
+            # S1-NEW-05 (backup creation only): a managed service whose
+            # binary is missing but whose config survives is recoverable
+            # (deploy refetches the binary; uninstall needs none), provided
+            # services.state does NOT claim it running. Anything else
+            # (missing config, foreign unit, running claim) still fails.
+            if [[ "$mode" == backup ]] && backup_root_service_is_binary_missing_managed "$root" "$srv"; then
+                grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" || return 1
+            else
+                backup_root_service_is_managed "$root" "$srv" || return 1
+                case "$srv" in
+                    xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
+                    sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
+                    hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+                    xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
+                esac
+            fi
         fi
     done
     local aux_paths=''
@@ -48571,7 +48796,7 @@ backup_current_config() {
     fi
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
-    validate_extracted_backup_content "$root" || { rm -rf "$work"; die 'Backup content validation failed.'; }
+    validate_extracted_backup_content "$root" backup || { rm -rf "$work"; die 'Backup content validation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
     # R13-03: create the archive as a private temp file in the same
     # directory (umask 077 mktemp, so no 0644-readable window under

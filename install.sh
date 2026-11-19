@@ -12394,6 +12394,22 @@ shell_single_quote() {
     local v=${1:-}
     printf "'%s'" "${v//\'/\'\\\'\'}"
 }
+# M-08(3) quoter split: .env values are read by Python shlex
+# (load_abox_env), NOT by bash. Inside double quotes shlex only
+# unescapes backslash-quote and backslash-backslash; a backslash
+# before $, backtick, ! or n survives, so the bash double-quote style
+# (shell_quote) corrupts those values on load (see fixture
+# fx-quoter-roundtrip.sh). env_quote therefore uses the shlex-correct
+# single-quote form: everything inside single quotes is literal to
+# shlex, and an embedded single quote is spliced as '\'' (same
+# algorithm as shell_single_quote, kept as a separate function because
+# the two have different readers: shlex vs bash). NEVER use shell_quote
+# for .env values; shell_quote stays the quoter for bash-evaluated
+# contexts (cron command lines) only.
+env_quote() {
+    local v=${1:-}
+    printf "'%s'" "${v//\'/\'\\\'\'}"
+}
 json_escape() { jq -n --rawfile v <(printf '%s' "${1:-}") '$v'; }
 
 clear_abox_env_vars() {
@@ -22684,7 +22700,7 @@ update_traffic_state_atomically() {
     local _iface='' _inferred='' _write_iface=0
     if [[ -n "$limit" ]]; then
         _iface=$(awk -F= '$1=="INGRESS_IF" {print substr($0, length($1)+2); exit}' "$ABOX_ENV" 2>/dev/null || true)
-        # Strip one layer of shell quoting (%q/shell_quote output).
+        # Strip one layer of shell quoting (%q/env_quote output).
         case "$_iface" in
             \"*\") _iface="${_iface#\"}"; _iface="${_iface%\"}";;
             \'*\') _iface="${_iface#\'}"; _iface="${_iface%\'}";;
@@ -22948,51 +22964,51 @@ PY_WRITE_ENV_OLD
     # inner set -e suppressed by bash, so || die alone would not
     # catch the failure.
     ( set -e
-        printf 'CORE=%s\n' "$(shell_quote "$env_core")"
-        printf 'MODE=%s\n' "$(shell_quote "$env_mode")"
-        printf 'UUID=%s\n' "$(shell_quote "${UUID:-}")"
-        printf 'VLESS_SNI=%s\n' "$(shell_quote "${VLESS_SNI:-}")"
-        printf 'VISION_SNI=%s\n' "$(shell_quote "${VISION_SNI:-}")"
-        printf 'XHTTP_SNI=%s\n' "$(shell_quote "${XHTTP_SNI:-}")"
-        printf 'VLESS_PORT=%s\n' "$(shell_quote "${VLESS_PORT:-}")"
-        printf 'XHTTP_PORT=%s\n' "$(shell_quote "${XHTTP_PORT:-}")"
-        printf 'HY2_BASE_PORT=%s\n' "$(shell_quote "${HY2_BASE_PORT:-}")"
-        printf 'HY2_DOMAIN=%s\n' "$(shell_quote "${HY2_DOMAIN:-}")"
-        printf 'HY2_UP=%s\n' "$(shell_quote "${HY2_UP:-}")"
-        printf 'HY2_DOWN=%s\n' "$(shell_quote "${HY2_DOWN:-}")"
-        printf 'HY2_MASQ_URL=%s\n' "$(shell_quote "${HY2_MASQ_URL:-}")"
-        printf 'SS_PORT=%s\n' "$(shell_quote "${SS_PORT:-}")"
-        printf 'SS_WHITELIST_IP=%s\n' "$(shell_quote "${SS_WHITELIST_IP:-}")"
-        printf 'SOCKS_PORT=%s\n' "$(shell_quote "${SOCKS_PORT:-}")"
-        printf 'SOCKS_USER=%s\n' "$(shell_quote "${SOCKS_USER:-}")"
-        printf 'SOCKS_PASS=%s\n' "$(shell_quote "${SOCKS_PASS:-}")"
-        printf 'SOCKS_PROTO=%s\n' "$(shell_quote "${SOCKS_PROTO:-}")"
-        printf 'PUBLIC_KEY=%s\n' "$(shell_quote "${PUBLIC_KEY:-${PBK:-}}")"
-        printf 'SHORT_ID=%s\n' "$(shell_quote "${SHORT_ID:-}")"
-        printf 'HY2_PASS=%s\n' "$(shell_quote "${HY2_PASS:-}")"
-        printf 'HY2_OBFS=%s\n' "$(shell_quote "${HY2_OBFS:-}")"
-        printf 'SS_PASS=%s\n' "$(shell_quote "${SS_PASS:-}")"
-        printf 'LINK_IP=%s\n' "$(shell_quote "${LINK_IP:-${GLOBAL_PUBLIC_IP:-}}")"
-        printf 'HY2_CERT_SHA256_FP=%s\n' "$(shell_quote "${HY2_CERT_SHA256_FP:-}")"
-        printf 'HY2_CERT_PUBKEY_SHA256_B64=%s\n' "$(shell_quote "${HY2_CERT_PUBKEY_SHA256_B64:-}")"
-        printf 'HY2_HOP=%s\n' "$(shell_quote "${HY2_HOP:-}")"
-        printf 'HY2_HOP_IMPL=%s\n' "$(shell_quote "${HY2_HOP_IMPL:-none}")"
-        printf 'HY2_MONITOR_PORT=%s\n' "$(shell_quote "${HY2_MONITOR_PORT:-}")"
-        printf 'HY2_ACME_TYPE=%s\n' "$(shell_quote "${HY2_ACME_TYPE:-http}")"
-        printf 'HY2_ACME_DNS_PROVIDER=%s\n' "$(shell_quote "${HY2_ACME_DNS_PROVIDER:-}")"
-        printf 'HY2_ACME_DNS_CF_API_TOKEN=%s\n' "$(shell_quote "${HY2_ACME_DNS_CF_API_TOKEN:-}")"
-        printf 'HY2_URI_PORTS=%s\n' "$(shell_quote "${HY2_URI_PORTS:-}")"
-        printf 'HY2_CLASH_PORTS=%s\n' "$(shell_quote "${HY2_CLASH_PORTS:-}")"
-        printf 'HY2_SB_PORTS=%s\n' "$(shell_quote "${HY2_SB_PORTS:-}")"
-        printf 'HY2_RANGE_START=%s\n' "$(shell_quote "${HY2_RANGE_START:-}")"
-        printf 'HY2_RANGE_END=%s\n' "$(shell_quote "${HY2_RANGE_END:-}")"
-        printf 'INGRESS_IF=%s\n' "$(shell_quote "${INGRESS_IF:-}")"
-        printf 'ENABLE_KEEPALIVE=%s\n' "$(shell_quote "${ENABLE_KEEPALIVE:-}")"
+        printf 'CORE=%s\n' "$(env_quote "$env_core")"
+        printf 'MODE=%s\n' "$(env_quote "$env_mode")"
+        printf 'UUID=%s\n' "$(env_quote "${UUID:-}")"
+        printf 'VLESS_SNI=%s\n' "$(env_quote "${VLESS_SNI:-}")"
+        printf 'VISION_SNI=%s\n' "$(env_quote "${VISION_SNI:-}")"
+        printf 'XHTTP_SNI=%s\n' "$(env_quote "${XHTTP_SNI:-}")"
+        printf 'VLESS_PORT=%s\n' "$(env_quote "${VLESS_PORT:-}")"
+        printf 'XHTTP_PORT=%s\n' "$(env_quote "${XHTTP_PORT:-}")"
+        printf 'HY2_BASE_PORT=%s\n' "$(env_quote "${HY2_BASE_PORT:-}")"
+        printf 'HY2_DOMAIN=%s\n' "$(env_quote "${HY2_DOMAIN:-}")"
+        printf 'HY2_UP=%s\n' "$(env_quote "${HY2_UP:-}")"
+        printf 'HY2_DOWN=%s\n' "$(env_quote "${HY2_DOWN:-}")"
+        printf 'HY2_MASQ_URL=%s\n' "$(env_quote "${HY2_MASQ_URL:-}")"
+        printf 'SS_PORT=%s\n' "$(env_quote "${SS_PORT:-}")"
+        printf 'SS_WHITELIST_IP=%s\n' "$(env_quote "${SS_WHITELIST_IP:-}")"
+        printf 'SOCKS_PORT=%s\n' "$(env_quote "${SOCKS_PORT:-}")"
+        printf 'SOCKS_USER=%s\n' "$(env_quote "${SOCKS_USER:-}")"
+        printf 'SOCKS_PASS=%s\n' "$(env_quote "${SOCKS_PASS:-}")"
+        printf 'SOCKS_PROTO=%s\n' "$(env_quote "${SOCKS_PROTO:-}")"
+        printf 'PUBLIC_KEY=%s\n' "$(env_quote "${PUBLIC_KEY:-${PBK:-}}")"
+        printf 'SHORT_ID=%s\n' "$(env_quote "${SHORT_ID:-}")"
+        printf 'HY2_PASS=%s\n' "$(env_quote "${HY2_PASS:-}")"
+        printf 'HY2_OBFS=%s\n' "$(env_quote "${HY2_OBFS:-}")"
+        printf 'SS_PASS=%s\n' "$(env_quote "${SS_PASS:-}")"
+        printf 'LINK_IP=%s\n' "$(env_quote "${LINK_IP:-${GLOBAL_PUBLIC_IP:-}}")"
+        printf 'HY2_CERT_SHA256_FP=%s\n' "$(env_quote "${HY2_CERT_SHA256_FP:-}")"
+        printf 'HY2_CERT_PUBKEY_SHA256_B64=%s\n' "$(env_quote "${HY2_CERT_PUBKEY_SHA256_B64:-}")"
+        printf 'HY2_HOP=%s\n' "$(env_quote "${HY2_HOP:-}")"
+        printf 'HY2_HOP_IMPL=%s\n' "$(env_quote "${HY2_HOP_IMPL:-none}")"
+        printf 'HY2_MONITOR_PORT=%s\n' "$(env_quote "${HY2_MONITOR_PORT:-}")"
+        printf 'HY2_ACME_TYPE=%s\n' "$(env_quote "${HY2_ACME_TYPE:-http}")"
+        printf 'HY2_ACME_DNS_PROVIDER=%s\n' "$(env_quote "${HY2_ACME_DNS_PROVIDER:-}")"
+        printf 'HY2_ACME_DNS_CF_API_TOKEN=%s\n' "$(env_quote "${HY2_ACME_DNS_CF_API_TOKEN:-}")"
+        printf 'HY2_URI_PORTS=%s\n' "$(env_quote "${HY2_URI_PORTS:-}")"
+        printf 'HY2_CLASH_PORTS=%s\n' "$(env_quote "${HY2_CLASH_PORTS:-}")"
+        printf 'HY2_SB_PORTS=%s\n' "$(env_quote "${HY2_SB_PORTS:-}")"
+        printf 'HY2_RANGE_START=%s\n' "$(env_quote "${HY2_RANGE_START:-}")"
+        printf 'HY2_RANGE_END=%s\n' "$(env_quote "${HY2_RANGE_END:-}")"
+        printf 'INGRESS_IF=%s\n' "$(env_quote "${INGRESS_IF:-}")"
+        printf 'ENABLE_KEEPALIVE=%s\n' "$(env_quote "${ENABLE_KEEPALIVE:-}")"
         # Empty limits still yield rc 0 via the false ifs; printf
         # failures are caught by the set -e subshell (rc checked
         # explicitly below), not by if-form.
-        if [[ -n "$old_traffic_limit_gb" ]]; then printf 'TRAFFIC_LIMIT_GB=%s\n' "$(shell_quote "$old_traffic_limit_gb")"; fi
-        if [[ -n "$old_traffic_limit_mode" ]]; then printf 'TRAFFIC_LIMIT_MODE=%s\n' "$(shell_quote "$old_traffic_limit_mode")"; fi
+        if [[ -n "$old_traffic_limit_gb" ]]; then printf 'TRAFFIC_LIMIT_GB=%s\n' "$(env_quote "$old_traffic_limit_gb")"; fi
+        if [[ -n "$old_traffic_limit_mode" ]]; then printf 'TRAFFIC_LIMIT_MODE=%s\n' "$(env_quote "$old_traffic_limit_mode")"; fi
     ) > "$tmp"; _write_rc=$?
     if (( _write_rc != 0 )); then rm -f -- "$tmp"; die "$(tr_msg we_write)"; fi
     chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
@@ -60598,7 +60614,7 @@ EOF_SELFTEST_IPT
         [[ "$(cat "$env_tmp/.desired" 2>/dev/null)" == MANUAL_STOPPED ]] || { echo 'FAIL: write_env must not change desired service state'; failures=$((failures + 1)); }
         ABOX_DESIRED_STATE="$desired_file"
         unset PBK; PUBLIC_KEY=loaded-public ABOX_ENV="$env_tmp/.env" ABOX_DIR="$env_tmp" write_env xray ALL >/dev/null 2>&1 || { echo 'FAIL: write_env persisted-public-key fallback'; failures=$((failures + 1)); }
-        grep -Fq 'PUBLIC_KEY="loaded-public"' "$env_tmp/.env" || { echo 'FAIL: write_env used stale PBK instead of loaded PUBLIC_KEY'; failures=$((failures + 1)); }
+        grep -Fq "PUBLIC_KEY='loaded-public'" "$env_tmp/.env" || { echo 'FAIL: write_env used stale PBK instead of loaded PUBLIC_KEY'; failures=$((failures + 1)); }
         ln -s "$env_tmp/.env" "$env_tmp/.env-symlink-target"
         ( ABOX_ENV="$env_tmp/.env-symlink-target" ABOX_DIR="$env_tmp" CORE=xray MODE=ALL write_env >/dev/null 2>&1 ) && { echo 'FAIL: write_env must reject symlink state targets'; failures=$((failures + 1)); }
         # R6-05: a corrupt old quota must abort the rewrite, not silently
@@ -61092,6 +61108,30 @@ EOF_SVC_TEST_RCUPDATE
     if ( unset ABOX_DIE_HOOK; ABOX_ENV="$_invalid_env"; load_optional_abox_env_or_die ) >/dev/null 2>&1; then
         echo 'FAIL: optional env loader accepted an existing invalid state file'
         failures=$((failures + 1))
+    fi
+    # M-08(3) quoter split: write_env must persist $/backtick/! values
+    # exactly, and load_abox_env must read them back unchanged.
+    # End-to-end guard (no sed extraction: see L-08).
+    if (( EUID == 0 )); then
+        _qt_dir="$tmp/.quoter-e2e"
+        mkdir -p "$_qt_dir" || { echo 'FAIL: quoter e2e fixture mkdir'; failures=$((failures + 1)); }
+        if ( unset ABOX_DIE_HOOK; ABOX_ENV="$_qt_dir/.env" ABOX_DIR="$_qt_dir" CORE=xray MODE=VISION SS_PASS='p$ss' HY2_PASS='a`b`c' HY2_MASQ_URL='https://example.com/cb?x=a!b' HY2_OBFS="a'b" write_env >/dev/null 2>&1 ); then
+            if load_abox_env "$_qt_dir/.env" >/dev/null 2>&1; then
+                [[ "${SS_PASS:-}" == 'p$ss' ]] || { echo "FAIL: quoter e2e round-trip corrupted SS_PASS (got '${SS_PASS:-}')"; failures=$((failures + 1)); }
+                [[ "${HY2_PASS:-}" == 'a`b`c' ]] || { echo "FAIL: quoter e2e round-trip corrupted HY2_PASS (got '${HY2_PASS:-}')"; failures=$((failures + 1)); }
+                [[ "${HY2_MASQ_URL:-}" == 'https://example.com/cb?x=a!b' ]] || { echo "FAIL: quoter e2e round-trip corrupted HY2_MASQ_URL (got '${HY2_MASQ_URL:-}')"; failures=$((failures + 1)); }
+                [[ "${HY2_OBFS:-}" == "a'b" ]] || { echo "FAIL: quoter e2e round-trip corrupted HY2_OBFS (got '${HY2_OBFS:-}')"; failures=$((failures + 1)); }
+            else
+                echo 'FAIL: quoter e2e env failed to load'
+                failures=$((failures + 1))
+            fi
+        else
+            echo 'FAIL: quoter e2e write_env failed'
+            failures=$((failures + 1))
+        fi
+        clear_abox_env_vars
+    else
+        echo 'SELF_TEST_NOTE: quoter round-trip fixture skipped for non-root execution' >&2
     fi
     # P2-03: Return code contract — 0=success, 1=general failure, 2=preflight failure.
     # Applies to CLI top-level and rollback orchestrators; NOT to polymorphic internals.

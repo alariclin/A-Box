@@ -34,21 +34,21 @@
 
 ## 概要
 
-A-Box は単一ファイルの Bash スクリプト（`install.sh`、約63,026行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
+A-Box は単一ファイルの Bash スクリプト（`install.sh`、約63,821行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
 
 ## クイックスタート
 
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -113,7 +113,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 
 項目 1 の **A-Check** は、姉妹プロジェクト [A-Check](https://github.com/alariclin/A-Check) の IP 評判チェッカーです。スクリプトは A-Check リポジトリから最新版をリアルタイム取得し、実行前に構造チェック（shebang、VERSION マーカー、サイズ、py_compile）を行って `/etc/ddr/tools` にキャッシュします。取得に失敗した場合は、署名検証済みのミラー固定コピー、次にローカルの検証済みキャッシュへフォールバックします。Python 3.8 以上が必要です。
 
-**ユーザー管理（ツールボックス 14)。** デプロイ済みのすべてのノード（組み合わせ・単独プロトコルを問わず、Xray / sing-box / 公式 Hysteria 2）には、名前付きユーザーを複数追加でき、各ユーザーに専用の認証情報と共有リンク / QR コードが付きます。ユーザーごとに月間流量制限 (GB)、有効期限（日数）、利用可能時間帯を設定でき、5 分ごとのバックグラウンドチェックが自動執行します。期限切れ・制限超過・時間帯外のユーザーは自動的に失効します（Xray 系では再起動なしのホット失効）。ユーザー別統計と制限執行は Xray 系（StatsService）でのみ利用可能で、sing-box 公式バイナリと公式 Hysteria 2 バイナリにはユーザー別統計がないため、sing-box と Hysteria 2 では期限と時間帯のルールのみが効きます。全ユーザーのリンクは購読ファイルとして一括エクスポートできます。
+**ユーザー管理（ツールボックス 14)。** デプロイ済みのすべてのノード（組み合わせ・単独プロトコルを問わず、Xray / sing-box / 公式 Hysteria 2）には、名前付きユーザーを複数追加でき、各ユーザーに専用の認証情報と共有リンク / QR コードが付きます。ユーザーごとに月間流量制限 (GB)、有効期限（日数）、利用可能時間帯を設定でき、5 分ごとのバックグラウンドチェックが自動執行します。期限切れ・制限超過・時間帯外のユーザーは自動的に失効します（Xray 系では再起動なしのホット失効）。ユーザー別統計と制限執行は Xray 系（StatsService）でのみ利用可能で、sing-box 公式バイナリにはユーザー別統計がないため、sing-box では期限と時間帯のルールのみが効きます。公式 Hysteria 2 バイナリにはユーザー別 Traffic Stats API がありますが、本スクリプトは現在、統計ソースを利用していません。そのため Hysteria 2 でもクォータは効きません。全ユーザーのリンクは購読ファイルとして一括エクスポートできます。
 
 **同一プロトコルの複数インスタンス。** 単独プロトコルがすでにそのコアに存在する場合、デプロイ入口で「インスタンスを追加」を選べます。追加分は独自のポート・認証情報・ユーザーリストを持ち（タグ接尾辞 -2、-3 …)、独立して管理・削除できます。
 

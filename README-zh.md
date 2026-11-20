@@ -34,21 +34,21 @@
 
 ## 这是什么
 
-A-Box 是一个单文件 Bash 脚本（`install.sh`，约 63,026 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
+A-Box 是一个单文件 Bash 脚本（`install.sh`，约 63,821 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
 
 ## 快速开始
 
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -113,7 +113,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本从 A-Check 仓库实时拉取最新版，运行前做结构校验（shebang、VERSION 标记、大小、py_compile），并缓存在 `/etc/ddr/tools`；实时拉取失败时，依次回退到签名校验的镜像钉版与本机已验证缓存。需要 Python 3.8 或更高版本。
 
-**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制与 Hy2 官方二进制均无按用户统计，这两个核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
+**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效；Hy2 官方二进制虽提供按用户流量统计 API，但本脚本当前未接入统计源，因此配额不生效。全部用户链接可一键导出为订阅文件。
 
 **同协议多实例。** 某独立协议在某核心上已存在时，其部署入口会提供「新增一个实例」：新实例有独立的端口、凭据与用户名单（标签后缀 -2、-3……），可独立管理与删除。
 

@@ -34,21 +34,21 @@ More protocols (menu 18):
 
 ## What it is
 
-A-Box is a single-file Bash script (`install.sh`, about 63,026 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
+A-Box is a single-file Bash script (`install.sh`, about 63,821 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
 
 ## Quick start
 
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/31eb267d5464f97be8efd2099d6cff770d9f66b1/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f3ebcc7717acecececb8ee70173b82c202d8e81a/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -113,7 +113,7 @@ The test scripts (items 2–3) run the latest upstream version by default after 
 
 Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script fetches the latest version live from the A-Check repository, validates its structure (shebang, VERSION marker, size, py_compile) before running it, and caches it under `/etc/ddr/tools`; if the live fetch fails, it falls back to the signature-verified pinned mirror copy, then to the last verified local cache. It requires Python 3.8 or newer.
 
-**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary and the official Hysteria 2 binary expose no per-user statistics, so on sing-box and Hysteria 2 only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. The official Hysteria 2 binary does provide a per-user Traffic Stats API, but this script does not currently consume any statistics source, so quotas do not take effect on Hysteria 2 either. All user links can be exported at once as subscription files.
 
 **Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
 

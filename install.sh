@@ -11160,6 +11160,12 @@ tr_msg() {
         fa:release_ports_old_port_occupied) echo 'پورت %s/%s از پیکربندی قبلی اکنون توسط فرایندی غیرمتعلق به A-Box اشغال شده است؛ پیش از انتخاب دوباره آن در راهنمای تنظیم، آن را دستی آزاد کنید. انتخاب یک پورت جدید دیگر تحت تأثیر نیست.' ;;
         zh-tw:release_ports_old_port_occupied) echo '舊設定的連接埠 %s/%s 目前被非 A-Box 處理程序占用；若在精靈中再次選取此連接埠，請先手動釋放，改用其他新連接埠則不受影響。' ;;
         ja:release_ports_old_port_occupied) echo '旧設定のポート %s/%s は現在 A-Box 以外のプロセスが使用しています。ウィザードで再び選択する場合は、先に手動で解放してください。別の新しいポートを選ぶ場合は影響ありません。' ;;
+        zh:release_ports_other_stopped) echo '本次部署已停止以下在跑的其他核心服务：%s。部署完成后仅重启新部署的核心，其他服务不会自动恢复；如需继续使用请手动重启，若其配置已被本次覆盖部署清理则需重新部署该核心。' ;;
+        en:release_ports_other_stopped) echo 'This deployment stopped the following running services of other cores: %s. After the deployment only the newly deployed core is restarted; the other services are not restored automatically. Restart one manually to keep using it, or re-deploy that core if this overwrite removed its configuration.' ;;
+        ru:release_ports_other_stopped) echo 'Это развёртывание остановило следующие работающие службы других ядер: %s. После развёртывания будет перезапущено только вновь установленное ядро; остальные службы автоматически не восстанавливаются. Чтобы продолжить использование, перезапустите службу вручную, а если её конфигурация была удалена этой перезаписью, разверните её заново.' ;;
+        fa:release_ports_other_stopped) echo 'این استقرار سرویس‌های در حال اجرای هسته‌های دیگر را متوقف کرد: %s. پس از استقرار، فقط هستهٔ تازه مستقرشده دوباره راه‌اندازی می‌شود؛ سرویس‌های دیگر به‌طور خودکار بازنمی‌گردند. برای ادامهٔ استفاده، آن را به‌صورت دستی راه‌اندازی مجدد کنید و اگر پیکربندی آن با این استقرارِ جایگزین پاک شده است، آن هسته را دوباره مستقر کنید.' ;;
+        zh-tw:release_ports_other_stopped) echo '本次部署已停止以下正在執行的其他核心服務：%s。部署完成後僅重新啟動新部署的核心，其他服務不會自動恢復；如需繼續使用請手動重新啟動，若其設定已被本次覆蓋部署清除則需重新部署該核心。' ;;
+        ja:release_ports_other_stopped) echo '今回の導入では、他のコアの次の実行中サービスを停止しました：%s。導入完了後に再起動されるのは新しく導入したコアのみで、他のサービスは自動で復旧しません。引き続き使う場合は手動で再起動してください。今回の上書き導入で設定が削除された場合は、そのコアを再導入してください。' ;;
         zh:release_ports_stopping_services) echo '正在停止 A-Box 托管服务...' ;;
         en:release_ports_stopping_services) echo 'Stopping A-Box-managed services...' ;;
         ru:release_ports_stopping_services) echo 'Останавливаются службы под управлением A-Box...' ;;
@@ -22026,7 +22032,27 @@ check_selected_ports_free() {
 
 release_ports() {
     msg "${YELLOW}[*] $(tr_msg release_ports_stopping_services)${NC}"
+    # S1-low2 (final-round-followup2-WC): record which owned services are
+    # actually running before the stop, so the deploy can say plainly that
+    # only the newly deployed core(s) are restarted afterwards. The
+    # deploying cores come from the deployment transaction
+    # (ABOX_DEPLOY_TX_TARGETS, set by begin_deployment_transaction before
+    # this runs); any other running service stays stopped — and a covering
+    # deploy prunes its stack (prune_owned_core_families_except), so it
+    # must be re-deployed, not merely restarted. Read-only probe; a probe
+    # failure simply omits that service from the list (no false warning).
+    local _s1low2_stopped='' _s1low2_srv _s1low2_state
+    for _s1low2_srv in xray sing-box hysteria; do
+        abox_owns_service "$_s1low2_srv" 2>/dev/null || continue
+        case " ${ABOX_DEPLOY_TX_TARGETS:-} " in *" $_s1low2_srv "*) continue ;; esac
+        _s1low2_state=$(service_active_state_value "$_s1low2_srv" 2>/dev/null || true)
+        [[ "$_s1low2_state" == '1' ]] || continue
+        _s1low2_stopped+="$_s1low2_srv "
+    done
     stop_all_managed_services || die "$(tr_msg pt_stop_all)"
+    if [[ -n "$_s1low2_stopped" ]]; then
+        msg "${YELLOW}[!] $(tprintf release_ports_other_stopped "${_s1low2_stopped% }")${NC}"
+    fi
     sleep 1
     local pairs pair proto p holder
     pairs=$(selected_port_pairs | awk 'NF' | sort -u)

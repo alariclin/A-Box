@@ -113,13 +113,13 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 第 1 項 **A-Check** 是配套專案 [A-Check](https://github.com/alariclin/A-Check) 的 IP 純淨度檢測工具。腳本從 A-Check 倉庫即時拉取最新版，運行前做結構校驗（shebang、VERSION 標記、大小、py_compile），並快取在 `/etc/ddr/tools`；即時拉取失敗時，依序回退到簽名校驗的鏡像釘版與本機已驗證快取。需要 Python 3.8 或更高版本。
 
-**多用戶管理（工具箱 14)。** 每個已部署的節點——組合與獨立協定均可，涵蓋 Xray、sing-box 與 Hy2 官方版——都能新增多個命名用戶，每人獨立憑據、獨立分享連結與 QR 碼。可按用戶設定每月流量限額 (GB)、到期天數與可用時段；背景每 5 分鐘檢查一次並自動執行：到期、超限額或時段外的用戶會被自動撤銷（Xray 家族為熱撤銷、無需重啟）。按用戶流量統計與限額執行僅 Xray 家族可用 (StatsService)；sing-box 官方版無按用戶統計，該核心上僅到期與時段規則生效。全部用戶連結可一鍵匯出為訂閱檔案。
+**多用戶管理（工具箱 14)。** 每個已部署的節點——組合與獨立協定均可，涵蓋 Xray、sing-box 與 Hy2 官方版——都能新增多個命名用戶，每人獨立憑據、獨立分享連結與 QR 碼。可按用戶設定每月流量限額 (GB)、到期天數與可用時段；背景每 5 分鐘檢查一次並自動執行：到期、超限額或時段外的用戶會被自動撤銷（Xray 家族為熱撤銷、無需重啟）。按用戶流量統計與限額執行僅 Xray 家族可用 (StatsService)；sing-box 官方版無按用戶統計，該核心上僅到期與時段規則生效；Hy2 官方版雖提供按用戶流量統計 API，但本腳本目前未接入統計來源，因此配額不生效。全部用戶連結可一鍵匯出為訂閱檔案。
 
 **同協定多實例。** 某獨立協定在某核心上已存在時，其部署入口會提供「新增一個實例」：新實例有獨立的埠、憑據與用戶名單（標籤後綴 -2、-3……），可獨立管理與刪除。
 
 ## 子系統
 
-**用戶端配置。** 每次部署都會列印分享連結和 QR 碼。選單 12 隨時可重看全部節點參數與連結——包括選單 18 的獨立協議——並匯出 Clash / Mihomo YAML、sing-box JSON 與 v2rayN / v2rayNG 配置。支援在伺服器端新增或撤銷多個 UUID，並按用戶分別匯出。分享連結與匯出檔案中的節點名只用協定名（Vision、XHTTP、SS、Hy2、Trojan-Reality 等），不帶品牌前綴。
+**用戶端配置。** 每次部署都會列印分享連結和 QR 碼。選單 12 隨時可重看全部節點參數與連結——包括選單 18 的獨立協議——並匯出 Clash / Mihomo YAML、sing-box JSON 與 v2rayN / v2rayNG 配置。支援在伺服器端新增或撤銷多個 UUID，並按用戶分別匯出。匯出檔案中的節點名在雙核心都提供該協定時帶核心後綴，例如 `Trojan-Reality-sing-box`、`Trojan-Reality-Xray`、`SOCKS5-Xray`、`SOCKS5-sing-box`，單核心協定保留協定名（`TUIC`、`AnyTLS-Reality`、`ShadowTLS`）；獨立節點分享連結的片段為協定名，按用戶組合連結為 `#<標籤>-<用戶>`。
 
 **WARP 與分流。** 一鍵把 Cloudflare WARP 作為原生 WireGuard 出站部署，帶串流、CN 直連與全域三種預設，外加自訂網域分流規則和多主機 SOCKS5 出站。
 
@@ -149,7 +149,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | `sudo bash A-Box.sh --start` / `--stop` | 啟動或停止受管服務 |
 | `sudo bash A-Box.sh --version` | 顯示腳本建置標識 |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 匯出備份還原金鑰 |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目錄]` | 把舊格式備份轉換為現行格式 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | 把舊格式備份轉換為現行格式 |
 
 自檢通過不等於真實安裝或用戶端連通驗證都通過。
 

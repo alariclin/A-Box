@@ -17890,6 +17890,37 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     return 0
 }
 
+# Final-round follow-up §2 (worker A): after a same-core preserve
+# merge, carry the preserved standalone listener ports into the shell
+# variables that write_env() later persists to .env. Without this,
+# pre_install_setup/reset_protocol_vars leaves TROJAN_PORT empty and
+# write_env() rewrites .env with TROJAN_PORT="" even though the merged
+# live config still serves trojan on 8444 (same for SOCKS_PORT /
+# socks5-landing) -- so the F-NEW-04 coverage gate, which reads its
+# expected ports from .env, goes blind to the preserved protocol.
+# Fill-if-empty only: a value already set by the new main stack
+# (e.g. MODE=SOCKS sets SOCKS_PORT) is never overwritten. Best-effort
+# and never fatal: any extraction/validation failure leaves the
+# variable untouched and the deploy continues exactly as before.
+# $1 = core (xray|sing-box), $2 = merged config path.
+_preserve_sync_env_ports() {
+    local _cfg="$2" _tag _var _port
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    for _tag in trojan-landing socks5-landing; do
+        case "$_tag" in
+            trojan-landing) _var='TROJAN_PORT' ;;
+            socks5-landing) _var='SOCKS_PORT' ;;
+        esac
+        [[ -z "${!_var:-}" ]] || continue
+        _port=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r --arg tag "$_tag" '[.inbounds[]? | select(.tag == $tag) | (.port // .listen_port // empty)] | first // empty' 2>/dev/null) || continue
+        [[ -n "$_port" ]] || continue
+        valid_canonical_port "$_port" || continue
+        declare -g "${_var}=${_port}"
+    done
+    return 0
+}
+
 # Carbon H-11(4): reap a stale/failed preserve dir. A preserve.json
 # holds plaintext inbound secrets (SS passwords, Reality private
 # keys); it must never survive in /tmp after a failed restore or a
@@ -18057,6 +18088,9 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
+        # Final-round follow-up §2 (worker A): sync preserved
+        # standalone ports into the shell vars write_env() persists.
+        _preserve_sync_env_ports "$1" "$cfg" || true
         # Carbon H-11(1): the deploy wiped the firewall rules before
         # this restore and pre_install_setup only re-opens the main
         # protocol ports. Re-open the ports of the inbounds this
@@ -29203,6 +29237,10 @@ deploy_singbox_socks5_landing() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box socks5-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -29282,6 +29320,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R7-13: a pre-existing binary does not imply a service unit exists
     # (e.g. the R4C8-04 seed branch never writes one); ensure it here,
     # before the config merge and restart.
@@ -29506,6 +29545,10 @@ deploy_xray_trojan_landing() {
     fi
 
     # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "xray trojan-landing"
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
@@ -29556,6 +29599,7 @@ deploy_xray_trojan_landing() {
         rm -rf -- "$_geo_tmp"
         ABOX_DEPLOY_TX_TMP=''
     fi
+    abox_fetch_guard_stop
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
     # Reality keypair + SNI (reuse A-Box flow).
@@ -29667,6 +29711,10 @@ deploy_singbox_trojan_landing() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box trojan-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -29749,6 +29797,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -29867,6 +29916,10 @@ deploy_singbox_tuic() {
     uuid=$(generate_robust_uuid) || die 'TUIC UUID generation failed.'
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box tuic"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -29949,6 +30002,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -30072,6 +30126,10 @@ deploy_singbox_anytls() {
     fi
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box anytls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -30154,6 +30212,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -30261,6 +30320,10 @@ deploy_singbox_shadowtls() {
     [[ -n "$inner" ]] || die 'ShadowTLS SS password generation failed.'
 
     # Minimal sing-box install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "sing-box shadowtls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -30343,6 +30406,7 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    abox_fetch_guard_stop
     # R16-F08-01: a pre-existing binary does not imply a service unit
     # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
     # before the config merge and restart.
@@ -33511,6 +33575,7 @@ warp_deploy_inner() {
     if [[ -z "$core" ]]; then
         if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray && ! service_is_abox_managed hysteria; then
             msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+            routing_outbound_del 'warp-out' >/dev/null 2>&1 || true
             return 1
         fi
     fi
@@ -33919,6 +33984,7 @@ split_rule_add_interactive() {
             # Roll back the just-appended rule (last index) so a retry
             # cannot duplicate it; the state stays the source of truth.
             routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
+            routing_apply_all_managed >/dev/null 2>&1 || true
             case "$_apply_rc" in
                 1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
                 2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
@@ -33971,6 +34037,7 @@ split_rule_del_interactive() {
             if [[ -n "$del_rule" ]]; then
                 jq --argjson i "$idx" --argjson r "$del_rule" '.rules |= (.[0:$i] + [$r] + .[$i:])' "$ROUTING_STATE_FILE" 2>/dev/null | routing_state_put || true
             fi
+            routing_apply_all_managed >/dev/null 2>&1 || true
             case "$_apply_rc" in
                 1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
                 2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
@@ -34033,6 +34100,10 @@ deploy_socks5_landing() {
     fi
 
     # Minimal Xray install when the binary is missing.
+    # S1-Low-B (final-round follow-up): arm the same [fetch] segment
+    # guard as the main-stack deploys (B-C2), so a hung core download
+    # here is bounded by the 300s budget and logged the same way.
+    abox_fetch_guard_start "xray socks5-landing"
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
@@ -34106,6 +34177,7 @@ EOF_SVC
             chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
     fi
+    abox_fetch_guard_stop
 
     # R6-F09-7: a pre-existing binary does not imply a service unit exists.
     # Ensure it here, before the config merge and restart (R7-13 precedent
@@ -38367,6 +38439,35 @@ _standalone_link_prune_if_gone() {
     return 0
 }
 
+# L-NEW-11: a removed sing-box TUIC inbound owns its per-tag self-signed
+# cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/.key). Delete the pair
+# only when no tuic inbound remains in the live config (mirror of the Hy2
+# pair cleanup in _protocol_removed_side_effects below); a strip/jq failure,
+# a missing/empty config, or a surviving tuic inbound keeps the files.
+# Only regular files are removed, never symlinks; the legacy unprefixed
+# tuic.crt/tuic.key do not match tuic-*.crt/.key and stay. Best-effort,
+# always returns 0.
+_singbox_cleanup_tuic_certs_when_none_remain() {
+    local cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _sb_dir='' _stripped='' _tuic_jq_rc=0 _f=''
+    [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]] || return 0
+    _sb_dir=$(dirname -- "$cfg")
+    _stripped=$(mktemp /tmp/A-Box-sb-tuic-strip.XXXXXX) || return 0
+    if ! jsonc_strip_comments "$cfg" > "$_stripped" 2>/dev/null; then
+        rm -f -- "$_stripped"
+        return 0
+    fi
+    # 2gq: delete only when jq confirms no tuic inbound remains
+    # (one-pass Boolean, rc 1); a jq failure keeps the files.
+    jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' "$_stripped" >/dev/null 2>&1 || _tuic_jq_rc=$?
+    rm -f -- "$_stripped"
+    [[ "$_tuic_jq_rc" == 1 ]] || return 0
+    for _f in "$_sb_dir"/tuic-*.crt "$_sb_dir"/tuic-*.key; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        rm -f -- "$_f" 2>/dev/null || true
+    done
+    return 0
+}
+
 # M-12(1): the per-tag TUIC cert filename suffix (same construction as
 # the TUIC deployer): sanitized tag + first 8 hex of its sha256.
 tuic_cert_tag() {
@@ -39259,6 +39360,10 @@ clear_all_protocols() {
         # succeeded; on partial wipe the rules stay (fail-closed).
         if [[ -s "$_freed_tmp" ]]; then firewall_recycle_freed_ports < "$_freed_tmp"; fi
         argo_remove_unit argo || true
+        # L-NEW-11: also run when the sing-box config held no inbounds
+        # at clear time (side effects above are skipped for an empty
+        # tag list), so orphan TUIC certs cannot survive a clear-all.
+        _singbox_cleanup_tuic_certs_when_none_remain || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
         # R26-H-NF-04: the cleared stack has no core/mode anymore.
@@ -54033,36 +54138,9 @@ wallos_rollback_to_version() {
     _pre_rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
     _pre_rb_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
     _pre_rb_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
-    # R15C14-02: never trust a mutable local tag. Authenticate
-    # the local image against the versioned manifest digest; on
-    # match run by the immutable digest, else verified pull and
-    # run by the freshly loaded image ID.
-    local run_image='' _local_id='' _expected_digest=''
-    _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-    _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
-    if [[ "$_local_id" =~ ^sha256:[0-9a-f]{64}$ ]] &&
-       wallos_local_image_has_digest "$_local_id" "$_expected_digest"; then
-        run_image="$_local_id"
-    else
-        msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
-        # Use the versioned mirror path: temporarily override tag selection.
-        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
-        if ! _wallos_pull_versioned_image "$target_tag"; then
-            WALLOS_IMAGE_RESULT="$_saved_result"
-            msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
-            return 1
-        fi
-        # R11-C (R2-10-1): take the freshly loaded image's daemon
-        # store-native ID FIRST, then restore the saved global.
-        run_image="${WALLOS_IMAGE_RESULT:-}"
-        WALLOS_IMAGE_RESULT="$_saved_result"
-        [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
-    fi
-    # Stop and remove current container, restore latest backup, recreate.
-    port=$(wallos_state_value PORT 2>/dev/null || true)
-    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
-    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
-    valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
+    # L-NEW-07: the U112 backup gate runs HERE, right after the
+    # version is established and BEFORE any image fetch: with no
+    # usable backup the rollback refuses now instead of after a pull.
     # U112: select the newest backup whose recorded Wallos version is not
     # newer than the rollback target. Each backup's .abox-state carries the
     # IMAGE it was taken under; a backup from a newer Wallos may hold a
@@ -54098,6 +54176,36 @@ wallos_rollback_to_version() {
         break
     done
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; [[ -n "$_rb_skipped" ]] && msg "${YELLOW}Skipped backups newer than $target_tag or without a recorded version: ${_rb_skipped% }${NC}"; return 1; }
+    # R15C14-02: never trust a mutable local tag. Authenticate
+    # the local image against the versioned manifest digest; on
+    # match run by the immutable digest, else verified pull and
+    # run by the freshly loaded image ID.
+    local run_image='' _local_id='' _expected_digest=''
+    _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+    _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
+    if [[ "$_local_id" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+       wallos_local_image_has_digest "$_local_id" "$_expected_digest"; then
+        run_image="$_local_id"
+    else
+        msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
+        # Use the versioned mirror path: temporarily override tag selection.
+        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
+        if ! _wallos_pull_versioned_image "$target_tag"; then
+            WALLOS_IMAGE_RESULT="$_saved_result"
+            msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
+            return 1
+        fi
+        # R11-C (R2-10-1): take the freshly loaded image's daemon
+        # store-native ID FIRST, then restore the saved global.
+        run_image="${WALLOS_IMAGE_RESULT:-}"
+        WALLOS_IMAGE_RESULT="$_saved_result"
+        [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
+    fi
+    # Stop and remove current container, restore latest backup, recreate.
+    port=$(wallos_state_value PORT 2>/dev/null || true)
+    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
+    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
+    valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
     # R7-F14-2: pin the backup to a private copy before any validation or
     # restore reads it. The shared backups/ path is writable by root
     # processes outside this function; a swap between the version screen,
@@ -60639,6 +60747,16 @@ PY_CLASH_REALPATH
     # Nothing to deliver unless a VLESS Reality leg exists for this node.
     if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then _has_vision=1; fi
     if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then _has_xhttp=1; fi
+    # S1-Low-1 (final-round follow-up): a deploy with no VLESS leg (SS /
+    # HY2-only / ...) must not leave a stale single-user file behind: the
+    # file can only ever hold Vision / XHTTP nodes, so any content in it
+    # is dead the moment this node has no such leg. Reached only after
+    # the symlink / non-regular guards above, so $out here is either
+    # absent or a regular file under $ABOX_DIR. Best-effort: a removal
+    # failure must not fail the deploy (the file is advisory only).
+    if (( _has_vision == 0 && _has_xhttp == 0 )) && [[ -f "$out" ]]; then
+        rm -f -- "$out" 2>/dev/null || true
+    fi
     (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
     tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
     {

@@ -41,14 +41,14 @@ A-Box is a single-file Bash script (`install.sh`, about 66,818 lines) that deplo
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

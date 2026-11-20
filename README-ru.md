@@ -41,14 +41,14 @@ A-Box — это один Bash-скрипт (`install.sh`, около 66 818 с�
 Официальный источник, команда закреплена за неизменяемым коммитом:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Стороннее зеркало того же закреплённого файла (только канал доставки, не официальный адрес). Не запускайте его напрямую: скачайте, побайтово сверьте с официальным источником и только потом запускайте. Используйте зеркало только если доверяете прокси; непроверенный файл из зеркала нельзя использовать в рабочей среде:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

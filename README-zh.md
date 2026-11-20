@@ -41,14 +41,14 @@ A-Box 是一个单文件 Bash 脚本（`install.sh`，约 66,818 行），用于
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6758f0bcf7913b7a85f8b2e7f1f09b688e671425/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cd62f5a533f94eaf40e96c95978958897495c904/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

@@ -113,13 +113,13 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本从 A-Check 仓库实时拉取最新版，运行前做结构校验（shebang、VERSION 标记、大小、py_compile），并缓存在 `/etc/ddr/tools`；实时拉取失败时，依次回退到签名校验的镜像钉版与本机已验证缓存。需要 Python 3.8 或更高版本。
 
-**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
+**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效；Hy2 官方二进制虽提供按用户流量统计 API，但本脚本当前未接入统计源，因此配额不生效。全部用户链接可一键导出为订阅文件。
 
 **同协议多实例。** 某独立协议在某核心上已存在时，其部署入口会提供「新增一个实例」：新实例有独立的端口、凭据与用户名单（标签后缀 -2、-3……），可独立管理与删除。
 
 ## 子系统
 
-**客户端配置。** 每次部署都会打印分享链接和二维码。菜单 12 随时可重看全部节点参数与链接——包括菜单 18 的独立协议——并导出 Clash / Mihomo YAML、sing-box JSON 与 v2rayN / v2rayNG 配置。支持在服务端添加或吊销多个 UUID，并按用户分别导出。分享链接与导出文件中的节点名只用协议名（Vision、XHTTP、SS、Hy2、Trojan-Reality 等），不带品牌前缀。
+**客户端配置。** 每次部署都会打印分享链接和二维码。菜单 12 随时可重看全部节点参数与链接——包括菜单 18 的独立协议——并导出 Clash / Mihomo YAML、sing-box JSON 与 v2rayN / v2rayNG 配置。支持在服务端添加或吊销多个 UUID，并按用户分别导出。导出文件中的节点名在双核心都提供该协议时带核心后缀，例如 `Trojan-Reality-sing-box`、`Trojan-Reality-Xray`、`SOCKS5-Xray`、`SOCKS5-sing-box`，单核心协议保留协议名（`TUIC`、`AnyTLS-Reality`、`ShadowTLS`）；独立节点分享链接的片段为协议名，按用户组合链接为 `#<标签>-<用户>`。
 
 **WARP 与分流。** 一键把 Cloudflare WARP 作为原生 WireGuard 出站部署，带流媒体、CN 直连与全局三种预设，外加自定义域名分流规则和多主机 SOCKS5 出站。
 
@@ -149,7 +149,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | `sudo bash A-Box.sh --start` / `--stop` | 启动或停止受管服务 |
 | `sudo bash A-Box.sh --version` | 显示脚本构建标识 |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 导出备份恢复密钥 |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目录]` | 把旧格式备份转换为现行格式 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | 把旧格式备份转换为现行格式 |
 
 自检通过不等于真实安装或客户端连通验证都通过。
 

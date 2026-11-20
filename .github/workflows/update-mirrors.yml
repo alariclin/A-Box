@@ -119,9 +119,13 @@ jobs:
           done
 
           pull_save_image() {
-            local arch="$1" platform="$2" image_digest="$3"
-            local image="bellamy/wallos:${image_tag}"
-            local asset="wallos-linux-${arch}.tar.gz" actual image_ref
+            # Args: $1 arch, $2 platform, $3 image digest, $4 image tag,
+            # $5 asset filename. (L3-11-15: versioned builds pass their own
+            # tag + versioned asset name; the unversioned build passes the
+            # latest tag + fixed asset name.)
+            local arch="$1" platform="$2" image_digest="$3" ver_tag="$4" asset="$5"
+            local image="bellamy/wallos:${ver_tag}"
+            local actual image_ref
             image_ref="${image}@${image_digest}"
             echo "Pulling ${image_ref} for ${platform}"
             docker pull --platform "$platform" "$image_ref"
@@ -135,9 +139,9 @@ jobs:
             test -s "$asset"
           }
 
-          pull_save_image amd64 linux/amd64 "${digest_amd64}"
-          pull_save_image arm64 linux/arm64 "${digest_arm64}"
-          pull_save_image armv7 linux/arm/v7 "${digest_armv7}"
+          pull_save_image amd64 linux/amd64 "${digest_amd64}" "${image_tag}" "wallos-linux-amd64.tar.gz"
+          pull_save_image arm64 linux/arm64 "${digest_arm64}" "${image_tag}" "wallos-linux-arm64.tar.gz"
+          pull_save_image armv7 linux/arm/v7 "${digest_armv7}" "${image_tag}" "wallos-linux-armv7.tar.gz"
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           {
@@ -175,10 +179,130 @@ jobs:
           # Boundary 2: Add final manifest (after SHA appends) to SHA256SUMS.
           # Client verifies manifest hash against SHA256SUMS (D-2 fail-closed).
           # The manifest hash recorded here is the FINAL content (post-append).
-          # Total: 4 tarballs + final manifest = 5 lines.
+          # Total unversioned: 4 tarballs + final manifest = 5 lines; the
+          # versioned block below extends SHA256SUMS further.
           sha256sum wallos-manifest.txt >> SHA256SUMS
-          test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)" -eq 5
-          sha256sum -c SHA256SUMS
+
+          # L3-11-15: per-version rollback assets. The installer rollback
+          # path fetches wallos-versions.txt, wallos-manifest-vX.Y.Z.txt and
+          # wallos-linux-$arch-vX.Y.Z.tar.gz; the single unversioned asset
+          # set above cannot serve a multi-version list, so a mirror that
+          # only publishes it makes every rollback 404 (L3-11-15).
+          # Retained set = latest 3 stable upstream releases + any version
+          # already published as a per-version manifest (never drop one).
+          # Builds are incremental: a version whose manifest + 3 archives
+          # are already on the release, with SHA256SUMS records, is skipped
+          # and its records are carried over verbatim.
+          _mirror_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/wallos-mirror"
+          _mirror_pubkey_b64='7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ='
+          _existing_assets=''
+          if gh release view wallos-mirror --json assets --jq '.assets[].name' > "$RUNNER_TEMP/wallos-existing-assets.txt" 2>/dev/null; then
+            _existing_assets="$(cat "$RUNNER_TEMP/wallos-existing-assets.txt")"
+          fi
+          # No `head -n 3` in the pipeline: a closed pipe can SIGPIPE the
+          # producer under pipefail. Slice the array instead.
+          mapfile -t _all_stable_tags < <(gh api repos/ellite/Wallos/releases --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$')
+          ((${#_all_stable_tags[@]} >= 3)) || { echo "::error::expected at least 3 stable Wallos releases, got ${#_all_stable_tags[@]}"; exit 1; }
+          _latest_tags=("${_all_stable_tags[@]:0:3}")
+          mapfile -t _published_tags < <(printf '%s\n' "$_existing_assets" | grep -oE '^wallos-manifest-v[0-9]+[.][0-9]+[.][0-9]+[.]txt$' | sed -E 's/^wallos-manifest-//; s/[.]txt$//' | sort -u || true)
+          _retained_input=()
+          _retained_input+=("${_latest_tags[@]}")
+          if ((${#_published_tags[@]} > 0)); then
+            _retained_input+=("${_published_tags[@]}")
+          fi
+          mapfile -t _retained_tags < <(printf '%s\n' "${_retained_input[@]}" | grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' | sort -u | sort -rV)
+          ((${#_retained_tags[@]} >= 1)) || { echo "::error::no retained Wallos versions"; exit 1; }
+          # Only a release that already carries per-version manifests needs
+          # its SHA256SUMS carried over; verify its signature first
+          # (R11C19-01 pattern) before trusting any carried record.
+          _existing_sums=''
+          if ((${#_published_tags[@]} > 0)); then
+            curl -fLsS --connect-timeout 10 --max-time 60 "$_mirror_base/SHA256SUMS" -o "$RUNNER_TEMP/wallos-existing-SHA256SUMS" || { echo "::error::cannot fetch existing wallos-mirror SHA256SUMS for record carry-over"; exit 1; }
+            _existing_sums="$RUNNER_TEMP/wallos-existing-SHA256SUMS"
+            curl -fLsS --connect-timeout 10 --max-time 60 "$_mirror_base/SHA256SUMS.sig" -o "$RUNNER_TEMP/wallos-existing-SHA256SUMS.sig" || { echo "::error::existing wallos-mirror SHA256SUMS.sig missing; refusing to carry unverified records"; exit 1; }
+            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302a300506032b6570032100")+raw;sys.stdout.write("-----BEGIN PUBLIC KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PUBLIC KEY-----\n")' \
+              "$_mirror_pubkey_b64" > /tmp/abox-verify-pub.pem
+            openssl pkeyutl -verify -pubin -inkey /tmp/abox-verify-pub.pem \
+              -rawin -in "$_existing_sums" \
+              -sigfile <(base64 -d "$RUNNER_TEMP/wallos-existing-SHA256SUMS.sig") \
+              || { echo "::error::existing wallos-mirror SHA256SUMS signature does not verify; refusing to carry records"; exit 1; }
+            echo "Existing wallos-mirror SHA256SUMS signature verified."
+          fi
+          _ver_built=0
+          for _vtag in "${_retained_tags[@]}"; do
+            _ver_manifest="wallos-manifest-${_vtag}.txt"
+            _ver_image_tag="${_vtag#v}"
+            _skip=0
+            if [[ -n "$_existing_sums" ]]; then
+              _skip=1
+              for _f in "$_ver_manifest" "wallos-linux-amd64-${_vtag}.tar.gz" "wallos-linux-arm64-${_vtag}.tar.gz" "wallos-linux-armv7-${_vtag}.tar.gz"; do
+                grep -qxF "$_f" <<<"$_existing_assets" || _skip=0
+                awk -v f="$_f" '$2==f {found=1} END {exit !found}' "$_existing_sums" || _skip=0
+              done
+            fi
+            if (( _skip == 1 )); then
+              for _f in "$_ver_manifest" "wallos-linux-amd64-${_vtag}.tar.gz" "wallos-linux-arm64-${_vtag}.tar.gz" "wallos-linux-armv7-${_vtag}.tar.gz"; do
+                awk -v f="$_f" '$2==f {print}' "$_existing_sums" >> SHA256SUMS
+              done
+              echo "Keeping published ${_vtag} (already on wallos-mirror)"
+              continue
+            fi
+            echo "Building versioned assets for ${_vtag}"
+            _ver_index_json="$(docker buildx imagetools inspect "bellamy/wallos:${_ver_image_tag}" --raw)"
+            for _spec in "amd64:linux/amd64" "arm64:linux/arm64" "armv7:linux/arm/v7"; do
+              _arch="${_spec%%:*}"; _platform="${_spec#*:}"
+              _child="$(jq -r --arg p "$_platform" '.manifests[] | select(.platform and ((.platform.os + "/" + .platform.architecture + (if .platform.variant then "/" + .platform.variant else "" end)) == $p)) | .digest' <<<"$_ver_index_json")"
+              [[ "$_child" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Could not resolve $_platform child digest for bellamy/wallos:${_ver_image_tag}"; exit 1; }
+              printf -v "_ver_digest_${_arch}" '%s' "$_child"
+            done
+            pull_save_image amd64 linux/amd64 "${_ver_digest_amd64}" "${_ver_image_tag}" "wallos-linux-amd64-${_vtag}.tar.gz"
+            pull_save_image arm64 linux/arm64 "${_ver_digest_arm64}" "${_ver_image_tag}" "wallos-linux-arm64-${_vtag}.tar.gz"
+            pull_save_image armv7 linux/arm/v7 "${_ver_digest_armv7}" "${_ver_image_tag}" "wallos-linux-armv7-${_vtag}.tar.gz"
+            _ver_source_sha="$(gh api "repos/ellite/Wallos/commits/${_vtag}" --jq '.sha')"
+            [[ "$_ver_source_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve Wallos tag $_vtag to a commit SHA"; exit 1; }
+            _ver_source_url="https://github.com/ellite/Wallos/archive/${_ver_source_sha}.tar.gz"
+            _ver_retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            {
+              printf 'tag=%s\n' "$_vtag"
+              printf 'image=bellamy/wallos\n'
+              printf 'image_tag=%s\n' "$_ver_image_tag"
+              printf 'image_digest.amd64=%s\n' "$_ver_digest_amd64"
+              printf 'image_digest.arm64=%s\n' "$_ver_digest_arm64"
+              printf 'image_digest.armv7=%s\n' "$_ver_digest_armv7"
+              printf 'source_url=%s\n' "$_ver_source_url"
+              printf 'retrieved_at_utc=%s\n' "$_ver_retrieved_at"
+              printf 'platform.amd64=linux/amd64\n'
+              printf 'platform.arm64=linux/arm64\n'
+              printf 'platform.armv7=linux/arm/v7\n'
+            } > "$_ver_manifest"
+            {
+              echo "amd64_sha256=$(sha256sum "wallos-linux-amd64-${_vtag}.tar.gz" | awk '{print $1}')"
+              echo "arm64_sha256=$(sha256sum "wallos-linux-arm64-${_vtag}.tar.gz" | awk '{print $1}')"
+              echo "armv7_sha256=$(sha256sum "wallos-linux-armv7-${_vtag}.tar.gz" | awk '{print $1}')"
+            } >> "$_ver_manifest"
+            sha256sum "$_ver_manifest" "wallos-linux-amd64-${_vtag}.tar.gz" "wallos-linux-arm64-${_vtag}.tar.gz" "wallos-linux-armv7-${_vtag}.tar.gz" >> SHA256SUMS
+            _ver_built=$((_ver_built + 1))
+          done
+          printf '%s\n' "${_retained_tags[@]}" > wallos-versions.txt
+          sha256sum wallos-versions.txt >> SHA256SUMS
+
+          # Total: 5 unversioned + 1 versions list + 4 per retained version.
+          _expected_sums=$((5 + 1 + 4 * ${#_retained_tags[@]}))
+          test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)" -eq "$_expected_sums"
+          # Verify hashes of files actually present in this build dir.
+          # Carried records point at assets already on the release, so a
+          # full `sha256sum -c` would fail on their absence here; verify
+          # the present subset instead.
+          : > "$RUNNER_TEMP/SHA256SUMS.present"
+          while IFS= read -r _line; do
+            _f="${_line#*  }"
+            if [[ -f "$_f" ]]; then
+              printf '%s\n' "$_line" >> "$RUNNER_TEMP/SHA256SUMS.present"
+            fi
+          done < SHA256SUMS
+          sha256sum -c "$RUNNER_TEMP/SHA256SUMS.present"
+          test "$(grep -cE '^[A-Fa-f0-9]{64}  ' "$RUNNER_TEMP/SHA256SUMS.present")" -eq "$((5 + 1 + 4 * _ver_built))"
+          echo "Wallos versioned assets: retained=${#_retained_tags[@]} built=${_ver_built} versions: ${_retained_tags[*]}"
 
           # F-05: Detached Ed25519 signatures for wallos-manifest.txt and
           # SHA256SUMS (same pattern as update-core-mirror.yml F-05).
@@ -391,6 +515,7 @@ jobs:
             printf 'Stable, fixed-name recovery assets for the Wallos installer.\n'
             printf 'The installer uses this Release only when upstream stable-release metadata or Docker Hub retrieval fails.\n'
             printf 'Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.\n'
+            printf "Rollback assets: wallos-versions.txt, one wallos-manifest-vX.Y.Z.txt per retained version, and wallos-linux-\$arch-vX.Y.Z.tar.gz archives, all recorded in SHA256SUMS.\n"
             printf 'The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.\n'
           } > "$notes"
           # R6C19-03: last gate before publish: both signatures

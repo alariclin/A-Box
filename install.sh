@@ -1866,6 +1866,24 @@ tr_msg() {
         fa:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL تنظیم نشده است. برای وارد کردن در Clash با اسکن کد QR، %s را روی HTTPS منتشر کنید و سپس اجرا کنید:' ;;
         zh-tw:view_config_clash_sub_url_missing) echo '尚未設定 ABOX_CLASH_SUB_URL。若要在 Clash 掃碼匯入，請先將 %s 發布至 HTTPS，再執行：' ;;
         ja:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL が設定されていません。Clash で QR コードをスキャンしてインポートするには、%s を HTTPS で公開してから次を実行してください：' ;;
+        zh:view_config_mihomo_single_title) echo 'Mihomo 单用户配置（仅当前用户）' ;;
+        en:view_config_mihomo_single_title) echo 'Mihomo single-user configuration (current user only)' ;;
+        ru:view_config_mihomo_single_title) echo 'Конфигурация Mihomo для одного пользователя (только текущий пользователь)' ;;
+        fa:view_config_mihomo_single_title) echo 'پیکربندی تک‌کاربر Mihomo (فقط کاربر جاری)' ;;
+        zh-tw:view_config_mihomo_single_title) echo 'Mihomo 單一使用者設定（僅目前使用者）' ;;
+        ja:view_config_mihomo_single_title) echo 'Mihomo 単一ユーザー設定（現在のユーザーのみ）' ;;
+        zh:view_config_mihomo_single_note) echo 'Mihomo 用户请直接导入此文件：仅含当前用户的 Vision / XHTTP 节点，reality-opts 已按 Xray 版本填好，无需手动修改；不要扫描上方单条 vless:// 链接。' ;;
+        en:view_config_mihomo_single_note) echo 'Mihomo users: import this file directly. It contains only the current user'"'"'s Vision / XHTTP nodes, with reality-opts already set for the installed Xray version — no manual edits needed. Do not scan the individual vless:// links above.' ;;
+        ru:view_config_mihomo_single_note) echo 'Пользователи Mihomo: импортируйте этот файл напрямую. В нём только узлы Vision / XHTTP текущего пользователя, а reality-opts уже выставлены под установленную версию Xray — вручную ничего менять не нужно. Не сканируйте отдельные ссылки vless:// выше.' ;;
+        fa:view_config_mihomo_single_note) echo 'کاربران Mihomo: این فایل را مستقیماً وارد کنید. فقط گره‌های Vision / XHTTP کاربر جاری را دارد و reality-opts مطابق نسخهٔ نصب‌شدهٔ Xray تنظیم شده است — نیازی به ویرایش دستی نیست. پیوندهای تکی vless:// در بالا را اسکن نکنید.' ;;
+        zh-tw:view_config_mihomo_single_note) echo 'Mihomo 使用者請直接匯入此檔案：僅含目前使用者的 Vision / XHTTP 節點，reality-opts 已按 Xray 版本填好，無需手動修改；不要掃描上方單條 vless:// 連結。' ;;
+        ja:view_config_mihomo_single_note) echo 'Mihomo ユーザーはこのファイルを直接インポートしてください。現在のユーザーの Vision / XHTTP ノードのみを含み、reality-opts はインストール済みの Xray バージョンに合わせて設定済みです。手動での変更は不要です。上の個別の vless:// リンクはスキャンしないでください。' ;;
+        zh:view_config_mihomo_single_failed) echo '单用户 Mihomo 配置生成失败，仍可用上方完整 YAML（内含全部用户，请勿外发）。' ;;
+        en:view_config_mihomo_single_failed) echo 'Single-user Mihomo configuration could not be generated; the full YAML above still works (it contains all users — do not share it).' ;;
+        ru:view_config_mihomo_single_failed) echo 'Не удалось создать конфигурацию Mihomo для одного пользователя; полный YAML выше по-прежнему работает (в нём все пользователи — не передавайте его другим).' ;;
+        fa:view_config_mihomo_single_failed) echo 'ایجاد پیکربندی تک‌کاربر Mihomo ممکن نشد؛ YAML کامل بالا همچنان کار می‌کند (شامل همهٔ کاربران است — آن را به اشتراک نگذارید).' ;;
+        zh-tw:view_config_mihomo_single_failed) echo '單一使用者 Mihomo 設定產生失敗，仍可使用上方完整 YAML（內含全部使用者，請勿外傳）。' ;;
+        ja:view_config_mihomo_single_failed) echo '単一ユーザー用 Mihomo 設定を生成できませんでした。上の完全な YAML は引き続き使用できます（全ユーザーを含むため共有しないでください）。' ;;
         zh:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 预览' ;;
         en:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML preview' ;;
         ru:view_config_clash_yaml_preview_title) echo 'Предпросмотр YAML для Clash / Mihomo' ;;
@@ -3312,18 +3330,30 @@ tr_msg() {
         fa:wl_rb_unknown_ver) echo 'تعیین نسخه نصب‌شده Wallos ممکن نیست (%s)؛ بازگشت بدون بررسی «دقیقاً قدیمی‌تر» رد می‌شود.' ;;
         zh-tw:wl_rb_unknown_ver) echo '無法確定已安裝的 Wallos 版本（%s）；無嚴格舊於檢查時拒絕回滾。' ;;
         ja:wl_rb_unknown_ver) echo 'インストール済みの Wallos バージョンを特定できません（%s）。厳密に古いことの確認なしにロールバックを拒否します。' ;;
-        zh:wl_rb_fetching) echo '本地没有 Wallos 镜像 %s，正在从镜像源拉取…' ;;
-        en:wl_rb_fetching) echo 'Wallos image %s not present locally; fetching from mirror...' ;;
-        ru:wl_rb_fetching) echo 'Образ Wallos %s отсутствует локально; загрузка с зеркала...' ;;
-        fa:wl_rb_fetching) echo 'تصویر Wallos %s به‌صورت محلی موجود نیست؛ در حال دریافت از آینه...' ;;
-        zh-tw:wl_rb_fetching) echo '本機沒有 Wallos 映像 %s，正在從鏡像源拉取…' ;;
-        ja:wl_rb_fetching) echo 'Wallos イメージ %s がローカルにありません。ミラーから取得しています...' ;;
+        zh:wl_rb_fetching) echo '本地映像 %s 未通过镜像摘要鉴权，正在从镜像源拉取…' ;;
+        en:wl_rb_fetching) echo 'Local Wallos image %s failed mirror digest authentication; fetching from mirror...' ;;
+        ru:wl_rb_fetching) echo 'Локальный образ Wallos %s не прошёл проверку дайджеста зеркала; загрузка с зеркала...' ;;
+        fa:wl_rb_fetching) echo 'تصویر محلی Wallos %s احراز هویت خلاصه آینه را نگذراند؛ در حال دریافت از آینه...' ;;
+        zh-tw:wl_rb_fetching) echo '本機映像 %s 未通過鏡像摘要鑑權，正在從鏡像源拉取…' ;;
+        ja:wl_rb_fetching) echo 'ローカルの Wallos イメージ %s はミラーのダイジェスト認証に失敗しました。ミラーから取得しています...' ;;
         zh:wl_rb_fetch_fail) echo '无法从镜像源拉取 Wallos %s。' ;;
         en:wl_rb_fetch_fail) echo 'Could not fetch Wallos %s from the mirror.' ;;
         ru:wl_rb_fetch_fail) echo 'Не удалось загрузить Wallos %s с зеркала.' ;;
         fa:wl_rb_fetch_fail) echo 'دریافت Wallos %s از آینه ممکن نشد.' ;;
         zh-tw:wl_rb_fetch_fail) echo '無法從鏡像源拉取 Wallos %s。' ;;
         ja:wl_rb_fetch_fail) echo 'ミラーから Wallos %s を取得できませんでした。' ;;
+        zh:wl_rb_mirror_list_fail) echo '无法获取镜像版本清单，回滚不可用。' ;;
+        en:wl_rb_mirror_list_fail) echo 'Could not fetch the mirror version list; rollback unavailable.' ;;
+        ru:wl_rb_mirror_list_fail) echo 'Не удалось получить список версий зеркала; откат недоступен.' ;;
+        fa:wl_rb_mirror_list_fail) echo 'دریافت فهرست نسخه‌های آینه ممکن نشد؛ بازگشت در دسترس نیست.' ;;
+        zh-tw:wl_rb_mirror_list_fail) echo '無法取得鏡像版本清單，回滾不可用。' ;;
+        ja:wl_rb_mirror_list_fail) echo 'ミラーのバージョン一覧を取得できませんでした。ロールバックは利用できません。' ;;
+        zh:wl_rb_local_only) echo '以下版本仅来自本地映像，未经镜像摘要鉴权，回滚可能失败：' ;;
+        en:wl_rb_local_only) echo 'The versions below come from local images only, without mirror digest authentication; rollback may fail:' ;;
+        ru:wl_rb_local_only) echo 'Версии ниже — только из локальных образов, без проверки дайджеста зеркала; откат может не удаться:' ;;
+        fa:wl_rb_local_only) echo 'نسخه‌های زیر فقط از تصاویر محلی هستند، بدون احراز هویت خلاصه آینه؛ بازگشت ممکن است ناموفق باشد:' ;;
+        zh-tw:wl_rb_local_only) echo '以下版本僅來自本機映像，未經鏡像摘要鑑權，回滾可能失敗：' ;;
+        ja:wl_rb_local_only) echo '以下のバージョンはローカルイメージのみのもので、ミラーのダイジェスト認証を受けていません。ロールバックに失敗する可能性があります:' ;;
         zh:wl_rb_bad_port) echo 'Wallos 保存的端口无效，拒绝回滚。' ;;
         en:wl_rb_bad_port) echo 'Wallos persisted port is invalid; refusing rollback.' ;;
         ru:wl_rb_bad_port) echo 'Сохранённый порт Wallos недопустим; откат отклонён.' ;;
@@ -6852,6 +6882,12 @@ tr_msg() {
         fa:bk_postdeploy_fail) echo 'گرفتن تصویر پس از استقرار ناموفق بود؛ استقرار از قبل ثبت شده و آسیبی ندیده است.' ;;
         zh-tw:bk_postdeploy_fail) echo '部署後快照失敗；部署已提交，本次部署不受影響。' ;;
         ja:bk_postdeploy_fail) echo 'デプロイ後のスナップショットに失敗しました。デプロイは既に確定済みで影響はありません。' ;;
+        zh:trojan_env_port_fail) echo 'Trojan 端口 %s 未能记入 .env；自愈覆盖检查将暂不期待该端口。' ;;
+        zh-tw:trojan_env_port_fail) echo 'Trojan 連接埠 %s 未能記入 .env；自愈覆蓋檢查將暫不期待該連接埠。' ;;
+        en:trojan_env_port_fail) echo 'Trojan port %s could not be recorded in .env; the self-heal coverage check will not expect this port yet.' ;;
+        ru:trojan_env_port_fail) echo 'Порт Trojan %s не удалось записать в .env; проверка покрытия самовосстановления пока не будет ожидать этот порт.' ;;
+        fa:trojan_env_port_fail) echo 'پورت Trojan %s در .env ثبت نشد؛ بررسی پوشش خودترمیمی فعلا این پورت را انتظار نخواهد داشت.' ;;
+        ja:trojan_env_port_fail) echo 'Trojan ポート %s を .env に記録できませんでした。自己修復のカバレッジチェックは当面このポートを期待しません。' ;;
         zh:bk_created) echo '备份已创建：' ;;
         en:bk_created) echo 'Backup created:' ;;
         ru:bk_created) echo 'Резервная копия создана:' ;;
@@ -7464,6 +7500,12 @@ tr_msg() {
         fa:warp_status_off) echo 'وضعیت WARP: مستقر نشده' ;;
         zh-tw:warp_status_off) echo 'WARP 狀態：未部署' ;;
         ja:warp_status_off) echo 'WARP 状態：未展開' ;;
+        zh:warp_status_stale) echo 'WARP 状态：已部署（未生效）——运行配置中无此出口，请在分流菜单中卸载清理。' ;;
+        en:warp_status_stale) echo 'WARP status: deployed (not in effect) — the live config has no such outbound; remove it from the split-routing menu.' ;;
+        ru:warp_status_stale) echo 'Статус WARP: развёрнут (не действует) — в действующей конфигурации такого выхода нет; удалите его в меню разделения трафика.' ;;
+        fa:warp_status_stale) echo 'وضعیت WARP: مستقر شده (اعمال نشده) — پیکربندی فعال چنین خروجی‌ای ندارد؛ آن را از منوی تفکیک ترافیک حذف کنید.' ;;
+        zh-tw:warp_status_stale) echo 'WARP 狀態：已部署（未生效）——運行設定中無此出口，請在分流選單中解除安裝清理。' ;;
+        ja:warp_status_stale) echo 'WARP 状態：展開済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
         zh:warp_rules_count) echo '分流规则数：%s' ;;
         en:warp_rules_count) echo 'Routing rules: %s' ;;
         ru:warp_rules_count) echo 'Правил маршрутизации: %s' ;;
@@ -10458,6 +10500,12 @@ tr_msg() {
         ru:sni_fail) echo 'Этот домен не прошёл проверку TLS 1.3, h2 или SAN сертификата; подключения могут не удаться.' ;;
         fa:sni_fail) echo 'این دامنه بررسی TLS 1.3، h2 یا SAN گواهی را با موفقیت پشت سر نگذاشت؛ اتصال‌ها ممکن است ناموفق شوند.' ;;
         ja:sni_fail) echo 'このドメインは TLS 1.3、h2、または証明書 SAN チェックに合格しませんでした。接続に失敗する可能性があります。' ;;
+        zh:sni_unresolvable) echo '域名 %s 无法解析（DNS 无结果）；该 SNI 无法完成 Reality 握手，已拒绝使用。' ;;
+        zh-tw:sni_unresolvable) echo '網域 %s 無法解析（DNS 無結果）；該 SNI 無法完成 Reality 握手，已拒絕使用。' ;;
+        en:sni_unresolvable) echo 'Domain %s does not resolve (no DNS result); it cannot complete a Reality handshake, so this SNI was refused.' ;;
+        ru:sni_unresolvable) echo 'Домен %s не разрешается (нет результата DNS); он не сможет завершить рукопожатие Reality, поэтому этот SNI отклонён.' ;;
+        fa:sni_unresolvable) echo 'دامنه %s در DNS یافت نشد؛ این SNI برای Reality قابل استفاده نیست و رد شد.' ;;
+        ja:sni_unresolvable) echo 'ドメイン %s は解決できません（DNS 結果なし）。Reality ハンドシェイクを完了できないため、この SNI は拒否されました。' ;;
         zh:sni_ok_tier) echo '当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 %s。' ;;
         zh-tw:sni_ok_tier) echo '目前 VPS 實測通過 TLS 1.3、h2 和憑證 SAN 檢查；相容檔位 %s。' ;;
         en:sni_ok_tier) echo 'This VPS passed the TLS 1.3, h2 and certificate SAN checks; compatibility tier %s.' ;;
@@ -12368,6 +12416,28 @@ default_sni_for_port() {
     fi
 }
 
+# F-NEW-03: DNS resolvability gate for a typed SNI. rc 0 = the domain
+# resolves, rc 1 = it positively does not resolve, rc 2 = resolution
+# cannot be tested on this host (no getent/python3). A resolving answer
+# is necessary, not sufficient: TLS/SAN tiering still applies afterwards.
+# getent is preferred; python3 (already a hard dependency) is the fallback
+# for hosts without it (e.g. musl-based systems).
+sni_dns_resolvable() {
+    local domain="${1:-}"
+    [[ -n "$domain" ]] || return 1
+    valid_domain "$domain" || return 1
+    if command -v getent >/dev/null 2>&1; then
+        if command -v timeout >/dev/null 2>&1; then
+            if timeout 10 getent ahosts "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+        fi
+        if getent ahosts "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -I -c 'import socket,sys; socket.getaddrinfo(sys.argv[1], 443, 0, socket.SOCK_STREAM)' "$domain" >/dev/null 2>&1; then return 0; else return 1; fi
+    fi
+    return 2
+}
+
 sni_probe_candidate_tier() {
     local domain="${1:-}" workdir='' raw='' raw_sorted='' verified='' timeout_s=2
     local score actual_domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
@@ -12429,7 +12499,7 @@ sni_verified_amazon_fallback() {
 }
 
 prompt_reality_sni() {
-    local label="$1" port="$2" default_sni input answer prompt warned custom_tier
+    local label="$1" port="$2" default_sni input answer prompt warned custom_tier dns_rc
     default_sni=$(default_sni_for_port "$port")
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
@@ -12449,6 +12519,15 @@ prompt_reality_sni() {
             warned=1
         fi
         if [[ "$input" != "$default_sni" ]]; then
+            # F-NEW-03: a custom SNI that does not resolve can never pass
+            # a Reality handshake (the server cannot dial its target), so
+            # it is refused outright instead of warned-and-confirmed.
+            # An untestable resolver falls through to tiering below.
+            sni_dns_resolvable "$input"; dns_rc=$?
+            if (( dns_rc == 1 )); then
+                printf '%s\n' "${RED}[SNI custom] $(tprintf sni_unresolvable "$input")$NC" >&2
+                continue
+            fi
             custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
             case "$custom_tier" in
                 A|B|C)
@@ -12709,7 +12788,7 @@ clear_abox_env_vars() {
     unset HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END INGRESS_IF ENABLE_KEEPALIVE
     unset TRAFFIC_LIMIT_GB TRAFFIC_LIMIT_MODE
-    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO TROJAN_PORT
 }
 
 validate_abox_env_semantics() {
@@ -12725,7 +12804,7 @@ validate_abox_env_semantics() {
             *) return 1 ;;
         esac
     fi
-    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
+    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT TROJAN_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1
     done
@@ -12833,6 +12912,7 @@ allowed = {
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
     "SS_WHITELIST_IP", "SOCKS_PORT", "SOCKS_USER", "SOCKS_PASS", "SOCKS_PROTO",
+    "TROJAN_PORT",
 }
 seen = set()
 with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
@@ -14204,8 +14284,14 @@ def check_fd(fd, path):
     try:
         st=os.fstat(fd)
         acme = path == target or path.startswith(target + '/')
-        uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
-        gid_ok = st.st_gid in ({0, runtime_gid})
+        # U1 (F05-02): the ownership marker is the trust anchor and
+        # must stay root:root. The generic ACME rule that also accepts
+        # runtime ownership must never apply to it: a runtime-owned
+        # marker used to pass this check while marker_valid() rejected
+        # it, so prepare failed on a fully canonical tree.
+        is_marker = (path == os.path.join(target, '.A-Box-managed'))
+        uid_ok = (st.st_uid == 0) if is_marker else st.st_uid in ({0, runtime_uid} if acme else {0})
+        gid_ok = (st.st_gid == 0) if is_marker else st.st_gid in ({0, runtime_gid})
         legacy_root_dir_ok = acme and path == target and st.st_uid == 0 and st.st_gid == 0 and stat.S_ISDIR(st.st_mode) and (st.st_mode & 0o077) == 0
         group_write_ok = acme and path == target and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
         if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok) or (acme and path == target and not (group_write_ok or legacy_root_dir_ok)):
@@ -14275,6 +14361,9 @@ hysteria_acme_repair_tree_ownership() {
     # fails the manifest re-check and the caller refuses instead of
     # proceeding on a half-fixed tree. Symlinks, hard-linked files and
     # unrecorded paths are skipped, never followed or modified.
+    # U1 (F05-02): the ownership marker (.A-Box-managed) is special:
+    # it is never handed to the runtime user; see the restricted
+    # marker branch below (root:root 0600, manifest-verified only).
     local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" group="${3:-}"
     local gid=''
     [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
@@ -14282,9 +14371,13 @@ hysteria_acme_repair_tree_ownership() {
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[0-9]+$ ]] || return 1
     python3 -I - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
-import os, re, stat, sys
+import hashlib, os, re, stat, sys
 manifest, target, gid = sys.argv[1], sys.argv[2], int(sys.argv[3])
 target = os.path.normpath(target)
+# U1 (F05-02): the ownership marker is the trust anchor; its
+# canonical state is root:root 0600 (see marker_valid()).
+marker_path = os.path.join(target, '.A-Box-managed')
+marker_magic = b'A-Box managed Hysteria ACME directory v1'
 # R15C5-01: manifest preconditions on the OPEN file, not a
 # re-resolved path. fstat pins the inode; lstat must agree (else the
 # path was swapped for a symlink between the bash check and the open).
@@ -14367,6 +14460,49 @@ for typ, _fam, rawpath, _h in rows:
     try:
         st = os.fstat(fd)
         if stat.S_ISLNK(st.st_mode):
+            continue
+        # U1 (F05-02): the ownership marker is the trust anchor and
+        # must NEVER be handed to the runtime user below. A marker
+        # that is already root:root 0600 is left alone. Any other
+        # state is restored to root:root 0600 only through the
+        # restricted recovery below, and only when all of these hold:
+        # the file was opened via its pinned parent fd (O_NOFOLLOW),
+        # it is a recorded regular file with a single link, its
+        # content read through the held fd hashes to the hash recorded
+        # for it in the trusted root-owned manifest (the manifest
+        # preconditions above already pinned it to root:root 0600),
+        # and it carries the magic marker line. Anything else is
+        # skipped, so the manifest re-check refuses and the operator
+        # must recover it by hand. The magic line alone never
+        # authorises recovery, and content is never rewritten here.
+        if path == marker_path:
+            if typ != 'F' or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                continue
+            _mdata = bytearray()
+            _moff = 0
+            _mtoolarge = False
+            try:
+                while True:
+                    _mchunk = os.pread(fd, 1024 * 1024, _moff)
+                    if not _mchunk:
+                        break
+                    _moff += len(_mchunk)
+                    if _moff > 4 * 1024 * 1024:
+                        _mtoolarge = True
+                        break
+                    _mdata += _mchunk
+            except OSError:
+                continue
+            if _mtoolarge:
+                continue
+            if hashlib.sha256(bytes(_mdata)).hexdigest() != _h:
+                continue
+            if marker_magic not in bytes(_mdata).split(b'\n'):
+                continue
+            if st.st_uid != 0 or st.st_gid != 0:
+                os.fchown(fd, 0, 0)
+            if stat.S_IMODE(st.st_mode) != 0o600:
+                os.fchmod(fd, 0o600)
             continue
         if stat.S_ISDIR(st.st_mode):
             if typ != 'D':
@@ -14500,6 +14636,103 @@ except Exception:
 PY_ACME_READOPT
 }
 
+hysteria_acme_marker_recovery_evidence() {
+    # U1 (F05-02): restricted recovery evidence for a marker damaged by
+    # the old repair (e.g. runtime-owned 0640 with intact content).
+    # Returns 0 only when the marker is proven to be OUR marker from
+    # evidence independent of its current ownership:
+    #   * a manifest record for this exact marker path, in the trusted
+    #     root-owned manifest (open-file fstat pinned, lstat agrees,
+    #     uid/gid 0:0, mode 0600 — same preconditions as the repair);
+    #   * the marker file opened via its pinned parent fd (O_NOFOLLOW),
+    #     a regular file with a single link (symlink/hard-link refused);
+    #   * its content, read through the held fd, hashes to the recorded
+    #     hash AND carries the magic marker line.
+    # The magic line alone never suffices, content is never rewritten
+    # here, and this changes nothing: the caller still runs the repair
+    # (which re-verifies every condition) and the strict manifest
+    # re-check afterwards. Without this evidence the gate refuses and
+    # the operator must recover the marker by hand.
+    local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" marker="${3:-$HY2_ACME_OWNER_MARKER}"
+    [[ "$target" == /etc/hysteria/acme ]] || return 1
+    [[ "$marker" == "$target/.A-Box-managed" ]] || return 1
+    path_parent_chain_safe "$marker" || return 1
+    path_tree_has_mountpoint "$target" && return 1
+    [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+    python3 -I - "$manifest" "$target" "$marker" <<'PY_ACME_MARKER_EVIDENCE'
+import hashlib, os, stat, sys
+manifest, target, marker = sys.argv[1:]
+try:
+    f = open(manifest, 'r', encoding='utf-8')
+except OSError:
+    raise SystemExit(1)
+fst = os.fstat(f.fileno())
+try:
+    lst = os.lstat(manifest)
+except OSError:
+    raise SystemExit(1)
+if (fst.st_dev, fst.st_ino) != (lst.st_dev, lst.st_ino):
+    raise SystemExit(1)
+if fst.st_uid != 0 or fst.st_gid != 0 or (fst.st_mode & 0o777) != 0o600:
+    raise SystemExit(1)
+recorded = None
+for line in f:
+    p = line.rstrip('\n').split('\t')
+    if len(p) != 4 or p[0] not in {'F', 'D'} or p[1] != 'hysteria' or not p[2].startswith('/') or '\x00' in line:
+        continue
+    if p[0] == 'F' and p[2] == marker:
+        recorded = p[3]
+f.close()
+if recorded is None:
+    raise SystemExit(1)
+def _open_parent_fd(path):
+    # Same fd-pinning pattern as the repair: a swap before a step is
+    # refused (ELOOP); a swap after it cannot redirect the held fd.
+    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for comp in parts[:-1]:
+            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+try:
+    parent_fd, leaf = _open_parent_fd(marker)
+except OSError:
+    raise SystemExit(1)
+try:
+    mfd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+except OSError:
+    os.close(parent_fd)
+    raise SystemExit(1)
+os.close(parent_fd)
+try:
+    st = os.fstat(mfd)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        raise SystemExit(1)
+    data = bytearray()
+    off = 0
+    while True:
+        chunk = os.pread(mfd, 1024 * 1024, off)
+        if not chunk:
+            break
+        off += len(chunk)
+        if off > 4 * 1024 * 1024:
+            raise SystemExit(1)
+        data += chunk
+finally:
+    os.close(mfd)
+if hashlib.sha256(bytes(data)).hexdigest() != recorded:
+    raise SystemExit(1)
+if b'A-Box managed Hysteria ACME directory v1' not in bytes(data).split(b'\n'):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY_ACME_MARKER_EVIDENCE
+}
+
 prepare_hysteria_acme_dir_ownership() {
     local dir=/etc/hysteria/acme marker=$HY2_ACME_OWNER_MARKER user group _pgroup _pmode
     IFS=$'\t' read -r user group < <(abox_runtime_identity hysteria) || return 1
@@ -14520,7 +14753,19 @@ prepare_hysteria_acme_dir_ownership() {
     fi
     if [[ -e "$dir" || -L "$dir" ]]; then
         [[ ! -L "$dir" && -d "$dir" ]] || return 1
-        if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
+        # U1 (F05-02): the tree is managed if the marker is valid, the
+        # manifest matches, or the marker carries restricted recovery
+        # evidence (manifest-verified content, independent of its
+        # current ownership). The repair still re-verifies everything
+        # and the strict manifest re-check below has the final word.
+        if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir" && ! hysteria_acme_marker_recovery_evidence "$ABOX_CORE_OWNERSHIP" "$dir" "$marker"; then
+            # U1 (F05-02): a marker that exists but cannot be verified
+            # (bad ownership/content, or no matching manifest record)
+            # is never auto-certified. Refuse and point the operator
+            # at manual recovery.
+            if [[ -e "$marker" || -L "$marker" ]]; then
+                msg "${RED}$(tr_msg hy2_acme_tree_drift)${NC}"
+            fi
             return 1
         fi
         # U145: the gate above passes on a valid marker even when the
@@ -15681,7 +15926,9 @@ residue_takeover_clear() {
         if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
         # R6C6-01: refuse mounted trees before rm; a bind mount would
         # delete shared foreign data. Failures propagate (no || true).
-        if path_tree_has_mountpoint "$_path"; then _failed=1; continue; fi
+        # 3B-U3: ancestor-aware (same shape as R16-F05-02): a bind
+        # mount on an ancestor is invisible to the subtree-only check.
+        if path_tree_or_ancestors_mounted "$_path"; then _failed=1; continue; fi
         if [[ -d "$_path" && ! -L "$_path" ]]; then rm -rf -- "$_path" 2>/dev/null || _failed=1
         elif [[ -e "$_path" || -L "$_path" ]]; then rm -f -- "$_path" 2>/dev/null || _failed=1
         fi
@@ -22106,8 +22353,175 @@ except Exception:
 PY_TAR_EXTRACT
 }
 
+# B-C2 (final-round): total budget for the "services stopped, config not
+# yet written" fetch segment of a (re)deployment. The guard is armed by
+# abox_fetch_guard_start just before release_ports and disarmed by
+# abox_fetch_guard_stop once every download is verified and staged; every
+# fetch primitive checks the deadline at each retry boundary and caps its
+# own curl -m at the remaining budget, so a hung download can never
+# outlive the budget by more than one in-flight call. On expiry the
+# caller dies and the existing deployment transaction rolls the
+# pre-deployment snapshot back -- no kill, no signal trap required.
+# ABOX_FETCH_TOTAL_BUDGET_SECONDS may be overridden in the environment;
+# the watchdog grace is ABOX_FETCH_WATCHDOG_GRACE_SECONDS (60s).
+ABOX_FETCH_TOTAL_BUDGET_SECONDS="${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}"
+ABOX_FETCH_DEADLINE_EPOCH=''
+ABOX_FETCH_SEGMENT_START=''
+ABOX_FETCH_SEGMENT_LABEL=''
+ABOX_FETCH_WATCHDOG_DIR=''
+ABOX_FETCH_WATCHDOG_PID=''
+ABOX_DEPLOY_ROLLBACK_STATE_FILE='/run/A-Box-deploy-rollback-state'
+ABOX_DEPLOY_WATCHDOG_STALL_FILE='/run/A-Box-deploy-watchdog-stall.log'
+
+abox_fetch_deadline_remaining() {
+    local _now
+    [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] || return 1
+    [[ "$ABOX_FETCH_DEADLINE_EPOCH" =~ ^[0-9]+$ ]] || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$(( ABOX_FETCH_DEADLINE_EPOCH - _now ))"
+    return 0
+}
+
+# Returns 0 when no budget is armed or budget remains; 1 when expired.
+abox_fetch_deadline_check() {
+    local _label="${1:-fetch}" _remaining
+    _remaining=$(abox_fetch_deadline_remaining 2>/dev/null) || return 0
+    (( _remaining > 0 )) && return 0
+    printf '%s\n' "[A-Box][fetch-budget] total fetch budget (${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}s) expired during ${_label}; aborting so the deployment transaction rolls back." >&2
+    return 1
+}
+
+# Prints the curl -m cap for one call: min(default, remaining budget).
+# Returns 1 when the budget is already spent (caller must not start).
+abox_fetch_curl_max_time() {
+    local _def="${1:-60}" _remaining
+    [[ "$_def" =~ ^[0-9]+$ ]] || _def=60
+    _remaining=$(abox_fetch_deadline_remaining 2>/dev/null) || { printf '%s\n' "$_def"; return 0; }
+    (( _remaining <= 0 )) && return 1
+    (( _remaining < _def )) && printf '%s\n' "$_remaining" || printf '%s\n' "$_def"
+    return 0
+}
+
+abox_fetch_heartbeat() {
+    [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" && -d "$ABOX_FETCH_WATCHDOG_DIR" ]] || return 0
+    : > "$ABOX_FETCH_WATCHDOG_DIR/heartbeat" 2>/dev/null || true
+    return 0
+}
+
+abox_fetch_guard_start() {
+    local _label="${1:-deploy}" _seconds="${2:-${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}}" _now _srv
+    [[ "$_seconds" =~ ^[0-9]+$ ]] || _seconds=300
+    _now=$(date +%s 2>/dev/null || printf '0')
+    ABOX_FETCH_DEADLINE_EPOCH=$(( _now + _seconds ))
+    ABOX_FETCH_TOTAL_BUDGET_SECONDS="$_seconds"
+    ABOX_FETCH_SEGMENT_START="$_now"
+    ABOX_FETCH_SEGMENT_LABEL="$_label"
+    ABOX_FETCH_WATCHDOG_DIR=$(mktemp -d /tmp/A-Box-fetch-watchdog.XXXXXX 2>/dev/null) || ABOX_FETCH_WATCHDOG_DIR=''
+    if [[ -n "$ABOX_FETCH_WATCHDOG_DIR" ]]; then
+        : > "$ABOX_FETCH_WATCHDOG_DIR/heartbeat" 2>/dev/null || true
+        # Snapshot of the services running right now (pre-stop): if the
+        # foreground stalls past the budget, the watchdog restarts exactly
+        # these with their still-untouched configs.
+        : > "$ABOX_FETCH_WATCHDOG_DIR/services" 2>/dev/null || true
+        for _srv in xray sing-box hysteria; do
+            if abox_owns_service "$_srv" 2>/dev/null && is_service_running "$_srv" 2>/dev/null; then
+                printf '%s\n' "$_srv" >> "$ABOX_FETCH_WATCHDOG_DIR/services" 2>/dev/null || true
+            fi
+        done
+        ( trap - EXIT INT TERM HUP; ABOX_DIE_HOOK=''; ABOX_DEPLOY_TX_ACTIVE=0; abox_deploy_watchdog_loop "$ABOX_FETCH_WATCHDOG_DIR" "$$" "$ABOX_FETCH_DEADLINE_EPOCH" "$_label" ) & ABOX_FETCH_WATCHDOG_PID=$!
+    fi
+    msg "[fetch] ${_label}: fetch segment started at $(now_iso) (total budget ${_seconds}s; on timeout the deployment rolls back)"
+    return 0
+}
+
+abox_fetch_guard_stop() {
+    local _now _elapsed
+    if [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" && -d "$ABOX_FETCH_WATCHDOG_DIR" ]]; then
+        : > "$ABOX_FETCH_WATCHDOG_DIR/done" 2>/dev/null || true
+    fi
+    if [[ -n "${ABOX_FETCH_WATCHDOG_PID:-}" ]]; then
+        kill "$ABOX_FETCH_WATCHDOG_PID" 2>/dev/null || true
+        wait "$ABOX_FETCH_WATCHDOG_PID" 2>/dev/null || true
+        ABOX_FETCH_WATCHDOG_PID=''
+    fi
+    if [[ -n "${ABOX_FETCH_WATCHDOG_DIR:-}" ]]; then
+        rm -rf -- "$ABOX_FETCH_WATCHDOG_DIR" 2>/dev/null || true
+        ABOX_FETCH_WATCHDOG_DIR=''
+    fi
+    if [[ -n "${ABOX_FETCH_SEGMENT_START:-}" ]]; then
+        _now=$(date +%s 2>/dev/null || printf '0')
+        if [[ "$_now" =~ ^[0-9]+$ && "$ABOX_FETCH_SEGMENT_START" =~ ^[0-9]+$ ]]; then
+            _elapsed=$(( _now - ABOX_FETCH_SEGMENT_START ))
+            msg "[fetch] ${ABOX_FETCH_SEGMENT_LABEL:-deploy}: fetch segment finished in ${_elapsed}s"
+        fi
+    fi
+    ABOX_FETCH_DEADLINE_EPOCH=''
+    ABOX_FETCH_SEGMENT_START=''
+    return 0
+}
+
+# Background watchdog for the fetch segment. Runs in a child subshell;
+# its first act is to drop the inherited deployment transaction traps,
+# so it can never roll back from the child. It exits silently when the
+# parent dies or the segment completes (done marker). Only when the
+# deadline plus grace has passed with no completion does it fire once:
+# it lands a stall state file and best-effort restarts the pre-stop
+# snapshot services. It never kills anything and never touches config;
+# the foreground, on regaining control, still hits its deadline checks
+# and dies into the normal transaction rollback.
+abox_deploy_watchdog_loop() {
+    trap - EXIT INT TERM HUP
+    ABOX_DIE_HOOK=''
+    ABOX_DEPLOY_TX_ACTIVE=0
+    local _dir="$1" _parent="$2" _deadline="$3" _label="$4"
+    local _grace _now _stall _last_hb _srv _rc _rs_mtime _rollback_state
+    _grace="${ABOX_FETCH_WATCHDOG_GRACE_SECONDS:-60}"
+    [[ "$_grace" =~ ^[0-9]+$ ]] || _grace=60
+    _stall="${ABOX_DEPLOY_WATCHDOG_STALL_FILE:-/run/A-Box-deploy-watchdog-stall.log}"
+    _rollback_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    while true; do
+        sleep 5
+        kill -0 "$_parent" 2>/dev/null || exit 0
+        [[ -f "$_dir/done" ]] && exit 0
+        _now=$(date +%s 2>/dev/null || printf '0')
+        [[ "$_now" =~ ^[0-9]+$ ]] || continue
+        (( _now < _deadline + _grace )) && continue
+        # A rollback already in progress owns recovery now; stand down.
+        if [[ -f "$_rollback_state" ]]; then
+            _rs_mtime=$(stat -c %Y "$_rollback_state" 2>/dev/null || printf '0')
+            if [[ "$_rs_mtime" =~ ^[0-9]+$ ]] && (( _rs_mtime >= _deadline )); then exit 0; fi
+        fi
+        _last_hb='unknown'
+        [[ -f "$_dir/heartbeat" ]] && _last_hb=$(stat -c %y "$_dir/heartbeat" 2>/dev/null || printf 'unknown')
+        {
+            printf 'A-Box deploy watchdog stall\n'
+            printf 'label: %s\n' "$_label"
+            printf 'time: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || printf 'unknown')"
+            printf 'watchdog_pid: %s\n' "$BASHPID"
+            printf 'deadline_epoch: %s\n' "$_deadline"
+            printf 'last_heartbeat: %s\n' "$_last_hb"
+        } > "$_stall" 2>/dev/null || true
+        if [[ -f "$_dir/services" ]]; then
+            while IFS= read -r _srv || [[ -n "$_srv" ]]; do
+                [[ -n "$_srv" ]] || continue
+                _rc=0
+                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                    systemctl start "$_srv" >/dev/null 2>&1 || _rc=$?
+                elif command -v rc-service >/dev/null 2>&1; then
+                    rc-service "$_srv" start >/dev/null 2>&1 || _rc=$?
+                else
+                    _rc=127
+                fi
+                printf 'restart %s: rc=%s\n' "$_srv" "$_rc" >> "$_stall" 2>/dev/null || true
+            done < "$_dir/services"
+        fi
+        exit 0
+    done
+}
+
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now
+    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now _api_max_time=60
     local -a args=()
     [[ -n "$url" ]] || return 1
     if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
@@ -22121,6 +22535,20 @@ github_api_get() {
         -H 'Accept: application/vnd.github+json'
         -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
+        # B-C2: total fetch budget -- stop the retry course at once when
+        # the deploy fetch segment budget is spent; never sleep past it.
+        # Helpers are consulted only when a budget is armed
+        # (ABOX_FETCH_DEADLINE_EPOCH); unarmed callers -- including
+        # fixtures that extract this function standalone -- keep the
+        # previous uncapped behaviour verbatim.
+        _api_max_time=60
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
+            _api_max_time=$(abox_fetch_curl_max_time 60) || { rm -f -- "$tmp" "$headers"; return 1; }
+        fi
+        args=(-sS -L --connect-timeout 10 -m "$_api_max_time" -D "$headers"
+            -H 'Accept: application/vnd.github+json'
+            -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
         : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
         if [[ -n "${GITHUB_TOKEN:-}" ]]; then
             [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
@@ -22161,6 +22589,9 @@ github_api_get() {
             return 1
         fi
         if (( attempt == max_attempts )); then break; fi
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
+        fi
         if (( delay > 30 )); then delay=30; fi
         if (( delay > 0 )); then sleep "$delay"; fi
         if (( delay < 30 )); then delay=$((delay * 2)); fi
@@ -23113,7 +23544,7 @@ singbox_asset_json_from_release() {
 
 core_fetch_upstream_release_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
-    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc
+    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc _up_max_time=180 _up_retry=2
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
     release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_api_unavailable "${repo}" "${release_ref}")${NC}" >&2; return 1; }
     [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
@@ -23137,8 +23568,18 @@ core_fetch_upstream_release_asset() {
     # and update resolved state while the requested path holds no file.
     if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2; return 1; fi
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
+        # B-C2: total fetch budget -- one spent budget ends the mirror
+        # course; with a budget armed, curl gets no per-call retries so
+        # a single attempt can never overrun the remaining budget.
+        _up_max_time=180
+        _up_retry=2
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "core_fetch_upstream_release_asset $repo $release_ref" || return 1
+            _up_max_time=$(abox_fetch_curl_max_time 180) || return 1
+            abox_fetch_deadline_remaining >/dev/null 2>&1 && _up_retry=0
+        fi
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry "$_up_retry" --retry-delay 2 --connect-timeout 10 -m "$_up_max_time" "${mirror}${download_url}" -o "$tmp_file"; then
             # S31 (GPT-11): digest first -- the digest is already in hand
             # from release metadata, so the cheap SHA-256 check must reject
             # a bad archive before the expensive full-archive parse runs.
@@ -23187,7 +23628,7 @@ fetch_github_release() {
         if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] $(tprintf fg_mlkem "$target_ref")${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die "$(tr_msg fg_unparsable)"; fi
     fi
     msg "${YELLOW}$(tprintf fetch_github_release_candidate "${repo}" "${target_ref}" "${target_source}")${NC}"
-    probe_core_sources_banner
+    probe_core_sources_banner "$repo" "$target_ref"
 
     if [[ "$target_source" == 'mirror-exact' ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then return 0; fi
@@ -23292,7 +23733,7 @@ fetch_github_release() {
 }
 
 fetch_geo_data() {
-    local file_name official_url out tmp_out size repo asset release_json asset_json asset_name download_url digest release_ref out_created=0
+    local file_name official_url out tmp_out size repo asset release_json asset_json asset_name download_url digest release_ref out_created=0 _geo_t0 _geo_now _geo_max_time=90
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
@@ -23305,11 +23746,16 @@ fetch_geo_data() {
     fi
     [[ ! -L "$out" && ! -d "$out" ]] || die "$(tprintf gd_out_notfile "$out")"
     mkdir -p "$(dirname "$out")" || die "$(tr_msg gd_out_dir)"
+    _geo_t0=$(date +%s 2>/dev/null || printf '0')
+    msg "[fetch] geo ${file_name}: download started at $(now_iso)"
     tmp_out=$(umask 077; mktemp "${out}.download.XXXXXX") || { (( out_created == 1 )) && rm -f -- "$out"; die "$(tr_msg gd_tmp)"; }
 
     if [[ "$official_url" =~ ^https://github.com/([^/]+/[^/]+)/releases/latest/download/([^/?#]+)$ ]]; then
         repo="${BASH_REMATCH[1]}"
         asset="${BASH_REMATCH[2]}"
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} metadata."; }
+        fi
         release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
         [[ -n "$release_json" ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_api "$repo")"; }
         asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
@@ -23320,7 +23766,12 @@ fetch_geo_data() {
         digest=$(jq -r '.digest // ""' <<< "$asset_json")
         [[ -n "$asset_name" && -n "$release_ref" ]] || { rm -f -- "$tmp_out"; die 'Geo Release metadata missing asset name or tag.'; }
         valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die "$(tr_msg gd_url_mismatch)"; }
-        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
+        _geo_max_time=90
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
+            _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
+        fi
+        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
         if ! verify_github_asset_digest "$tmp_out" "$digest"; then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
             die "$(tprintf gd_digest "$file_name")"
@@ -23348,6 +23799,10 @@ fetch_geo_data() {
     if [[ ! -f "$out" ]]; then
         [[ -d "$out" ]] && rm -f -- "$out/$(basename "$tmp_out")" 2>/dev/null
         die "$(tprintf gd_commit "$file_name")"
+    fi
+    _geo_now=$(date +%s 2>/dev/null || printf '0')
+    if [[ "$_geo_t0" =~ ^[0-9]+$ && "$_geo_now" =~ ^[0-9]+$ ]]; then
+        msg "[fetch] geo ${file_name}: finished in $(( _geo_now - _geo_t0 ))s"
     fi
 }
 
@@ -23680,7 +24135,7 @@ reset_protocol_vars() {
     unset HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT
     unset HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END ENABLE_KEEPALIVE
-    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO TROJAN_PORT
 }
 
 path_parent_chain_safe() {
@@ -23918,6 +24373,7 @@ PY_WRITE_ENV_OLD
         printf 'SS_PORT=%s\n' "$(env_quote "${SS_PORT:-}")"
         printf 'SS_WHITELIST_IP=%s\n' "$(env_quote "${SS_WHITELIST_IP:-}")"
         printf 'SOCKS_PORT=%s\n' "$(env_quote "${SOCKS_PORT:-}")"
+        printf 'TROJAN_PORT=%s\n' "$(env_quote "${TROJAN_PORT:-}")"
         printf 'SOCKS_USER=%s\n' "$(env_quote "${SOCKS_USER:-}")"
         printf 'SOCKS_PASS=%s\n' "$(env_quote "${SOCKS_PASS:-}")"
         printf 'SOCKS_PROTO=%s\n' "$(env_quote "${SOCKS_PROTO:-}")"
@@ -23952,6 +24408,27 @@ PY_WRITE_ENV_OLD
     chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
     mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
     umask "$_we_umask"
+}
+
+# F-NEW-04/CD (U5/NF-06(a)): record the standalone Trojan listener port in
+# .env so the self-heal coverage gate can expect it. Single-key upsert
+# (replace-or-append) so a standalone deploy never rewrites the whole
+# .env the way write_env does. Best-effort for callers: rc 0 recorded,
+# rc 1 not recorded (missing/symlink .env, invalid port, write failure).
+env_set_trojan_port() {
+    local _port="${1:-}" _envf="${ABOX_ENV:-/etc/ddr/.env}"
+    valid_canonical_port "$_port" || return 1
+    [[ -f "$_envf" && ! -L "$_envf" ]] || return 1
+    if grep -q '^TROJAN_PORT=' "$_envf" 2>/dev/null; then
+        sed -i "s/^TROJAN_PORT=.*/TROJAN_PORT='$_port'/" "$_envf" 2>/dev/null || return 1
+    else
+        if [[ -n "$(tail -c 1 "$_envf" 2>/dev/null)" ]]; then
+            printf '\n' >> "$_envf" 2>/dev/null || return 1
+        fi
+        printf "TROJAN_PORT='%s'\n" "$_port" >> "$_envf" 2>/dev/null || return 1
+    fi
+    TROJAN_PORT="$_port"
+    return 0
 }
 
 validate_fail2ban_config() {
@@ -24820,28 +25297,32 @@ _xrc_stop_xray() {
     return 0
 }
 
-# R27-H-NF-06 (GPT-arbitrated A): tri-state coverage check for an xray
-# config against the currently expected data inbounds (.env listener
-# ports). Existential, not complete, coverage: a multi-protocol deploy
-# may legitimately restore only a subset of its protocols.
-# rc 0 = verified match, or genuinely no expected ports defined
+# R27-H-NF-06 (GPT-arbitrated A), F-NEW-04/CD: tri-state coverage check
+# for an xray config against the currently expected data inbounds (.env
+# listener ports). Set comparison, not existential: EVERY expected port
+# must be present, so a backup that drops the newest protocol (e.g. a
+# pre-Trojan backup after a Trojan deploy) is a mismatch, not a cover.
+# rc 0 = verified full cover, or genuinely no expected ports defined
 #        (vacuous pass: fresh host / trojan-landing-only stack);
-# rc 1 = verification succeeded and NO expected data inbound matched
+# rc 1 = verification succeeded and at least one expected port is missing
 #        (an empty config is a mismatch whenever expectations exist);
 # rc 2 = verification could not be completed (unreadable .env, jq
-#        missing or failed). Callers: a candidate is installed only on
-# rc 0; a valid live config enters recovery only on rc 1.
+#        missing or failed). Callers: a covering candidate is installed
+#        on rc 0; a valid live config enters recovery only on rc 1; a
+#        verified mismatch (rc 1) is kept as a fallback and installed only
+#        when no covering candidate exists, with the drop recorded by the
+#        post-restore divergence check.
 # The dokodemo-door api inbound (tag "api", 127.0.0.1:10085) is
 # infrastructure, never an expected data inbound: it is excluded by
 # tag before ports are compared, so an api-only config never counts
 # as covering. .env is parsed, never sourced.
 _xrc_config_has_expected_data_inbound() {
     local cfg="$1" envf="${ABOX_ENV:-/etc/ddr/.env}"
-    local _var _val _ports _p _e
-    local -a _expected=()
+    local _var _val _ports _p _e _found
+    local -a _expected=() _live_ports=()
     [[ -e "$envf" ]] || return 0
     [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]] || return 2
-    for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT; do
+    for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
         _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ "$_val" =~ ^[0-9]+$ ]] || continue
         [[ "${#_val}" -le 5 ]] || continue
@@ -24854,11 +25335,73 @@ _xrc_config_has_expected_data_inbound() {
     while IFS= read -r _p; do
         [[ "$_p" =~ ^[0-9]+$ ]] || continue
         [[ "${#_p}" -le 5 ]] || continue
-        for _e in "${_expected[@]}"; do
-            (( 10#$_p == _e )) && return 0
-        done
+        _live_ports+=("$((10#$_p))")
     done <<< "$_ports"
-    return 1
+    for _e in "${_expected[@]}"; do
+        _found=0
+        for _p in "${_live_ports[@]}"; do
+            (( 10#$_p == _e )) && { _found=1; break; }
+        done
+        (( _found == 1 )) || return 1
+    done
+    return 0
+}
+
+# F-NEW-04/CD: post-restore divergence check. Compares the restored xray
+# config against the .env expected listener ports and the xray standalone
+# links; a registered/linked protocol the restored config no longer serves
+# is recorded in the status file (and warned loudly), never dropped
+# silently. No automatic rebuild is attempted here: a Reality inbound
+# cannot be rebuilt from its link (the link carries only the public key,
+# never the private key), so the durable protection is the
+# post-deployment backup plus the covering-candidate gate above.
+# $1 = restored config path, $2 = status file to append to.
+# rc 0 = no divergence, rc 1 = divergence recorded, rc 2 = unverifiable.
+_xrc_restore_divergence_check() {
+    local _cfg="$1" _statusf="$2" _envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _var _val _ports _p _e _key _rc _found _missing=''
+    local -a _expected=() _live_ports=()
+    [[ -f "$_cfg" && ! -L "$_cfg" && -r "$_cfg" ]] || return 2
+    [[ -n "$_statusf" ]] || return 2
+    command -v jq >/dev/null 2>&1 || return 2
+    if [[ -f "$_envf" && ! -L "$_envf" && -r "$_envf" ]]; then
+        for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
+            _val=$(sed -n "s/^${_var}=//p" "$_envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+            [[ "$_val" =~ ^[0-9]+$ ]] || continue
+            [[ "${#_val}" -le 5 ]] || continue
+            (( 10#$_val >= 1 && 10#$_val <= 65535 )) || continue
+            _expected+=("$((10#$_val))")
+        done
+    fi
+    _ports=$(jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' "$_cfg" 2>/dev/null) || return 2
+    while IFS= read -r _p; do
+        [[ "$_p" =~ ^[0-9]+$ ]] || continue
+        [[ "${#_p}" -le 5 ]] || continue
+        _live_ports+=("$((10#$_p))")
+    done <<< "$_ports"
+    if (( ${#_expected[@]} )); then
+        for _e in "${_expected[@]}"; do
+            _found=0
+            for _p in "${_live_ports[@]}"; do
+                (( 10#$_p == _e )) && { _found=1; break; }
+            done
+            (( _found == 1 )) || _missing+="expected-port:${_e} "
+        done
+    fi
+    for _key in trojan-xray socks5-xray; do
+        [[ -f "${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_key}.link" && ! -L "${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_key}.link" ]] || continue
+        XRAY_SLOT_CFG="$_cfg" _standalone_link_survivor "$_key"; _rc=$?
+        if (( _rc == 1 )); then
+            _missing+="link:${_key} "
+        fi
+    done
+    if [[ -n "$_missing" ]]; then
+        msg "${RED}[!] xray config auto-restore DIVERGENCE: restored config is missing ${_missing}(re-deploy the missing protocol or restore a newer backup)${NC}" >&2
+        printf '%s xray config auto-restore DIVERGENCE: restored config is missing: %s\n' "$(date -u +%FT%TZ)" "$_missing" >> "$_statusf" 2>/dev/null || true
+        printf '%s xray config auto-restore DIVERGENCE: a missing Reality inbound cannot be rebuilt from its link (the link carries only the public key, never the private key); re-deploy the protocol or restore a newer backup.\n' "$(date -u +%FT%TZ)" >> "$_statusf" 2>/dev/null || true
+        return 1
+    fi
+    return 0
 }
 
 xray_config_autorecover() {
@@ -24937,11 +25480,17 @@ xray_config_autorecover() {
     [[ -n "$bad_sha" ]] || return 1
     now=$(date +%s)
     if [[ -f "$marker" && ! -L "$marker" ]]; then
-        gate=$(awk -v s="$bad_sha" -v n="$now" '
-            $2 == s { st = $1; ep = $3 }
+        # 3B-U2: the gate must not key on the current config's sha:
+        # a changed sha bypassed both the cooldown and the restored
+        # doors. Like the R16-F07-03 latch above, it is any-sha now:
+        # the most recent marker entry of any sha decides, with the
+        # failed/attempt cooldown at 3600s and the restored door at
+        # 86400s (a stale restored must not latch recovery forever).
+        gate=$(awk -v n="$now" '
+            $1 == "failed" || $1 == "attempt" || $1 == "restored" { st = $1; ep = $3 }
             $1 == "restored" && (n - $3) < 86400 { rc24++ }
             END {
-                if (st == "restored") print "restored"
+                if (st == "restored" && (n - ep) < 86400) print "restored"
                 else if ((st == "failed" || st == "attempt") && (n - ep) < 3600) print "cooldown"
                 else if (rc24 >= 3) print "rate"
                 else print "go"
@@ -24965,7 +25514,7 @@ xray_config_autorecover() {
         (( _xrc_rc == 2 )) && return 2
         return 1
     }
-    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp
+    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src=''
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
     chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
     local _list
@@ -25030,16 +25579,46 @@ PY_XRC_ENUM
         else
             XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$_good" >/dev/null 2>&1 || { _good=''; continue; }
         fi
-        # R27-H-NF-06 (GPT-arbitrated A): a trusted candidate that
-        # passes the offline test but carries no expected data inbound
-        # is the pre-deployment empty backup, not a recovery: skip it
-        # and keep looking. Only a verified cover (helper rc 0) is
-        # installed; a verified mismatch (1) or an unverifiable
-        # candidate (2) is skipped, never installed.
-        _xrc_config_has_expected_data_inbound "$_good" || { _good=''; continue; }
-        _good_src="$_cand"
-        break
+        # R27-H-NF-06 (GPT-arbitrated A), F-NEW-04/CD: a trusted
+        # candidate that passes the offline test but does not cover
+        # every expected port is a pre-deployment (or pre-protocol)
+        # backup, not a full recovery: keep it as a fallback and keep
+        # looking for a covering candidate. Only a verified cover
+        # (helper rc 0) is installed outright; a verified mismatch (1)
+        # is installed only when no covering candidate exists (with the
+        # drop recorded by the post-restore divergence check); an
+        # unverifiable candidate (2) is skipped, never installed.
+        _xrc_config_has_expected_data_inbound "$_good"; _cov_rc=$?
+        case "$_cov_rc" in
+            0)
+                _good_src="$_cand"
+                break
+                ;;
+            1)
+                if [[ -z "${_fallback_good:-}" ]]; then
+                    if cp -f -- "$_good" "$_work/fallback-config.json" 2>/dev/null; then
+                        _fallback_good="$_work/fallback-config.json"
+                        _fallback_src="$_cand"
+                    fi
+                fi
+                _good=''
+                continue
+                ;;
+            *)
+                _good=''
+                continue
+                ;;
+        esac
     done
+    if [[ -z "$_good" && -n "${_fallback_good:-}" ]]; then
+        # F-NEW-04/CD: no candidate covers the full expected set; fall
+        # back to the newest trusted, valid backup instead of stopping
+        # with no recovery at all. The drop is not silent: the
+        # post-restore divergence check below records the missing
+        # protocols in the status file.
+        _good="$_fallback_good"
+        _good_src="$_fallback_src"
+    fi
     if [[ -z "$_good" ]]; then
         _xrc_marker_append "$marker" failed "$bad_sha" "no-trusted-good-backup" || true
         _xrc_stop_xray "$statusf" "$bad_sha" "no trusted backup with a valid xray config"
@@ -25092,6 +25671,9 @@ PY_XRC_ENUM
         _st_tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || true
         if [[ -n "$_st_tmp" ]]; then
             printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" > "$_st_tmp" || true
+            # F-NEW-04/CD: record any protocol the restored config no
+            # longer serves; a missing protocol must never be silent.
+            _xrc_restore_divergence_check "$cfg" "$_st_tmp" || true
             chmod 600 -- "$_st_tmp" 2>/dev/null || true
             mv -f -- "$_st_tmp" "$statusf" 2>/dev/null || rm -f -- "$_st_tmp"
         fi
@@ -25195,7 +25777,6 @@ acquire_abox_runtime_guard() {
         exit 0
     fi
 }
-acquire_abox_runtime_guard
 load_state() {
     local parsed key value uid gid mode
     [[ -r "$ENV" && -f "$ENV" && ! -L "$ENV" ]] || return 1
@@ -25605,6 +26186,13 @@ if [[ -z "$failed_srv" && -n "${SOCKS_PORT:-}" ]]; then
     fi
 fi
 if [[ -z "$failed_srv" ]]; then rm -f "$STATE"; exit 0; fi
+# F-NEW-04/CD: narrow the runtime-guard window. The read-only checks
+# above run without the runtime lock, so a healthy per-minute probe
+# never contends with an interactive session (the occasional
+# "another A-Box instance is running" refusal). Only a failed service
+# needs the guard (auto-restore + restart below), so take it here;
+# a contender at this point makes the probe yield this round.
+acquire_abox_runtime_guard
 count=0; last=0
 [[ -r "$STATE" ]] && read -r count last < "$STATE" || true
 [[ "$count" =~ ^[0-9]+$ ]] || count=0
@@ -27143,10 +27731,10 @@ build_singbox_config() {
         route: ({rules: (([{network:["tcp"], action:"sniff"},{action:"resolve"},{ip_cidr:["127.0.0.0/8","::1/128"], action:"reject"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
             + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
                 url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
-                download_detour:"direct"}))} else {} end)),
+                http_client:"abox-dl"}))} else {} end)),
         inbounds:$inbounds[0],
         outbounds: ([{type:"direct", tag:"direct"}] + $obs)
-    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
+    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end) + (if ($tags | length) > 0 then {http_clients:[{tag:"abox-dl"}]} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     [[ -d "$out" ]] && { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
@@ -27197,11 +27785,15 @@ restore_cfg_backup() {
 # restore succeeded.
 restore_tuic_backups() {
     local key="$1" crt="$2" cfg_bak="${3:-}" cfg="$4" rc=0
+    # 3B-U16: same best-effort cleanup semantics as restore_cfg_backup
+    # (P1 Q3d): a copy success with a backup-cleanup failure only warns
+    # (rollback_cleanup_fail) and keeps rc=0; only a copy failure is a
+    # rollback failure (rollback_copy_fail below).
     if [[ -f "${key}.A-Box-bak" ]]; then
-        cp -f -- "${key}.A-Box-bak" "$key" 2>/dev/null && rm -f -- "${key}.A-Box-bak" || rc=1
+        restore_cfg_backup "${key}.A-Box-bak" "$key" || rc=1
     fi
     if [[ -f "${crt}.A-Box-bak" ]]; then
-        cp -f -- "${crt}.A-Box-bak" "$crt" 2>/dev/null && rm -f -- "${crt}.A-Box-bak" || rc=1
+        restore_cfg_backup "${crt}.A-Box-bak" "$crt" || rc=1
     fi
     if [[ -n "$cfg_bak" ]]; then
         restore_cfg_backup "$cfg_bak" "$cfg" || rc=1
@@ -27512,6 +28104,7 @@ deploy_official_hy2() {
         clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
         pre_install_setup hysteria HY2 || { deployment_transaction_rollback; return 1; }
+        abox_fetch_guard_start "hysteria HY2"
         release_ports
         get_architecture
     fi
@@ -27519,14 +28112,17 @@ deploy_official_hy2() {
     hy2_tmp=$(abox_mktemp_exec_dir A-Box-hysteria) || die "$(tr_msg hy2b_tmp)"
     ABOX_DEPLOY_TX_TMP="$hy2_tmp"
     hy2_bin="$hy2_tmp/hysteria_core"
+    abox_fetch_heartbeat
     clear_core_release_resolution HyNetworks/hysteria
     fetch_github_release HyNetworks/hysteria hysteria_core "$hy2_bin"
+    abox_fetch_heartbeat
     chmod 755 "$hy2_bin" || die 'Hysteria staged binary chmod failed.'
     "$hy2_bin" version >/dev/null 2>&1 || die 'Hysteria staged binary execution check failed.'
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || die 'Hysteria binary atomic install failed.'
     rm -rf -- "$hy2_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/hysteria version >/dev/null 2>&1 || die "$(tr_msg hy2b_exec)"
+    abox_fetch_guard_stop
 
     HY2_PASS=$(rand_alnum 20) || die 'Hysteria 2 password generation failed.'
     HY2_OBFS=$(rand_alnum 16) || die 'Hysteria 2 obfuscation password generation failed.'
@@ -28081,6 +28677,17 @@ rollback_restart_services_from_backup() {
 
 deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
+    # B-C2: land a rollback state file FIRST, so a later inspection can
+    # tell a rollback happened, when, why, and from which backup -- even
+    # when the operator only killed the hung deploy or it timed out.
+    # Best-effort: a failed write must never fail the rollback itself.
+    {
+        printf 'time: %s\n' "$(now_iso)"
+        printf 'pid: %s\n' "$$"
+        printf 'reason: %s\n' "${ABOX_DEPLOY_TX_REASON:-deployment}"
+        printf 'backup: %s\n' "${ABOX_DEPLOY_TX_BACKUP:-}"
+        printf 'targets: %s\n' "${ABOX_DEPLOY_TX_TARGETS:-}"
+    } > "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
@@ -28236,6 +28843,52 @@ begin_deployment_transaction() {
     ABOX_DEPLOY_TX_OWNER=$BASHPID
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
+}
+
+# L6 (final-round): preserve the uninstall transaction backup before the
+# commit clears the transaction directory. The transaction backup is the
+# only pre-uninstall snapshot when the user answered N to the prompt
+# backup; deleting it with the tx dir left only a dangling separated
+# key. The archive + sha256 + hmac are copied to /root/A-Box-backups
+# (the same retention pool as the prompt backup), verified, and only
+# then may the commit proceed. Any failure here returns 1; the caller
+# must die so the transaction rolls back with the backup still in place.
+# The separated recovery key already lives in /root/A-Box-backup-keys
+# (written by backup_current_config); this step never touches keys, so
+# an old dangling key is left alone, never silently deleted.
+preserve_uninstall_transaction_backup() {
+    local tx_backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    local safe_dir="${ABOX_UNINSTALL_BACKUP_SAFE_DIR:-/root/A-Box-backups}"
+    local base dest key_path _sfx
+    [[ -n "$tx_backup" && -f "$tx_backup" && ! -L "$tx_backup" ]] || return 1
+    [[ -n "$tx_dir" && "$tx_backup" == "$tx_dir"/* ]] || return 1
+    [[ -n "$safe_dir" && "$safe_dir" == /* ]] || return 1
+    mkdir_private "$safe_dir" || return 1
+    path_owned_by_root "$safe_dir" || return 1
+    path_mode_has_no_group_other_write "$safe_dir" || return 1
+    base=$(basename -- "$tx_backup")
+    dest="$safe_dir/$base"
+    [[ ! -e "$dest" && ! -L "$dest" ]] || return 1
+    [[ -f "${tx_backup}.sha256" && ! -L "${tx_backup}.sha256" ]] || return 1
+    [[ -f "${tx_backup}.hmac" && ! -L "${tx_backup}.hmac" ]] || return 1
+    cp -- "$tx_backup" "$dest.tmp.$$" 2>/dev/null || return 1
+    chmod 600 "$dest.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$"; return 1; }
+    for _sfx in .sha256 .hmac; do
+        cp -- "$tx_backup$_sfx" "$dest$_sfx.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+        chmod 600 "$dest$_sfx.tmp.$$" 2>/dev/null || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    done
+    mv -f -T -- "$dest.tmp.$$" "$dest" || { rm -f -- "$dest.tmp.$$" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    mv -f -T -- "$dest.sha256.tmp.$$" "$dest.sha256" || { rm -f -- "$dest" "$dest.sha256.tmp.$$" "$dest.hmac.tmp.$$"; return 1; }
+    mv -f -T -- "$dest.hmac.tmp.$$" "$dest.hmac" || { rm -f -- "$dest" "$dest.sha256" "$dest.hmac.tmp.$$"; return 1; }
+    backup_checksum_verify "$dest" "$dest.sha256" || { rm -f -- "$dest" "$dest.sha256" "$dest.hmac"; return 1; }
+    key_path="/root/A-Box-backup-keys/$base.key"
+    if [[ -f "$key_path" && ! -L "$key_path" ]]; then
+        msg "[*] Uninstall transaction backup preserved: $dest (recovery key: $key_path)"
+    else
+        msg "[*] Uninstall transaction backup preserved: $dest"
+    fi
+    msg "[*] This is the uninstall transaction backup; the prompt backup (if any) is a separate file in $safe_dir under the same retention policy."
+    return 0
 }
 
 commit_deployment_transaction() {
@@ -28735,6 +29388,7 @@ EOF_SVC
         register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: socks5 (sing-box)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -28983,6 +29637,11 @@ deploy_xray_trojan_landing() {
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     # N1: trojan-path REALITY notice (trojan-variant mihomo line; no YAML here).
     show_reality_mlkem_notice 0 1
+    # F-NEW-04/CD (U5/NF-06(a)): record the Trojan port so self-heal
+    # expects it, then snapshot so the newest trusted backup carries
+    # this inbound. Best-effort: the deploy already committed.
+    env_set_trojan_port "$port" || msg "${YELLOW}[!] $(tprintf trojan_env_port_fail "$port")${NC}"
+    auto_backup_silent "post-deployment snapshot: trojan (xray)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -29166,6 +29825,11 @@ EOF_SVC
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    # F-NEW-04/CD (U5/NF-06(a)): record the Trojan port so self-heal
+    # expects it, then snapshot so the newest trusted backup carries
+    # this inbound. Best-effort: the deploy already committed.
+    env_set_trojan_port "$port" || msg "${YELLOW}[!] $(tprintf trojan_env_port_fail "$port")${NC}"
+    auto_backup_silent "post-deployment snapshot: trojan (sing-box)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -29380,6 +30044,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "$(tprintf sl_node_port 'TUIC' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: tuic" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -29567,6 +30232,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "$(tprintf sl_node_port 'AnyTLS-Reality' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: anytls" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -29776,6 +30442,7 @@ EOF_SVC
     generate_qr "$link"
     register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "$(tprintf sl_node_port 'ShadowTLS' "$port")" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: shadowtls" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -31702,7 +32369,7 @@ _menu_info_collect() {
     # --- split/WARP status + exits (display labels; SOCKS5 inbound is separate) ---
     local warp_st='' rule_n=0 exits=''
     if [[ -f "$ROUTING_STATE_FILE" ]]; then
-        routing_outbound_has 'warp-out' 2>/dev/null && warp_st='on'
+        routing_outbound_has_live 'warp-out' 2>/dev/null && warp_st='on'
         rule_n=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
         local _tag _lbl
         while IFS= read -r _tag; do
@@ -32098,6 +32765,9 @@ routing_outbound_has_live() {
     [[ -n "$tag" ]] || return 1
     for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        # sing-box stores wireguard outbounds (e.g. warp-out) in
+        # .endpoints, not .outbounds; without this a live WARP reads
+        # as "not in effect" even while it is serving traffic.
         jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '(.outbounds[]?, .endpoints[]?) | select(.tag == $t)' >/dev/null 2>&1 && return 0
     done
     return 1
@@ -32190,12 +32860,89 @@ routing_state_clear() {
     printf '%s\n' '{"version":1,"outbounds":[],"rules":[]}' | routing_state_put
 }
 
+# F-NEW-02: refuse a remote rule-set URL that provably does not exist
+# (HTTP 404) before it can reach the live config. sing-box only
+# downloads remote rule-sets at startup, so a 404 kills the service
+# after the apply has already committed; sing-box check cannot see it
+# (it only validates structure). Any other fetch failure (timeout,
+# 5xx, no network) is not treated as proof of non-existence: the
+# stability check after restart is the backstop there, and a transient
+# network blip must not block routing.
+# $1 = merged sing-box config file. Prints the offending URL on 404.
+routing_ruleset_urls_ok() {
+    local cfg="$1" url code
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    while IFS= read -r url; do
+        [[ -n "$url" ]] || continue
+        code=$(curl -s -o /dev/null -w '%{http_code}' -I --connect-timeout 5 --max-time 10 -- "$url" 2>/dev/null) || code='000'
+        if [[ "$code" == '404' ]]; then
+            msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+            msg "${RED}[!] ${url}${NC}"
+            return 1
+        fi
+    done < <(jq -r '.route.rule_set[]? | select(.type == "remote") | .url // empty' "$cfg" 2>/dev/null)
+    return 0
+}
+
+# F-NEW-02: stability check for the post-restart commit point.
+# restart_service_soft only samples is-active once, 2s after restart;
+# a service that FATALs just after that sample (e.g. a remote rule-set
+# 404, which sing-box only hits while initializing) was still committed
+# as "applied". Require the service to stay active across several
+# samples AND its systemd restart counter to stay flat across the
+# window: a FATAL followed by a Restart=always auto-restart inside the
+# window fails the check instead of being reported as success.
+# $1 = service name (xray|sing-box). Non-systemd hosts fall back to
+# repeated status probes.
+routing_service_stable() {
+    local srv="$1" i base now
+    case "$srv" in xray|sing-box) ;; *) return 1 ;; esac
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        base=$(systemctl show -p NRestarts --value "$srv" 2>/dev/null || echo '')
+        for i in 1 2 3; do
+            sleep 3
+            systemctl is-active --quiet "$srv" || return 1
+        done
+        now=$(systemctl show -p NRestarts --value "$srv" 2>/dev/null || echo '')
+        if [[ "$base" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]]; then
+            (( now == base )) || return 1
+        fi
+        return 0
+    fi
+    for i in 1 2 3; do
+        sleep 2
+        rc-service "$srv" status >/dev/null 2>&1 || return 1
+    done
+    return 0
+}
+
 # Surgically merge routing state into the LIVE config file, validate, restart.
-# $1 = xray | singbox (defaults to $CORE)
+# $1 = xray | singbox (defaults to $CORE). The argument is a preference,
+# not an absolute: the effective core is resolved from the live core
+# config actually on disk (see below), so a stale .env CORE (e.g.
+# "hysteria" after an attach deploy that never wrote .env) cannot fail
+# the apply before it touches live.
 routing_apply_live() {
     local core='' cfg tmp force_json='[]'
     if [[ $# -gt 0 ]]; then core="$1"; shift; fi
     [[ -n "$core" ]] || core="${CORE:-}"
+    # F-NEW-02/L3-11-5: dispatch on the live core config actually on
+    # disk, not on the .env CORE value. CORE can lag (e.g. it stays
+    # "hysteria" after a sing-box TUIC attach deploy that never wrote
+    # .env), and hysteria has no outbound-merge branch at all, so a
+    # stale CORE used to fail every apply before touching live.
+    # Prefer the requested core when its config exists; otherwise fall
+    # back to whichever live config exists (xray first); fail only
+    # when neither exists.
+    local _live_xray='/usr/local/etc/xray/config.json' _live_sb='/etc/sing-box/config.json'
+    local _has_xray=0 _has_sb=0
+    [[ -f "$_live_xray" && ! -L "$_live_xray" ]] && _has_xray=1
+    [[ -f "$_live_sb" && ! -L "$_live_sb" ]] && _has_sb=1
+    case "$core" in
+        xray) (( _has_xray == 1 )) || { (( _has_sb == 1 )) && core='singbox' || return 1; } ;;
+        singbox|sing-box) (( _has_sb == 1 )) || { (( _has_xray == 1 )) && core='xray' || return 1; } ;;
+        *) if (( _has_xray == 1 )); then core='xray'; elif (( _has_sb == 1 )); then core='singbox'; else return 1; fi ;;
+    esac
     if (( $# > 0 )); then
         force_json=$(printf '%s\n' "$@" | jq -R . | jq -sc . 2>/dev/null) || return 1
     fi
@@ -32258,7 +33005,14 @@ routing_apply_live() {
             ' "$_jq_cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
-                XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                local _xray_check_err=''
+                if ! _xray_check_err=$(XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" 2>&1 >/dev/null); then
+                    msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+                    if [[ -n "$_xray_check_err" ]]; then
+                        printf '%s\n' "$_xray_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
+                    fi
+                    rm -f "$tmp"; return 1
+                fi
             fi
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
@@ -32317,7 +33071,7 @@ routing_apply_live() {
             # stopped stack stays stopped instead of being revived (or
             # rolled back when the restart fails on a down service).
             if service_restart_permitted xray; then
-                if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
+                if prepare_abox_runtime_permissions xray && restart_service_soft xray && routing_service_stable xray; then
                     rm -f -- "$live_bak" "$applied_bak"
                 else
                     cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
@@ -32377,13 +33131,22 @@ routing_apply_live() {
                 | (.route.rules | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $refd
                 | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags | index($t)) | not) and ((($prevtags | index($t)) | not) or (($refd | index($t)) | . != null))))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
-                    download_detour:"direct"})))
+                    http_client:"abox-dl"})))
+                | (if ($tags | length) > 0 then .http_clients = (((.http_clients // []) | map(select(.tag != "abox-dl"))) + [{tag:"abox-dl"}]) else . end)
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             singbox_apply_loopback_guard "$tmp" || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
-                /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                local _sb_check_err=''
+                if ! _sb_check_err=$(/usr/local/bin/sing-box check -c "$tmp" 2>&1 >/dev/null); then
+                    msg "${RED}[!] $(tr_msg warp_apply_fail)${NC}"
+                    if [[ -n "$_sb_check_err" ]]; then
+                        printf '%s\n' "$_sb_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
+                    fi
+                    rm -f "$tmp"; return 1
+                fi
             fi
+            routing_ruleset_urls_ok "$tmp" || { rm -f "$tmp"; return 1; }
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
             cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
@@ -32441,7 +33204,7 @@ routing_apply_live() {
             # stopped stack stays stopped instead of being revived (or
             # rolled back when the restart fails on a down service).
             if service_restart_permitted sing-box; then
-                if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
+                if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box && routing_service_stable sing-box; then
                     rm -f -- "$live_bak" "$applied_bak"
                 else
                     cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
@@ -32839,8 +33602,10 @@ warp_undeploy() {
 }
 
 warp_status() {
-    if routing_outbound_has 'warp-out'; then
+    if routing_outbound_has_live 'warp-out'; then
         msg "$(tr_msg warp_status_on)"
+    elif routing_outbound_has 'warp-out'; then
+        msg "$(tr_msg warp_status_stale)"
     else
         msg "$(tr_msg warp_status_off)"
     fi
@@ -32870,22 +33635,22 @@ warp_apply_preset() {
     # must not wipe the current rules.
     case "$preset" in
         streaming|cn-direct|global) ;;
-        *) return 1 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $preset${NC}"; return 1 ;;
     esac
     # Validate every outbound the preset needs before clearing the
     # current rules, so a preset can never half-apply.
     case "$preset" in
-        cn-direct) routing_outbound_has 'direct' || return 1 ;;
+        cn-direct) routing_outbound_has 'direct' || { msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; } ;;
     esac
     # Snapshot the whole state file: any failed add rolls back to this
     # instead of leaving a half-applied rule set behind.
     local snap='' _preset_rc=0
-    snap=$(mktemp) || return 1
-    cp -- "$ROUTING_STATE_FILE" "$snap" 2>/dev/null || { rm -f "$snap"; return 1; }
-    routing_rules_clear || { rm -f "$snap"; return 1; }
+    snap=$(mktemp) || { msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
+    cp -- "$ROUTING_STATE_FILE" "$snap" 2>/dev/null || { rm -f "$snap"; msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
+    routing_rules_clear || { rm -f "$snap"; msg "${RED}$(tr_msg warp_apply_fail)${NC}"; return 1; }
     case "$preset" in
         streaming)
-            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbomax' 'warp-out' || _preset_rc=1
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbo' 'warp-out' || _preset_rc=1
             ;;
         cn-direct)
             routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube' 'warp-out' || _preset_rc=1
@@ -32908,6 +33673,7 @@ warp_apply_preset() {
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
             msg "${YELLOW}[!] ${snap}${NC}"
         fi
+        msg "${RED}$(tr_msg warp_apply_fail)${NC}"
         return 1
     fi
     # M-20: apply to every managed core that can carry routing, not
@@ -32930,6 +33696,12 @@ warp_apply_preset() {
             1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
             2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
         esac
+        # The failed apply may have committed the bad config before the
+        # service died (restart race), leaving live diverged from the
+        # restored state: re-push the restored state so live converges
+        # back too. Best effort; the failure is reported either way.
+        routing_apply_all_managed >/dev/null 2>&1 || true
+        msg "${RED}$(tr_msg warp_apply_fail)${NC}"
         return 1
     fi
     rm -f "$snap"
@@ -33052,9 +33824,9 @@ warp_preset_menu() {
     read -r -p "$(tr_msg select_prompt) [0-3]: " choice || return 0
     choice=$(normalize_fa_ar_digits "${choice:-}")
     case "$choice" in
-        1) warp_apply_preset streaming; pause_return ;;
-        2) warp_apply_preset cn-direct; pause_return ;;
-        3) warp_apply_preset global; pause_return ;;
+        1) warp_apply_preset streaming || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
+        2) warp_apply_preset cn-direct || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
+        3) warp_apply_preset global || msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
     esac
@@ -33435,6 +34207,7 @@ EOF_SVC
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    auto_backup_silent "post-deployment snapshot: socks5 (xray)" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -34053,6 +34826,7 @@ deploy_xray() {
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup xray "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    abox_fetch_guard_start "xray ${MODE_IN}"
     release_ports
     get_architecture
 
@@ -34062,8 +34836,10 @@ deploy_xray() {
     xray_zip="$xray_tmp/xray_core.zip"
     xray_ext="$xray_tmp/xray_ext"
     mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+    abox_fetch_heartbeat
     clear_core_release_resolution XTLS/Xray-core
     fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+    abox_fetch_heartbeat
     extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die "$(tr_msg dp_xray_extract)"
     [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die "$(tr_msg dp_xray_bin)"
     chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
@@ -34077,10 +34853,14 @@ deploy_xray() {
 
     geo_tmp="$xray_tmp/geo"
     mkdir -p "$geo_tmp" || die "$(tr_msg dp_geo_tmpdir)"
+    abox_fetch_heartbeat
     fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$geo_tmp/geoip.dat"
+    abox_fetch_heartbeat
     fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$geo_tmp/geosite.dat"
+    abox_fetch_heartbeat
     install_file_atomically "$geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
     install_file_atomically "$geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
+    abox_fetch_guard_stop
     rm -rf -- "$xray_tmp"
     ABOX_DEPLOY_TX_TMP=''
 
@@ -34159,6 +34939,15 @@ EOF_SVC
     write_env xray "$MODE_IN"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
+    # F-NEW-01 (final-round): the cross-core prune above self-skips
+    # the core being deployed, so a same-core overwrite never cleaned
+    # this core's own standalone links and menu 12 reprinted them as
+    # dead nodes. Prune this core's own links now that the new config
+    # is on disk and the service is up; the survivor check inside
+    # only deletes a link whose inbound is confirmed gone from the
+    # live config, so live links are never removed. Best-effort: a
+    # prune failure must not fail the deploy.
+    _prune_standalone_links xray || true
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into
     # live config but never touched the user registries; re-adopt every
@@ -34240,6 +35029,7 @@ deploy_singbox() {
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    abox_fetch_guard_start "sing-box ${MODE_IN}"
     release_ports
     get_architecture
 
@@ -34249,8 +35039,10 @@ deploy_singbox() {
     sb_tar="$sb_tmp/singbox_core.tar.gz"
     sb_ext="$sb_tmp/extract"
     mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir_tmp)"
+    abox_fetch_heartbeat
     clear_core_release_resolution SagerNet/sing-box
     fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+    abox_fetch_heartbeat
     SB_PATH="$sb_ext/sing-box"
     extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
     [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
@@ -34260,6 +35052,7 @@ deploy_singbox() {
     rm -rf -- "$sb_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
+    abox_fetch_guard_stop
 
     prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
@@ -34374,6 +35167,15 @@ EOF_SVC
     write_env singbox "$MODE_IN"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
     prune_owned_core_families_except sing-box
+    # F-NEW-01 (final-round): the cross-core prune above self-skips
+    # the core being deployed, so a same-core overwrite never cleaned
+    # this core's own standalone links and menu 12 reprinted them as
+    # dead nodes. Prune this core's own links now that the new config
+    # is on disk and the service is up; the survivor check inside
+    # only deletes a link whose inbound is confirmed gone from the
+    # live config, so live links are never removed. Best-effort: a
+    # prune failure must not fail the deploy.
+    _prune_standalone_links sing-box || true
     setup_geo_cron
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into
@@ -35849,7 +36651,26 @@ traffic_quota_transaction_rollback() {
             return 2
         }
         IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 2
-        [[ "$current_vnstat" == "$expected_vnstat" ]] || {
+        # 3B-U9 (R14-F10-03 residual): '?' marks an unknown field
+        # (transient query failure), not a value, so it matches any
+        # counterpart on either side; only a known-field mismatch, or a
+        # field-count change, proves an external change. Compare
+        # field-wise (kind|name|active|enabled).
+        local -a _cur_vnstat_fields=() _exp_vnstat_fields=()
+        local _vnstat_match=1 _vnstat_i=0
+        IFS='|' read -r -a _cur_vnstat_fields <<< "$current_vnstat" || _vnstat_match=0
+        IFS='|' read -r -a _exp_vnstat_fields <<< "$expected_vnstat" || _vnstat_match=0
+        if (( ${#_cur_vnstat_fields[@]} != ${#_exp_vnstat_fields[@]} )); then
+            _vnstat_match=0
+        else
+            for _vnstat_i in "${!_cur_vnstat_fields[@]}"; do
+                if [[ "${_cur_vnstat_fields[$_vnstat_i]}" != "${_exp_vnstat_fields[$_vnstat_i]}" && "${_cur_vnstat_fields[$_vnstat_i]}" != '?' && "${_exp_vnstat_fields[$_vnstat_i]}" != '?' ]]; then
+                    _vnstat_match=0
+                    break
+                fi
+            done
+        fi
+        (( _vnstat_match )) || {
             printf '%s\n' "A-Box traffic rollback conflict: vnStat state changed externally; recovery state preserved at $tx_dir" >&2
             return 2
         }
@@ -37052,6 +37873,11 @@ do_cleanup() {
             fi
             setup_shortcut || die "$(tr_msg cu_shortcut)"
         fi
+        # L6: preserve the transaction backup BEFORE the commit clears
+        # the transaction directory; a failed transfer aborts the
+        # cleanup (die rolls the pre-uninstall snapshot back) instead
+        # of silently deleting the only backup.
+        preserve_uninstall_transaction_backup || die 'Uninstall transaction backup preservation failed; aborting before commit so the pre-uninstall backup is not lost.'
         commit_deployment_transaction
         if (( _argo_rm_failed == 1 )); then
             if (( _argo_state_moved == 1 )); then
@@ -37414,7 +38240,7 @@ sync_env_ports_after_removal() {
     if (( _read_failed == 1 )); then
         return 1
     fi
-    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
+    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT TROJAN_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
         # R6C11-02: evaluate numeric/range/list specs, not literal
@@ -38959,16 +39785,25 @@ show_core_pin_docs() {
 }
 
 probe_core_sources_banner() {
-    local pref='latest-stable-first' api_code mirror_code base
+    local pref='latest-stable-first' api_code mirror_code base repo="${1:-}" ref="${2:-}" api_url
     [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    # B-C2: probe the exact release tag the fetch is about to pull, not
+    # the release list: a 200 on the list endpoint never proved the tag
+    # fetch would succeed (list 200 + tag fetch 403 was observed). With
+    # no repo/ref given, keep the legacy list probe for compatibility.
+    if [[ -n "$repo" && -n "$ref" ]]; then
+        api_url="https://api.github.com/repos/${repo}/releases/tags/${ref//\//%2F}"
+    else
+        api_url='https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100'
+    fi
     # SYD-B E13: the release-API probe was single-shot, so one
     # transient blip reported the API dead. Retry it (max 3);
     # the mirror probe stays single-shot by design.
     api_code='000'
     local _try=0
     while (( _try < 3 )); do
-        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "$api_url" 2>/dev/null || printf '000')
         [[ "$api_code" == 200 ]] && break
         _try=$((_try + 1))
         (( _try < 3 )) && sleep 1
@@ -38976,7 +39811,11 @@ probe_core_sources_banner() {
     mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
-    msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    if [[ -n "$repo" && -n "$ref" ]]; then
+        msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release tag ${repo}@${ref}: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    else
+        msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    fi
 }
 
 # Pinned-utility mirror fetch (cloudflared / wgcf). The caller's in-script
@@ -38993,7 +39832,7 @@ fetch_util_mirror_asset() {
 
 fetch_abox_mirror_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" requested_version="${4:-}" prefer_versioned="${5:-0}"
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _core_ver_rc
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _core_ver_rc _mirror_max_time=30 _mirror_retry=2
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     # Integrity depends on TLS: a plaintext HTTP mirror lets a network attacker
@@ -39023,7 +39862,21 @@ fetch_abox_mirror_asset() {
     local sum_dir sum_file sum_sig
     sum_dir=$(mktemp -d) || return 1
     sum_file="$sum_dir/SHA256SUMS"; sum_sig="$sum_dir/SHA256SUMS.sig"
-    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+    # B-C2: total fetch budget applies to the mirror leg too. The curl
+    # line below stays byte-identical: a self-test pins it verbatim for
+    # the follow-redirects property. The budget is enforced by refusing
+    # to start when spent, plus a `timeout` cap when one is available
+    # (the plain line is the fallback where timeout is absent).
+    _mirror_max_time=30
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (SHA256SUMS)" || { rm -rf -- "$sum_dir"; return 1; }
+        _mirror_max_time=$(abox_fetch_curl_max_time 30) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] && command -v timeout >/dev/null 2>&1; then
+        if ! timeout "$_mirror_max_time" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+            rm -rf -- "$sum_dir"; return 1
+        fi
+    elif ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
@@ -39038,7 +39891,14 @@ fetch_abox_mirror_asset() {
     expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
     # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
-    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+    _mirror_max_time=180
+    _mirror_retry=2
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (asset)" || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+        _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+        abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
+    fi
+    if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
             local versioned_leaf
@@ -39050,7 +39910,14 @@ fetch_abox_mirror_asset() {
                 # S32: leaf switched -- re-extract the expected digest for it.
                 expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
                 tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
-                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
+                _mirror_max_time=180
+                _mirror_retry=2
+                if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+                    abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (asset versioned)" || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+                    _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
+                    abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
+                fi
+                if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
             else
                 rm -rf -- "$sum_dir"; return 1
             fi
@@ -41817,7 +42684,10 @@ users_core_generation() { # $1 = core -> generation string, or empty if undeterm
     fi
     pid=$(managed_service_pid "$svc" 2>/dev/null || true)
     [[ -n "$pid" ]] || return 0
-    start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)
+    # 3B-U8: robust starttime - a plain field-22 read shifts when the
+    # comm contains spaces; proc_starttime() strips through the last
+    # ')' and takes field 22 (position 20 after pid+comm).
+    start=$(proc_starttime "$pid" 2>/dev/null || true)
     [[ "$start" =~ ^[0-9]+$ && "$start" -gt 0 ]] || return 0
     printf 'proc:%s:%s' "$pid" "$start"
 }
@@ -42559,7 +43429,7 @@ node_sni_menu() {
             *[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
             *)
                 if valid_decimal_upto "$c" "$i" && (( 10#$c >= 1 && 10#$c <= i )); then
-                    local _ix=$((10#$c - 1)) _probe2='' _k2='' _c2='' _new='' _shown=''
+                    local _ix=$((10#$c - 1)) _probe2='' _k2='' _c2='' _new='' _shown='' _dns_rc=0 _tier='' _answer=''
                     _probe2=$(_nsni_probe "${_cs[$_ix]}" "${_ts[$_ix]}")
                     IFS='|' read -r _ _ _k2 _c2 _ <<< "$_probe2"
                     printf '%s: %s\n' "$(tr_msg nsni_cur)" "${_os[$_ix]}"
@@ -42567,6 +43437,25 @@ node_sni_menu() {
                     _new=$(printf '%s' "$_new" | tr -d '[:space:]')
                     [[ -n "$_new" ]] || continue
                     if ! valid_sni "$_new"; then msg "${RED}$(tr_msg nsni_invalid)${NC}"; pause_return; continue; fi
+                    # F-NEW-03: same three-tier gate as deploy-time SNI input.
+                    sni_dns_resolvable "$_new"; _dns_rc=$?
+                    if (( _dns_rc == 1 )); then
+                        msg "${RED}[SNI] $(tprintf sni_unresolvable "$_new")${NC}"
+                        pause_return; continue
+                    fi
+                    _tier=$(sni_probe_candidate_tier "$_new" 2>/dev/null || printf 'N')
+                    case "$_tier" in
+                        A|B|C) ;;
+                        *)
+                            case "$_tier" in
+                                R) msg "${YELLOW}[SNI] $(tr_msg sni_risky)${NC}" ;;
+                                D) msg "${YELLOW}[SNI] $(tr_msg sni_fail)${NC}" ;;
+                                *) msg "${YELLOW}[SNI] $(tr_msg sni_untestable)${NC}" ;;
+                            esac
+                            read -r -p "$(tprintf continue_or_reset 'SNI')" _answer || continue
+                            is_yes "$_answer" || continue
+                            ;;
+                    esac
                     if _shown=$(_nsni_apply "${_cs[$_ix]}" "${_ts[$_ix]}" "${_ks[$_ix]}" "${_cfgs[$_ix]}" "${_os[$_ix]}" "$_new" "$_k2" "$_c2"); then
                         msg "${GREEN}$(tr_msg nsni_done)${NC}"
                         [[ -n "$_shown" ]] && msg "${LBLW}${_shown}${NC}"
@@ -47375,15 +48264,47 @@ sni_auto_select_default() {
 # a typed domain is validated and used instead. Prompts go to
 # stderr so the result can be captured with $(...).
 sni_prompt_or_auto() {
-    local _in=''
-    printf '%s' "$(tr_msg sni_custom_prompt)" >&2
-    read -r _in || _in=''
-    _in=$(printf '%s' "$_in" | tr -d '[:space:]')
-    if [[ -n "$_in" ]]; then
-        if valid_sni "$_in"; then printf '%s' "$_in"; return 0; fi
-        printf '%s\n' "$(tr_msg sni_custom_invalid)" >&2
-    fi
-    sni_auto_select_default 2>/dev/null || { printf '%s\n' '[SNI auto] No verified SNI candidate is available; refusing to substitute an unverified fallback.' >&2; return 1; }
+    local _in='' _tier='' _answer='' _dns_rc=0
+    while true; do
+        printf '%s' "$(tr_msg sni_custom_prompt)" >&2
+        read -r _in || _in=''
+        _in=$(printf '%s' "$_in" | tr -d '[:space:]')
+        # Empty input, or an unparseable typed value, keeps the legacy
+        # behaviour: fall back to the verified auto-select.
+        if [[ -z "$_in" ]] || ! valid_sni "$_in"; then
+            [[ -n "$_in" ]] && printf '%s\n' "$(tr_msg sni_custom_invalid)" >&2
+            sni_auto_select_default 2>/dev/null || { printf '%s\n' '[SNI auto] No verified SNI candidate is available; refusing to substitute an unverified fallback.' >&2; return 1; }
+            return 0
+        fi
+        # F-NEW-03: a typed domain that does not resolve can never
+        # complete a Reality handshake, so it is refused outright and
+        # the user is re-prompted (Enter still falls back to auto-select).
+        sni_dns_resolvable "$_in"; _dns_rc=$?
+        if (( _dns_rc == 1 )); then
+            printf '%s\n' "${RED}[SNI custom] $(tprintf sni_unresolvable "$_in")$NC" >&2
+            continue
+        fi
+        _tier=$(sni_probe_candidate_tier "$_in" 2>/dev/null || printf 'N')
+        case "$_tier" in
+            A|B|C)
+                printf '%s\n' "${GREEN}[SNI custom] $(tprintf sni_ok_tier "$_tier")$NC" >&2
+                printf '%s' "$_in"
+                return 0
+                ;;
+            R)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_risky)$NC" >&2
+                ;;
+            D)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_fail)$NC" >&2
+                ;;
+            *)
+                printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_untestable)$NC" >&2
+                ;;
+        esac
+        # R/D/N: loud warning above; explicit second confirmation, default refuse.
+        read -r -p "$(tprintf continue_or_reset 'Trojan-Reality')" _answer || continue
+        is_yes "$_answer" && { printf '%s' "$_in"; return 0; }
+    done
 }
 
 
@@ -48599,12 +49520,12 @@ inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:
 _INLINE_KEY_HEAD = (
     r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 _TEXT_KEY_HEAD = (
     r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 
 
@@ -48658,7 +49579,7 @@ def redact_text(value):
     return value
 
 
-_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)"
+_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)"
 _block_scalar_re = re.compile(
     r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
@@ -48853,13 +49774,13 @@ def _skip_id_gap(text, pos):
 _TEXT_KEY_CANDIDATE = (
     r"""["']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)["']?"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)["']?"""
 )
 _INLINE_KEY_CANDIDATE = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
     r"""|authorization|proxy-authorization|cookie|set-cookie"""
-    r"""|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)\b["']?"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)\b["']?"""
 )
 
 
@@ -49043,7 +49964,7 @@ except Exception:
         sys.stdout.write(_SUPPRESS_NOTICE + "\n")
         raise SystemExit(2)
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|user|socks_user|socks_pass)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
         text,
     )
@@ -51100,6 +52021,50 @@ normalize_restored_runtime_ownership() {
     esac
 }
 
+# L4-E10 (final-round): reinstall the USERGUARD cron block after a restore.
+# regenerate used to reinstall only PROBE/GEO/TRAFFIC, so a restore always
+# dropped the user-guard tick even when the backup carried it. Layered by
+# backup fidelity:
+#   1. backup meta/cron.abox.txt validates AND carries a USERGUARD block
+#      -> reinstall (the validator only allows the default tick line, so a
+#        tampered rhythm can never be installed from the backup);
+#   2. otherwise, when users exist or the guard runner is present ->
+#      rebuild with the default rhythm via setup_user_guard;
+#   3. otherwise -> install nothing, but record the explicit
+#      "not installed" status so the restore summary cannot hide it.
+# Sets ABOX_RESTORE_CRON_USERGUARD to installed (backup|default) or
+# "not installed (no users, no runner)". Returns 1 only when an install
+# was attempted and failed.
+restore_user_guard_cron_block() {
+    local _restore_root="${1:-}" _backup_cron='' _users_dir='' _runner='' _have_users=0
+    ABOX_RESTORE_CRON_USERGUARD='not installed (no users, no runner)'
+    [[ -n "$_restore_root" ]] || return 1
+    _backup_cron="$(dirname -- "$_restore_root")/meta/cron.abox.txt"
+    _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
+    _runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
+    if [[ -f "$_backup_cron" && ! -L "$_backup_cron" ]] \
+        && validate_abox_cron_file "$_backup_cron" 2>/dev/null \
+        && { grep -Fq '# A-Box USERGUARD BEGIN' "$_backup_cron" 2>/dev/null \
+            || grep -Fq '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' "$_backup_cron" 2>/dev/null; }; then
+        setup_user_guard || return 1
+        ABOX_RESTORE_CRON_USERGUARD='installed (backup)'
+        return 0
+    fi
+    if [[ -d "$_users_dir" ]] && [[ -n "$(ls -A "$_users_dir" 2>/dev/null)" ]]; then _have_users=1; fi
+    if (( _have_users == 1 )) || [[ -f "$_runner" && ! -L "$_runner" ]]; then
+        setup_user_guard || return 1
+        ABOX_RESTORE_CRON_USERGUARD='installed (default)'
+        return 0
+    fi
+    return 0
+}
+
+# L4-E10: one-line restore summary of the four cron blocks, so a missing
+# block can never hide behind a bare "restore complete".
+report_restore_cron_status() {
+    msg "[cron restore] PROBE:${ABOX_RESTORE_CRON_PROBE:-unknown} GEO:${ABOX_RESTORE_CRON_GEO:-unknown} TRAFFIC:${ABOX_RESTORE_CRON_TRAFFIC:-unknown} USERGUARD:${ABOX_RESTORE_CRON_USERGUARD:-unknown}"
+}
+
 # H-08: a restored zram.state whose BOOT= belongs to another boot
 # strands the recorded device: `abox-zram stop` refuses to touch a
 # record it cannot prove is this boot's, while the device may still
@@ -51135,18 +52100,23 @@ regenerate_runtime_assets_after_restore() {
             return 1
         fi
     done
+    ABOX_RESTORE_CRON_PROBE='unknown'
+    ABOX_RESTORE_CRON_GEO='unknown'
+    ABOX_RESTORE_CRON_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_USERGUARD='unknown'
     setup_shortcut || return 1
     setup_health_monitor || return 1
+    ABOX_RESTORE_CRON_PROBE='installed'
     setup_geo_cron || return 1
+    ABOX_RESTORE_CRON_GEO='installed'
     if valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
         setup_traffic_monitor || return 1
+        ABOX_RESTORE_CRON_TRAFFIC='installed'
     else
         disable_traffic_monitor || return 1
+        ABOX_RESTORE_CRON_TRAFFIC='disabled'
     fi
-    # H-08: the guard runner is a regenerable copy of $0, never a
-    # restored file; rebuild it (and the USERGUARD cron block) here
-    # so a restore can never silently drop enforcement.
-    setup_user_guard || return 1
+    restore_user_guard_cron_block "$_restore_root" || return 1
 }
 
 
@@ -51455,6 +52425,12 @@ auto_backup_prompt() {
 auto_backup_silent() {
     local reason="${1:-operation}" dest="${2:-$ABOX_DIR/backups}" newest
     msg "${YELLOW}[*] Auto backup before: ${reason}${NC}"
+    # L6: a backup landing in the uninstall transaction directory is a
+    # temporary transaction copy, not a safe backup yet -- say so, or the
+    # identical "backup created" line is misread as the prompt backup.
+    if [[ "$dest" == */A-Box-uninstall-tx.* ]]; then
+        msg "[*] Transaction backup: this copy lives in the temporary uninstall transaction directory and is preserved to /root/A-Box-backups before cleanup completes."
+    fi
     # SYD-B E1b: run the backup in a subshell with the die hook
     # cleared, so a backup failure only fails this call (the caller
     # returns to the menu) instead of exiting the whole script.
@@ -51717,6 +52693,7 @@ PY_LATEST_BACKUP
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
         preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
+    report_restore_cron_status
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
@@ -51932,6 +52909,7 @@ PY_RB_ENUM
     ensure_abox_dir_owned "$ABOX_DIR"
     commit_deployment_transaction
     rm -rf "$work"
+    report_restore_cron_status
     msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
     pause_return
 }
@@ -52603,14 +53581,17 @@ wallos_candidate_version_allowed() {
 }
 
 # N-11: Fetch the retained version list from the A-Box wallos-mirror.
-# Outputs one version per line, newest first. Empty on failure.
+# Outputs one version per line, newest first. Empty on failure; returns 1
+# when the list cannot be fetched, so callers can tell 'unavailable' from 'empty'.
 wallos_mirror_version_list() {
     local work versions_url
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
     versions_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
-    if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
-        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
+    if ! curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
+        rm -rf -- "$work"
+        return 1
     fi
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
     rm -rf -- "$work"
 }
 
@@ -57540,9 +58521,22 @@ _wallos_manual_rollback() {
         return $?
     fi
     # Interactive: list retained versions from the mirror (newest first).
-    mapfile -t versions < <(wallos_mirror_version_list 2>/dev/null || true)
+    # L3-11-15: a failed mirror-list fetch is loud, never a silent empty
+    # list. Capture the list to a temp file so the function's exit status
+    # stays observable (mapfile + process substitution would hide it).
+    local _mirror_list_failed=0 _local_fallback=0 _vlist_tmp
+    _vlist_tmp=$(mktemp /tmp/A-Box-Wallos-verlist.XXXXXX) || return 1
+    if ! wallos_mirror_version_list >"$_vlist_tmp" 2>/dev/null; then
+        _mirror_list_failed=1
+    fi
+    mapfile -t versions <"$_vlist_tmp"
+    rm -f -- "$_vlist_tmp"
+    if (( _mirror_list_failed == 1 )); then
+        msg "${RED}$(tr_msg wl_rb_mirror_list_fail)${NC}"
+    fi
     if ((${#versions[@]} == 0)); then
         # Fall back to locally available images.
+        _local_fallback=1
         # X-12: POSIX field-numeric sort instead of GNU sort -V (BusyBox may lack -V).
         mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | LC_ALL=C sort -t. -k1,1nr -k2,2nr -k3,3nr | uniq | sed 's/^/v/' || true)
     fi
@@ -57578,6 +58572,11 @@ _wallos_manual_rollback() {
         return 1
     fi
     versions=("${_rb_versions[@]}")
+    # L3-11-15: a local-fallback list is annotated at the menu, so "locally
+    # present" is never misread as "the mirror can provide it".
+    if (( _local_fallback == 1 )); then
+        msg "${YELLOW}$(tr_msg wl_rb_local_only)${NC}"
+    fi
     local i=1
     for v in "${versions[@]}"; do
         msg "${YELLOW}$i. $v${NC}"
@@ -58928,6 +59927,69 @@ with open(groups_path, "a", encoding="utf-8") as groups:
     return "$_rc"
 }
 
+# U14 (D1): emit one Mihomo vless proxy block (Vision or XHTTP) with the
+# version-gated reality-opts. Shared by write_clash_yaml (all users) and
+# write_mihomo_user_yaml (one user): same gate value, same node data, so
+# the two files can never disagree on fingerprint / ML-KEM / UUID / port /
+# SNI / Reality / XHTTP fields. $1 = vision|xhttp, $2 = proxy name,
+# $3 = uuid, $4 = clash_mlkem (true|false, from clash_reality_mlkem_enabled).
+emit_mihomo_vless_proxy_block() {
+    local kind="$1" proxy_name="$2" client_uuid="$3" clash_mlkem="$4"
+    case "$kind" in
+        vision)
+            cat <<EOF_CLASH
+  - name: "$proxy_name"
+    type: vless
+    server: "${LINK_IP:-}"
+    port: ${VLESS_PORT:-443}
+    uuid: "$client_uuid"
+    udp: true
+    tls: true
+    servername: "${VISION_SNI:-}"
+    client-fingerprint: chrome
+    encryption: ""
+    network: tcp
+    flow: xtls-rprx-vision
+    packet-encoding: xudp
+    reality-opts:
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
+      support-x25519mlkem768: $clash_mlkem
+    smux:
+      enabled: false
+EOF_CLASH
+            ;;
+        xhttp)
+            cat <<EOF_CLASH
+  - name: "$proxy_name"
+    type: vless
+    server: "${LINK_IP:-}"
+    port: ${XHTTP_PORT:-8443}
+    uuid: "$client_uuid"
+    udp: true
+    tls: true
+    servername: "${XHTTP_SNI:-}"
+    client-fingerprint: chrome
+    encryption: ""
+    network: xhttp
+    alpn:
+      - h2
+    reality-opts:
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
+      support-x25519mlkem768: $clash_mlkem
+    xhttp-opts:
+      path: /xhttp
+      host: "${XHTTP_SNI:-}"
+      mode: stream-one
+    smux:
+      enabled: false
+EOF_CLASH
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 # H-24(3): print one compact JSON object per ENABLED user of a
 # registry file ({name, secret, login}), in registry order.
 # Returns 1 when the registry is missing, a symlink, unreadable,
@@ -59269,27 +60331,7 @@ EOF_CLASH
                 [[ -n "$client_uuid" ]] || continue
                 _vision_emit=1
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; _vision_base_emit=1; else proxy_name="Vision-$client_uuid"; fi
-                cat <<EOF_CLASH
-  - name: "$proxy_name"
-    type: vless
-    server: "${LINK_IP:-}"
-    port: ${VLESS_PORT:-443}
-    uuid: "$client_uuid"
-    udp: true
-    tls: true
-    servername: "${VISION_SNI:-}"
-    client-fingerprint: chrome
-    encryption: ""
-    network: tcp
-    flow: xtls-rprx-vision
-    packet-encoding: xudp
-    reality-opts:
-      public-key: "${PUBLIC_KEY:-}"
-      short-id: "${SHORT_ID:-}"
-      support-x25519mlkem768: $clash_mlkem
-    smux:
-      enabled: false
-EOF_CLASH
+                emit_mihomo_vless_proxy_block vision "$proxy_name" "$client_uuid" "$clash_mlkem"
             done < "$_clash_uuid_list_tmp"
         fi
         if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && (( _xhttp_port_ok == 1 )); then
@@ -59297,31 +60339,7 @@ EOF_CLASH
                 [[ -n "$client_uuid" ]] || continue
                 _xhttp_emit=1
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; _xhttp_base_emit=1; else proxy_name="XHTTP-$client_uuid"; fi
-                cat <<EOF_CLASH
-  - name: "$proxy_name"
-    type: vless
-    server: "${LINK_IP:-}"
-    port: ${XHTTP_PORT:-8443}
-    uuid: "$client_uuid"
-    udp: true
-    tls: true
-    servername: "${XHTTP_SNI:-}"
-    client-fingerprint: chrome
-    encryption: ""
-    network: xhttp
-    alpn:
-      - h2
-    reality-opts:
-      public-key: "${PUBLIC_KEY:-}"
-      short-id: "${SHORT_ID:-}"
-      support-x25519mlkem768: $clash_mlkem
-    xhttp-opts:
-      path: /xhttp
-      host: "${XHTTP_SNI:-}"
-      mode: stream-one
-    smux:
-      enabled: false
-EOF_CLASH
+                emit_mihomo_vless_proxy_block xhttp "$proxy_name" "$client_uuid" "$clash_mlkem"
             done <<< "$_xhttp_uuid_list"
         fi
         if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
@@ -59577,6 +60595,92 @@ EOF_CLASH
     printf '%s\n' "$out"
 }
 
+# U14 (D1): write a single-user Mihomo YAML for one user/node only.
+# Same version gate (clash_reality_mlkem_enabled) and the same node data
+# as write_clash_yaml, via the shared emit_mihomo_vless_proxy_block, so
+# the per-user file agrees with the full YAML field for field. Only the
+# requested user's UUID is emitted; other users' credentials never appear.
+# Import the file directly in a Mihomo client (local file import); the
+# raw vless:// links / QR codes are NOT a complete Mihomo delivery.
+# $1 = uuid (default ${UUID:-}); $2 = out path (default
+# ${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}).
+# Prints the output path on stdout. Returns 1 on bad uuid / bad path /
+# gate or write failure; returns 2 when the node has no VLESS leg to
+# deliver (preflight: nothing to write, no file is left behind).
+# No public subscription service is created; the file is local-only, 600.
+write_mihomo_user_yaml() {
+    local _uuid="${1:-${UUID:-}}" out="${2:-${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}}"
+    local clash_mlkem=false clash_mlkem_rc tmp_out out_real base_real
+    local _has_vision=0 _has_xhttp=0 _emit_rc=0
+    [[ -n "$_uuid" ]] || return 1
+    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
+    if clash_reality_mlkem_enabled; then
+        clash_mlkem=true
+    else
+        clash_mlkem_rc=$?
+        (( clash_mlkem_rc == 1 )) || return 1
+    fi
+    [[ -n "$out" && "$out" == /* ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    ensure_abox_dir_owned "$ABOX_DIR" || return 1
+    base_real=$(python3 -I - "$ABOX_DIR" <<'PY_CLASH_REALPATH'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY_CLASH_REALPATH
+) || return 1
+    out_real=$(python3 -I - "$out" <<'PY_CLASH_REALPATH'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY_CLASH_REALPATH
+) || return 1
+    [[ "$out_real" == "$base_real"/* ]] || return 1
+    [[ ! -L "$out" ]] || return 1
+    [[ ! -e "$out" || -f "$out" ]] || { msg "${RED}Refusing to write Mihomo config: output path exists and is not a regular file: $out${NC}" >&2; return 1; }
+    # Nothing to deliver unless a VLESS Reality leg exists for this node.
+    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then _has_vision=1; fi
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then _has_xhttp=1; fi
+    (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
+    tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
+    {
+        cat <<EOF_MIHOMO_SINGLE
+# A-Box single-user Mihomo config: only this user's Vision / XHTTP node.
+# Import this file directly in a Mihomo client (local file import).
+# Do not scan single vless:// links for Mihomo: they carry no
+# reality-opts, and on Xray >= v26.9.8 the handshake needs
+# support-x25519mlkem768, which is set below from the installed version.
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: true
+
+proxies:
+EOF_MIHOMO_SINGLE
+        if (( _has_vision == 1 )); then emit_mihomo_vless_proxy_block vision 'Vision' "$_uuid" "$clash_mlkem" || _emit_rc=1; fi
+        if (( _has_xhttp == 1 )); then emit_mihomo_vless_proxy_block xhttp 'XHTTP' "$_uuid" "$clash_mlkem" || _emit_rc=1; fi
+        cat <<EOF_MIHOMO_SINGLE
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+EOF_MIHOMO_SINGLE
+        (( _has_vision == 1 )) && echo '      - Vision'
+        (( _has_xhttp == 1 )) && echo '      - XHTTP'
+        cat <<EOF_MIHOMO_SINGLE
+      - DIRECT
+
+rules:
+  - MATCH,PROXY
+EOF_MIHOMO_SINGLE
+    } > "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
+    (( _emit_rc == 0 )) || { rm -f -- "$tmp_out"; return 1; }
+    chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
+    [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
+    mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
+    chmod 600 "$out" || return 1
+    printf '%s\n' "$out"
+}
+
 ensure_qrencode() {
     command -v qrencode >/dev/null 2>&1 && return 0
     [[ -n "${_QR_ENSURED:-}" ]] && return 1
@@ -59734,7 +60838,7 @@ view_config() {
     # shadows it; otherwise ${CLASH_SUB_URL:-} at assignment time reads
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
-    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
+    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME MIHOMO_USER_FILE _mihomo_single_rc=0
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok
     # H-24: a bad Hy2 port endpoint skips the Hy2 blocks below (and warns)
     # instead of killing the whole view (menu 12 must not die on one
@@ -59852,6 +60956,7 @@ view_config() {
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
+    MIHOMO_USER_FILE=$(write_mihomo_user_yaml 2>/dev/null) || _mihomo_single_rc=$?
     # S2-NEW-03 follow-up: menu 12 reprints the YAML from the live
     # state; refresh the subscription export alongside it so the two
     # artifacts never disagree after an add-user. Deploy callers
@@ -59878,6 +60983,14 @@ view_config() {
         _clash_launch=${_clash_launch:-ab}
         msg "${YELLOW}$(tprintf view_config_clash_sub_url_missing "${CLASH_FILE}")${NC}"
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
+    fi
+
+    if [[ -n "${MIHOMO_USER_FILE:-}" ]]; then
+        msg "${YELLOW}[ $(tr_msg view_config_mihomo_single_title) ]${NC}"
+        msg "${GREEN}Local YAML (this user only): ${MIHOMO_USER_FILE}${NC}"
+        msg "${YELLOW}$(tr_msg view_config_mihomo_single_note)${NC}"
+    elif [[ "$_mihomo_single_rc" != '2' ]]; then
+        msg "${YELLOW}$(tr_msg view_config_mihomo_single_failed)${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
@@ -63702,6 +64815,11 @@ PY_SELFTEST_TAR
     grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' <<< "$source_body" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
     grep -Fq 'XHTTP-$client_uuid' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
     grep -Fq 'probe_core_sources_banner()' <<< "$source_body" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_fetch_guard_start()' <<< "$source_body" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_deploy_watchdog_loop()' <<< "$source_body" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
+    grep -Fq 'preserve_uninstall_transaction_backup()' <<< "$source_body" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
+    grep -Fq 'restore_user_guard_cron_block()' <<< "$source_body" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
+    grep -Fq 'report_restore_cron_status()' <<< "$source_body" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
     grep -Fq 'fetch_abox_mirror_asset()' <<< "$source_body" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 
     assert_ok valid_ip_pref ipv4
@@ -64532,8 +65650,8 @@ EOF_SELFTEST_IPT
     ( build_xray_config VISION "$tmp/xray/default-sni.json" ) || { echo 'FAIL: build_xray_config VISION'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: explicitly selected fallback REALITY SNI must be preserved'; failures=$((failures + 1)); }
     ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf '\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.recommended.example' ]] ) || { echo 'FAIL: pressing Enter must accept the recommended SNI'; failures=$((failures + 1)); }
-    ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must override the recommendation'; failures=$((failures + 1)); }
-    ( ABOX_AUTO_SNI_SELECTED=''; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must remain available when no recommendation exists'; failures=$((failures + 1)); }
+    ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; sni_dns_resolvable() { return 0; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must override the recommendation'; failures=$((failures + 1)); }
+    ( ABOX_AUTO_SNI_SELECTED=''; sni_probe_candidate_tier() { printf 'A\n'; }; sni_dns_resolvable() { return 0; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must remain available when no recommendation exists'; failures=$((failures + 1)); }
     VISION_SNI="$saved_vision_sni" VLESS_SNI="$saved_vless_sni" ABOX_AUTO_SNI_SELECTED="$saved_auto_sni"
     jq -e '.inbounds[] | select(.protocol=="shadowsocks" and .port==2053 and .settings.network=="tcp,udp")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray SS-2022 2053 tcp,udp'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .port==8443 and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray Vision SNI split'; failures=$((failures + 1)); }
@@ -64609,6 +65727,16 @@ EOF_SELFTEST_IPT
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem.yaml")" -eq 2 ]] || { echo 'FAIL: Xray >= ML-KEM threshold must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem-new.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem-new.yaml")" -eq 2 ]] || { echo 'FAIL: Xray 26.11.9 must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single.yaml" write_mihomo_user_yaml >/dev/null 2>&1 || { echo 'FAIL: Mihomo single-user YAML generation'; failures=$((failures + 1)); }
+        [[ "$(stat -c %a "$clash_dir/A-Box-mihomo-single.yaml" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Mihomo single-user YAML permissions must be 0600'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-mihomo-single.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must enable REALITY ML-KEM flags on new Xray'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc '11111111-1111-4111-8111-111111111111' "$clash_dir/A-Box-mihomo-single.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must carry only the current user UUID'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-old.yaml" write_mihomo_user_yaml >/dev/null 2>&1 || { echo 'FAIL: Mihomo single-user YAML generation on old Xray'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-mihomo-single-old.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must disable REALITY ML-KEM flags on old Xray'; failures=$((failures + 1)); }
+        if ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=SS LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 SS_PORT=2053 MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-ss.yaml" write_mihomo_user_yaml >/dev/null 2>&1; then
+            echo 'FAIL: Mihomo single-user YAML must refuse a mode with no VLESS leg'; failures=$((failures + 1))
+        fi
+        [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }

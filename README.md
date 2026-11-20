@@ -109,17 +109,17 @@ The top of the menu shows a 16-cell status matrix (running / not started / fault
 | 8 | IP / DNS / timezone / source settings | 16 | SS-2022 access allowlist |
 | 0 | Back to main menu | 17 | Custom shortcut |
 
-The test scripts (items 2–3) run the latest upstream version by default after a structural sanity check. If the upstream fetch or check fails, they fall back to the pinned copies in the verified `test-tools-mirror` release (Ed25519 signature + SHA-256 verified); if both are unavailable, nothing is executed. A-Check (item 1) is fetched only from the pinned `test-tools-mirror` release and runs only after Ed25519 signature + SHA-256 verification; there is no live upstream source and no fallback to a previously cached copy — if any step fails, nothing runs.
+The test scripts (items 2–3) run the latest upstream version by default after a structural sanity check. If the upstream fetch or check fails, they fall back to the pinned copies in the verified `test-tools-mirror` release (Ed25519 signature + SHA-256 verified); if both are unavailable, nothing is executed. A-Check (item 1) likewise fetches the latest version live and falls back first to the signed mirror pin, then to the last verified local cache.
 
-Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script fetches it only from the pinned `test-tools-mirror` release, verifies the Ed25519 signature and SHA-256, validates its structure (shebang, VERSION marker, size, py_compile), installs the verified copy under `/etc/ddr/tools`, and runs the freshly verified file; there is no live fetch from the A-Check repository and no fallback to a previously cached copy — if any step fails, nothing runs. It requires Python 3.8 or newer.
+Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script fetches the latest version live from the A-Check repository, validates its structure (shebang, VERSION marker, size, py_compile) before running it, and caches it under `/etc/ddr/tools`; if the live fetch fails, it falls back to the signature-verified pinned mirror copy, then to the last verified local cache. It requires Python 3.8 or newer.
 
-**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. The official Hysteria 2 binary does provide a per-user Traffic Stats API, but this script does not currently consume any statistics source, so quotas do not take effect on Hysteria 2 either. All user links can be exported at once as subscription files.
 
 **Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
 
 ## Subsystems
 
-**Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export. Node names in share links and exported files are the protocol name only (Vision, XHTTP, SS, Hy2, Trojan-Reality, …) — no brand prefix.
+**Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export. Node names in exported files carry the core as a suffix where both cores offer the protocol — e.g. `Trojan-Reality-sing-box`, `Trojan-Reality-Xray`, `SOCKS5-Xray`, `SOCKS5-sing-box` — while single-core protocols keep the protocol name (`TUIC`, `AnyTLS-Reality`, `ShadowTLS`); share-link fragments are protocol-only for standalone nodes, and per-user combo links are `#<tag>-<user>`.
 
 **WARP & split routing.** One-click Cloudflare WARP egress as a native WireGuard outbound/endpoint, with streaming, CN-direct and global presets, plus custom domain routing rules and multi-host SOCKS5 outbounds.
 
@@ -143,17 +143,13 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 |---|---|
 | `sudo bash A-Box.sh` | Open the interactive menu |
 | `sudo bash A-Box.sh --help` | Show command-line help |
-| `sudo bash A-Box.sh -h` | Show command-line help (same as --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Start with a given UI language |
-| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | Start with a given UI language (same as --lang) |
 | `sudo bash A-Box.sh --self-test` | Run the built-in self-tests |
 | `sudo bash A-Box.sh --status` | Show managed services and configuration status |
 | `sudo bash A-Box.sh --start` / `--stop` | Start or stop the managed services |
 | `sudo bash A-Box.sh --version` | Show the script build identifier |
-| `sudo bash A-Box.sh -V` | Show the script build identifier (same as --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Export the backup recovery key |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Convert a legacy backup to the current format |
-| `sudo bash A-Box.sh --xray-config-autorecover` | Auto-recover a damaged Xray config once from a trusted backup (probe call) |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | Convert a legacy backup to the current format |
 
 A passing self-test does not replace a real installation or a client connectivity test.
 

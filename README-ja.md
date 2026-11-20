@@ -34,21 +34,21 @@
 
 ## 概要
 
-A-Box は単一ファイルの Bash スクリプト（`install.sh`、約61,694行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
+A-Box は単一ファイルの Bash スクリプト（`install.sh`、約63,026行）で、Linux VPS 上のプロキシおよびネットワークサービスの導入と保守を行います。Xray、sing-box、公式 Hysteria 2 サーバーのインストールと設定、クライアント設定の生成に加え、ファイアウォールルール、Fail2Ban、DNS 設定、バックアップ、アップグレード、診断といった日常運用を、6言語対応の対話型メニューにまとめています。メニューで選択するまで何も導入されず、破壊的な操作では必ず確認を求めます。
 
 ## クイックスタート
 
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/014be3028b4456f86afc9971b52a47ba2397fe0f/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/e43b1559b49c2b74caf9808d08fc45681e3f07b1/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/014be3028b4456f86afc9971b52a47ba2397fe0f/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/014be3028b4456f86afc9971b52a47ba2397fe0f/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/e43b1559b49c2b74caf9808d08fc45681e3f07b1/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/e43b1559b49c2b74caf9808d08fc45681e3f07b1/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -102,24 +102,24 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 | 1 | A-Check IP 品質チェック | 9 | ローカル SNI 最適化 |
 | 2 | システムベンチマークと速度測定 | 10 | ミニホスト SNI 最適化 |
 | 3 | IP品質 / ストリーミング / ルートテスト | 11 | SNI テスト記録 |
-| 4 | 匿名化診断パッケージのエクスポート | 12 | ノード SNI の変更 |
+| 4 | 診断パッケージのエクスポート | 12 | ノード SNI の変更 |
 | 5 | WARP と振り分け管理 | 13 | 設定のバックアップ / 復元 |
 | 6 | スワップメモリ（zram / Swap）| 14 | 複数ユーザー / サブスクリプション出力 |
 | 7 | VPS ワンクリック最適化 | 15 | Wallos インストール / 更新 / バックアップ |
-| 8 | IP / DNS / タイムゾーン / ダウンロードソース設定 | 16 | SS-2022 アクセス許可リスト |
+| 8 | IP / DNS / タイムゾーン設定 | 16 | SS-2022 アクセス許可リスト |
 | 0 | メインメニューに戻る | 17 | カスタムショートカット |
 
-項目 2・3 のテストスクリプトは、デフォルトで上流の最新版を取得し構造チェックを行います。取得またはチェックに失敗した場合は、検証済み `test-tools-mirror` リリース内の固定コピー（Ed25519 署名 + SHA-256 の二重検証）にフォールバックし、両方とも利用できない場合は何も実行しません。項目 1 の A-Check は `test-tools-mirror` の固定リリースからのみ取得し、Ed25519 署名と SHA-256 の検証を通ったものだけを実行します。リアルタイムの上流取得も、以前のキャッシュへのフォールバックもありません。いずれかの手順に失敗すれば何も実行しません。
+項目 2・3 のテストスクリプトは、デフォルトで上流の最新版を取得し構造チェックを行います。取得またはチェックに失敗した場合は、検証済み `test-tools-mirror` リリース内の固定コピー（Ed25519 署名 + SHA-256 の二重検証）にフォールバックし、両方とも利用できない場合は何も実行しません。項目 1 の A-Check も同様に最新版をリアルタイム取得し、失敗時は署名済みミラーの固定コピー、次にローカルの検証済みキャッシュへフォールバックします。
 
-項目 1 の **A-Check** は、姉妹プロジェクト [A-Check](https://github.com/alariclin/A-Check) の IP 評判チェッカーです。スクリプトは `test-tools-mirror` の固定リリースからのみ取得し、Ed25519 署名と SHA-256 を検証し、構造チェック（shebang、VERSION マーカー、サイズ、py_compile）を通った検証済みコピーを `/etc/ddr/tools` にインストールした上で、検証直後のファイルを実行します。A-Check リポジトリからのリアルタイム取得も、以前のキャッシュへのフォールバックもありません。いずれかの手順に失敗すれば何も実行しません。Python 3.8 以上が必要です。
+項目 1 の **A-Check** は、姉妹プロジェクト [A-Check](https://github.com/alariclin/A-Check) の IP 評判チェッカーです。スクリプトは A-Check リポジトリから最新版をリアルタイム取得し、実行前に構造チェック（shebang、VERSION マーカー、サイズ、py_compile）を行って `/etc/ddr/tools` にキャッシュします。取得に失敗した場合は、署名検証済みのミラー固定コピー、次にローカルの検証済みキャッシュへフォールバックします。Python 3.8 以上が必要です。
 
-**ユーザー管理（ツールボックス 14)。** デプロイ済みのすべてのノード（組み合わせ・単独プロトコルを問わず、Xray / sing-box / 公式 Hysteria 2）には、名前付きユーザーを複数追加でき、各ユーザーに専用の認証情報と共有リンク / QR コードが付きます。ユーザーごとに月間流量制限 (GB)、有効期限（日数）、利用可能時間帯を設定でき、5 分ごとのバックグラウンドチェックが自動執行します。期限切れ・制限超過・時間帯外のユーザーは自動的に失効します（Xray 系では再起動なしのホット失効）。ユーザー別統計と制限執行は Xray 系（StatsService）でのみ利用可能で、sing-box 公式バイナリにはユーザー別統計がないため、sing-box では期限と時間帯のルールのみが効きます。全ユーザーのリンクは購読ファイルとして一括エクスポートできます。
+**ユーザー管理（ツールボックス 14)。** デプロイ済みのすべてのノード（組み合わせ・単独プロトコルを問わず、Xray / sing-box / 公式 Hysteria 2）には、名前付きユーザーを複数追加でき、各ユーザーに専用の認証情報と共有リンク / QR コードが付きます。ユーザーごとに月間流量制限 (GB)、有効期限（日数）、利用可能時間帯を設定でき、5 分ごとのバックグラウンドチェックが自動執行します。期限切れ・制限超過・時間帯外のユーザーは自動的に失効します（Xray 系では再起動なしのホット失効）。ユーザー別統計と制限執行は Xray 系（StatsService）でのみ利用可能で、sing-box 公式バイナリと公式 Hysteria 2 バイナリにはユーザー別統計がないため、sing-box と Hysteria 2 では期限と時間帯のルールのみが効きます。全ユーザーのリンクは購読ファイルとして一括エクスポートできます。
 
 **同一プロトコルの複数インスタンス。** 単独プロトコルがすでにそのコアに存在する場合、デプロイ入口で「インスタンスを追加」を選べます。追加分は独自のポート・認証情報・ユーザーリストを持ち（タグ接尾辞 -2、-3 …)、独立して管理・削除できます。
 
 ## サブシステム
 
-**クライアント設定。** 導入のたびに共有リンクと QR コードを表示します。メニュー 12 では、メニュー 18 の単体プロトコルを含め、すべてのノードパラメータとリンクをいつでも再表示でき、Clash / Mihomo YAML、sing-box JSON、v2rayN / v2rayNG 設定をエクスポートできます。サーバー側で複数の UUID を追加・失効でき、ユーザーごとにエクスポートできます。共有リンクとエクスポートファイルのノード名はプロトコル名のみ（Vision、XHTTP、SS、Hy2、Trojan-Reality など）で、ブランド接頭辞は付きません。
+**クライアント設定。** 導入のたびに共有リンクと QR コードを表示します。メニュー 12 では、メニュー 18 の単体プロトコルを含め、すべてのノードパラメータとリンクをいつでも再表示でき、Clash / Mihomo YAML、sing-box JSON、v2rayN / v2rayNG 設定をエクスポートできます。サーバー側で複数の UUID を追加・失効でき、ユーザーごとにエクスポートできます。エクスポートファイルのノード名は、両コアで提供されるプロトコルではコアの接尾辞が付きます（例：`Trojan-Reality-sing-box`、`Trojan-Reality-Xray`、`SOCKS5-Xray`、`SOCKS5-sing-box`）。単独コアのプロトコルはプロトコル名のままです（`TUIC`、`AnyTLS-Reality`、`ShadowTLS`）。単体ノードの共有リンクのフラグメントはプロトコル名のままで、ユーザー別コンボリンクは `#<タグ>-<ユーザー>` です。
 
 **WARP と振り分け。** Cloudflare WARP をネイティブの WireGuard アウトバウンドとしてワンクリックで導入します。ストリーミング、CN 直結、グローバルの3プリセットに加え、カスタムのドメイン振り分けルールと複数ホストの SOCKS5 アウトバウンドに対応します。
 
@@ -143,17 +143,13 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 |---|---|
 | `sudo bash A-Box.sh` | 対話型メニューを開く |
 | `sudo bash A-Box.sh --help` | コマンドラインヘルプを表示 |
-| `sudo bash A-Box.sh -h` | コマンドラインヘルプを表示（--help と同じ） |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | UI 言語を指定して起動 |
-| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | UI 言語を指定して起動（--lang と同じ） |
 | `sudo bash A-Box.sh --self-test` | 内蔵セルフテストを実行 |
 | `sudo bash A-Box.sh --status` | 管理対象サービスと設定の状態を表示 |
 | `sudo bash A-Box.sh --start` / `--stop` | 管理対象サービスを起動 / 停止 |
 | `sudo bash A-Box.sh --version` | スクリプトのビルド識別子を表示 |
-| `sudo bash A-Box.sh -V` | スクリプトのビルド識別子を表示（--version と同じ） |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | バックアップ復旧キーをエクスポート |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | 旧形式のバックアップを現行形式に変換 |
-| `sudo bash A-Box.sh --xray-config-autorecover` | Xray 設定が破損したとき、信頼できるバックアップから一度だけ自動復旧する（プローブ呼び出し） |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz /root/converted` | 旧形式のバックアップを現行形式に変換 |
 
 セルフテストの合格は、実際のインストール、クライアント接続確認の代わりにはなりません。
 

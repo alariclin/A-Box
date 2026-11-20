@@ -32,11 +32,16 @@ jobs:
         # crosses available memory. An 8 GB swapfile gives it headroom
         # without changing the gate itself. Fail-closed: if swap cannot be
         # created, fail here instead of dying silently inside shellcheck.
+        # NOTE: /swapfile already exists and is active on this image
+        # (fallocate there fails "Text file busy"), so use a fresh path.
         run: |
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          swapon --show || true
+          free -h
+          df -h / | tail -1
+          sudo fallocate -l 8G /swapfile-abox
+          sudo chmod 600 /swapfile-abox
+          sudo mkswap /swapfile-abox
+          sudo swapon /swapfile-abox
           free -h
       - name: ShellCheck installation critical errors
         run: |

@@ -478,6 +478,7 @@ ABOX_DEPLOY_TX_TARGETS=''
 ABOX_DEPLOY_TX_REASON=''
 ABOX_DEPLOY_TX_BACKUP=''
 ABOX_DEPLOY_TX_TMP=''
+ABOX_ROLLBACK_FALLBACK_RC=''
 ABOX_DEPLOY_TX_BACKUP_DIR=''
 ABOX_DEPLOY_TX_KEY_FILE=''
 ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
@@ -706,22 +707,66 @@ _tuic_cert_self_signed() {
     return 1
 }
 
+# Port on line 2 of a standalone .link file (the URI's dial port), or
+# nothing when the file is missing/unreadable. Used by the Trojan -2
+# legacy migration: a port identifies the inbound, so a legacy
+# trojan-landing-N.link whose port matches a per-core file is that
+# inbound's duplicate/stale copy.
+_standalone_link_port() {
+    local _f="$1" _u=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _u=$(sed -n '2p' "$_f" 2>/dev/null) || return 1
+    [[ "$_u" =~ :([0-9]+)(\?|#|$) ]] || return 1
+    printf '%s' "${BASH_REMATCH[1]}"
+}
+
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ "$_ip" == 'N/A' ]] && _ip=''
     # M-35: a domain-only deployment (no usable public IP) must still
     # rebuild the Hy2 link from HY2_DOMAIN; return early only when
     # there is neither an IP nor a domain.
+    # M41-NEW-01 follow-up (S2-NEW-09/E62-NEW-02): rebuild used to
+    # only add missing links and never delete stale ones, so a
+    # same-core overwrite left orphaned .link files that menu 12
+    # reprinted as dead nodes. Prune both cores' stale links first --
+    # the survivor check deletes only a link whose inbound is
+    # confirmed gone from live config (H-26(3) rc-1-only semantics)
+    # -- then the blocks below re-create any missing live link.
+    # Runs before the early return so stale links are pruned even
+    # when the IP is unknown. Hysteria is not pruned here: hy2.link
+    # is refreshed from live config in the Hy2 block below (deleted
+    # there only once the Hysteria config is confirmed gone).
+    _prune_standalone_links xray || true
+    _prune_standalone_links sing-box || true
     [[ -n "$_ip" || -n "${HY2_DOMAIN:-}" ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
+    local _tj_row='' _tj_rows='' _tj_tag='' _tj_stem='' _tj_seen='' _tj_legacy_n='' _tj_n='' _tj_leg='' _tj_leg_port='' _tj_sfx='' _tj_pc='' _tj_pc_port=''
+    local _sk_row='' _sk_rows='' _sk_tag='' _sk_stem='' _sk_seen='' _sk_legacy_n='' _sk_n='' _sk_leg='' _sk_leg_port='' _sk_sfx='' _sk_pc='' _sk_pc_port=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
-        if [[ ! -f "$_dir/trojan-xray.link" ]]; then
+        _tj_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != "")) | [(.tag // ""), (.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null) || _tj_rows=''
+        _tj_seen=''
+        while IFS= read -r _tj_row; do
+            [[ -n "$_tj_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            _tsv_split "$_tj_row" _tj_tag _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            case "$_tj_tag" in
+                trojan-landing|trojan-landing-[0-9]*) ;;
+                *) _tj_tag='trojan-landing' ;;
+            esac
+            _tj_stem=$(users_link_stem xray "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
+            case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
+            _tj_seen+=" $_tj_stem"
+            case "$_tj_stem" in
+                trojan-landing-[0-9]*)
+                    _tj_n="${_tj_stem#trojan-landing-}"
+                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
+            esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (${_tj_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 # 2bf: emit the real transport instead of a wrong
                 # type=tcp — ws/xhttp clients dial the wrong transport
@@ -737,29 +782,63 @@ rebuild_standalone_links() {
                     [[ -n "$_xpath" ]] && _ttype="${_ttype}&path=$(urlencode "$_xpath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-xray "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link "$_tj_stem" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_tj_stem")${NC}" >&2
             fi
-        fi
-        if [[ ! -f "$_dir/socks5-xray.link" ]]; then
-            _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
-            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
-            elif [[ -n "$_port$_user$_pass" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-xray)${NC}" >&2
-            fi
+        done <<< "$_tj_rows"
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+            _sk_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_seen=''
+            while IFS= read -r _sk_row; do
+                [[ -n "$_sk_row" ]] || continue
+                _port=''; _user=''; _pass=''
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                case "$_sk_tag" in
+                    socks5-landing|socks5-landing-[0-9]*) ;;
+                    *) _sk_tag='socks5-landing' ;;
+                esac
+                _sk_stem=$(users_link_stem xray "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
+                case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
+                _sk_seen+=" $_sk_stem"
+                case "$_sk_stem" in
+                    socks5-landing-[0-9]*)
+                        _sk_n="${_sk_stem#socks5-landing-}"
+                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
+                esac
+                _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
+                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                    register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                elif [[ -n "$_port$_user$_pass" ]]; then
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
+                fi
+            done <<< "$_sk_rows"
         fi
     fi
     if [[ -n "$_ip" && -f "$_sc" ]]; then
-        if [[ ! -f "$_dir/trojan-sb.link" ]]; then
+        _tj_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null) || _tj_rows=''
+        _tj_seen=''
+        while IFS= read -r _tj_row; do
+            [[ -n "$_tj_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_split "$_tj_row" _tj_tag _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            case "$_tj_tag" in
+                trojan-landing|trojan-landing-[0-9]*) ;;
+                *) _tj_tag='trojan-landing' ;;
+            esac
+            _tj_stem=$(users_link_stem sing-box "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
+            case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
+            _tj_seen+=" $_tj_stem"
+            case "$_tj_stem" in
+                trojan-landing-[0-9]*)
+                    _tj_n="${_tj_stem#trojan-landing-}"
+                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
+            esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (${_tj_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 # 2bf: same transport mapping as the Xray arm — a ws /
                 # xhttp / grpc trojan must not be emitted as type=tcp.
@@ -774,14 +853,14 @@ rebuild_standalone_links() {
                     [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-sb "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link "$_tj_stem" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_tj_stem")${NC}" >&2
             fi
-        fi
-        if [[ ! -f "$_dir/tuic.link" ]]; then
+        done <<< "$_tj_rows"
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul _tuic_tag
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
@@ -808,14 +887,14 @@ rebuild_standalone_links() {
                 # still registered, just without allow_insecure=1.
                 local _cert_inline_state='unknown' _cert_inline_present='' _inline_tmp=''
                 _cert_inline=''
-                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
+                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
                         true) _cert_inline_state='present' ;;
                         false) _cert_inline_state='absent' ;;
                     esac
                 fi
                 if [[ "$_cert_inline_state" == 'present' ]]; then
-                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
+                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
                     # R15-F01-02: the inline PEM goes through the same
@@ -827,20 +906,33 @@ rebuild_standalone_links() {
                 elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
                     if _tuic_cert_self_signed "$_cert"; then _insecure='allow_insecure=1'; fi
                 fi
-                register_standalone_link tuic "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
+                # N3 (followup5 D-leg): register under the matched
+                # inbound's own stem (tuic-in -> tuic, tuic-in-2 ->
+                # tuic-in-2). The old fixed stem `tuic` rewrote
+                # tuic.link from the -2 survivor, duplicating the
+                # tuic-in-2.link URI in menu 12 output.
+                _tuic_stem=$(users_link_stem sing-box "${_tuic_tag:-}" 2>/dev/null || printf '%s' 'tuic')
+                [[ -n "$_tuic_stem" ]] || _tuic_stem='tuic'
+                register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/anytls.link" ]]; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _anytls_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link anytls "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+                # N3 (followup5 D-leg): same fixed-stem defect as
+                # TUIC above: register under the matched inbound's
+                # own stem (anytls-in -> anytls, anytls-in-2 ->
+                # anytls-in-2).
+                _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
+                [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
+                register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
@@ -850,9 +942,9 @@ rebuild_standalone_links() {
         # _standalone_link_is_empty_shadowtls): that is the bad
         # link the old unchecked pipeline published, and the
         # next rebuild must retry it instead of skipping forever.
-        if [[ ! -f "$_dir/shadowtls.link" ]] || _standalone_link_is_empty_shadowtls "$_dir/shadowtls.link"; then
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor (empty-shadowtls retry subsumed)
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour _sh_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
@@ -884,7 +976,14 @@ rebuild_standalone_links() {
                        [[ -n "$_pb_json" ]] &&
                        _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
                        [[ -n "$_pb" ]]; then
-                        register_standalone_link shadowtls "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                        # N3 (followup5 D-leg): same fixed-stem
+                        # defect as TUIC above: register under the
+                        # matched inbound's own stem
+                        # (shadowtls-in -> shadowtls, shadowtls-in-2
+                        # -> shadowtls-in-2).
+                        _sh_stem=$(users_link_stem sing-box "${_sh_tag:-}" 2>/dev/null || printf '%s' 'shadowtls')
+                        [[ -n "$_sh_stem" ]] || _sh_stem='shadowtls'
+                        register_standalone_link "$_sh_stem" "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                     else
                         printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                     fi
@@ -896,32 +995,105 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/socks5-sb.link" ]]; then
-            _port=''; _user=''; _pass=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
-            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
-            elif [[ -n "$_port$_user$_pass" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-sb)${NC}" >&2
-            fi
+        if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_seen=''
+            while IFS= read -r _sk_row; do
+                [[ -n "$_sk_row" ]] || continue
+                _port=''; _user=''; _pass=''
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                case "$_sk_tag" in
+                    socks5-landing|socks5-landing-[0-9]*) ;;
+                    *) _sk_tag='socks5-landing' ;;
+                esac
+                _sk_stem=$(users_link_stem sing-box "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
+                case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
+                _sk_seen+=" $_sk_stem"
+                case "$_sk_stem" in
+                    socks5-landing-[0-9]*)
+                        _sk_n="${_sk_stem#socks5-landing-}"
+                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
+                esac
+                _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
+                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                    register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                elif [[ -n "$_port$_user$_pass" ]]; then
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
+                fi
+            done <<< "$_sk_rows"
         fi
     fi
+    # Trojan -2 migration: a pre-fix deploy wrote both cores' -2 chains
+    # into one ambiguous trojan-landing-N.link. Once this rebuild has
+    # written the per-core stem files, the legacy file is a duplicate
+    # (same port) or stale (superseded by its own core's per-core
+    # file); drop it only when its port matches a live per-core file,
+    # so a chain whose core did not rebuild this run is kept.
+    for _tj_n in $_tj_legacy_n; do
+        _tj_leg="$_dir/trojan-landing-${_tj_n}.link"
+        [[ -f "$_tj_leg" && ! -L "$_tj_leg" ]] || continue
+        _tj_leg_port=$(_standalone_link_port "$_tj_leg" 2>/dev/null || true)
+        [[ -n "$_tj_leg_port" ]] || continue
+        for _tj_sfx in sb xray; do
+            _tj_pc="$_dir/trojan-landing-${_tj_n}-${_tj_sfx}.link"
+            [[ -f "$_tj_pc" && ! -L "$_tj_pc" ]] || continue
+            _tj_pc_port=$(_standalone_link_port "$_tj_pc" 2>/dev/null || true)
+            if [[ -n "$_tj_pc_port" && "$_tj_pc_port" == "$_tj_leg_port" ]]; then
+                rm -f -- "$_tj_leg" 2>/dev/null || true
+                break
+            fi
+        done
+    done
+    # SOCKS5 -2 migration: same shape as the Trojan -2 migration above
+    # (a pre-fix deploy wrote both cores' -2 chains into one ambiguous
+    # socks5-landing-N.link). Drop the legacy file only when its port
+    # matches a live per-core file, so a chain whose core did not
+    # rebuild this run is kept.
+    for _sk_n in $_sk_legacy_n; do
+        _sk_leg="$_dir/socks5-landing-${_sk_n}.link"
+        [[ -f "$_sk_leg" && ! -L "$_sk_leg" ]] || continue
+        _sk_leg_port=$(_standalone_link_port "$_sk_leg" 2>/dev/null || true)
+        [[ -n "$_sk_leg_port" ]] || continue
+        for _sk_sfx in sb xray; do
+            _sk_pc="$_dir/socks5-landing-${_sk_n}-${_sk_sfx}.link"
+            [[ -f "$_sk_pc" && ! -L "$_sk_pc" ]] || continue
+            _sk_pc_port=$(_standalone_link_port "$_sk_pc" 2>/dev/null || true)
+            if [[ -n "$_sk_pc_port" && "$_sk_pc_port" == "$_sk_leg_port" ]]; then
+                rm -f -- "$_sk_leg" 2>/dev/null || true
+                break
+            fi
+        done
+    done
     # E19: official Hy2 never registered a standalone link, so menu 12 /
     # export showed no Hy2 node even though view_config prints the URL.
-    # Rebuild it from the live config when the file is missing (the
-    # deploy-time call below is the primary path; this is the safety net
-    # that also heals installs predating the fix). Secrets come from
-    # config.yaml itself, the port list from the environment (same source
-    # view_config uses); a missing/unusable pin refuses the link.
-    if [[ ! -f "$_dir/hy2.link" && -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+    # Secrets come from config.yaml itself, the port list from the
+    # environment (same source view_config uses); a missing/unusable
+    # pin refuses the link.
+    # M41-NEW-01 follow-up: the file is refreshed on every rebuild,
+    # not only when missing -- a deploy-time bare password goes stale
+    # the moment the server switches to userpass (the S1 404), and a
+    # link for a deleted server must not survive. The config path
+    # honours ABOX_HY2_CONFIG (fixture hook, same convention as
+    # hy2_effective_password_for_user); a symlinked config is
+    # unverifiable, so the old file is kept (fail-closed, same as
+    # the prune rc-2 rule), while a confirmed-gone config deletes it.
+    local _hycfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+    if [[ -L "$_hycfg" ]]; then
+        :
+    elif [[ ! -e "$_hycfg" ]]; then
+        rm -f -- "$_dir/hy2.link" 2>/dev/null || true
+    elif [[ -f "$_hycfg" ]]; then
         _pass=''; _obfs=''; _url=''; _port=''
         # R16-F01-02: same trailing-LF sentinel as the obfs branch
         # below: jq -r + $() strips a trailing LF from the password,
         # caching a wrong credential for a password that ends in LF.
+        # hy2_effective_password now prefers main (M41-NEW-01
+        # follow-up), so the refreshed link is main's composite in
+        # userpass mode, never the deploy-time bare password.
         _pass=$(hy2_effective_password 2>/dev/null || printf '%s' "${HY2_PASS:-}")
         _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
-        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' "$_hycfg" 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
             _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null) || _obfs=''
             _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
@@ -938,7 +1110,11 @@ rebuild_standalone_links() {
 }
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
-    if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
+    # OBS-2: capture the hook name BEFORE invoking it. The hook itself
+    # (deployment_transaction_rollback_inner) clears ABOX_DIE_HOOK on
+    # entry, so formatting the message after the call printed ''.
+    local _die_hook="${ABOX_DIE_HOOK:-}"
+    if [[ -n "$_die_hook" ]] && declare -F "$_die_hook" >/dev/null 2>&1; then
         # H-17: only the transaction owner process (or a top-level shell)
         # may run the rollback hook. A die() inside a command substitution
         # runs in a child shell whose BASHPID differs from the transaction
@@ -947,9 +1123,34 @@ die() {
         # still exits 1, so the parent's || die fires the hook exactly
         # once, in the right process.
         if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
-            if ! "$ABOX_DIE_HOOK" "$*"; then
-                printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+            if ! "$_die_hook" "$*"; then
+                # OBS-2: two tiers. When the deployment rollback ran its
+                # best-effort service restart from the snapshot
+                # (ABOX_ROLLBACK_FALLBACK_RC==0), the strong "manual
+                # recovery may be required" claim misleads: the services
+                # were restarted. Downgrade to a verify-first notice.
+                # When the restart itself failed (or no fallback ran),
+                # keep the strong warning.
+                if [[ "$_die_hook" == 'deployment_transaction_rollback' && "${ABOX_ROLLBACK_FALLBACK_RC:-}" == '0' ]]; then
+                    printf '%s\n' "${RED}[!] WARNING: rollback hook '$_die_hook' reported failure, but services were restarted from the pre-operation snapshot (best-effort); verify services before manual recovery.${NC}" >&2
+                else
+                    printf '%s\n' "${RED}[!] WARNING: rollback hook '$_die_hook' failed; manual recovery may be required.${NC}" >&2
+                fi
             fi
+        fi
+    fi
+    # OBS-1: a failed deploy must not leak its staging. The transaction
+    # rollback removes ABOX_DEPLOY_TX_TMP when it runs, but landing
+    # deploys run with no transaction, and the rollback itself can abort
+    # before reaching its staging cleanup. Remove this process's own
+    # staging here, under the same owner-process gate as the hook, so a
+    # die() inside a command substitution never deletes the parent's
+    # live staging. Only a /tmp/A-Box-* directory is ever removed (never
+    # /tmp itself, never a path with '..', never a symlink or a file).
+    if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
+        if [[ -n "${ABOX_DEPLOY_TX_TMP:-}" && "${ABOX_DEPLOY_TX_TMP}" == /tmp/A-Box-* && "${ABOX_DEPLOY_TX_TMP}" != /tmp/A-Box- && "${ABOX_DEPLOY_TX_TMP}" != *..* && -d "${ABOX_DEPLOY_TX_TMP}" && ! -L "${ABOX_DEPLOY_TX_TMP}" ]]; then
+            rm -rf -- "${ABOX_DEPLOY_TX_TMP}" 2>/dev/null || true
+            ABOX_DEPLOY_TX_TMP=''
         fi
     fi
     exit 1
@@ -4767,6 +4968,12 @@ tr_msg() {
         fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
         zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
         ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        zh:dp_cred_regen) echo '覆盖重部署将重生成主凭据，旧订阅链接随即失效，须重新导出。' ;;
+        en:dp_cred_regen) echo 'Overwrite redeploy regenerates the main credentials; old subscription links stop working and must be re-exported.' ;;
+        ru:dp_cred_regen) echo 'Переустановка с заменой повторно создаёт основные учётные данные; старые ссылки подписки перестают работать, их нужно экспортировать заново.' ;;
+        fa:dp_cred_regen) echo 'استقرار مجدد با بازنویسی، اعتبار اصلی را دوباره تولید می‌کند؛ پیوندهای اشتراک قدیمی از کار می‌افتند و باید دوباره صادر شوند.' ;;
+        zh-tw:dp_cred_regen) echo '覆寫重部署將重新產生主憑據，舊訂閱連結隨即失效，須重新匯出。' ;;
+        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古い購読リンクは無効になるため、再エクスポートが必要です。' ;;
         zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
         en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
         ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
@@ -6531,12 +6738,18 @@ tr_msg() {
         fa:cl_env_ports_cleared) echo 'درگاه‌های زیر در .env هیچ inbound زنده‌ای ندارند و پاک شدند: %s.' ;;
         zh-tw:cl_env_ports_cleared) echo '以下 .env 連接埠已無存活入站，已清空：%s。' ;;
         ja:cl_env_ports_cleared) echo '次の .env ポートは存続するインバウンドがないためクリアしました：%s。' ;;
-        zh:cl_fail) echo '删除失败，配置已回滚未改动。' ;;
-        en:cl_fail) echo 'Deletion failed; the configuration was rolled back unchanged.' ;;
-        ru:cl_fail) echo 'Удаление не удалось; конфигурация откатана без изменений.' ;;
-        fa:cl_fail) echo 'حذف ناموفق بود؛ پیکربندی بدون تغییر بازگردانده شد.' ;;
-        zh-tw:cl_fail) echo '刪除失敗，配置已回滾未改動。' ;;
-        ja:cl_fail) echo '削除に失敗しました。設定は変更されずロールバックされました。' ;;
+        zh:cl_fail) echo '删除失败，配置未改动。' ;;
+        en:cl_fail) echo 'Deletion failed; the configuration was not changed.' ;;
+        ru:cl_fail) echo 'Не удалось удалить; конфигурация не изменена.' ;;
+        fa:cl_fail) echo 'حذف ناموفق بود؛ پیکربندی تغییر نکرد.' ;;
+        zh-tw:cl_fail) echo '刪除失敗，配置未改動。' ;;
+        ja:cl_fail) echo '削除に失敗しました。設定は変更されていません。' ;;
+        zh:cl_stop_fail) echo '停止失败，服务仍在运行（配置已清空）。' ;;
+        en:cl_stop_fail) echo 'Stop failed; the service is still running (configuration already cleared).' ;;
+        ru:cl_stop_fail) echo 'Не удалось остановить службу; она продолжает работать (конфигурация уже очищена).' ;;
+        fa:cl_stop_fail) echo 'توقف سرویس ناموفق بود؛ سرویس همچنان در حال اجراست (پیکربندی قبلاً پاک شده است).' ;;
+        zh-tw:cl_stop_fail) echo '停止失敗，服務仍在運行（配置已清空）。' ;;
+        ja:cl_stop_fail) echo '停止に失敗しました。サービスは実行中です（設定は既にクリアされています）。' ;;
         zh:cl_done) echo '已删除' ;;
         en:cl_done) echo 'Removed' ;;
         ru:cl_done) echo 'Удалено' ;;
@@ -6555,6 +6768,12 @@ tr_msg() {
         fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
+        zh:cl_all_fail) echo '全部清空未完成，请检查上方失败提示。' ;;
+        en:cl_all_fail) echo 'Clear-all did not complete; check the failure messages above.' ;;
+        ru:cl_all_fail) echo 'Полная очистка не завершена; проверьте сообщения об ошибках выше.' ;;
+        fa:cl_all_fail) echo 'پاک‌سازی کامل انجام نشد؛ پیام‌های خطای بالا را بررسی کنید.' ;;
+        zh-tw:cl_all_fail) echo '全部清除未完成，請檢查上方失敗提示。' ;;
+        ja:cl_all_fail) echo 'すべてクリアは完了しませんでした。上記の失敗メッセージを確認してください。' ;;
         zh:cl_desired_commit_fail) echo '无法记录清空后的期望状态（MANUAL_STOPPED），已中止清空；请先手动修复状态文件。' ;;
         en:cl_desired_commit_fail) echo 'Could not record the cleared desired state (MANUAL_STOPPED); clear aborted. Repair the state files manually first.' ;;
         ru:cl_desired_commit_fail) echo 'Не удалось записать желаемое состояние после очистки (MANUAL_STOPPED); очистка прервана. Сначала исправьте файлы состояния вручную.' ;;
@@ -7701,18 +7920,18 @@ tr_msg() {
         ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог Sing-box.' ;;
         fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت Sing-box ناموفق بود.' ;;
         ja:dp_sb_tmpdir) echo 'Sing-box の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_unit) echo 'Sing-box systemd unit 原子写入失败。' ;;
-        zh-tw:dp_sb_unit) echo 'Sing-box systemd unit 原子寫入失敗。' ;;
-        en:dp_sb_unit) echo 'Failed to atomically write the Sing-box systemd unit.' ;;
-        ru:dp_sb_unit) echo 'Не удалось атомарно записать systemd-юнит Sing-box.' ;;
-        fa:dp_sb_unit) echo 'نوشتن اتمی یونیت systemd ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_unit_lc) echo 'sing-box systemd unit 原子写入失败。' ;;
-        zh-tw:dp_sb_unit_lc) echo 'sing-box systemd unit 原子寫入失敗。' ;;
-        en:dp_sb_unit_lc) echo 'Failed to atomically write the sing-box systemd unit.' ;;
-        ru:dp_sb_unit_lc) echo 'Не удалось атомарно записать systemd-юнит sing-box.' ;;
-        fa:dp_sb_unit_lc) echo 'نوشتن اتمی یونیت systemd ‏sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit_lc) echo 'sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_unit) echo 'Sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit) echo 'Sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit) echo 'Failed to prepare the Sing-box service unit.' ;;
+        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит Sing-box.' ;;
+        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットの準備に失敗しました。' ;;
+        zh:dp_sb_unit_lc) echo 'sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit_lc) echo 'sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit_lc) echo 'Failed to prepare the sing-box service unit.' ;;
+        ru:dp_sb_unit_lc) echo 'Не удалось подготовить systemd-юнит sing-box.' ;;
+        fa:dp_sb_unit_lc) echo 'آماده‌سازی یونیت systemd ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit_lc) echo 'sing-box の systemd ユニットの準備に失敗しました。' ;;
         zh:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 生成失败。' ;;
         zh-tw:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 產生失敗。' ;;
         en:dp_shadowtls_json) echo 'Failed to generate the ShadowTLS inbound JSON.' ;;
@@ -7899,12 +8118,12 @@ tr_msg() {
         ru:dp_xray_tmpdir) echo 'Не удалось создать временный каталог Xray.' ;;
         fa:dp_xray_tmpdir) echo 'ایجاد پوشه موقت Xray ناموفق بود.' ;;
         ja:dp_xray_tmpdir) echo 'Xray の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_xray_unit) echo 'Xray systemd unit 原子写入失败。' ;;
-        zh-tw:dp_xray_unit) echo 'Xray systemd unit 原子寫入失敗。' ;;
-        en:dp_xray_unit) echo 'Failed to atomically write the Xray systemd unit.' ;;
-        ru:dp_xray_unit) echo 'Не удалось атомарно записать systemd-юнит Xray.' ;;
-        fa:dp_xray_unit) echo 'نوشتن اتمی یونیت systemd ‏Xray ناموفق بود.' ;;
-        ja:dp_xray_unit) echo 'Xray の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_xray_unit) echo 'Xray 服务单元准备失败。' ;;
+        zh-tw:dp_xray_unit) echo 'Xray 服務單元準備失敗。' ;;
+        en:dp_xray_unit) echo 'Failed to prepare the Xray service unit.' ;;
+        ru:dp_xray_unit) echo 'Не удалось подготовить systemd-юнит Xray.' ;;
+        fa:dp_xray_unit) echo 'آماده‌سازی یونیت systemd ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_unit) echo 'Xray の systemd ユニットの準備に失敗しました。' ;;
         zh:mw_drop4_check) echo '无法检查 IPv4 SS DROP 规则： %s' ;;
         zh-tw:mw_drop4_check) echo '無法檢查 IPv4 SS DROP 規則： %s' ;;
         en:mw_drop4_check) echo 'Cannot check the IPv4 SS DROP rule: %s' ;;
@@ -15021,6 +15240,9 @@ _standalone_link_tag_survivor() {
 # confirm "gone" before the link is deleted. -N instance stems are
 # checked by exact tag (_standalone_link_tag_survivor): the family
 # regex would count the base instance as evidence for the -N link.
+# Per-core -N stems (trojan-landing-N-sb/-xray, socks5-landing-N-sb/-xray)
+# belong to one core: only that core's config is consulted; the legacy
+# ambiguous stem keeps the both-gone rule above.
 # Always returns 0.
 _prune_standalone_link_file() {
     local srv="$1" stem="$2" link="$3" _key='' _rc=0 _all_gone=1 _tag='' _cfg=''
@@ -15036,12 +15258,24 @@ _prune_standalone_link_file() {
         trojan-landing)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _keys=(trojan-xray trojan-sb) ;;
+        trojan-landing-[0-9]*-sb)
+            [[ "$srv" == sing-box ]] || return 0
+            _tag="${stem%-sb}"; _cfgs=(/etc/sing-box/config.json) ;;
+        trojan-landing-[0-9]*-xray)
+            [[ "$srv" == xray ]] || return 0
+            _tag="${stem%-xray}"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}") ;;
         trojan-landing-[0-9]*)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
         socks5-landing)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _keys=(socks5-xray socks5-sb) ;;
+        socks5-landing-[0-9]*-sb)
+            [[ "$srv" == sing-box ]] || return 0
+            _tag="${stem%-sb}"; _cfgs=(/etc/sing-box/config.json) ;;
+        socks5-landing-[0-9]*-xray)
+            [[ "$srv" == xray ]] || return 0
+            _tag="${stem%-xray}"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}") ;;
         socks5-landing-[0-9]*)
             [[ "$srv" == xray || "$srv" == sing-box ]] || return 0
             _tag="$stem"; _cfgs=("${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" /etc/sing-box/config.json) ;;
@@ -15073,6 +15307,10 @@ _prune_standalone_link_file() {
     # this core; the per-core stem (trojan-xray-N / trojan-sb-N) is now
     # the canonical carrier for the live link.
     case "$stem" in
+        *-sb|*-xray)
+            # Guard: live per-core links (trojan-landing-2-sb/-xray)
+            # must never be pruned by the broad M-02 pattern below.
+            ;;
         trojan-landing-[0-9]*|socks5-landing-[0-9]*)
             if { [[ "$srv" == xray ]] && grep -Fq '(Xray)' "$link" 2>/dev/null; } ||
                { [[ "$srv" == sing-box ]] && grep -Fq '(sing-box)' "$link" 2>/dev/null; }; then
@@ -17193,6 +17431,7 @@ confirm_deployment_replacement() {
         esac
     fi
     msg "${YELLOW}[!] $(tr_msg dp_stop_warn)${NC}"
+    msg "${YELLOW}[!] $(tr_msg dp_cred_regen)${NC}"
     msg "$(tprintf dp_current "$current" "${next_core}-${next_mode}")"
     # Critical when replacing existing config/services: never auto-yes in fast mode.
     print_port_occupancy
@@ -25171,6 +25410,22 @@ restart_owned() {
     service_is_abox_managed "$srv" || return 1
     if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1; else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&-; fi
 }
+# M41-NEW-03: stop a ghost core — a service that is still running
+# although the stack was cleared (desired MANUAL_STOPPED, CORE already
+# empty). Only a service that is verifiably A-Box-managed AND active
+# with the expected exe is touched; anything else is left alone
+# (return 0: nothing to stop).
+stop_ghost_owned() {
+    local srv="$1"
+    service_active_owned "$srv" || return 0
+    if is_systemd; then
+        systemctl stop "$srv" >/dev/null 2>&1 || true
+        if systemctl is-active --quiet "$srv"; then return 1; else return 0; fi
+    else
+        rc-service "$srv" stop >/dev/null 2>&1 9>&- 10>&- || true
+        if rc-service "$srv" status >/dev/null 2>&1; then return 1; else return 0; fi
+    fi
+}
 load_state || exit 0
 # M-20(3): a clear-all leaves CORE empty while an independently
 # deployed Argo (sing-box) stack keeps running; the probe used to
@@ -25191,7 +25446,6 @@ if [[ -z "${CORE:-}" ]]; then
             break
         fi
     done
-    [[ -n "${CORE:-}" ]] || exit 0
 fi
 desired=RUNNING
 if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
@@ -25214,7 +25468,18 @@ elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
     IFS= read -r desired < "$DESIRED" || exit 0
 fi
-[[ "$desired" == RUNNING ]] || { rm -f "$STATE"; exit 0; }
+if [[ "$desired" != RUNNING ]]; then
+    rm -f "$STATE"
+    if [[ "$desired" == MANUAL_STOPPED ]]; then
+        # M41-NEW-03: the stack was cleared (CORE already empty) but a
+        # core may still be running as a ghost; stop any running
+        # A-Box-owned core instead of leaving it serving cleared nodes.
+        # Other non-RUNNING states (TRAFFIC_BLOCKED/MAINTENANCE) are
+        # owned by the traffic monitor, not by this probe.
+        for _gs in xray sing-box hysteria; do stop_ghost_owned "$_gs" || true; done
+    fi
+    exit 0
+fi
 IPT=$(command -v iptables || echo /sbin/iptables)
 IPT6=$(command -v ip6tables || echo /sbin/ip6tables)
 has_ipv6() { local _p; _p=$(read_ip_pref 2>/dev/null || printf dual); [[ "$_p" == ipv4 ]] && return 1; ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' || ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; }
@@ -26706,9 +26971,33 @@ xray_hot_remove_inbound() {
 
 # R7-05B: enforce the loopback guard on a sing-box config file in place.
 # Prepends [{action:"resolve"}, {ip_cidr:[loopbacks], action:"reject"}]
-# to .route.rules (idempotent: no-op when the first two rules already
-# match). Refuses non-object configs and non-array route.rules. The
-# input file is never modified on failure.
+# to .route.rules (idempotent: no-op when the guard pair is already
+# present once, either at the front or in the built position just after
+# the sniff rule). Refuses non-object configs and non-array route.rules.
+# The input file is never modified on failure.
+# N4 (followup5 D-leg, same root cause as 4e83495-line S2-NEW-03):
+# build_singbox_config emits the base rules sniff-first
+# ([sniff, resolve, loopback-reject, bittorrent-reject]), so the old
+# "[0:2] == guard" check never matched a fresh build and the first
+# apply prepended a second guard pair (live 6 rules vs baseline 4);
+# routing_apply_live keeps non-state rules, so the duplicate survived
+# warp_undeploy and clear_all. A missing / partial / duplicated guard
+# is therefore rebuilt as exactly one pair at the front, which also
+# repairs an already-duplicated live config on the next apply
+# (warp_undeploy included); a single intact pair is left untouched
+# in place.
+# D-leg OBS-04: the guard pair alone is not the baseline. After a
+# prune, the first independent-instance deploy seeds a minimal
+# config with no .route at all, and this guard only ever added the
+# pair -- so live route rules sat at 2 (sniff and bittorrent-reject
+# missing) until a full-stack rebuild. Enforce the whole 4-rule
+# baseline build_singbox_config emits ([sniff, resolve,
+# loopback-reject, bittorrent-reject]) instead: every apply rebuilds
+# the rules as the baseline followed by the surviving non-baseline
+# rules, in order. A config that is already canonical rebuilds to
+# itself, so healthy configs are untouched; a duplicated baseline
+# (extra guard-pair copies after the first four) collapses to one.
+# The fail-closed refusals above are unchanged.
 singbox_apply_loopback_guard() {
     local src="$1" _tmp _dir
     [[ -f "$src" && ! -L "$src" ]] || return 1
@@ -26716,13 +27005,22 @@ singbox_apply_loopback_guard() {
     _tmp=$(mktemp "$_dir/.A-Box-sb-guard.XXXXXX") || return 1
     if ! jq '
         [
+          {network: ["tcp"], action: "sniff"},
           {action: "resolve"},
-          {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"}
-        ] as $guard
+          {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"},
+          {protocol: "bittorrent", action: "reject"}
+        ] as $base
         | if type != "object" then error("sing-box config must be an object") else . end
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
-        | if .route.rules[0:2] == $guard then . else .route.rules = ($guard + .route.rules) end
+        # OBS-3 (D1): $base[0] must be exactly what build_singbox_config
+        # emits ({network:["tcp"], action:"sniff"}). The old
+        # {protocol:"tcp", action:"sniff"} never matched it, so every
+        # routing_apply_live prepended a second sniff rule and the
+        # duplicate survived warp_undeploy and clear_all. The legacy
+        # protocol-form sniff is collapsed as well, so configs already
+        # duplicated by the old guard repair to canonical on next apply.
+        | .route.rules = ($base + (.route.rules | map(select(. != $base[0] and . != $base[1] and . != $base[2] and . != $base[3] and . != {protocol: "tcp", action: "sniff"}))))
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -27109,6 +27407,56 @@ exit 0
 EOF_XTABLES_GRANT
 }
 
+# S2-NEW-06: reconcile the running Hysteria with the config the
+# post-deploy registry reconcile may have rewritten under it.
+# $1 = sha256 of the config captured BEFORE
+# users_reg_reconcile_after_deploy ran; $2 = MainPID captured at the
+# same moment (may be empty when the PID is unreadable); $3 =
+# optional config path (default /etc/hysteria/config.yaml).
+# Returns 0 when the running process already serves the on-disk
+# config. When the reconcile rewrote the config without restarting
+# the service, restarts it and verifies the restart landed on the
+# current disk config. Any failure returns 1: a deploy that ends
+# with a stale Hysteria must fail loudly, never report success.
+# Why a restart can be missing at all: users_commit_cfg restarts
+# only when service_restart_permitted, which requires desired ==
+# RUNNING -- and a SILENT sub-deploy (four-in-one, deploy_xray ALL)
+# has not set RUNNING yet when its reconcile runs (the caller sets
+# it only after this function returns), so with a pre-redeploy
+# desired state of MANUAL_STOPPED the rewrite lands on disk while
+# the process keeps the pre-reconcile single-password config and
+# every Hy2 chain 404s until a manual restart.
+hy2_resync_running_config() {
+    local pre_sha="$1" pre_pid="${2:-}" cfg="${3:-/etc/hysteria/config.yaml}"
+    local post_sha='' post_pid='' restart_sha=''
+    [[ -n "$pre_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (pre-reconcile checksum unreadable)." >&2; return 1; }
+    post_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || post_sha=''
+    [[ -n "$post_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (config unreadable after reconcile)." >&2; return 1; }
+    [[ "$post_sha" == "$pre_sha" ]] && return 0
+    # The reconcile rewrote the config after the service started.
+    post_pid=$(managed_service_pid hysteria 2>/dev/null || true)
+    if [[ -z "$post_pid" ]]; then
+        msg "S2-NEW-06: Hysteria config changed after start but the service is not running; refusing to report a successful deploy." >&2
+        return 1
+    fi
+    # users_commit_cfg already restarts when its H-23 gate permits
+    # (desired RUNNING): a changed PID proves the running process
+    # already loaded the new config, so no second restart.
+    if [[ -n "$pre_pid" && "$post_pid" != "$pre_pid" ]]; then
+        return 0
+    fi
+    if ! restart_service_soft hysteria; then
+        msg "S2-NEW-06: Hysteria config changed after start and the restart onto the new config failed; the running service still serves the pre-reconcile config." >&2
+        return 1
+    fi
+    restart_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || restart_sha=''
+    if [[ -z "$restart_sha" || "$restart_sha" != "$post_sha" ]]; then
+        msg "S2-NEW-06: Hysteria config changed again during the resync restart; running state cannot be verified against disk." >&2
+        return 1
+    fi
+    return 0
+}
+
 # M-18 (supplement): revoke the xtables-lock grant created by
 # hy2_hop_xtables_lock_grant / write_hy2_xtables_lock_grant_script.
 # Deletes the two A-Box grant artifacts and resets the lock file
@@ -27354,7 +27702,23 @@ EOF_SVC
     # stale credentials until a menu visit -- where the merge used to
     # duplicate main as main-2. Best-effort: the deploy already
     # committed, so a failure warns but must not fail it.
+    # S2-NEW-06: capture the config sha + service PID before the
+    # reconcile so the resync below can tell whether the reconcile
+    # rewrote the config under the running service without
+    # restarting it.
+    local _hy2_recon_cfg_sha='' _hy2_recon_svc_pid=''
+    _hy2_recon_cfg_sha=$(sha256sum -- /etc/hysteria/config.yaml 2>/dev/null | awk '{print $1}') || _hy2_recon_cfg_sha=''
+    _hy2_recon_svc_pid=$(managed_service_pid hysteria 2>/dev/null || true)
     users_reg_reconcile_after_deploy hy2 || msg "S2-NEW-04: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # S2-NEW-06: if the reconcile rewrote the config after the
+    # service started (preserved multi-user restore switches auth
+    # password -> userpass on disk) and nothing restarted the service
+    # onto it, restart now and verify -- otherwise the deploy ends
+    # with every Hy2 chain 404ing until a manual restart. Fail
+    # closed: in SILENT mode the caller turns this into a deploy
+    # failure (and transaction rollback); in NORMAL mode the menu
+    # reports the failure instead of a false success.
+    hy2_resync_running_config "$_hy2_recon_cfg_sha" "$_hy2_recon_svc_pid" || return 1
 }
 
 install_file_atomically() {
@@ -27623,11 +27987,66 @@ _rollback_start_snapshot_services() {
     return 0
 }
 
+# N6-A: pre-deployment snapshot of services.state, kept OUTSIDE the
+# backup archive. The rollback restart gate reads meta/services.state
+# out of the backup tarball; an in-place tamper of the gzip stream
+# before that member (S2) makes the state unrecoverable and leaves
+# every service down. The snapshot is a private copy taken at
+# transaction begin, while the just-created archive is still intact.
+ABOX_DEPLOY_TX_STATE_SNAPSHOT=''
+
+# Drop the snapshot file (if any) and clear the pointer. Called on
+# commit and at the end of every rollback; begin also clears a stale
+# snapshot before taking a new one, so no stale state is ever reused.
+_tx_clear_services_state_snapshot() {
+    if [[ -n "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}" && -f "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" ]]; then
+        rm -f -- "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" 2>/dev/null || true
+    fi
+    ABOX_DEPLOY_TX_STATE_SNAPSHOT=''
+}
+
+# deployment_transaction_snapshot_services_state <backup>: copy the
+# backup's own recorded meta/services.state into a private file
+# outside the archive (mode 600, validated) and point
+# ABOX_DEPLOY_TX_STATE_SNAPSHOT at it. The copy records exactly the
+# state the rollback would have used. Fails closed (non-zero, no
+# pointer left) when the state cannot be extracted or fails
+# validation: deploying without the snapshot would silently reopen
+# the N6 hole. Tar's exit code is not the gate (see the N6 note in
+# rollback_restart_services_from_backup): file presence plus
+# validate_services_state_file decides.
+deployment_transaction_snapshot_services_state() {
+    local backup="${1:-}" snap work
+    _tx_clear_services_state_snapshot
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
+    snap=$(mktemp /tmp/A-Box-tx-services-state.XXXXXX) || return 1
+    chmod 600 "$snap" || { rm -f -- "$snap"; return 1; }
+    work=$(mktemp -d /tmp/A-Box-tx-state-extract.XXXXXX) || { rm -f -- "$snap"; return 1; }
+    tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null || true
+    if [[ ! -f "$work/meta/services.state" ]] || ! validate_services_state_file "$work/meta/services.state"; then
+        rm -rf -- "$work" "$snap"
+        return 1
+    fi
+    cp -- "$work/meta/services.state" "$snap" || { rm -rf -- "$work" "$snap"; return 1; }
+    chmod 600 "$snap" || { rm -rf -- "$work" "$snap"; return 1; }
+    rm -rf -- "$work"
+    ABOX_DEPLOY_TX_STATE_SNAPSHOT="$snap"
+    return 0
+}
+
 rollback_restart_services_from_backup() {
     local backup="${1:-}" work state rc=0
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
     work=$(mktemp -d /tmp/A-Box-rollback-state.XXXXXX) || return 1
-    if tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null && [[ -f "$work/meta/services.state" ]]; then
+    # N6: do not gate on tar's exit code. A damaged compressed stream
+    # can still yield an intact meta/services.state (tar reports the
+    # gzip CRC error only at the end of the stream, rc=2); the state
+    # file's presence is the gate, not tar's rc. The state must also
+    # pass validate_services_state_file: the strict restore validates
+    # too, but the fallback below parses loosely and would otherwise
+    # start a service from a corrupt/truncated state line.
+    tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null || true
+    if [[ -f "$work/meta/services.state" ]] && validate_services_state_file "$work/meta/services.state"; then
         state="$work/meta/services.state"
         if restore_managed_service_state "$state"; then
             rc=0
@@ -27640,6 +28059,21 @@ rollback_restart_services_from_backup() {
         fi
         rm -rf -- "$work"
         return $rc
+    fi
+    # N6-A: the archive's state could not be recovered (S2: gzip damage
+    # before the state member, or a corrupt in-archive state). Fall back
+    # to the pre-deployment snapshot taken at transaction begin.
+    # Restart-only: _rollback_start_snapshot_services only starts
+    # services the snapshot marks active=1, never restores files, and
+    # the snapshot itself must pass validate_services_state_file, so a
+    # corrupt/truncated snapshot starts nothing. The archive file must
+    # still exist (gate above): a missing archive fails closed.
+    if [[ -n "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}" && -f "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" && ! -L "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" ]] \
+        && validate_services_state_file "$ABOX_DEPLOY_TX_STATE_SNAPSHOT"; then
+        msg "[!] Rollback fallback: archive state unrecoverable; restarting services from the pre-deployment snapshot."
+        _rollback_start_snapshot_services "$ABOX_DEPLOY_TX_STATE_SNAPSHOT" || true
+        rm -rf -- "$work"
+        return 0
     fi
     rm -rf -- "$work"
     return 1
@@ -27753,8 +28187,31 @@ deployment_transaction_rollback_inner() {
 # The wrapper guarantees the restore for all inner returns.
 deployment_transaction_rollback() {
     local _rc
+    # OBS-2: record whether the best-effort fallback restart ran and
+    # what it returned, so die() can tier its warning (restart
+    # attempted vs restart failed). Cleared on entry so a stale value
+    # can never downgrade an unrelated later failure. The rollback
+    # itself is unchanged: the failure rc is never masked.
+    ABOX_ROLLBACK_FALLBACK_RC=''
     deployment_transaction_rollback_inner "$@"
     _rc=$?
+    # N6-A: the inner rollback can fail BEFORE any service restart
+    # (pre-verification, retained pin, stop/firewall/remove failure)
+    # while the deploy already stopped the services. A failed rollback
+    # must never leave a service down that the snapshot marks active:
+    # best-effort restart from the transaction backup (starts only
+    # A-Box-owned services the snapshot marks active=1; restores no
+    # files). The failure rc is never masked.
+    if (( _rc != 0 )); then
+        if rollback_restart_services_from_backup "${ABOX_DEPLOY_TX_BACKUP:-}"; then
+            ABOX_ROLLBACK_FALLBACK_RC='0'
+        else
+            ABOX_ROLLBACK_FALLBACK_RC='1'
+        fi
+    fi
+    # N6-A: the snapshot served its purpose (or there was no failure to
+    # cover); drop it so a later transaction can never reuse stale state.
+    _tx_clear_services_state_snapshot
     restore_deployment_transaction_traps
     return "$_rc"
 }
@@ -27766,6 +28223,11 @@ begin_deployment_transaction() {
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir" || return 1
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || return 1
+    # N6-A: snapshot services.state outside the archive before any
+    # service is stopped, so a later in-place tamper of the tarball
+    # cannot take the restart fallback down with it. Fails closed: a
+    # transaction that cannot snapshot its pre-state must not start.
+    deployment_transaction_snapshot_services_state "$ABOX_LAST_BACKUP" || return 1
     ABOX_DEPLOY_TX_BACKUP_DIR="$backup_dir"
     ABOX_DEPLOY_TX_ACTIVE=1
     ABOX_DEPLOY_TX_REASON="$reason"
@@ -27778,6 +28240,7 @@ begin_deployment_transaction() {
 
 commit_deployment_transaction() {
     local tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    _tx_clear_services_state_snapshot
     ABOX_DEPLOY_TX_ACTIVE=0
     ABOX_DEPLOY_TX_TARGETS=''
     ABOX_DEPLOY_TX_REASON=''
@@ -28033,7 +28496,15 @@ depend() { need net; }
 EOF_SVC
         chmod +x /etc/init.d/sing-box || return 1
     fi
-    prepare_abox_runtime_permissions sing-box || return 1
+    # M41-NEW-02 (same class as xray): several landing deploys call
+    # ensure before the function-level config seed when the binary is
+    # present but the config is missing; a missing config must not fail
+    # unit creation. Skip the permission prep in that case — the caller
+    # re-runs the full prep after seeding and merging. When the config
+    # exists, prep still runs here, as before.
+    if [[ -e /etc/sing-box/config.json ]]; then
+        prepare_abox_runtime_permissions sing-box || return 1
+    fi
     return 0
 }
 
@@ -28084,6 +28555,7 @@ deploy_singbox_socks5_landing() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-socks5) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28098,6 +28570,7 @@ deploy_singbox_socks5_landing() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
         # U31: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -28351,7 +28824,15 @@ depend() { need net; }
 EOF_SVC
         chmod +x /etc/init.d/xray || return 1
     fi
-    prepare_abox_runtime_permissions xray || return 1
+    # M41-NEW-02: the config seed may not exist yet when a minimal
+    # landing install calls ensure before seeding (deploy_socks5_landing
+    # calls ensure before the seed); a missing config must not fail
+    # unit creation. Skip the permission prep in that case — the caller
+    # re-runs the full prep after seeding (S-SOCKS5-01). When the config
+    # exists, prep still runs here, as before.
+    if [[ -e /usr/local/etc/xray/config.json ]]; then
+        prepare_abox_runtime_permissions xray || return 1
+    fi
     return 0
 }
 
@@ -28375,6 +28856,7 @@ deploy_xray_trojan_landing() {
         local xray_tmp xray_zip xray_ext
         get_architecture
         xray_tmp=$(abox_mktemp_exec_dir A-Box-xray-trojan) || die "$(tr_msg dp_xray_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$xray_tmp"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -28388,6 +28870,7 @@ deploy_xray_trojan_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],routing:{rules:[{type:"field",ip:["127.0.0.0/8","::1/128"],outboundTag:"block"}]},outbounds:[{protocol:"freedom",tag:"direct"},{protocol:"blackhole",tag:"block"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
@@ -28410,12 +28893,14 @@ deploy_xray_trojan_landing() {
     if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
         local _geo_tmp
         _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$_geo_tmp"
         install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
         fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
         install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
         install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
         rm -rf -- "$_geo_tmp"
+        ABOX_DEPLOY_TX_TMP=''
     fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
@@ -28528,6 +29013,7 @@ deploy_singbox_trojan_landing() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-trojan) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28542,6 +29028,7 @@ deploy_singbox_trojan_landing() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -28721,6 +29208,7 @@ deploy_singbox_tuic() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-tuic) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28735,6 +29223,7 @@ deploy_singbox_tuic() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -28923,6 +29412,7 @@ deploy_singbox_anytls() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-anytls) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28937,6 +29427,7 @@ deploy_singbox_anytls() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -29109,6 +29600,7 @@ deploy_singbox_shadowtls() {
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-shadowtls) || die "$(tr_msg dp_sb_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$sb_tmp"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -29123,6 +29615,7 @@ deploy_singbox_shadowtls() {
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
         # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
@@ -32016,6 +32509,72 @@ routing_apply_all_managed() {
 
 # ---------------- WARP one-click ----------------
 
+# L6-NEW-01: remove warp-out residue directly from the live core
+# configs on disk, with no core and no running service needed.
+# routing_apply_live is the normal retirement path, but it requires
+# a core; the no-core warp_undeploy path and clear_all have none, so
+# without this the endpoint and its route rules stay live forever
+# (_remove_inbounds_from_config only strips rules referencing
+# removed *inbounds*; warp-out is an outbound/endpoint, and its
+# rules reference it via outbound/outboundTag). Idempotent: a
+# missing config, or one without warp-out, is success. Never
+# restarts a service: the callers run with the stack stopped.
+warp_scrub_live_config() {
+    local cfg stripped tmp
+    for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
+        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        stripped=$(mktemp) || return 1
+        # OBS-3 (D2) / S1-NEW-06: the xray validation below runs `xray run -test`
+        # on $tmp, and xray detects the config format from the filename
+        # extension: an extensionless mktemp file fails with rc 23
+        # ("Failed to get format"), so the scrub aborted at the xray
+        # step and never reached the sing-box config on any box with an
+        # xray binary. Give the temp file a .json suffix (same pattern
+        # as the other xray validation sites in this file).
+        tmp=$(mktemp /tmp/A-Box-scrub.XXXXXX.json) || { rm -f "$stripped"; return 1; }
+        if ! jsonc_strip_comments "$cfg" > "$stripped" 2>/dev/null; then
+            rm -f "$stripped" "$tmp"; return 1
+        fi
+        if ! jq 'del(.outbounds[]? | select(.tag == "warp-out"))
+                | del(.endpoints[]? | select(.tag == "warp-out"))
+                | del(.routing.rules[]? | select(.outboundTag == "warp-out"))
+                | del(.route.rules[]? | select(.outbound == "warp-out"))' \
+                "$stripped" > "$tmp" 2>/dev/null; then
+            rm -f "$stripped" "$tmp"; return 1
+        fi
+        rm -f "$stripped"
+        jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        # S1-NEW-06: the jq filter above only deletes the
+        # reference shapes it knows (outbounds/endpoints/rules).
+        # Any other live reference to warp-out (e.g. an
+        # observatory subjectSelector) would survive the delete
+        # and still pass `xray run -test`, so the scrub would
+        # report success over a residue. Fail closed before
+        # installing: no exact "warp-out" string may remain
+        # anywhere in the new config.
+        if jq -e '[.. | strings | select(. == "warp-out")] | length > 0' "$tmp" >/dev/null 2>&1; then
+            rm -f "$tmp"; return 1
+        fi
+        case "$cfg" in
+            *xray*)
+                if [[ -x /usr/local/bin/xray ]]; then
+                    XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                fi ;;
+            *sing-box*)
+                if [[ -x /usr/local/bin/sing-box ]]; then
+                    /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                fi ;;
+        esac
+        if ! install_file_atomically "$tmp" "$cfg" 600; then rm -f "$tmp"; return 1; fi
+        rm -f "$tmp"
+        case "$cfg" in
+            *xray*) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
+            *sing-box*) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
+        esac
+    done
+    return 0
+}
+
 # wgcf tracks the upstream latest release at runtime (no version pin).
 # Prints "<version> <sha256:hex>" for the latest ViRb3/wgcf release, bound
 # to a single resolution snapshot. Verification policy (A'): prefer the
@@ -32168,10 +32727,30 @@ warp_deploy() {
 }
 
 warp_deploy_inner() {
-    local workdir xray_json singbox_json
+    local workdir xray_json singbox_json core
     workdir=$(mktemp -d) || return 1
     _warp_deploy_workdir="$workdir"
     msg "$(tr_msg warp_deploying)"
+    # L6-NEW-01: resolve the core BEFORE registering warp-out in
+    # the routing state. An aborted deploy (no core) used to leave
+    # the state entry behind, so the menu reported WARP as deployed
+    # with nothing live; it also wasted a wgcf register on a deploy
+    # that could never apply.
+    core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    # Guard relaxation (coordinator-composed per the worker's formula):
+    # CORE empty but a managed aux core exists -> do not abort early;
+    # routing_apply_all_managed below applies to every managed core.
+    # Abort only when no core at all is known.
+    if [[ -z "$core" ]]; then
+        if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray && ! service_is_abox_managed hysteria; then
+            msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+            return 1
+        fi
+    fi
     [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
     warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }
     # M-20: snapshot the whole state file before mutating it (same
@@ -32208,6 +32787,25 @@ warp_deploy_inner() {
 }
 
 warp_undeploy() {
+    local core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    if [[ -z "$core" ]]; then
+        # L6-NEW-01: no core means no routing_apply_live to retire
+        # the endpoint/rules through, but the residue is still on
+        # disk and the menu has no other way to clear it (every
+        # no-core undeploy aborted here). Scrub the live configs
+        # directly, then drop the state entry: scrub first so a
+        # scrub failure keeps the state flag (truthful: the residue
+        # is still live) instead of reporting "not deployed" over
+        # a live warp-out.
+        warp_scrub_live_config || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+        routing_outbound_del 'warp-out' || return 1
+        msg "$(tr_msg warp_removed)"
+        return 0
+    fi
     # M-20: snapshot the whole state file before mutating it (same
     # pattern as warp_apply_preset / warp_deploy_inner): if the live
     # apply fails, the snapshot is written back so the state and the
@@ -32667,6 +33265,7 @@ deploy_socks5_landing() {
         local xray_tmp xray_zip xray_ext
         get_architecture
         xray_tmp=$(abox_mktemp_exec_dir A-Box-xray-socks5) || die "$(tr_msg dp_xray_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$xray_tmp"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -32680,6 +33279,7 @@ deploy_socks5_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
+        ABOX_DEPLOY_TX_TMP=''
         # R14-F09-03: check ownership BEFORE writing any unit below.
         # ensure_xray_service_unit passes vacuously once our own marker
         # is on disk, so the gate at the end of this function (R6-F09-7)
@@ -32746,12 +33346,14 @@ EOF_SVC
     if [[ ! -f /usr/local/share/xray/geoip.dat || ! -f /usr/local/share/xray/geosite.dat ]]; then
         local _geo_tmp
         _geo_tmp=$(mktemp -d /tmp/A-Box-xray-geo.XXXXXX) || die "$(tr_msg dp_geo_tmpdir)"
+        ABOX_DEPLOY_TX_TMP="$_geo_tmp"
         install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
         fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$_geo_tmp/geoip.dat"
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$_geo_tmp/geosite.dat"
         install_file_atomically "$_geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
         install_file_atomically "$_geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
         rm -rf -- "$_geo_tmp"
+        ABOX_DEPLOY_TX_TMP=''
     fi
     ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
@@ -33566,6 +34168,10 @@ EOF_SVC
     # warns but must not fail it (same posture as the post-deploy
     # snapshot below).
     users_reg_reconcile_after_deploy xray || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # O1 (followup6 B-leg): drop registries of inbounds this overwrite
+    # removed (Vision coverage over xray4 leaves stale ss/xhttp files
+    # that the export then skips). Best-effort like reconcile above.
+    users_reg_prune_stale_after_deploy xray || msg "O1: stale user registry prune after deploy failed; registries of removed inbounds may linger until the next user-management visit." >&2
     # R27-H-NF-06 (GPT-arbitrated B): snapshot the just-deployed config
     # so the newest trusted backup is no longer the pre-deployment
     # empty one; a later self-heal then restores nodes instead of an
@@ -33581,6 +34187,28 @@ EOF_SVC
     _n1_flags=$(xray_config_reality_flags "$XRAY_SLOT_CFG" || true)
     read -r _n1_reality _n1_xhttp <<< "${_n1_flags:-0 0}"
     if [[ "$_n1_reality" == '1' ]]; then show_reality_mlkem_notice "$_n1_xhttp" 0; fi
+    # S2-NEW-03 follow-up (fresh-deploy segment): the refresh below
+    # exports registries only, and on a fresh install no registry
+    # exists yet -- main lives only in the live config, so the export
+    # is always 0 links. Adopt main into users.d FIRST (the same
+    # protocol_inventory + users_reg_ensure loop the guard tick
+    # runs), so the refresh runs AFTER main registration.
+    # Best-effort: the deploy already committed, so a failure warns
+    # but must not fail it.
+    local _s2n03_c='' _s2n03_t='' _s2n03_p='' _s2n03_pt=''
+    while IFS=$'\t' read -r _s2n03_c _s2n03_t _s2n03_p _s2n03_pt; do
+        # Only the stacks THIS deploy built: xray always, hy2 only
+        # when this deploy deployed it (ALL). Any other core's config
+        # left on disk belongs to a pruned stack -- adopting it here
+        # would resurrect its registry and export dead links.
+        case "$_s2n03_c" in
+            xray) ;;
+            hy2) [[ "$MODE_IN" == *'ALL'* ]] || continue ;;
+            *) continue ;;
+        esac
+        [[ -n "$_s2n03_t" && "$_s2n03_p" != 'shadowtls' ]] || continue
+        users_reg_ensure "$_s2n03_c" "$_s2n03_t" >/dev/null 2>&1 || true
+    done < <(protocol_inventory 2>/dev/null || true)
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -33588,6 +34216,7 @@ EOF_SVC
     refresh_subscription_after_deploy || true
     view_config deploy
 }
+
 
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
@@ -33754,6 +34383,28 @@ EOF_SVC
     # link. Best-effort: the deploy already committed, so a failure
     # warns but must not fail it.
     users_reg_reconcile_after_deploy sing-box || msg "OBS-S1-08: user registry reconcile after deploy failed; issued links may carry pre-redeploy credentials until the next user-management visit." >&2
+    # O1 (followup6 B-leg): same stale-registry prune as the xray
+    # deploy above (single-protocol coverage drops the other tags'
+    # inbounds; their registries must not linger into the export).
+    users_reg_prune_stale_after_deploy sing-box || msg "O1: stale user registry prune after deploy failed; registries of removed inbounds may linger until the next user-management visit." >&2
+    # S2-NEW-03 follow-up (fresh-deploy segment): the refresh below
+    # exports registries only, and on a fresh install no registry
+    # exists yet -- main lives only in the live config, so the export
+    # is always 0 links. Adopt main into users.d FIRST (the same
+    # protocol_inventory + users_reg_ensure loop the guard tick
+    # runs), so the refresh runs AFTER main registration.
+    # Best-effort: the deploy already committed, so a failure warns
+    # but must not fail it.
+    local _s2n03_c='' _s2n03_t='' _s2n03_p='' _s2n03_pt=''
+    while IFS=$'\t' read -r _s2n03_c _s2n03_t _s2n03_p _s2n03_pt; do
+        # Only the stack THIS deploy built (sing-box). Any other
+        # core's config left on disk belongs to a pruned stack --
+        # adopting it here would resurrect its registry and export
+        # dead links.
+        [[ "$_s2n03_c" == 'sing-box' ]] || continue
+        [[ -n "$_s2n03_t" && "$_s2n03_p" != 'shadowtls' ]] || continue
+        users_reg_ensure "$_s2n03_c" "$_s2n03_t" >/dev/null 2>&1 || true
+    done < <(protocol_inventory 2>/dev/null || true)
     # S2-NEW-03: refresh the subscription export so the deployed node
     # set is what subscribers see; without this the files keep serving
     # dead links until menu E. Best-effort (see helper): the deploy
@@ -34210,9 +34861,81 @@ core_family_unit_registered() {
     return 1
 }
 
+# M41-NEW-03: live-process ownership evidence. When the unit-file marker
+# AND the ownership manifest are both gone, a running core must not be
+# treated as foreign by name alone — the running process itself is
+# evidence: its exe must be the A-Box core binary AND its command line
+# must reference the A-Box config path for that core. Anything else is
+# unverified and is never touched.
+_core_exe_and_config() {
+    case "$1" in
+        xray) printf '%s\n%s\n' /usr/local/bin/xray /usr/local/etc/xray/config.json ;;
+        sing-box) printf '%s\n%s\n' /usr/local/bin/sing-box /etc/sing-box/config.json ;;
+        hysteria) printf '%s\n%s\n' /usr/local/bin/hysteria /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+core_process_matches() {
+    local srv="$1" pid="$2" exe='' cfg='' cmdline=''
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    pid_exe_matches "$pid" "$exe" || return 1
+    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    [[ "$cmdline" == *"$cfg"* ]]
+}
+find_core_residual_pid() {
+    local srv="$1" exe='' cfg='' pid='' cmdline=''
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    for d in /proc/[0-9]*; do
+        pid="${d#/proc/}"
+        [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || continue
+        pid_exe_matches "$pid" "$exe" || continue
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        [[ "$cmdline" == *"$cfg"* ]] || continue
+        printf '%s\n' "$pid"
+        return 0
+    done
+    return 1
+}
+stop_core_residual_process() {
+    # M41-NEW-03: kill a residual core process that systemd no longer
+    # tracks (orphan: unit inactive / MainPID 0, process alive with the
+    # A-Box exe + config in its cmdline). Identity is re-verified before
+    # every signal (exe + cmdline + starttime), mirroring
+    # kill_managed_residual_pids; a PID reused in between is never
+    # signalled. Returns 0 iff no same-instance residual remains.
+    local srv="$1" pid='' start='' waited=0
+    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+    [[ -n "$pid" ]] || return 0
+    kill -0 "$pid" 2>/dev/null || return 0
+    start=$(proc_starttime "$pid" 2>/dev/null || true)
+    [[ -n "$start" ]] || return 1
+    core_process_matches "$srv" "$pid" || return 0
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    while (( waited < 50 )); do
+        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
+        if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then return 0; fi
+        core_process_matches "$srv" "$pid" || return 0
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    return 1
+}
 stop_owned() {
     local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
     u=$(managed_unit_path "$srv") || return 1
+    # M41-NEW-03 (hardening, not the observed mechanism): if INIT_SYS was
+    # never set in this process (e.g. stop_owned called before any init),
+    # re-derive it instead of silently taking the OpenRC branch on a
+    # systemd host. An explicit openrc value is never overridden.
+    if [[ -z "${INIT_SYS:-}" || "${INIT_SYS:-}" == unknown ]] && systemd_available; then
+        INIT_SYS='systemd'
+        u=$(managed_unit_path "$srv") || return 1
+    fi
     if ! owned "$srv"; then
         # R3-NEW-04: the marker gate above refuses a unit whose file lost
         # its marker (or went missing, or became a symlink) after
@@ -34226,14 +34949,32 @@ stop_owned() {
         # the post-stop verification below still has to confirm the
         # service is actually stopped before success is reported.
         if ! core_family_unit_registered "$srv"; then
-            # An existing but unmarked unit is outside A-Box ownership and cannot be
-            # changed. If the unit file is absent, still query the service manager:
-            # a previously loaded unit may remain active after its file was removed.
-            [[ ! -e "$u" && ! -L "$u" ]] || return 1
+            # M41-NEW-03: ownership is unproven (marker AND manifest
+            # both gone). Never stop a foreign service on name alone —
+            # but do not report failure for a service that is already
+            # stopped, and do not leave a RUNNING service that is
+            # verifiably the A-Box stack (live exe + config path) as a
+            # ghost. Query the service manager first:
+            #   inactive  -> already stopped: success (nothing to do);
+            #   active + live-verified -> fall through to the stop path;
+            #   active + unverified  -> refuse (foreign protection).
             if is_systemd; then
-                local load_state
-                load_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
-                case "$load_state" in inactive|failed|dead|not-found) return 0 ;; *) return 1 ;; esac
+                local _live_state _live_pid
+                _live_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+                case "$_live_state" in
+                    inactive|failed|dead|not-found) return 0 ;;
+                    active|activating|deactivating|reloading)
+                        _live_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
+                        if ! core_process_matches "$srv" "$_live_pid"; then
+                            # MainPID may be 0 while the service is
+                            # activating; fall back to a /proc scan for a
+                            # matching live process.
+                            _live_pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+                            core_process_matches "$srv" "$_live_pid" || return 1
+                        fi
+                        ;;
+                    *) return 1 ;;
+                esac
             else
                 rc-service "$srv" status >/dev/null 2>&1; rc=$?
                 case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
@@ -34250,7 +34991,13 @@ stop_owned() {
             active|activating|deactivating|reloading)
                 # Restart=always can race a failed stop. Disable first, then kill the
                 # unit cgroup and re-check actual activity before reporting success.
-                systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                # M41-NEW-03: a unit file deleted before this call (e.g.
+                # clear_all's own _remove_hy2_official deletes the
+                # hysteria unit, then this loop stops hysteria) cannot be
+                # disabled; disabling is moot once the file is gone.
+                if [[ -f "$u" && ! -L "$u" ]]; then
+                    systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                fi
                 systemctl kill --kill-who=all --signal=SIGKILL "$srv" >/dev/null 2>&1 || true
                 systemctl stop "$srv" >/dev/null 2>&1 || true
                 ;;
@@ -34265,9 +35012,13 @@ stop_owned() {
         esac
         _stop_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null) || return 1
         [[ "$_stop_pid" == 0 ]] || return 1
-        systemctl disable "$srv" >/dev/null 2>&1 || return 1
-        enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
-        [[ "$enabled_state" == disabled ]] || return 1
+        # M41-NEW-03: same absent-file tolerance as above — a stopped
+        # service with no unit file left is already disabled.
+        if [[ -f "$u" && ! -L "$u" ]]; then
+            systemctl disable "$srv" >/dev/null 2>&1 || return 1
+            enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
+            [[ "$enabled_state" == disabled ]] || return 1
+        fi
         # Hardening: a unit that was still activating may reach active
         # after the first check; re-verify before reporting success.
         _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
@@ -34275,6 +35026,11 @@ stop_owned() {
             inactive|failed) : ;;
             *) return 1 ;;
         esac
+        # M41-NEW-03: systemd may report stopped while a residual
+        # process keeps serving the wiped config (cgroup escapee /
+        # orphan). Verify no live A-Box-exe process remains; kill a
+        # verified residual, and fail if it survives.
+        stop_core_residual_process "$srv" || return 1
         return 0
     else
         rc-service "$srv" stop >/dev/null 2>&1 || true
@@ -34303,6 +35059,10 @@ stop_owned() {
             3|16|32) : ;;
             *) return 1 ;;
         esac
+        # M41-NEW-03: same residual-process verification as the systemd
+        # branch — an orphan core keeps serving the wiped config even
+        # after OpenRC reports it stopped.
+        stop_core_residual_process "$srv" || return 1
     fi
 }
 start_owned() {
@@ -36944,7 +37704,8 @@ firewall_recycle_freed_ports() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0
+    local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
     # block deletes the hop NAT rules.
@@ -36961,11 +37722,11 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             # by the deletion that just ran.
             vmess-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vmess || true ;;
             vless-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vless || true ;;
-            *trojan*) _standalone_link_prune_if_gone trojan-xray /etc/ddr/standalone-links.d/trojan-xray.link; _standalone_link_prune_if_gone trojan-sb /etc/ddr/standalone-links.d/trojan-sb.link ;;
-            *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link ;;
+            *trojan*) _standalone_link_prune_if_gone trojan-xray "${_ld}/standalone-links.d/trojan-xray.link"; _standalone_link_prune_if_gone trojan-sb "${_ld}/standalone-links.d/trojan-sb.link"; case "$tag" in trojan-landing-[0-9]*) _stem2=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag"); _prune_standalone_link_file "$core" "$_stem2" "${_ld}/standalone-links.d/${_stem2}.link" ;; esac ;;
+            *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link; _tuic_removed=1 ;;
             *anytls*) _standalone_link_prune_if_gone anytls /etc/ddr/standalone-links.d/anytls.link ;;
             *shadowtls*) _standalone_link_prune_if_gone shadowtls /etc/ddr/standalone-links.d/shadowtls.link ;;
-            *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb /etc/ddr/standalone-links.d/socks5-sb.link; _standalone_link_prune_if_gone socks5-xray /etc/ddr/standalone-links.d/socks5-xray.link ;;
+            *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb "${_ld}/standalone-links.d/socks5-sb.link"; _standalone_link_prune_if_gone socks5-xray "${_ld}/standalone-links.d/socks5-xray.link"; case "$tag" in socks5-landing-[0-9]*|socks-in-[0-9]*|mixed-in-[0-9]*) _stem2=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag"); _prune_standalone_link_file "$core" "$_stem2" "${_ld}/standalone-links.d/${_stem2}.link"; _prune_standalone_link_file "$core" "$tag" "${_ld}/standalone-links.d/${tag}.link" ;; esac ;;
         esac
         # R16-F10-01: never let the generic delete undo a prune that
         # just kept a link: when $tag is itself a prune key, the link
@@ -37019,6 +37780,28 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             if [[ "$_hy2_jq_rc" == 1 ]]; then
                 [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
                 [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+            fi
+        fi
+    fi
+    # N5 (followup5 D-leg): a removed sing-box TUIC inbound owns its
+    # per-tag cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/key,
+    # plus the .A-Box-bak a failed redeploy may have left). The Hy2
+    # block above has this cleanup; TUIC never did, so clear_all left
+    # orphaned pairs behind. Delete only files no live TUIC inbound
+    # still references (paths read from the live config, so a
+    # surviving inbound's pair is never touched); an unreadable or
+    # unparseable config keeps everything (fail-closed, same as Hy2).
+    if [[ "$core" == 'sing-box' && "$_tuic_removed" == 1 ]]; then
+        cfg='/etc/sing-box/config.json'
+        if [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]]; then
+            local _tuic_stripped='' _tuic_refs='' _tuic_cert_file='' _tuic_base=''
+            _tuic_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || _tuic_stripped=''
+            if [[ -n "${_tuic_stripped//[[:space:]]/}" ]] && _tuic_refs=$(printf '%s' "$_tuic_stripped" | jq -r '.inbounds[]? | select(.type == "tuic") | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null); then
+                for _tuic_cert_file in /etc/sing-box/tuic-*.crt /etc/sing-box/tuic-*.key /etc/sing-box/tuic-*.crt.A-Box-bak /etc/sing-box/tuic-*.key.A-Box-bak; do
+                    [[ -f "$_tuic_cert_file" && ! -L "$_tuic_cert_file" ]] || continue
+                    _tuic_base="${_tuic_cert_file%.A-Box-bak}"
+                    grep -Fxq -- "$_tuic_base" <<< "$_tuic_refs" 2>/dev/null || rm -f -- "$_tuic_cert_file" 2>/dev/null || true
+                done
             fi
         fi
     fi
@@ -37144,6 +37927,28 @@ remove_single_protocol_menu() {
     if (( _inv_rc != 0 )); then
         return 1
     fi
+    # D-leg O2 (same symptom as 124bfe8-leg O2): the inventory also
+    # lists the ShadowTLS inner detour inbounds (shadowtls-ss,
+    # shadowtls-in-2-ss), which have no listen_port, so the delete
+    # list showed them as "ShadowTLS · sing-box · :—" -- and selecting
+    # one deleted the live outer node with it (the deps query finds
+    # the outer inbound detouring to it). Helpers are never standalone
+    # nodes: drop them from the delete list, using the same regex
+    # view_config already uses (L30386/L30420). They are still removed
+    # together with their outer node via the E12 detour-target
+    # absorption below, never standalone.
+    if (( ${#rows[@]} > 0 )); then
+        local -a _rows_f=()
+        local _r='' _c='' _t='' _p='' _port=''
+        for _r in "${rows[@]}"; do
+            IFS=$'\t' read -r _c _t _p _port <<< "$_r"
+            if [[ "$_t" =~ ^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$ ]]; then
+                continue
+            fi
+            _rows_f+=("$_r")
+        done
+        rows=("${_rows_f[@]}")
+    fi
     if (( ${#rows[@]} == 0 )); then
         msg "${YELLOW}$(tr_msg cl_none)${NC}"
         return 0
@@ -37262,6 +38067,278 @@ clear_all_remove_sole_api_inbound() {
     _remove_inbounds_from_config "$core" api
 }
 
+# M41-NEW-03 follow-up: the stop family below is the MAIN-SCRIPT copy of
+# the functions that previously existed ONLY inside the traffic_monitor.sh
+# template (EOF_TRAFFIC heredoc, setup_traffic_monitor). clear_all_protocols
+# calls stop_owned, but in the main-script process that name did not exist
+# (bash rc 127, "command not found"), so clear_all could never stop a
+# service and always reported stop failure for xray/sing-box/hysteria
+# (S1 + S2 real-device legs). The template keeps its own copies for the
+# standalone cron script; run_self_tests asserts the two copies stay
+# byte-identical (drift guard next to the traffic_body checks).
+# BEGIN MAIN STOP FAMILY
+
+managed_unit_path() {
+    case "$1" in
+        xray|sing-box|hysteria)
+            if is_systemd; then printf '/etc/systemd/system/%s.service\n' "$1"; else printf '/etc/init.d/%s\n' "$1"; fi
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+owned() {
+    local srv="$1" u
+    u=$(managed_unit_path "$srv") || return 1
+    [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"
+}
+
+force_stop_owned_openrc() {
+    local srv="$1" pidfile exe pid owner proc_exe
+    case "$srv" in
+        xray) pidfile=/run/xray.pid; exe=/usr/local/bin/xray ;;
+        sing-box) pidfile=/run/sing-box.pid; exe=/usr/local/bin/sing-box ;;
+        hysteria) pidfile=/run/hysteria.pid; exe=/usr/local/bin/hysteria ;;
+        *) return 1 ;;
+    esac
+    [[ -f "$pidfile" && ! -L "$pidfile" ]] || return 1
+    [[ "$(stat -c %h "$pidfile" 2>/dev/null)" == 1 ]] || return 1
+    owner=$(stat -c %u "$pidfile" 2>/dev/null) || return 1
+    [[ "$owner" == 0 ]] || return 1
+    pid=$(cat -- "$pidfile" 2>/dev/null) || return 1
+    [[ "$pid" =~ ^[1-9][0-9]{0,9}$ ]] && (( 10#$pid > 1 )) || return 1
+    proc_exe=$(readlink "/proc/${pid}/exe" 2>/dev/null) || return 1
+    [[ "$proc_exe" == "$exe" ]] || return 1
+    command -v start-stop-daemon >/dev/null 2>&1 || return 1
+    # OpenRC's own process helper verifies both the pidfile and executable
+    # before signaling. Never fall back to an unqualified kill by PID.
+    start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1 >/dev/null 2>&1 || return 1
+}
+
+core_family_unit_registered() {
+    local srv="$1" u mf line t f p h rest _notabs TAB=$'\t'
+    u=$(managed_unit_path "$srv") || return 1
+    mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$mf" && ! -L "$mf" ]] || return 1
+    [[ "$(stat -c %u:%g "$mf" 2>/dev/null || true)" == 0:0 ]] || return 1
+    [[ "$(stat -c %a "$mf" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
+    [[ "$(stat -c %s "$mf" 2>/dev/null || echo 99999999)" -le 4194304 ]] || return 1
+    _manifest_rows_valid "$mf" || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        _notabs="${line//$TAB/}"
+        [[ "$(( ${#line} - ${#_notabs} ))" -eq 3 ]] || return 1
+        IFS=$'\t' read -r t f p h rest <<< "$line"
+        [[ -z "${rest:-}" ]] || return 1
+        if [[ "$t" == F && "$f" == "$srv" && "$p" == "$u" ]]; then return 0; fi
+    done < "$mf"
+    return 1
+}
+
+_core_exe_and_config() {
+    case "$1" in
+        xray) printf '%s\n%s\n' /usr/local/bin/xray /usr/local/etc/xray/config.json ;;
+        sing-box) printf '%s\n%s\n' /usr/local/bin/sing-box /etc/sing-box/config.json ;;
+        hysteria) printf '%s\n%s\n' /usr/local/bin/hysteria /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+core_process_matches() {
+    local srv="$1" pid="$2" exe='' cfg='' cmdline=''
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    pid_exe_matches "$pid" "$exe" || return 1
+    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    [[ "$cmdline" == *"$cfg"* ]]
+}
+
+find_core_residual_pid() {
+    local srv="$1" exe='' cfg='' pid='' cmdline=''
+    { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
+    for d in /proc/[0-9]*; do
+        pid="${d#/proc/}"
+        [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || continue
+        pid_exe_matches "$pid" "$exe" || continue
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        [[ "$cmdline" == *"$cfg"* ]] || continue
+        printf '%s\n' "$pid"
+        return 0
+    done
+    return 1
+}
+
+stop_core_residual_process() {
+    # M41-NEW-03: kill a residual core process that systemd no longer
+    # tracks (orphan: unit inactive / MainPID 0, process alive with the
+    # A-Box exe + config in its cmdline). Identity is re-verified before
+    # every signal (exe + cmdline + starttime), mirroring
+    # kill_managed_residual_pids; a PID reused in between is never
+    # signalled. Returns 0 iff no same-instance residual remains.
+    local srv="$1" pid='' start='' waited=0
+    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+    [[ -n "$pid" ]] || return 0
+    kill -0 "$pid" 2>/dev/null || return 0
+    start=$(proc_starttime "$pid" 2>/dev/null || true)
+    [[ -n "$start" ]] || return 1
+    core_process_matches "$srv" "$pid" || return 0
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    while (( waited < 50 )); do
+        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
+        if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then return 0; fi
+        core_process_matches "$srv" "$pid" || return 0
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    return 1
+}
+
+stop_owned() {
+    local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
+    u=$(managed_unit_path "$srv") || return 1
+    # M41-NEW-03 (hardening, not the observed mechanism): if INIT_SYS was
+    # never set in this process (e.g. stop_owned called before any init),
+    # re-derive it instead of silently taking the OpenRC branch on a
+    # systemd host. An explicit openrc value is never overridden.
+    if [[ -z "${INIT_SYS:-}" || "${INIT_SYS:-}" == unknown ]] && systemd_available; then
+        INIT_SYS='systemd'
+        u=$(managed_unit_path "$srv") || return 1
+    fi
+    if ! owned "$srv"; then
+        # R3-NEW-04: the marker gate above refuses a unit whose file lost
+        # its marker (or went missing, or became a symlink) after
+        # deployment. A family recorded in the ownership manifest was
+        # deployed by A-Box -- recording requires abox_owns_service, i.e.
+        # a marked unit at record time, and the manifest row names this
+        # exact unit path. Refusing to stop such a service leaves a
+        # cleared stack running as an empty shell (the H-23 failure:
+        # clear_all reported success while sing-box kept listening).
+        # Fall through to the normal stop path for a registered family;
+        # the post-stop verification below still has to confirm the
+        # service is actually stopped before success is reported.
+        if ! core_family_unit_registered "$srv"; then
+            # M41-NEW-03: ownership is unproven (marker AND manifest
+            # both gone). Never stop a foreign service on name alone —
+            # but do not report failure for a service that is already
+            # stopped, and do not leave a RUNNING service that is
+            # verifiably the A-Box stack (live exe + config path) as a
+            # ghost. Query the service manager first:
+            #   inactive  -> already stopped: success (nothing to do);
+            #   active + live-verified -> fall through to the stop path;
+            #   active + unverified  -> refuse (foreign protection).
+            if is_systemd; then
+                local _live_state _live_pid
+                _live_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+                case "$_live_state" in
+                    inactive|failed|dead|not-found) return 0 ;;
+                    active|activating|deactivating|reloading)
+                        _live_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
+                        if ! core_process_matches "$srv" "$_live_pid"; then
+                            # MainPID may be 0 while the service is
+                            # activating; fall back to a /proc scan for a
+                            # matching live process.
+                            _live_pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+                            core_process_matches "$srv" "$_live_pid" || return 1
+                        fi
+                        ;;
+                    *) return 1 ;;
+                esac
+            else
+                rc-service "$srv" status >/dev/null 2>&1; rc=$?
+                case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
+            fi
+        fi
+    fi
+    if is_systemd; then
+        systemctl stop "$srv" >/dev/null 2>&1 || true
+        # R15-F10-01: verify with ActiveState, not is-active. is-active
+        # returns non-zero for activating/deactivating/query-failure too,
+        # which is not "stopped"; only inactive|failed (+ MainPID 0) is.
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            active|activating|deactivating|reloading)
+                # Restart=always can race a failed stop. Disable first, then kill the
+                # unit cgroup and re-check actual activity before reporting success.
+                # M41-NEW-03: a unit file deleted before this call (e.g.
+                # clear_all's own _remove_hy2_official deletes the
+                # hysteria unit, then this loop stops hysteria) cannot be
+                # disabled; disabling is moot once the file is gone.
+                if [[ -f "$u" && ! -L "$u" ]]; then
+                    systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                fi
+                systemctl kill --kill-who=all --signal=SIGKILL "$srv" >/dev/null 2>&1 || true
+                systemctl stop "$srv" >/dev/null 2>&1 || true
+                ;;
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
+        # Final verification: confirmed stopped, not merely "not active".
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
+        _stop_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null) || return 1
+        [[ "$_stop_pid" == 0 ]] || return 1
+        # M41-NEW-03: same absent-file tolerance as above — a stopped
+        # service with no unit file left is already disabled.
+        if [[ -f "$u" && ! -L "$u" ]]; then
+            systemctl disable "$srv" >/dev/null 2>&1 || return 1
+            enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
+            [[ "$enabled_state" == disabled ]] || return 1
+        fi
+        # Hardening: a unit that was still activating may reach active
+        # after the first check; re-verify before reporting success.
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
+        # M41-NEW-03: systemd may report stopped while a residual
+        # process keeps serving the wiped config (cgroup escapee /
+        # orphan). Verify no live A-Box-exe process remains; kill a
+        # verified residual, and fail if it survives.
+        stop_core_residual_process "$srv" || return 1
+        return 0
+    else
+        rc-service "$srv" stop >/dev/null 2>&1 || true
+        rc-service "$srv" status >/dev/null 2>&1; rc=$?
+        if (( rc == 0 )); then
+            # If OpenRC's stop action failed and the service remains active,
+            # try its pidfile-aware TERM/KILL escalation only after validating
+            # that the pidfile belongs to root and the PID maps to this core.
+            force_stop_owned_openrc "$srv" || return 1
+            rc-service "$srv" status >/dev/null 2>&1; rc=$?
+        fi
+        case "$rc" in
+            0) return 1 ;;
+            3|16|32) : ;;
+            *) return 1 ;;
+        esac
+        rc_show=$(rc-update show default 2>/dev/null) || return 1
+        if grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" <<< "$rc_show"; then
+            rc-update del "$srv" default >/dev/null 2>&1 || return 1
+        fi
+        rc_show=$(rc-update show default 2>/dev/null) || return 1
+        grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" <<< "$rc_show" && return 1
+        rc-service "$srv" status >/dev/null 2>&1; rc=$?
+        case "$rc" in
+            0) return 1 ;;
+            3|16|32) : ;;
+            *) return 1 ;;
+        esac
+        # M41-NEW-03: same residual-process verification as the systemd
+        # branch — an orphan core keeps serving the wiped config even
+        # after OpenRC reports it stopped.
+        stop_core_residual_process "$srv" || return 1
+    fi
+}
+
+# END MAIN STOP FAMILY
+
 clear_all_protocols() {
     local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped='' _cmv='' _freed_tmp='' _hy2port=''
     local -a all_tags=()
@@ -37368,6 +38445,15 @@ clear_all_protocols() {
                 sed -i "s/^${_cmv}=.*/${_cmv}=\"\"/" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null || wipe_ok=0
             done
         fi
+        # M41-NEW-03: the subscription export still lists the cleared
+        # nodes; refresh it now (empty registries export as empty files)
+        # so a stale subscription cannot keep serving revoked links.
+        # Best-effort: if the refresh itself fails, delete both files
+        # outright (fail closed — a missing export is safe, a stale one
+        # is not); only if even that fails is the clear reported failed.
+        if ! refresh_subscription_after_deploy; then
+            rm -f -- "${SUBSCRIBE_DIR:-/etc/ddr/subscribe}/uri-list.txt" "${SUBSCRIBE_DIR:-/etc/ddr/subscribe}/subscription.base64" 2>/dev/null || wipe_ok=0
+        fi
         # H-23 (Carbon R3): the stack is now empty (all inbounds gone,
         # registries wiped, CORE/MODE cleared above); stop + disable
         # the core services explicitly so a cleared stack does not
@@ -37388,10 +38474,37 @@ clear_all_protocols() {
                 # the clear: the stack is not fully cleared while a
                 # core service keeps listening.
                 if ! stop_owned "$_clr_svc" >/dev/null 2>&1; then
-                    msg "${YELLOW}[!] ${_clr_svc}: $(tr_msg cl_fail)${NC}"
+                    msg "${YELLOW}[!] ${_clr_svc}: $(tr_msg cl_stop_fail)${NC}"
                     wipe_ok=0
                 fi
             done
+            # L6-NEW-01: WARP routing state + live residue survive a
+            # clear-all: _remove_inbounds_from_config only strips
+            # rules referencing removed inbounds, and nothing else
+            # in this function touches the routing state or the
+            # warp-out endpoint, so a cleared stack kept a live
+            # warp-out + its rules while the menu kept reporting
+            # WARP as deployed. Scrub both live configs, then drop
+            # the state entry (gated on wipe_ok: a partial wipe leaves
+            # surviving nodes whose WARP routing must stay). Either
+            # failure fails the clear instead of reporting success
+            # over a residue.
+            if (( wipe_ok == 1 )); then
+                # S1-NEW-06: scrub BEFORE dropping the state entry
+                # (same order as warp_undeploy's no-core path): a
+                # scrub failure keeps the state flag, so the menu
+                # stays truthful (WARP still deployed) instead of
+                # reporting "not deployed" over a live warp-out.
+                # The state entry is dropped only after the live
+                # configs are actually clean.
+                if ! warp_scrub_live_config; then
+                    msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
+                    wipe_ok=0
+                elif ! routing_outbound_del 'warp-out'; then
+                    msg "${YELLOW}[!] warp-out: $(tr_msg cl_fail)${NC}"
+                    wipe_ok=0
+                fi
+            fi
             # In-memory CORE/MODE are stale after the wipe; main_loop
             # reloads .env on its next iteration, but reset them here
             # so nothing later in this iteration reads the old values.
@@ -37406,6 +38519,10 @@ clear_all_protocols() {
         msg "${GREEN}$(tr_msg cl_all_done)${NC}"
         return 0
     else
+        # S1-NEW-06: a failed clear used to end in a silent
+        # `return 1` here (the menu caller ignores the code),
+        # so the user saw no failure verdict at all. Always say so.
+        msg "${RED}[!] $(tr_msg cl_all_fail)${NC}"
         return 1
     fi
 }
@@ -38123,6 +39240,26 @@ list_usersd_uuids() {
         [[ ! -L "$f" ]] || return 1
         [[ -f "$f" && -r "$f" ]] || return 1
         _proto=$(jq -r '.protocol // ""' "$f" 2>/dev/null) || return 1
+        # O1 (followup5 D-leg): a registry whose inbound is confirmed
+        # gone from the live config must not contribute UUIDs -- after
+        # a cross-core overlay the other core's registries survive
+        # deliberately (S2-NEW-04 merge), and merging their UUIDs
+        # re-emits dead Vision nodes (old main UUID with new pbk/sid)
+        # in the YAML and the subscription. This mirrors the
+        # M41-NEW-01 export gate in users_link (rc 1 = confirmed
+        # absent drops; rc 2 / missing config keeps the old
+        # fail-open behaviour).
+        local _o1_reg_core='' _o1_reg_tag='' _o1_reg_cfg='' _o1_live_rc=0
+        _o1_reg_core=$(jq -r '.core // ""' "$f" 2>/dev/null) || return 1
+        _o1_reg_tag=$(jq -r '.tag // ""' "$f" 2>/dev/null) || return 1
+        if [[ ( "$_o1_reg_core" == 'xray' || "$_o1_reg_core" == 'sing-box' ) && -n "$_o1_reg_tag" ]] && declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+            _o1_reg_cfg=$(users_cfg_of "$_o1_reg_core" 2>/dev/null || printf '%s' '')
+            if [[ -n "$_o1_reg_cfg" && -f "$_o1_reg_cfg" && ! -L "$_o1_reg_cfg" ]]; then
+                _o1_live_rc=0
+                _users_live_inbound_exists "$_o1_reg_core" "$_o1_reg_tag" || _o1_live_rc=$?
+                [[ "$_o1_live_rc" == 1 ]] && continue
+            fi
+        fi
         _u=$(jq -r --arg proto "$_proto" '.users[]? | [(.uuid // ""), (if ($proto == "vless" or $proto == "vmess") then (.secret // "") else "" end)] | map(select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) | .[0] // empty' "$f" 2>/dev/null) || return 1
         printf '%s\n' "$_u"
     done
@@ -38134,6 +39271,25 @@ list_usersd_uuids() {
 # abort on failure; never treat a failed read as an empty list.
 # (TRAP-7: do NOT use `done < <(list_extra_uuids)` -- process substitution
 # swallows the exit status. Use this helper with an explicit status check.)
+# E62-NEW-01 (candidate B): UUIDs the live Xray XHTTP inbound actually
+# accepts, one per line. rc 0 iff the live config is readable and contains
+# an xhttp inbound (the list itself may be empty: then no user can auth
+# over XHTTP); rc 1 when the live state cannot be read or has no xhttp
+# inbound, in which case the caller falls back to the merged registry list
+# (the historical .env-driven behaviour, e.g. not-installed / self-test
+# contexts where no live inbound exists to be authoritative).
+list_xhttp_live_uuids() {
+    local cfg='' _jq_cfg=''
+    cfg=$(users_cfg_of xray 2>/dev/null) || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    _jq_cfg=$(mktemp /tmp/A-Box-xhttp-live.XXXXXX) || return 1
+    jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f -- "$_jq_cfg"; return 1; }
+    jq -e --arg t xhttp '[.inbounds[]? | select(.tag == $t)] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || { rm -f -- "$_jq_cfg"; return 1; }
+    jq -r --arg t xhttp '.inbounds[]? | select(.tag == $t) | .settings.clients[]?.id // empty' "$_jq_cfg" 2>/dev/null || { rm -f -- "$_jq_cfg"; return 1; }
+    rm -f -- "$_jq_cfg"
+    return 0
+}
 write_full_uuid_list_to_file() {
     local out="$1" _tmp='' _rc=0
     # TRAP-7(c): declare first, assign separately -- `local x=$(cmd)` masks
@@ -39112,6 +40268,60 @@ users_reg_reconcile_after_deploy() {
     return "$rc"
 }
 
+# O1 (followup6 B-leg): prune stale user registries after an overwrite
+# deploy. deploy_xray/deploy_singbox rebuild the live config wholesale,
+# so tags the new config drops (e.g. Vision single-protocol coverage
+# over an xray4 stack drops ss/xhttp) leave registries behind that no
+# live inbound serves. users_reg_reconcile_after_deploy deliberately
+# leaves tag-gone registries alone (S2-NEW-04 merge / F06 snapshot
+# re-enable), and users_export_all then trips over them: users_link
+# refuses them via the M41-NEW-01 live gate, so every deploy prints
+# "Skipped user main (xray/ss)" / "(xray/xhttp)" noise (S1 O1).
+# This closes that gap at the deploy tail, after reconcile and after
+# standalone_preserve_restore, so a restored tag is live and kept.
+# Only a registry that is ALL of the following is removed:
+# - its JSON content reads as this core + a non-empty tag (identity
+#   from content, never the filename; unreadable identity is kept);
+# - it carries NO valid inbound_snapshot for its own tag (a snapshot
+#   is the F06 multi-user-menu re-enable candidate: users_reg_ensure
+#   admits it, so deleting it would destroy that path);
+# - _users_live_inbound_exists confirms the tag ABSENT from the live
+#   config (rc 1). A live tag (rc 0) is kept; an unverifiable config
+#   (rc 2) or a missing helper is kept (fail-closed).
+# Removal goes through users_registry_remove (encoder path + sidecar
+# cleanup). Returns 1 if the registry dir is a symlink or a removal
+# fails; deploy callers treat it as a best-effort warning, never a
+# deploy failure.
+users_reg_prune_stale_after_deploy() {
+    local core="$1" dir='' f='' c='' t='' _live_rc=0
+    dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
+    [[ ! -L "$dir" ]] || return 1
+    [[ -d "$dir" ]] || return 0
+    for f in "$dir/$core"__*.json; do
+        [[ -f "$f" && ! -L "$f" ]] || continue
+        c=$(jq -r '.core // ""' "$f" 2>/dev/null || true)
+        t=$(jq -r '.tag // ""' "$f" 2>/dev/null || true)
+        [[ "$c" == "$core" && -n "$t" ]] || continue
+        # F06 re-enable candidate: keep any registry whose snapshot
+        # names its own tag (users_reg_ensure admits exactly this).
+        if jq -e --arg t "$t" '.inbound_snapshot | type == "object" and .tag == $t' "$f" >/dev/null 2>&1; then
+            continue
+        fi
+        _live_rc=0
+        if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+            _users_live_inbound_exists "$core" "$t" || _live_rc=$?
+        else
+            continue
+        fi
+        # rc 1 = confirmed absent: stale, remove. rc 0 = live: keep.
+        # rc 2 = unverifiable: keep (fail-closed).
+        if [[ "$_live_rc" == 1 ]]; then
+            users_registry_remove "$core" "$t" || return 1
+        fi
+    done
+    return 0
+}
+
 # Ensure a registry exists for (core, tag): adopt from the live config
 # when missing, then merge in any config credentials the registry does
 # not know yet (out-of-band changes) as auto-named users.
@@ -39274,6 +40484,22 @@ users_sync() {
                         .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if (.alterId // 0) > 0 then {alterId: .alterId} else {} end)]
                      else . end)
                 else . end)
+                # E62-NEW-01 (candidate A): Vision and XHTTP serve the
+                # same VLESS identity on two transports, and the YAML
+                # generator advertises every registry UUID on both. A
+                # Vision-only sync therefore left the live XHTTP inbound
+                # with just main while YAML advertised XHTTP-<mu UUID>:
+                # a dead chain by construction. Mirror the same enabled
+                # users into the XHTTP inbound (when it exists; the map
+                # is a no-op when it does not). No flow: XHTTP carries
+                # no xtls-rprx-vision flow. Email is rewritten into the
+                # xhttp/ namespace so stats attribution stays
+                # per-inbound. The xhttp registry itself catches up on
+                # the next users_reg_ensure via users_reg_merge_fresh
+                # (live -> registry merge from the adopted inbound).
+                | .inbounds |= map(if $t == "vision" and $proto == "vless" and .tag == "xhttp" then
+                    .settings.clients = [$users[0][] | {id: .secret, email: ("xhttp/" + (.name // "main"))}]
+                else . end)
             ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
@@ -39391,8 +40617,12 @@ users_link_stem() {
     case "$core:$tag" in
         xray:trojan-landing) printf '%s' 'trojan-xray' ;;
         sing-box:trojan-landing) printf '%s' 'trojan-sb' ;;
+        xray:trojan-landing-[0-9]*) printf 'trojan-xray-%s' "${tag#trojan-landing-}" ;;
+        sing-box:trojan-landing-[0-9]*) printf 'trojan-sb-%s' "${tag#trojan-landing-}" ;;
         xray:socks5-landing) printf '%s' 'socks5-xray' ;;
         sing-box:socks5-landing) printf '%s' 'socks5-sb' ;;
+        xray:socks5-landing-[0-9]*) printf 'socks5-xray-%s' "${tag#socks5-landing-}" ;;
+        sing-box:socks5-landing-[0-9]*) printf 'socks5-sb-%s' "${tag#socks5-landing-}" ;;
         sing-box:tuic-in) printf '%s' 'tuic' ;;
         sing-box:anytls-in) printf '%s' 'anytls' ;;
         sing-box:shadowtls-in) printf '%s' 'shadowtls' ;;
@@ -39463,6 +40693,45 @@ _ss_b64_strict() {
     users_b64url_dec "$s"
 }
 
+# M41-NEW-01 follow-up (S2-NEW-09): does the live config still serve
+# (core, tag)? rc 0 = served, rc 1 = confirmed gone, rc 2 =
+# unverifiable (symlinked / empty / unparseable config). A missing
+# config file is confirmed gone: no inbound can exist without it.
+# hy2-family tags on xray/hy2 cores are served by the standalone
+# hysteria server, not by the xray config (xray has no hysteria2
+# inbound); the sing-box hy2 inbound is a real sing-box inbound, so
+# (sing-box, hy2) consults the sing-box config like any other tag.
+# Registries for deleted inbounds are deliberately preserved (the
+# S2-NEW-04 merge keeps their users, and the F06 snapshot path can
+# re-enable them), so callers must treat rc 1 as "link dead", never
+# as "registry broken". Callers must only refuse on rc 1; rc 2 keeps
+# the old fail-open behaviour. The hysteria config path honours
+# ABOX_HY2_CONFIG (fixture hook, same convention as
+# hy2_effective_password_for_user).
+_users_live_inbound_exists() {
+    local _core="$1" _tag="$2" _cfg='' _stripped='' _jq_rc=0
+    if [[ "$_core" == hy2 ]] || { [[ "$_core" == xray ]] && [[ "$_tag" == hy2* ]]; }; then
+        _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+        [[ -L "$_cfg" ]] && return 2
+        [[ -f "$_cfg" ]] || return 1
+        [[ -s "$_cfg" ]] || return 2
+        return 0
+    fi
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || echo '')
+    [[ -n "$_cfg" ]] || return 2
+    [[ -L "$_cfg" ]] && return 2
+    [[ -f "$_cfg" ]] || return 1
+    [[ -s "$_cfg" ]] || return 2
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e --arg t "$_tag" '([.[] | (.inbounds[]? | select((.tag // "") == $t))] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
 # Build the connection link for one registry user.
 # $1=core $2=tag $3=name -> prints link on stdout
 users_link() {
@@ -39480,6 +40749,19 @@ users_link() {
     secret=$(printf '%s' "$user" | jq -r '.secret // ""')
     use_uuid=$(printf '%s' "$user" | jq -r '.uuid // ""')
     [[ -n "$secret" ]] || return 1
+    # M41-NEW-01 follow-up (S2-NEW-09): a registry whose inbound is
+    # gone from the live config must not yield a link. The deploy
+    # preserves such registries deliberately (S2-NEW-04 merge), so
+    # the export layer has to skip them, or the subscription keeps
+    # serving the dead chain. Only a CONFIRMED absence refuses
+    # (rc 1); an unverifiable config (rc 2) keeps the old fail-open
+    # behaviour. The declare -F guard keeps pre-fix callers working
+    # (the helper is new; without it the gate is skipped).
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        local _live_rc=0
+        _users_live_inbound_exists "$core" "$tag" || _live_rc=$?
+        if [[ "$_live_rc" == 1 ]]; then return 1; fi
+    fi
     # Combo inbounds (either core) build from .env + live config values.
     if [[ "$tag" == 'vision' || "$tag" == 'xhttp' || "$tag" == 'ss' || "$tag" == 'hy2' ]] && [[ "$core" == 'xray' || "$core" == 'sing-box' ]]; then
         users_link_combo "$core" "$tag" "$name" "$secret" "$ssecret" "$proto" "$enabled_count"
@@ -39686,10 +40968,31 @@ users_link_combo() {
             _hy2_host="${acme_domain:-}"
             [[ -n "$_hy2_host" ]] || _hy2_host="${HY2_DOMAIN:-}"
             [[ -n "$_hy2_host" ]] || _hy2_host="$ip"
-            # R1-11-F05: sing-box Hy2 is password-only auth, even
-            # multi-user; the name:secret form fails authentication.
+            # M41-NEW-01 (Carbon R3 follow-up 2): mode-aware userinfo.
+            # The standalone hysteria server switches to
+            # `auth: type: userpass` once a second Hy2 user exists, and
+            # a bare password then has no matching user (live 404).
+            # Mirror the users_link core==hy2 path (H-24(1)): ask the
+            # live server config for THIS user's effective credential --
+            # "login:secret" as ONE urlencoded string in userpass mode,
+            # the bare server password in password mode. A lookup
+            # failure (no standalone server: a pure sing-box deploy
+            # prunes /etc/hysteria, and its own hysteria2 inbound is
+            # password-only with a display-only name, R1-11-F05) keeps
+            # the historical bare registry secret, so the sing-box link
+            # is byte-identical. The helper honors ABOX_HY2_CONFIG as
+            # its config-path override (fixture hook, same convention
+            # as _wallos_hy2_http01_keeps_80).
+            local _hy2_eff='' _hy2_userinfo=''
+            _hy2_eff=$(hy2_effective_password_for_user "$name" 2>/dev/null || true)
+            if [[ -n "$_hy2_eff" ]]; then
+                _hy2_eff=${_hy2_eff%__ABOX_TRAILING_NL_KEEP__}
+                _hy2_userinfo="$(urlencode "$_hy2_eff")"
+            else
+                _hy2_userinfo="$(urlencode "$secret")"
+            fi
             printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$_hy2_host")" "$_hy2_ep" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
+                "$_hy2_userinfo" "$(uri_host "$_hy2_host")" "$_hy2_ep" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         *) return 1 ;;
     esac
     return 0
@@ -39700,8 +41003,45 @@ users_link_combo() {
 # links the deploy just deleted or rotated (a stale file otherwise
 # survives until menu E). Best-effort: the deploy already committed,
 # so an export failure warns but must not fail it; callers use `|| true`.
+# S2-NEW-03 follow-up: also called after a committed registry change
+# (users_apply_reg) and on a manual menu-12 reprint (view_config,
+# CALLER != deploy); the "after_deploy" name is historical.
 refresh_subscription_after_deploy() {
     local _n
+    # S2-NEW-12: the deploy-time export used to run before any
+    # standalone link existed (rebuild_standalone_links runs only at
+    # the END of view_config), so the hy2 registry -- whose link comes
+    # from hy2.link, not from the combo builder -- was always skipped
+    # on a fresh deploy, until the first menu 12 reprint. Rebuild
+    # first so the export reads the same links menu 12 would print.
+    # F_IP is derived here because rebuild reads the caller's F_IP
+    # (bash dynamic scoping) and view_config is the only caller that
+    # sets it; without this the rebuild early-returns when there is
+    # no HY2_DOMAIN. Best-effort like the export itself: a rebuild
+    # failure must not fail the deploy.
+    # S2-NEW-12 follow-up 5: LINK_IP is unset in a fresh-deploy
+    # process (main_loop loads .env only if it exists; deploy_xray's
+    # load_optional_abox_env_or_die clears it when there is no .env;
+    # pre_install_setup sets only GLOBAL_PUBLIC_IP; write_env writes
+    # LINK_IP to .env but never sets the shell variable), so deriving
+    # F_IP from LINK_IP alone left the rebuild early-returning and
+    # the deploy-time export without Hy2. Fall back through the
+    # sources that do exist on the deploy path: GLOBAL_PUBLIC_IP
+    # (set by pre_install_setup / main_loop), the LINK_IP just
+    # written to .env (single-key read -- never a full load_abox_env
+    # here: it clears every deploy variable on entry and wipes them
+    # again on any validation failure), then the public-IP cache.
+    # 'N/A' is treated as empty, like the view_config gate.
+    local _s2n12_fip="${LINK_IP:-}"
+    [[ -n "$_s2n12_fip" ]] || _s2n12_fip="${GLOBAL_PUBLIC_IP:-}"
+    if [[ -z "$_s2n12_fip" && -f "${ABOX_ENV:-/etc/ddr/.env}" ]]; then
+        _s2n12_fip=$(sed -n 's/^LINK_IP="\([^"]*\)"$/\1/p' "${ABOX_ENV}" 2>/dev/null | head -1)
+    fi
+    [[ -n "$_s2n12_fip" ]] || _s2n12_fip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
+    [[ "$_s2n12_fip" =~ : ]] && _s2n12_fip="[$_s2n12_fip]"
+    local F_IP="$_s2n12_fip"
+    rebuild_standalone_links || true
     _n=$(users_export_all || true)
     if [[ -n "$_n" ]]; then
         msg "${GREEN}Subscription export refreshed: ${_n} link(s) (uri-list.txt / subscription.base64)${NC}"
@@ -39714,7 +41054,7 @@ refresh_subscription_after_deploy() {
 # Export every enabled user's link (all registries) in the subscription
 # file formats the legacy exporter produced.
 users_export_all() {
-    local dir='' out='' count=0 reg='' core='' tag='' failed=0 skipped=0
+    local dir='' out='' count=0 reg='' core='' tag='' failed=0 skipped=0 seen=0
     dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
     mkdir -p "$dir" 2>/dev/null || return 1
     chmod 700 "$dir" 2>/dev/null || true
@@ -39722,6 +41062,7 @@ users_export_all() {
     tmp=$(umask 077; mktemp "$dir/.uri-list.XXXXXX") || return 1
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
+        seen=1
         core=$(jq -r '.core // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: core unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: tag unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         [[ -n "$core" && -n "$tag" ]] || { msg "${YELLOW}[!] Skipped registry $reg: missing core or tag.${NC}" >&2; skipped=$((skipped + 1)); continue; }
@@ -39746,6 +41087,16 @@ users_export_all() {
         msg "${YELLOW}[!] Subscription export: ${skipped} user(s) skipped and no links exported; stale subscription will be cleared.${NC}" >&2
     fi
     if (( count == 0 )); then
+        # N1 diagnostic (followup5): a zero-link export is silent by
+        # design when registries exist but all their links failed
+        # (those paths print Skipped lines above), but it is ALSO the
+        # signature of a wiped registry dir (menu 20 "all clear"), where
+        # no registry was seen at all. Tell the two apart so a
+        # transcript can self-explain which case it is. Export
+        # semantics are unchanged: the clear-out below still runs.
+        if (( seen == 0 )); then
+            msg "${YELLOW}[!] Subscription export: no user registries found (users.d empty or missing); clearing subscription to 0 links.${NC}" >&2
+        fi
         # No enabled users: stale links must not keep serving. Atomically
         # replace both files with empty content (the old code left the
         # previous users' links in place and only failed the export).
@@ -39922,6 +41273,29 @@ users_apply_reg() {
         return 1
     fi
     rm -f -- "${_reg}.sync-pending"
+    # D-leg OBS-02: the xray E62-NEW-01 mirror writes a newly added
+    # Vision user into the live xhttp inbound, but the xhttp registry
+    # only catches up on the next multi_user_menu render (users_reg_
+    # ensure), while the subscription export below is built purely
+    # from the registries -- so the export lags by one chain and only
+    # self-heals on the next menu render. Pull that merge forward
+    # here (best-effort, sync already committed): users_reg_ensure is
+    # exactly the merge the menu already performs, so the registry /
+    # export state after an add is the same as after the next menu
+    # render -- just earlier. No-op when there is no xhttp inbound
+    # (vision-only stack: adopt fails, swallowed by || true).
+    if [[ "$1" == 'xray' && "$2" == 'vision' ]]; then
+        users_reg_ensure xray xhttp >/dev/null 2>&1 || true
+    fi
+    # S2-NEW-03 follow-up: a committed registry change is a users.d
+    # change, and the subscription export is built from the registries.
+    # Refresh it here so add/delete/toggle/quota/expiry/window/reset/
+    # reimport all land in uri-list.txt / subscription.base64 at once,
+    # instead of waiting for the next deploy or a manual menu-E export
+    # (a fresh deploy + add-user otherwise leaves 0-byte files).
+    # Best-effort (helper warns on failure): the user change already
+    # committed, so an export failure must not fail the apply.
+    refresh_subscription_after_deploy || true
     return 0
 }
 
@@ -49286,8 +50660,30 @@ validate_services_state_file() {
     ' "$file"
 }
 
+# S1-NEW-05: a service whose managed unit and config survive but whose
+# binary was deleted (e.g. rm /usr/local/bin/xray) is NOT config-only
+# (A-04 requires no unit AND no binary), yet its backup is a faithful
+# snapshot: the deploy flow refetches the binary unconditionally, and
+# uninstall needs no binary at all. Only backup CREATION may treat this
+# shape as recoverable; restore gates stay strict (a restore must not
+# reinstall a service with no binary).
+backup_root_service_is_binary_missing_managed() {
+    local root="$1" srv="$2" bin cfg
+    case "$srv" in
+        xray) bin="$root/usr/local/bin/xray"; cfg="$root/usr/local/etc/xray/config.json" ;;
+        sing-box) bin="$root/usr/local/bin/sing-box"; cfg="$root/etc/sing-box/config.json" ;;
+        hysteria) bin="$root/usr/local/bin/hysteria"; cfg="$root/etc/hysteria/config.yaml" ;;
+        xray-latest) bin="$root/usr/local/bin/xray-latest"; cfg="$root/etc/ddr/xray-latest/config.json" ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$bin" && ! -L "$bin" ]] || return 1
+    [[ -f "$cfg" ]] || return 1
+    backup_root_service_is_managed "$root" "$srv"
+}
+
 validate_extracted_backup_content() {
-    local root="$1" srv path src work
+    local root="$1" srv path src work mode="${2:-restore}"
+    local live_state row
     work=$(dirname "$root")
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
@@ -49351,13 +50747,36 @@ validate_extracted_backup_content() {
                 xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
-            backup_root_service_is_managed "$root" "$srv" || return 1
-            case "$srv" in
-                xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
-                sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
-                hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
-                xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
-            esac
+            # S1-NEW-05 residual (followup5 A-leg): the binary can be
+            # deleted while the process is still alive (rm
+            # /usr/local/bin/xray, then straight into the menu), so the
+            # freshly captured services.state TRUTHFULLY claims running
+            # (|1|). Accept a |1| row only when it still matches the LIVE
+            # reading exactly (whole srv|1|enabled triple): a stale or
+            # forged |1| row — live stopped, live unqueryable, or live
+            # enablement differing — still fails closed. The |0| path is
+            # unchanged (no live query needed). Restore mode is
+            # untouched: a backup archive claiming |1| with no binary is
+            # still rejected there.
+            if [[ "$mode" == backup ]] && backup_root_service_is_binary_missing_managed "$root" "$srv"; then
+                if grep -Eq "^${srv}\\|0\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    :
+                elif grep -Eq "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state"; then
+                    live_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
+                    row=$(grep -E "^${srv}\\|1\\|(enabled|enabled-runtime|indirect|disabled)$" "$work/meta/services.state" 2>/dev/null) || return 1
+                    [[ "$live_state" == "$row" ]] || return 1
+                else
+                    return 1
+                fi
+            else
+                backup_root_service_is_managed "$root" "$srv" || return 1
+                case "$srv" in
+                    xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
+                    sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
+                    hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+                    xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
+                esac
+            fi
         fi
     done
     local aux_paths=''
@@ -49947,7 +51366,7 @@ backup_current_config() {
     fi
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
-    validate_extracted_backup_content "$root" || { rm -rf "$work"; die 'Backup content validation failed.'; }
+    validate_extracted_backup_content "$root" backup || { rm -rf "$work"; die 'Backup content validation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
     # R13-03: create the archive as a private temp file in the same
     # directory (umask 077 mktemp, so no 0644-readable window under
@@ -55806,9 +57225,6 @@ wallos_install_or_update() {
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
         _fw_open_out=$(_wallos_fw_open_tracked "$pubport" tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
-    if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
-        _fw_open_out=$(_wallos_fw_open_tracked "$pubport" tcp); _fw_open_rc=$?
-        [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         if (( _fw_open_rc != 0 )); then
             wallos_fw_rollback_added "${_fw_added[@]}" || true
             if (( running == 1 )); then
@@ -55866,7 +57282,6 @@ wallos_install_or_update() {
             fi
             return 1
         fi
-    fi
     fi
     # S143: the upgrade journal is the rollback material. It must not be
     # committed (phase=committed, which recover treats as "already done"
@@ -56810,6 +58225,38 @@ ss_effective_password() {
     return 1
 }
 
+# Per-user effective SS-2022 client password (H-24(3) follow-up).
+# Mirrors ss_effective_password but for the named registry user:
+# clients-form (server_secret set) -> "serverKey:userSecret" when
+# the live inbound's server key matches the registry key (the
+# OBS-S1-08 guard, fail-open when live is unreadable); legacy
+# single-password (no server_secret) -> the user's bare secret.
+# Prints the password; rc 1 when the user is missing/disabled, has
+# no secret, or the live server key positively mismatches the
+# registry key (emitting either form would be a dead node, so the
+# caller skips that user instead of guessing a credential).
+# $1 = user name; $2 = optional core override (as ss_effective_password).
+ss_effective_password_for_user() {
+    local name="$1" want="${2:-}" core='' reg='' ssecret='' secret=''
+    [[ -n "$name" ]] || return 1
+    case "${want:-${CORE:-}}" in
+        sing-box|singbox) core='sing-box' ;;
+        *) core='xray' ;;
+    esac
+    reg=$(users_reg_file "$core" 'ss')
+    [[ -f "$reg" && ! -L "$reg" ]] || return 1
+    secret=$(jq -r --arg n "$name" '.users[] | select(.name == $n and .disabled != true and ((.blocked // "") == "")) | .secret // ""' "$reg" 2>/dev/null | head -1 || true)
+    [[ -n "$secret" ]] || return 1
+    ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null || true)
+    if [[ -n "$ssecret" ]]; then
+        _ss_live_server_key_matches "$core" "$ssecret" || return 1
+        printf '%s' "${ssecret}:${secret}"
+        return 0
+    fi
+    printf '%s' "$secret"
+    return 0
+}
+
 # H-24 (Carbon R3): the effective Hy2 credential for display/export.
 # userpass needs "login:secret" (the server authenticates by
 # .login // .name, R10-10), whatever the user count; only password
@@ -56822,12 +58269,25 @@ ss_effective_password() {
 # secret intact through $(...) (same sentinel convention as
 # users_hy2_yaml_scalar / rebuild_standalone_links).
 hy2_effective_password() {
-    local cfg='/etc/hysteria/config.yaml' users='' pw_only='' login='' secret=''
+    # ABOX_HY2_CONFIG is the config-path override (fixture hook, same
+    # convention as hy2_effective_password_for_user).
+    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick=''
     users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
     if [[ -n "$users" && "$users" != '[]' ]]; then
-        pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
+        # M41-NEW-01 follow-up: the single-node/combo display must
+        # show main's credential, not the first registered user's.
+        # The live user list is in registration order (e62hy1 can
+        # precede main), so .[0] printed another user's composite
+        # link and main's composite link never appeared anywhere in
+        # menu 12. Prefer the user named "main"; fall back to .[0]
+        # when no main exists (single-user deploys, renamed main).
+        # The picked entry carries the password_only flag too
+        # (password mode has a single entry).
+        _pick=$(printf '%s' "$users" | jq -c '(first(.[] | select((.login // .name // "") == "main")) // .[0])' 2>/dev/null || true)
+        [[ -n "$_pick" && "$_pick" != 'null' ]] || _pick=$(printf '%s' "$users" | jq -c '.[0]' 2>/dev/null || true)
+        pw_only=$(printf '%s' "$_pick" | jq -r '.password_only // false' 2>/dev/null || echo false)
         if [[ "$pw_only" == 'true' ]]; then
-            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=$(printf '%s' "$_pick" | jq -r '((.secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             secret=${secret%__ABOX_TRAILING_NL_KEEP__}
             if [[ -n "$secret" ]]; then
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
@@ -56838,9 +58298,9 @@ hy2_effective_password() {
             # login/name, so even a single userpass user needs
             # "login:secret"; only password-only auth takes the
             # bare secret (handled above).
-            login=$(printf '%s' "$users" | jq -r '((.[0].login // .[0].name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            login=$(printf '%s' "$_pick" | jq -r '((.login // .name // "main") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             login=${login%__ABOX_TRAILING_NL_KEEP__}
-            secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+            secret=$(printf '%s' "$_pick" | jq -r '((.secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
             secret=${secret%__ABOX_TRAILING_NL_KEEP__}
             if [[ -n "$login" && -n "$secret" ]]; then
                 printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
@@ -56856,8 +58316,8 @@ hy2_effective_password() {
 }
 # Per-user effective Hy2 password (H-24(1) follow-up): the server
 # authenticates ONE credential per connection. In userpass mode that
-# credential is "login:secret" OF THE TARGET USER (not the first
-# user's, which the no-arg hy2_effective_password returns); in
+# credential is "login:secret" OF THE TARGET USER (not main's, which
+# the no-arg hy2_effective_password returns); in
 # password-only mode it is the bare server password for every user.
 # Prints the effective password with the trailing-newline sentinel,
 # like hy2_effective_password. $1 = login (registry .login // .name);
@@ -56865,7 +58325,7 @@ hy2_effective_password() {
 # fixtures). Returns 1 when the live config has no such user (a link
 # built from the registry alone would 404) or is unreadable.
 hy2_effective_password_for_user() {
-    local login="$1" cfg="${2:-/etc/hysteria/config.yaml}" users='' pw_only='' entry='' secret=''
+    local login="$1" cfg="${2:-${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}}" users='' pw_only='' entry='' secret=''
     [[ -n "$login" ]] || return 1
     users=$(users_hy2_read_users "$cfg" 2>/dev/null) || return 1
     [[ -n "$users" && "$users" != '[]' ]] || return 1
@@ -57468,6 +58928,52 @@ with open(groups_path, "a", encoding="utf-8") as groups:
     return "$_rc"
 }
 
+# H-24(3): print one compact JSON object per ENABLED user of a
+# registry file ({name, secret, login}), in registry order.
+# Returns 1 when the registry is missing, a symlink, unreadable,
+# or not parseable as a users registry (callers treat a missing
+# file as "no multi-user data" and any other failure as fail-closed).
+_clash_registry_users_json() {
+    local reg="$1"
+    [[ -f "$reg" && ! -L "$reg" && -r "$reg" ]] || return 1
+    jq -c '.users[] | select(.disabled != true and ((.blocked // "") == "")) | {name: (.name // ""), secret: (.secret // ""), login: (.login // .name // "")}' "$reg" 2>/dev/null || return 1
+    return 0
+}
+
+# H-24(3): effective Hy2 password for one YAML user. Mirrors the
+# users_link hy2 branch: live config first (userpass ->
+# "login:secret" of THIS user, password-only -> the bare server
+# password); when live is unreadable or lacks the user, registry
+# fallback (multi-user -> "login:secret", single user -> bare
+# secret). On sing-box core Hy2 is password-only even multi-user
+# (R1-11-F05), so the bare registry secret is used directly and no
+# live lookup is attempted. Prints the password (no trailing
+# newline); rc 1 when no credential can be determined.
+# $1 = login (.login // .name); $2 = registry secret;
+# $3 = enabled user count; $4 = core (${CORE}).
+_clash_hy2_user_password() {
+    local login="$1" reg_secret="$2" encount="${3:-1}" core="${4:-${CORE:-}}" _eff=''
+    [[ -n "$login" ]] || return 1
+    if [[ "$core" == 'singbox' || "$core" == 'sing-box' ]]; then
+        [[ -n "$reg_secret" ]] || return 1
+        printf '%s' "$reg_secret"
+        return 0
+    fi
+    _eff=$(hy2_effective_password_for_user "$login" "${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" 2>/dev/null || true)
+    if [[ -n "$_eff" ]]; then
+        _eff=${_eff%__ABOX_TRAILING_NL_KEEP__}
+        printf '%s' "$_eff"
+        return 0
+    fi
+    if (( encount >= 2 )) && [[ -n "$reg_secret" ]]; then
+        printf '%s' "${login}:${reg_secret}"
+        return 0
+    fi
+    [[ -n "$reg_secret" ]] || return 1
+    printf '%s' "$reg_secret"
+    return 0
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
@@ -57531,6 +59037,21 @@ PY_CLASH_REALPATH
         msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete Clash config.${NC}" >&2
         return 1
     fi
+    # E62-NEW-01 (candidate B): XHTTP nodes are emitted only for UUIDs
+    # the live XHTTP inbound actually has. The merged registry list is
+    # the fallback when the live state cannot be read or has no xhttp
+    # inbound (not-installed / self-test contexts, where the YAML is
+    # .env-driven); a readable live xhttp inbound is authoritative even
+    # when its client list is empty. A plain variable needs no temp-file
+    # cleanup on the early returns below.
+    local _xhttp_uuid_list=''
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        if ! _xhttp_uuid_list=$(list_xhttp_live_uuids 2>/dev/null); then
+            _xhttp_uuid_list=$(cat "$_clash_uuid_list_tmp" 2>/dev/null || true)
+        fi
+    else
+        _xhttp_uuid_list=$(cat "$_clash_uuid_list_tmp" 2>/dev/null || true)
+    fi
     # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
     # H-24: the YAML password is the effective Hy2 credential
     # (login:secret for multi-user userpass), not the stale .env value.
@@ -57539,7 +59060,11 @@ PY_CLASH_REALPATH
     _hy2_eff_pass=${_hy2_eff_pass%__ABOX_TRAILING_NL_KEEP__}
     hy2_pass_yaml=$(json_escape "$_hy2_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
-    ss_pass_yaml=$(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # H-24(3): keep the raw SS password too: the single-user node
+    # below is emitted from the resolved (name, password) lists.
+    local _ss_eff_pass=''
+    _ss_eff_pass=$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")
+    ss_pass_yaml=$(json_escape "$_ss_eff_pass") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
     # else the stored 64-hex fingerprint; empty means unusable.
@@ -57573,16 +59098,42 @@ PY_CLASH_REALPATH
     # above).
     local _vless_port_ok=1 _xhttp_port_ok=1 _ss_port_ok=1
     local _vision_emit=0 _xhttp_emit=0 _ss_emit=0 _vision_base_emit=0 _xhttp_base_emit=0
+    # H-24(3): nodes actually emitted (multi-user lists below).
+    local _hy2_emit=0
+    local -a _hy2_names=() _hy2_passes=() _ss_names=() _ss_passes=()
+    local -a _hy2_emit_names=() _ss_emit_names=()
     if ! valid_canonical_port "${VLESS_PORT:-}"; then
-        msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): warn only when a Vision node could
+        # have been emitted (MODE scope, same as the emission gate
+        # below); a HY2-only deploy must not warn about a port it
+        # never uses. The flag still gates emission either way.
+        if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
+            msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision nodes in Clash YAML.${NC}" >&2
+        fi
         _vless_port_ok=0
     fi
     if ! valid_canonical_port "${XHTTP_PORT:-}"; then
-        msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): XHTTP is xray-only (emission gated
+        # on CORE == xray below); on a sing-box stack the warning is
+        # pure cross-stack noise, so suppress it there. The flag
+        # still gates emission either way.
+        if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+            msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP nodes in Clash YAML.${NC}" >&2
+        fi
         _xhttp_port_ok=0
     fi
     if ! valid_canonical_port "${SS_PORT:-}"; then
-        msg "${YELLOW}[!] SS port '${SS_PORT:-}' is missing or invalid; skipping the SS node in Clash YAML.${NC}" >&2
+        # O1 (followup5 D-leg): warn only when an SS node could have
+        # been emitted (MODE scope, same as the emission gate below).
+        # NOTE: on a sing-box ALL overlay with an empty .env SS_PORT
+        # the warning still fires (MODE matches) and the live SS node
+        # on the 2053 default is still skipped from the YAML -- that
+        # is the deliberate H-24 rule (an empty port must not keep
+        # the historical default), not noise; fixing the underlying
+        # .env persistence gap is a separate item.
+        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
+            msg "${YELLOW}[!] SS port '${SS_PORT:-}' is missing or invalid; skipping the SS node in Clash YAML.${NC}" >&2
+        fi
         _ss_port_ok=0
     fi
     # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
@@ -57603,6 +59154,75 @@ PY_CLASH_REALPATH
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
         return 1
     fi
+    # H-24(3): resolve the Hy2/SS node lists (name, raw password) from
+    # the multi-user registries. Arrays need no temp-file cleanup.
+    # A registry that EXISTS but cannot be parsed fails the whole
+    # YAML (fail-closed: an untrusted user list must not silently
+    # drop users); a missing registry, or fewer than two enabled
+    # users, keeps the legacy single node. When a multi-user registry
+    # is present but NO user's credential resolves, no node is
+    # emitted for that protocol (the legacy single node would carry
+    # a bare password that cannot authenticate in userpass /
+    # clients-form mode); the per-user warnings above already say so.
+    local _hy2_reg='' _hy2_tag='hy2-official' _hy2_core='hy2' _ss_reg='' _ss_core='xray'
+    local _hy2_users_json='' _ss_users_json=''
+    local _hy2_multi=0 _ss_multi=0 _hy2_count=0 _ss_count=0
+    if [[ "${CORE:-}" == 'singbox' ]]; then _hy2_core='sing-box'; _hy2_tag='hy2'; _ss_core='sing-box'; fi
+    _hy2_reg=$(users_reg_file "$_hy2_core" "$_hy2_tag")
+    _ss_reg=$(users_reg_file "$_ss_core" 'ss')
+    if [[ -e "$_hy2_reg" || -L "$_hy2_reg" ]]; then
+        if ! _hy2_users_json=$(_clash_registry_users_json "$_hy2_reg" 2>/dev/null); then
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            msg "${RED}Hy2 user registry unreadable; refusing to generate incomplete Clash config.${NC}" >&2
+            return 1
+        fi
+        _hy2_count=$(printf '%s' "$_hy2_users_json" | grep -c . || true)
+        if (( _hy2_count >= 2 )); then
+            _hy2_multi=1
+            local _u='' _uname='' _usecret='' _ulogin='' _upass=''
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                _uname=$(printf '%s' "$_u" | jq -r '.name // ""' 2>/dev/null || true)
+                _usecret=$(printf '%s' "$_u" | jq -r '.secret // ""' 2>/dev/null || true)
+                _ulogin=$(printf '%s' "$_u" | jq -r '.login // ""' 2>/dev/null || true)
+                [[ -n "$_uname" ]] || continue
+                [[ -n "$_ulogin" ]] || _ulogin="$_uname"
+                if ! _upass=$(_clash_hy2_user_password "$_ulogin" "$_usecret" "$_hy2_count" "${CORE:-}" 2>/dev/null); then
+                    msg "${YELLOW}[!] Skipping Hy2 user '$_uname': no usable credential.${NC}" >&2
+                    continue
+                fi
+                _hy2_names+=("$_uname")
+                _hy2_passes+=("$_upass")
+            done <<< "$_hy2_users_json"
+        fi
+    fi
+    if [[ -e "$_ss_reg" || -L "$_ss_reg" ]]; then
+        if ! _ss_users_json=$(_clash_registry_users_json "$_ss_reg" 2>/dev/null); then
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            msg "${RED}SS user registry unreadable; refusing to generate incomplete Clash config.${NC}" >&2
+            return 1
+        fi
+        _ss_count=$(printf '%s' "$_ss_users_json" | grep -c . || true)
+        if (( _ss_count >= 2 )); then
+            _ss_multi=1
+            local _u='' _uname='' _upass=''
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                _uname=$(printf '%s' "$_u" | jq -r '.name // ""' 2>/dev/null || true)
+                [[ -n "$_uname" ]] || continue
+                if ! _upass=$(ss_effective_password_for_user "$_uname" 2>/dev/null); then
+                    msg "${YELLOW}[!] Skipping SS user '$_uname': no usable credential.${NC}" >&2
+                    continue
+                fi
+                _ss_names+=("$_uname")
+                _ss_passes+=("$_upass")
+            done <<< "$_ss_users_json"
+        fi
+    fi
+    if (( _hy2_multi == 0 )); then _hy2_names=('main'); _hy2_passes=("$_hy2_eff_pass"); fi
+    if (( _ss_multi == 0 )); then _ss_names=('main'); _ss_passes=("$_ss_eff_pass"); fi
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -57702,7 +59322,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
-            done < "$_clash_uuid_list_tmp"
+            done <<< "$_xhttp_uuid_list"
         fi
         if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
@@ -57737,6 +59357,8 @@ EOF_CLASH
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
                 fi
+                _hy2_emit=1
+                _hy2_emit_names+=("$hy2_name")
             elif [[ "$hy2_yaml_emit" == true ]]; then
                 if [[ "${HY2_HOP:-}" == 'true' ]]; then
                     cat <<EOF_CLASH
@@ -57769,14 +59391,107 @@ EOF_CLASH
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
                 fi
-            else
+                _hy2_emit=1
+                _hy2_emit_names+=("$hy2_name")
+            elif [[ "$hy2_yaml_emit" != true ]]; then
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
+            else
+                # H-24(3): one node per resolved Hy2 user. The domain
+                # branch implies hy2_yaml_emit (see above), so gating
+                # on it first keeps the two branches' behaviour
+                # identical while the loop drives all four templates.
+                # Single-user lists hold exactly the legacy pair, so
+                # the single node is byte-identical to before.
+                local _hy2_i=0
+                for (( _hy2_i = 0; _hy2_i < ${#_hy2_names[@]}; _hy2_i++ )); do
+                    if [[ "${_hy2_names[$_hy2_i]}" == 'main' ]]; then hy2_name='Hy2'; else hy2_name="Hy2-${_hy2_names[$_hy2_i]}"; fi
+                    hy2_pass_yaml=$(json_escape "${_hy2_passes[$_hy2_i]}") || {
+                        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+                        return 1
+                    }
+                    _hy2_emit=1
+                    _hy2_emit_names+=("$hy2_name")
+                    if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
+                        if [[ "${HY2_HOP:-}" == 'true' ]]; then
+                            cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "${HY2_DOMAIN:-}"
+    port: $clash_hop_port
+    ports: ${HY2_CLASH_PORTS:-}
+    hop-interval: 30
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    sni: "${HY2_DOMAIN:-}"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                        else
+                            cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "${HY2_DOMAIN:-}"
+    port: ${HY2_BASE_PORT:-443}
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    sni: "${HY2_DOMAIN:-}"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                        fi
+                    elif [[ "${HY2_HOP:-}" == 'true' ]]; then
+                        cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$S_IP"
+    port: $clash_hop_port
+    ports: ${HY2_CLASH_PORTS:-}
+    hop-interval: 30
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    skip-cert-verify: true
+    fingerprint: "$hy2_fp_yaml"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                    else
+                        cat <<EOF_CLASH
+  - name: "$hy2_name"
+    type: hysteria2
+    server: "$S_IP"
+    port: ${HY2_BASE_PORT:-443}
+    password: ${hy2_pass_yaml}
+    alpn:
+      - h3
+    skip-cert-verify: true
+    fingerprint: "$hy2_fp_yaml"
+    obfs: salamander
+    obfs-password: ${hy2_obfs_yaml}
+EOF_CLASH
+                    fi
+                done
             fi
         fi
         if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )); then
-            _ss_emit=1
-            cat <<EOF_CLASH
-  - name: "SS"
+            # H-24(3): one node per resolved SS user; the single-user
+            # list holds exactly the legacy pair, so the single node
+            # is byte-identical to before.
+            local _ss_i=0 _ss_node_name=''
+            for (( _ss_i = 0; _ss_i < ${#_ss_names[@]}; _ss_i++ )); do
+                if [[ "${_ss_names[$_ss_i]}" == 'main' ]]; then _ss_node_name='SS'; else _ss_node_name="SS-${_ss_names[$_ss_i]}"; fi
+                ss_pass_yaml=$(json_escape "${_ss_passes[$_ss_i]}") || {
+                    rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                        "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+                    return 1
+                }
+                _ss_emit=1
+                _ss_emit_names+=("$_ss_node_name")
+                cat <<EOF_CLASH
+  - name: "$_ss_node_name"
     type: ss
     server: "${LINK_IP:-}"
     port: ${SS_PORT:-2053}
@@ -57786,6 +59501,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
+            done
         fi
         cat -- "$_clash_standalone_nodes_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
@@ -57807,13 +59523,21 @@ EOF_CLASH
         # base name must not appear.
         (( _vision_base_emit == 1 )) && echo '      - Vision'
         (( _xhttp_base_emit == 1 )) && echo '      - XHTTP'
+        # E62-NEW-01 (candidate B): Vision entries come from the merged
+        # registry list, XHTTP entries from the live XHTTP inbound list,
+        # matching the node loops above; a shared loop would re-advertise
+        # live-absent XHTTP UUIDs in the group.
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
             (( _vision_emit == 1 )) && echo "      - Vision-$client_uuid"
-            (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
-        [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
-        (( _ss_emit == 1 )) && echo '      - SS'
+        while IFS= read -r client_uuid; do
+            [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
+            (( _xhttp_emit == 1 )) && echo "      - XHTTP-$client_uuid"
+        done <<< "$_xhttp_uuid_list"
+        # H-24(3): list exactly the Hy2/SS nodes emitted above.
+        for proxy_name in "${_hy2_emit_names[@]}"; do echo "      - $proxy_name"; done
+        for proxy_name in "${_ss_emit_names[@]}"; do echo "      - $proxy_name"; done
         cat -- "$_clash_standalone_groups_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
                 "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -57837,7 +59561,7 @@ EOF_CLASH
     # self-test's 'client export accepted incomplete port-hop state'
     # assertion (rc=1, no file) while the per-protocol skip still
     # applies whenever at least one other node is emitted.
-    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && [[ "$hy2_yaml_emit" != true ]] && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
+    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
         msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
         rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -57919,6 +59643,12 @@ hy2_standalone_url() {
     if [[ -z "$_host" ]]; then
         if [[ -n "${HY2_DOMAIN:-}" ]]; then _host="$HY2_DOMAIN";
         elif [[ -n "${LINK_IP:-}" ]]; then _host="$LINK_IP";
+        # S2-NEW-12 follow-up 5: LINK_IP/F_IP are unset in a
+        # fresh-deploy process, so the SILENT Hy2 sub-deploy's
+        # register step could build no host and never created
+        # hy2.link; GLOBAL_PUBLIC_IP is set by pre_install_setup
+        # before any deployer runs, so it is the live host here.
+        elif [[ -n "${GLOBAL_PUBLIC_IP:-}" ]]; then _host="$GLOBAL_PUBLIC_IP";
         else _host="${F_IP:-}"; fi
     fi
     [[ -n "$_host" && "$_host" != 'N/A' ]] || return 1
@@ -58079,7 +59809,7 @@ view_config() {
     msg "${BOLD}$(tr_msg view_config_engine_stack_label)${NC} ${CORE:-} | ${BOLD}$(tr_msg view_config_mode_label)${NC} ${MODE:-}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_single_node_uri_title) ]${NC}"
-if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _vless_ok == 1)); then
+    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _vless_ok == 1 )); then
         VLESS_URL="vless://${UUID:-}@$F_IP:${VLESS_PORT:-}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
         msg "${BOLD}${CYAN}── $(tprintf view_config_vless_vision_reality_port "${VLESS_PORT:-}")${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
@@ -58088,13 +59818,13 @@ if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLE
         fi
         generate_qr "$VLESS_URL"
     fi
-if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && (( _xhttp_ok == 1)); then
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && (( _xhttp_ok == 1 )); then
         XHTTP_URL="vless://${UUID:-}@$F_IP:${XHTTP_PORT:-}?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
         msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT:-}")${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
-if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]]; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]]; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
@@ -58114,7 +59844,7 @@ if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_POR
         generate_qr "$HY2_URL"
         fi
     fi
-if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_ok == 1)); then
+    if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_ok == 1 )); then
         SS_URL=$(build_ss2022_uri "$F_IP" "${SS_PORT:-}" "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
         msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT:-}")${NC}"
         msg "${GREEN}${SS_URL}${NC}"
@@ -58122,6 +59852,15 @@ if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_S
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
+    # S2-NEW-03 follow-up: menu 12 reprints the YAML from the live
+    # state; refresh the subscription export alongside it so the two
+    # artifacts never disagree after an add-user. Deploy callers
+    # already refreshed just before this view (CALLER=deploy), so
+    # only the manual reprint path refreshes here (no double refresh
+    # at deploy end). Best-effort: a stale export must not fail the view.
+    if [[ "$CALLER" != 'deploy' ]]; then
+        refresh_subscription_after_deploy || true
+    fi
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_clash_full_config_title) ]${NC}"
@@ -58146,9 +59885,9 @@ if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_S
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
-if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1)); then
-    S_IP="${LINK_IP:-}"
-    [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1 )); then
+        S_IP="${LINK_IP:-}"
+        [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
             if valid_hy2_sb_ports "${HY2_SB_PORTS:-}"; then
                 # U223: check the TLS fragment BEFORE embedding it; the
@@ -58195,8 +59934,8 @@ EOF_SB
             fi
         fi
     fi
-if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_ok == 1)); then
-    if (( _sb_json_started == 0 )); then printf ' [\n'; _sb_json_started=1; else printf ',\n'; fi
+    if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_ok == 1 )); then
+        if (( _sb_json_started == 0 )); then printf '    [\n'; _sb_json_started=1; else printf '    ,\n'; fi
         cat <<EOF_SB
     {
       "type": "shadowsocks",
@@ -58207,8 +59946,8 @@ if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_S
     }
 EOF_SB
     fi
-if (( _sb_json_started == 1 )); then printf ']\n'; fi
-if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && (( _xhttp_ok == 1)); then
+    if (( _sb_json_started == 1 )); then printf '    ]\n'; fi
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && (( _xhttp_ok == 1 )); then
         printf '\n%s\n' "${YELLOW}--- v2rayN / v2rayNG XHTTP JSON ---${NC}"
         cat <<EOF_V2N
 {
@@ -61056,7 +62795,7 @@ Usage:
   bash install.sh --version          显示构建版本 / Show build version
   bash install.sh --export-backup-key /secure/path/A-Box-recovery.key
                                       将恢复密钥导出到独立可信介质 / Export the recovery key to separate trusted media
-  bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]
+  bash install.sh --convert-legacy-backup OLD.tar.gz /root/converted
                                       安全转换旧版备份为 manifest v3 / Safely convert a legacy backup to manifest v3
   bash install.sh --xray-config-autorecover
                                       xray 配置损坏时从可信备份自动恢复一次（探针调用） / Auto-recover a damaged Xray config once from a trusted backup (probe call)
@@ -62236,6 +63975,9 @@ N11EOF
     grep -Fq 'setup_zram_swap()' <<< "$source_body" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
     grep -Fq 'users_registries_wipe' <<< "$source_body" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
     grep -Fq 'users_registry_remove "$core" "$tag"' <<< "$source_body" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy' <<< "$source_body" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy xray' <<< "$source_body" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' <<< "$source_body" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
     grep -Fq '6) swap_menu ;;' <<< "$source_body" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
     grep -Fq '/usr/local/sbin/abox-zram' <<< "$source_body" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }
@@ -62961,6 +64703,15 @@ PY_SELFTEST_YAML
     ! grep -Fq 'load_state || exit 0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor must not silently exit on persisted state load failure'; failures=$((failures + 1)); }
     grep -Fq 'state_load_failed=0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor persisted-state failure handling missing'; failures=$((failures + 1)); }
     grep -Fq 'stop_all_owned_services() {' <<< "$traffic_body" || { echo 'FAIL: traffic monitor fail-closed stop path missing'; failures=$((failures + 1)); }
+    # M41-NEW-03 follow-up: the main-script stop family (used by
+    # clear_all_protocols) must stay byte-identical to the template
+    # copies in traffic_monitor.sh; a drift means one side was edited
+    # without the other.
+    for _sf in managed_unit_path owned force_stop_owned_openrc core_family_unit_registered _core_exe_and_config core_process_matches find_core_residual_pid stop_core_residual_process stop_owned; do
+        _main_fn=$(sed -n '/^# BEGIN MAIN STOP FAMILY/,/^# END MAIN STOP FAMILY/p' "$0" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}')
+        _tmpl_fn=$(printf '%s\n' "$traffic_body" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}')
+        [[ -n "$_main_fn" && "$_main_fn" == "$_tmpl_fn" ]] || { echo "FAIL: stop family drift: $_sf differs between main script and traffic_monitor template"; failures=$((failures + 1)); }
+    done
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
     grep -q '^reorder_ss_whitelist_rules_one() {' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
     grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }

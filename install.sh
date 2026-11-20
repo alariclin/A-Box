@@ -12873,12 +12873,19 @@ validate_abox_env_semantics() {
     [[ -z "${HY2_OBFS:-}" ]] || valid_single_line_secret "$HY2_OBFS" 512 || return 1
     [[ -z "${SS_PASS:-}" ]] || valid_single_line_secret "$SS_PASS" 512 || return 1
     # SOCKS5: validate port/user/pass/proto when enabled.
+    # S2-NEW-02: both-empty credentials are the anonymous SOCKS5 state
+    # (sing-box treats an empty users list as no-auth, so a preserved
+    # anonymous inbound is a legal live state, not corruption). One-sided
+    # credentials are still rejected as corrupt; non-empty pairs keep the
+    # single-line secret checks below.
     if [[ -n "${SOCKS_PORT:-}" ]]; then
         valid_canonical_port "$SOCKS_PORT" || return 1
-        [[ -n "${SOCKS_USER:-}" ]] || return 1
-        valid_single_line_secret "$SOCKS_USER" 64 || return 1
-        [[ -n "${SOCKS_PASS:-}" ]] || return 1
-        valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        if [[ -n "${SOCKS_USER:-}" || -n "${SOCKS_PASS:-}" ]]; then
+            [[ -n "${SOCKS_USER:-}" ]] || return 1
+            valid_single_line_secret "$SOCKS_USER" 64 || return 1
+            [[ -n "${SOCKS_PASS:-}" ]] || return 1
+            valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        fi
         [[ "${SOCKS_PROTO:-socks}" =~ ^(socks|mixed)$ ]] || return 1
         [[ "$SOCKS_PORT" != "${VLESS_PORT:-}" && "$SOCKS_PORT" != "${SS_PORT:-}" && "$SOCKS_PORT" != "${HY2_BASE_PORT:-}" && "$SOCKS_PORT" != "10085" ]] || return 1
     fi
@@ -17804,6 +17811,16 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     fi
     pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
     [[ -n "$pat" ]] || return 0
+    # S2-NEW-01: numbered second instances (tag-N) are standalone
+    # inbounds too, but the base tag set never names them, so a -2
+    # inbound was silently dropped from the snapshot and lost on the
+    # next deploy. Match the -N form of every base tag as well (any N,
+    # no hardcoded cap); only tags actually present in the live config
+    # can match, so this stays live-config-driven. The detour capture
+    # below keys off the same match, so a numbered inbound's detour
+    # target (e.g. shadowtls-ss-2) is kept as well. Still a single jq
+    # pass, so its failure still fail-closes (return 1) as before.
+    local patn="^(${pat})-[0-9]+$"
     if ! tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX); then
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
@@ -35274,6 +35291,17 @@ EOF_SVC
     # live config, so live links are never removed. Best-effort: a
     # prune failure must not fail the deploy.
     _prune_standalone_links sing-box || true
+    # S1-NEW-03 (final-round followup 3): an overwrite redeploy rebuilds
+    # the sing-box config from scratch (build_singbox_config never emits
+    # TUIC inbounds), so removed TUIC nodes leave their per-tag cert/key
+    # pairs behind — the delete path runs this cleanup via
+    # _protocol_removed_side_effects, but this deploy path never did.
+    # Run it here, once the new config (incl. any preserved standalone
+    # inbounds) is on disk: the helper re-checks the live config and
+    # deletes the pairs only when no tuic inbound remains, so a
+    # preserved TUIC keeps its certs. Best-effort: a cleanup failure
+    # must not fail the deploy.
+    _singbox_cleanup_tuic_certs_when_none_remain || true
     setup_geo_cron
     commit_deployment_transaction
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into
@@ -38465,6 +38493,37 @@ _standalone_link_prune_if_gone() {
     return 0
 }
 
+# S1-NEW-04 (final-round followup 4): drop manifest rows for paths
+# that were just deleted from disk. The ownership manifest records
+# files that exist; a row for a deleted file drifts (a same-name,
+# same-hash rebuild would then compare against a stale row) and is
+# never healed until the next full record_core_family_ownership walk.
+# Callers pass the exact paths they deleted; only rows whose field 3
+# matches one of those paths are dropped, so live rows are untouched.
+# Same atomic-rewrite shape as _xl_legacy_drop_manifest_rows (mktemp
+# in place + 600 + mv). Best-effort, always returns 0: the file
+# deletion already happened, and a stale row is low-severity drift
+# that must never fail the caller's deploy/cleanup path.
+_manifest_drop_paths() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _tmp='' _list=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
+    [[ $# -gt 0 ]] || return 0
+    _tmp=$(mktemp "${_mf}.drop.XXXXXX" 2>/dev/null) || return 0
+    _list=$(mktemp "${_mf}.droplist.XXXXXX" 2>/dev/null) || { rm -f -- "$_tmp"; return 0; }
+    printf '%s\n' "$@" > "$_list" 2>/dev/null || { rm -f -- "$_tmp" "$_list"; return 0; }
+    # Exact match on field 3 via an associative set: paths may contain
+    # regex metacharacters, so they are never matched as patterns.
+    if ! awk -F'\t' 'NR==FNR {drop[$0]=1; next} !($3 in drop)' "$_list" "$_mf" > "$_tmp" 2>/dev/null; then
+        rm -f -- "$_tmp" "$_list"
+        return 0
+    fi
+    rm -f -- "$_list"
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    chown root:root -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_mf" 2>/dev/null || rm -f -- "$_tmp"
+    return 0
+}
+
 # L-NEW-11: a removed sing-box TUIC inbound owns its per-tag self-signed
 # cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/.key). Delete the pair
 # only when no tuic inbound remains in the live config (mirror of the Hy2
@@ -38487,10 +38546,17 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
     jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' "$_stripped" >/dev/null 2>&1 || _tuic_jq_rc=$?
     rm -f -- "$_stripped"
     [[ "$_tuic_jq_rc" == 1 ]] || return 0
+    # S1-NEW-04: a deleted file's manifest row must go with it, or
+    # the manifest drifts from disk (stale hash vs a same-name rebuild).
+    # Only rows for files this loop actually removed are dropped: a
+    # failed rm leaves the file (and its row) in place.
+    local _deleted=()
     for _f in "$_sb_dir"/tuic-*.crt "$_sb_dir"/tuic-*.key; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
         rm -f -- "$_f" 2>/dev/null || true
+        [[ -e "$_f" ]] || _deleted+=("$_f")
     done
+    (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
     return 0
 }
 
@@ -60173,6 +60239,7 @@ _clash_hy2_user_password() {
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
+    local _hy2_eff_pass='' _hy2_eff_obfs='' _hy2_eff_user=''
     local clash_ns1 clash_ns2 clash_country
     local _clash_standalone_nodes_tmp='' _clash_standalone_groups_tmp=''
     if clash_reality_mlkem_enabled; then
@@ -60728,7 +60795,6 @@ EOF_CLASH
     chmod 600 "$out" || return 1
     printf '%s\n' "$out"
 }
-
 # U14 (D1): write a single-user Mihomo YAML for one user/node only.
 # Same version gate (clash_reality_mlkem_enabled) and the same node data
 # as write_clash_yaml, via the shared emit_mihomo_vless_proxy_block, so
@@ -60746,8 +60812,9 @@ write_mihomo_user_yaml() {
     local _uuid="${1:-${UUID:-}}" out="${2:-${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}}"
     local clash_mlkem=false clash_mlkem_rc tmp_out out_real base_real
     local _has_vision=0 _has_xhttp=0 _emit_rc=0
-    [[ -n "$_uuid" ]] || return 1
-    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
+    # S1-NEW-06: the UUID gate lives below the stale-file removal, not
+    # here: a UUID-less node (Hy2-only .env has UUID="") must still reach
+    # the removal branch, or its dead single-user file is never cleaned.
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
     else
@@ -60783,6 +60850,13 @@ PY_CLASH_REALPATH
     if (( _has_vision == 0 && _has_xhttp == 0 )) && [[ -f "$out" ]]; then
         rm -f -- "$out" 2>/dev/null || true
     fi
+    # S1-NEW-06: UUID gate (moved down from the top of this function so
+    # the removal above still runs for a UUID-less no-leg node). Still
+    # returns 1 on a bad UUID, so the caller warning is unchanged; the
+    # removal above already ran under the path guards, so $out here is
+    # either absent or a regular file under $ABOX_DIR.
+    [[ -n "$_uuid" ]] || return 1
+    [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
     (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
     tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
     {
@@ -60877,14 +60951,17 @@ build_hy2_uri_endpoint() {
 # E19: build the hysteria2:// standalone URL from live state — the same
 # shape view_config emits (same pin rule, same branch order). $1 = auth
 # password (raw), $2 = obfs password (raw), $3 = host override (IP or
-# domain; default HY2_DOMAIN, else LINK_IP/F_IP). Prints the URL on
-# stdout; returns 1 when no usable link can be built (missing secrets,
+# domain; default HY2_DOMAIN, else LINK_IP/F_IP). $4 = optional username:
+# when given, emit the user:pass composite the server expects under
+# userpass auth (a bare password is a dead link there); when empty,
+# emit the bare password (password auth, and all pre-existing callers).
+# Prints the URL on stdout; returns 1 when no usable link can be built (missing secrets,
 # bad port endpoint, or the SYD-B4 A3 pin refusal: no pin and (no domain
 # or sing-box core)). Callers register the result with
 # register_standalone_link; the link file is 600 and may carry the real
 # obfs password, like the other standalone links carry real secrets.
 hy2_standalone_url() {
-    local _pass="${1:-}" _obfs="${2:-}" _host="${3:-}" _port='' _qp='' _pin='' _pe='' _he='' _oe='' _de=''
+    local _pass="${1:-}" _obfs="${2:-}" _host="${3:-}" _user="${4:-}" _port='' _qp='' _pin='' _pe='' _he='' _oe='' _de='' _ui=''
     [[ -n "$_pass" && -n "$_obfs" ]] || return 1
     IFS=$'\t' read -r _port _qp < <(build_hy2_uri_endpoint 2>/dev/null || true) || return 1
     [[ -n "$_port" ]] || return 1
@@ -60910,12 +60987,16 @@ hy2_standalone_url() {
     # pin refuses this link only.
     if [[ -z "$_pe" ]] && [[ -z "${HY2_DOMAIN:-}" || "${CORE:-}" == 'singbox' ]]; then return 1; fi
     _he=$(urlencode "$_pass"); _oe=$(urlencode "$_obfs"); _de=$(urlencode "${HY2_DOMAIN:-}")
+    # FUP4: userpass auth needs the composite userinfo; password auth
+    # (and every pre-existing 3-arg caller) keeps the bare password.
+    _ui="$_he"
+    [[ -n "$_user" ]] && _ui="$(urlencode "$_user"):$_he"
     if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
-        printf 'hysteria2://%s@%s:%s/?%ssni=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_de" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%ssni=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_de" "$_oe"
     elif [[ -n "${HY2_DOMAIN:-}" ]]; then
-        printf 'hysteria2://%s@%s:%s/?%sinsecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%sinsecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
     else
-        printf 'hysteria2://%s@%s:%s/?%ssni=localhost&insecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+        printf 'hysteria2://%s@%s:%s/?%ssni=localhost&insecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_ui" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
     fi
 }
 

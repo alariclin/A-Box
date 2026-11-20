@@ -25,6 +25,24 @@ jobs:
           bash -n install.sh
           bash -n scripts/update-core-mirror.sh
           bash -n scripts/prune-core-mirror.sh
+      - name: Add swap for ShellCheck on large install.sh
+        # shellcheck on the 63k-line install.sh needs >5 GB RSS and keeps
+        # growing; the ubuntu-latest runner (7 GB RAM) kills the runner
+        # mid-run ("runner has received a shutdown signal") once the heap
+        # crosses available memory. An 8 GB swapfile gives it headroom
+        # without changing the gate itself. Fail-closed: if swap cannot be
+        # created, fail here instead of dying silently inside shellcheck.
+        # NOTE: /swapfile already exists and is active on this image
+        # (fallocate there fails "Text file busy"), so use a fresh path.
+        run: |
+          swapon --show || true
+          free -h
+          df -h / | tail -1
+          sudo fallocate -l 8G /swapfile-abox
+          sudo chmod 600 /swapfile-abox
+          sudo mkswap /swapfile-abox
+          sudo swapon /swapfile-abox
+          free -h
       - name: ShellCheck installation critical errors
         run: |
           sudo apt-get update

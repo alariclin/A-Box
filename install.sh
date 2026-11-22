@@ -49931,6 +49931,24 @@ _reset_dev() {
     if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$1" >/dev/null 2>&1 || true;
     elif [[ -e "/sys/block/${1#/dev/}/reset" ]]; then echo 1 > "/sys/block/${1#/dev/}/reset" 2>/dev/null || true; fi
 }
+# 06g-M1: serialize start/stop under one flock (/run lock inode, so no
+# stale file can survive a reboot): without it two concurrent starts
+# each hot_add / zramctl --find a different device, swapon both, then
+# each overwrite the single state file -- the first writer's device is
+# left running with no record, and a later stop only stops the recorded
+# one. The wait is bounded (30 s, 0.2 s retry, so any flock works);
+# after acquiring, the normal active/state re-check below claims the
+# already-running device instead of creating a second one. `status`
+# is read-only and takes no lock.
+if [[ "${1:-}" == start || "${1:-}" == stop ]]; then
+    exec 9>/run/A-Box-zram.lock 2>/dev/null || exit 1
+    _zram_lock_i=0
+    while ! flock -n 9 2>/dev/null; do
+        _zram_lock_i=$((_zram_lock_i + 1))
+        if (( _zram_lock_i >= 150 )); then echo "abox-zram: timed out waiting for the zram lock" >&2; exit 1; fi
+        sleep 0.2
+    done
+fi
 case "${1:-}" in
     start)
         active_devs=$(zram_active_devs) || exit 1

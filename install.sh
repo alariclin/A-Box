@@ -59122,11 +59122,13 @@ wallos_install_or_update() {
             wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
-        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
-            msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
-            wallos_fw_rollback_added "${_fw_added[@]}" || true
-            return 1
-        }
+        # 07h2-M1: the journal is already committed at this point, so
+        # a failed cleanup must only warn: rolling back the firewall
+        # increments would leave the new (running) deployment
+        # unreachable, and recovery treats a committed journal as
+        # delete-only, so no later recovery could restore it. The
+        # leftover journal is cleared on the next run.
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
     fi
     # M-28: this attempt's firewall openings are now live with the new
     # mode; register them, then reclaim any previously registered

@@ -56326,15 +56326,27 @@ _wallos_service_confirmed_stopped() {
 # an administrator replaced with an external deployment. Mirrors the
 # argo_remove_unit marker check; unlike it, an absent unit is OK here
 # (teardown returns 0 when the front is absent).
+# 07f-H01: systemd resolves a unit by its full load path, so the check
+# must cover every load path, not just /etc: a same-name foreign unit in
+# /run, /usr/local/lib, /usr/lib or /lib is the effective unit when /etc
+# has none (teardown would stop it by name), and a write to /etc would
+# shadow it. Any load-path copy that exists must be a regular file
+# carrying the marker; any foreign copy (or symlink / non-regular path)
+# refuses, even when /etc already holds an A-Box copy.
 _wallos_front_unit_owned_or_absent() {
-    local _unit
+    local _unit _dir
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        _unit="/etc/systemd/system/${1}.service"
+        for _dir in /etc/systemd/system /run/systemd/system /usr/local/lib/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
+            _unit="$_dir/${1}.service"
+            [[ -e "$_unit" || -L "$_unit" ]] || continue
+            [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null || return 1
+        done
+        return 0
     else
         _unit="/etc/init.d/${1}"
+        [[ -e "$_unit" || -L "$_unit" ]] || return 0
+        [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null
     fi
-    [[ -e "$_unit" || -L "$_unit" ]] || return 0
-    [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null
 }
 
 wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running or if disable/removal fails

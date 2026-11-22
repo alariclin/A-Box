@@ -52401,7 +52401,10 @@ PY_LEGACY_EXTRACT
     [[ "$_c_mac" =~ ^[A-Fa-f0-9]{64}$ ]] || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
     write_private_sidecar "${out}.hmac" "$_c_mac  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup HMAC sidecar write failed.'; }
     # Archive appears last, only when both sidecars already exist.
-    ln -- "$_c_tmp" "$out" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup already exists.'; }
+    # 07b-02: -T: a directory appearing at $out during the long
+    # package/validate/sidecar window must fail loudly instead of
+    # having the archive hardlinked INSIDE it (and reported success).
+    ln -T -- "$_c_tmp" "$out" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup already exists.'; }
     rm -f -- "$_c_tmp"
     [[ -f "$out" && ! -L "$out" && "$(sha256sum < "$out" 2>/dev/null | awk '{print $1}')" == "${_c_hash,,}" ]] || { rm -rf "$work"; rm -f "$out" "${out}.sha256" "${out}.hmac"; die 'Converted backup authentication failed.'; }
     rm -rf "$work"

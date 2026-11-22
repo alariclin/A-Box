@@ -63106,22 +63106,38 @@ core_tls_smoke_probe() {
     while IFS=$'\t' read -r host port || [[ -n "$host" ]]; do
         [[ -z "$host" && -z "$port" ]] && continue
         [[ -n "$host" && "$port" =~ ^[0-9]+$ ]] || { msg "${RED}[!] $(tprintf core_tls_smoke_probe_bad_target "${core}" "${host}" "${port}")${NC}" >&2; return 1; }
-        # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
-        # Only a TLS record proves the data plane is alive: first byte
-        # 0x16 (ServerHello, incl. REALITY fallback to a TLS site) or
-        # 0x15 (Alert). A non-TLS target is a misconfiguration and fails.
+        # Open TCP, send ClientHello, read the full 5-byte TLS record
+        # header plus its declared payload. Only a TLS record proves
+        # the data plane is alive: first byte 0x16 (ServerHello, incl.
+        # REALITY fallback to a TLS site) or 0x15 (Alert). A non-TLS
+        # target is a misconfiguration and fails.
         # Timeout 5s. The destination is passed as DATA ($1/$2), never
         # interpolated into the child shell source: the host comes from
         # config text (R15-07).
         if ! timeout 5 bash -c '
             exec 3<>/dev/tcp/$1/$2 || exit 1
             printf "\x16\x03\x01\x00\x2d\x01\x00\x00\x29\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00" >&3 || exit 1
-            IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
-            [[ -n "$resp" ]] || exit 1
+            # 08d-01: read the full 5-byte TLS record header. The old
+            # `read -d ""` stopped at the first NUL (the length high
+            # byte is usually 0x00), so it verified only the first
+            # three bytes and passed a truncated record prefix.
+            # head -c reads exact bytes; od turns them into hex
+            # (Bash vars cannot hold NULs).
+            hdr=$(head -c 5 <&3 | od -An -tx1 | tr -d " \n") || exit 1
+            [[ "${#hdr}" == 10 ]] || exit 1
+            rtype="${hdr:0:2}"; rlen=$((16#${hdr:6:2} * 256 + 16#${hdr:8:2}))
             # S165: only a TLS record proves the data plane: first
-            # byte 0x16 (Handshake/ServerHello) or 0x15 (Alert).
-            # Plaintext (or any other record type) must fail.
-            [[ "${resp:0:1}" == "$(printf "\x16")" || "${resp:0:1}" == "$(printf "\x15")" ]] || exit 1
+            # byte 0x16 (Handshake/ServerHello) or 0x15 (Alert),
+            # major version 0x03, length 1..16384. Plaintext (or any
+            # other record type) must fail.
+            [[ "$rtype" == 16 || "$rtype" == 15 ]] || exit 1
+            [[ "${hdr:2:2}" == 03 ]] || exit 1
+            (( rlen >= 1 && rlen <= 16384 )) || exit 1
+            # Read the full declared payload: a truncated record
+            # (fewer bytes than the header promises) must fail.
+            n=$(head -c "$rlen" <&3 | wc -c) || exit 1
+            n="${n//[[:space:]]/}"
+            [[ "$n" == "$rlen" ]] || exit 1
         ' _ "$host" "$port" 2>/dev/null; then
             msg "${RED}[!] $(tprintf core_tls_smoke_probe_no_response "${core}" "${host}" "${port}")${NC}" >&2
             return 1

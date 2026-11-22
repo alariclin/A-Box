@@ -43309,7 +43309,15 @@ users_inbound_menu() {
                 local gb=''
                 read -r -p "$(tr_msg mu_gb_prompt)" gb || continue
                 gb=$(normalize_fa_ar_digits "$gb")
-                [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
+                # 06a2-M1: a bare digit check lets an over-long value
+                # wrap in $((10#...)) (2^64 -> 0 = unlimited, and the
+                # jq branch below clears a quota block on $g == 0).
+                # Same cap style as the expiry input next door; the
+                # cap (1,000,000 GB) also keeps $g * 1073741824 inside
+                # jq's exact-integer range. valid_decimal_upto
+                # length-gates first, so a 19-digit input is rejected
+                # before any arithmetic can wrap it.
+                valid_decimal_upto "$gb" 1000000 || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 gb=$((10#$gb))
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson g "$gb" '
                     .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and ($g == 0 or ((.used_up // 0) + (.used_down // 0) < ($g * 1073741824))) then .blocked = "" else . end) else . end)') || continue

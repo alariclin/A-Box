@@ -42673,8 +42673,14 @@ users_apply_reg() {
     local _reg=''
     _reg=$(users_reg_file "$1" "$2") || return 1
     [[ -n "$_reg" ]] || return 1
+    # 06a1-M1: remember whether the debt marker pre-existed. A
+    # pre-existing marker is an older interrupted apply's debt, not
+    # this run's: if the write below fails, only a marker planted by
+    # this run may be removed.
+    local _pending_pre=0
+    [[ -e "${_reg}.sync-pending" ]] && _pending_pre=1
     : > "${_reg}.sync-pending" || return 1
-    users_reg_write "$1" "$2" "$_new" || { rm -f -- "${_reg}.sync-pending"; return 1; }
+    users_reg_write "$1" "$2" "$_new" || { (( _pending_pre == 0 )) && rm -f -- "${_reg}.sync-pending"; return 1; }
     # M-29(2): fold the live Xray counters into the registry BEFORE the
     # sync restarts the core. A restart zeroes the in-memory
     # StatsService counters, so traffic between the last guard tick and

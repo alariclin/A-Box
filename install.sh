@@ -44487,6 +44487,13 @@ snapshot_timezone_state() {
     fi
     if [[ -f /etc/timezone ]]; then
         cp -a /etc/timezone "$dir/etc-timezone" || return 1
+        # 06c1-M1: a symlinked /etc/timezone stores the link itself
+        # above, but an apply writes THROUGH the link and changes the
+        # target file's content. Save the target content too, so
+        # restore can put it back.
+        if [[ -L /etc/timezone ]]; then
+            cp -aL /etc/timezone "$dir/etc-timezone-target" || return 1
+        fi
     else
         : > "$dir/etc-timezone.absent" || return 1
     fi
@@ -44523,6 +44530,12 @@ restore_timezone_snapshot() {
     if [[ -f "$dir/etc-timezone" ]]; then
         rm -f /etc/timezone || return 1
         cp -a "$dir/etc-timezone" /etc/timezone || return 1
+        # 06c1-M1: if the snapshot held a symlink, also write the
+        # saved target content back THROUGH the link (plain cp
+        # follows it), or the apply's write to the target survives.
+        if [[ -f "$dir/etc-timezone-target" ]]; then
+            cp "$dir/etc-timezone-target" /etc/timezone || return 1
+        fi
     elif [[ -f "$dir/etc-timezone.absent" ]]; then
         rm -f /etc/timezone || return 1
     else
@@ -44564,6 +44577,12 @@ restore_timezone_snapshot() {
         if [[ -f "$dir/etc-timezone" ]]; then
             rm -f /etc/timezone || return 1
             cp -a "$dir/etc-timezone" /etc/timezone || return 1
+            # 06c1-M1: same target-content write-back as the initial
+            # restore above: set-timezone just wrote through the
+            # link, so the saved target content must be put back.
+            if [[ -f "$dir/etc-timezone-target" ]]; then
+                cp "$dir/etc-timezone-target" /etc/timezone || return 1
+            fi
         elif [[ -f "$dir/etc-timezone.absent" ]]; then
             rm -f /etc/timezone || return 1
         fi

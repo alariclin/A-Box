@@ -49851,8 +49851,14 @@ zram_active_devs() {
     local out
     if ! out=$(swapon --show=NAME --noheadings 2>/dev/null); then
         # BusyBox/Alpine swapon lacks --show: fall back to /proc/swaps.
+        # 06g-M3: a failed read must fail (return 1), never be masked by
+        # `|| true` into an empty list: the state-write cleanup path
+        # treats an empty list as "device down" (exit 1) and its caller
+        # then deletes the helper and config -- the only stop tool --
+        # while the device is still active. A failure here lets the
+        # cleanup fall back to the conservative `active_now="$dev"`.
         [[ -r /proc/swaps ]] || return 1
-        out=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null || true)
+        out=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null) || return 1
     fi
     printf '%s\n' "$out" | grep -E '^/dev/zram[0-9]+$' || true
 }

@@ -38913,6 +38913,15 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
         rm -f -- "$_stripped"
         return 0
     fi
+    # 05e2-M1: a comment/blank-only config strips to empty, and jq -s
+    # on empty input yields [] (rc 1) -- the same code as "confirmed no
+    # TUIC inbound". An empty-after-strip config is unverifiable, not a
+    # confirmation: keep the certs (same guard as the standalone link
+    # check, which refuses an empty-after-strip config).
+    if ! grep -q '[^[:space:]]' "$_stripped" 2>/dev/null; then
+        rm -f -- "$_stripped"
+        return 0
+    fi
     # 2gq: delete only when jq confirms no tuic inbound remains
     # (one-pass Boolean, rc 1); a jq failure keeps the files.
     jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' "$_stripped" >/dev/null 2>&1 || _tuic_jq_rc=$?

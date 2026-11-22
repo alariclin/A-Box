@@ -44902,6 +44902,17 @@ snapshot_dns_state() {
             fi
         fi
     else printf disabled > "$dir/dnscrypt-service-enabled" || return 1; fi
+    # 06d-H1: record whether dnscrypt-proxy.socket is in play at
+    # baseline (enabled or active). dns_disable_doh must not stop a
+    # socket-activated foreign proxy whose service is inactive/
+    # disabled; without this record the decision can only see the
+    # service state. Same exit-code predicate as the socket-in-play
+    # checks elsewhere in this file.
+    if command -v systemctl >/dev/null 2>&1 && { systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; }; then
+        printf yes > "$dir/dnscrypt-socket-inplay" || return 1
+    else
+        printf no > "$dir/dnscrypt-socket-inplay" || return 1
+    fi
     # M-09: record dnscrypt-proxy.socket Listen endpoints and the
     # A-Box socket drop-in. dns_enable_doh snapshots BEFORE normalize
     # rebinds the socket; without these, a rollback restores the
@@ -45749,15 +45760,16 @@ resolved_dns_check_warn_message() {
 # $DNS_STATE_FILE's mode=doh (written by dns_enable_doh). Layered by
 # ownership, so a proxy the user installed themselves is never stopped
 # or disabled:
-#   - A-Box-enabled proxy (the pre-DoH baseline snapshot records it
-#     inactive/disabled): stop + disable the service and the socket.
+#   - A-Box-enabled proxy (the pre-DoH baseline snapshot records its
+#     service inactive/disabled AND its socket not in play): stop +
+#     disable the service and the socket.
 #   - Any proxy (A-Box or foreign): remove only A-Box's own socket
 #     drop-in (marker-gated) and reload the socket unit, so a foreign
 #     proxy keeps its own Listen endpoints.
 # Returns 0 when there was nothing to tear down or the teardown
 # succeeded; 1 on failure (callers roll back).
 dns_disable_doh() {
-    local _dns_state='' _base_state='' _base_enabled='' _abox_owned=0
+    local _dns_state='' _base_state='' _base_enabled='' _base_sock_inplay='' _abox_owned=0
     local _dropin='/etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf'
     local _dropin_dir='/etc/systemd/system/dnscrypt-proxy.socket.d'
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then
@@ -45769,15 +45781,29 @@ dns_disable_doh() {
     esac
     # The pre-DoH baseline is the only durable record of whether the
     # proxy predates A-Box: A-Box installs it fresh (inactive/disabled
-    # in the baseline), a foreign one is active/enabled there. Without
-    # a baseline the service is left alone and only the drop-in goes.
+    # in the baseline, socket not in play), a foreign one is
+    # active/enabled there -- or socket-activated, with an
+    # inactive/disabled service and an enabled socket. Without a
+    # baseline the service is left alone and only the drop-in goes.
     if [[ -f "$DNS_BACKUP_DIR/dnscrypt-service-state" ]]; then
         _base_state=$(tr -d '[:space:]' < "$DNS_BACKUP_DIR/dnscrypt-service-state" 2>/dev/null || true)
     fi
     if [[ -f "$DNS_BACKUP_DIR/dnscrypt-service-enabled" ]]; then
         _base_enabled=$(tr -d '[:space:]' < "$DNS_BACKUP_DIR/dnscrypt-service-enabled" 2>/dev/null || true)
     fi
-    if [[ "$_base_state" == inactive && "$_base_enabled" == disabled ]]; then
+    # 06d-H1: the service state alone cannot prove ownership: a
+    # socket-activated foreign proxy has an inactive/disabled service
+    # at baseline while its socket is enabled. Only a baseline that
+    # also records the socket as not in play proves A-Box ownership.
+    # A missing or unreadable socket record is "unknown", not "not in
+    # play": fail closed and leave the proxy alone (only the A-Box
+    # drop-in is removed below). A present A-Box drop-in does not
+    # change this: it proves A-Box configured the socket, not that
+    # the service behind it is A-Box's.
+    if [[ -f "$DNS_BACKUP_DIR/dnscrypt-socket-inplay" ]]; then
+        _base_sock_inplay=$(tr -d '[:space:]' < "$DNS_BACKUP_DIR/dnscrypt-socket-inplay" 2>/dev/null || true)
+    fi
+    if [[ "$_base_state" == inactive && "$_base_enabled" == disabled && "$_base_sock_inplay" == no ]]; then
         _abox_owned=1
     fi
     if (( _abox_owned == 1 )); then

@@ -46177,8 +46177,12 @@ dns_disable_doh() {
         if (( _abox_owned == 0 )); then
             # The socket is already stopped above for an A-Box-owned
             # proxy; a foreign one rebinds to its packaged endpoints.
+            # 06d-M1: a failed restart leaves the socket stopped and
+            # unable to rebind -- report it (the function's contract
+            # is "failure returns 1, the caller rolls back") instead
+            # of swallowing it with || true and returning success.
             if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
-                systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+                systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || return 1
             fi
         fi
     fi

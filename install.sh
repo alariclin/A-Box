@@ -52013,7 +52013,10 @@ write_private_sidecar() {
     # planted at $dest after the entry check would make mv install the
     # tmp file INSIDE it and still report success.
     [[ ! -d "$dest" ]] || { rm -f -- "$tmp"; return 1; }
-    mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
+    # 07a-M2: the re-check above still leaves a window before mv, so
+    # publish with -T as well: a directory appearing in that window
+    # must fail loudly instead of swallowing the tmp file inside it.
+    mv -Tf -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
 }
 
 ensure_backup_auth_key() {

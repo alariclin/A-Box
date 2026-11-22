@@ -33348,9 +33348,22 @@ routing_rule_add() {
 }
 
 # $1=0-based rule index
+# 05a-M2: bash $((10#N)) wraps modulo 2^64 (2^64 -> 0, 2^64+1 -> 1)
+# and 2^63 wraps negative, so a pure-digit check is not enough: an
+# over-long index would wrap and delete the wrong rule (or report a
+# deletion that never happened). Return 0 only when the value fits in
+# a signed 64-bit integer: strip leading zeros, then at most 18
+# significant digits (an 18-digit number is always < 2^63-1).
+decimal_fits_int64() {
+    local _v="${1:-}" _sig
+    _sig="${_v#"${_v%%[!0]*}"}"
+    [[ "${#_sig}" -le 18 ]]
+}
+
 routing_rule_del() {
     local idx="$1" tmp rc
     [[ "$idx" =~ ^[0-9]+$ ]] || return 1
+    decimal_fits_int64 "$idx" || return 1
     idx=$((10#$idx))
     routing_state_init || return 1
     # Out-of-range indices are a caller error, not a no-op success:
@@ -34488,7 +34501,10 @@ split_preset_interactive() {
 split_rule_del_interactive() {
     local idx
     read -r -p "$(tr_msg split_rule_del_prompt): " idx || return 0
-    [[ "$idx" =~ ^[0-9]+$ ]] && idx=$((10#$idx))
+    # 05a-M2: convert only when the value fits int64; an over-long
+    # input stays a raw string so routing_rule_del rejects it as
+    # invalid instead of wrapping to a valid-looking small index.
+    if [[ "$idx" =~ ^[0-9]+$ ]] && decimal_fits_int64 "$idx"; then idx=$((10#$idx)); fi
     # Snapshot for rollback: re-adding appends, which would move the rule
     # and change first-match order, so the original object is kept to be
     # re-inserted at this same index if the live apply fails.

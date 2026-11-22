@@ -26375,6 +26375,11 @@ if [[ "$desired" != RUNNING ]]; then
         # A-Box-owned core instead of leaving it serving cleared nodes.
         # Other non-RUNNING states (TRAFFIC_BLOCKED/MAINTENANCE) are
         # owned by the traffic monitor, not by this probe.
+        # 04a-H2: stopping a service is a mutation, so take the runtime
+        # guard FIRST: without it the probe can act on a stale
+        # MANUAL_STOPPED read and stop a service the main script has
+        # just started. Contention yields this round (the guard exits 0).
+        acquire_abox_runtime_guard
         for _gs in xray sing-box hysteria; do stop_ghost_owned "$_gs" || true; done
     fi
     exit 0

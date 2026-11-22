@@ -36851,13 +36851,20 @@ rollback_newly_installed_vnstat() {
         if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then svc_name=vnstat
         elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then svc_name=vnstatd
         fi
-        [[ -n "$svc_name" ]] || return 0
-        systemctl stop "$svc_name" >/dev/null 2>&1 || _rc=1
-        systemctl disable "$svc_name" >/dev/null 2>&1 || _rc=1
+        # 05d-M2: a missing service unit must not skip the package
+        # cleanup below. The package may have been installed by this
+        # transaction even though its unit never registered (or was
+        # removed by another actor); only the stop/disable is skipped
+        # when there is no unit to act on.
+        if [[ -n "$svc_name" ]]; then
+            systemctl stop "$svc_name" >/dev/null 2>&1 || _rc=1
+            systemctl disable "$svc_name" >/dev/null 2>&1 || _rc=1
+        fi
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
-        [[ -x /etc/init.d/vnstatd ]] || return 0
-        rc-service vnstatd stop >/dev/null 2>&1 || _rc=1
-        rc-update del vnstatd default >/dev/null 2>&1 || _rc=1
+        if [[ -x /etc/init.d/vnstatd ]]; then
+            rc-service vnstatd stop >/dev/null 2>&1 || _rc=1
+            rc-update del vnstatd default >/dev/null 2>&1 || _rc=1
+        fi
     else
         return 0
     fi

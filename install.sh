@@ -26909,6 +26909,12 @@ if [[ -L "$GEO_DIR/geoip.dat" ]]; then
 elif [[ -f "$GEO_DIR/geoip.dat" ]]; then
     cp -p "$GEO_DIR/geoip.dat" "$txn_stage/geoip.old" || { rm -rf -- "$txn_stage"; exit 1; }
     printf '1\n' > "$txn_stage/had_geoip" || { rm -rf -- "$txn_stage"; exit 1; }
+elif [[ -e "$GEO_DIR/geoip.dat" ]]; then
+    # 04b-01: a directory (or other non-regular, non-symlink) target is
+    # not "absent": recording had=0 would create a transaction whose
+    # restore branch (rm -f) can never satisfy it. Fail closed before
+    # the transaction exists.
+    rm -rf -- "$txn_stage"; exit 1
 else
     printf '0\n' > "$txn_stage/had_geoip" || { rm -rf -- "$txn_stage"; exit 1; }
 fi
@@ -26922,6 +26928,9 @@ if [[ -L "$GEO_DIR/geosite.dat" ]]; then
 elif [[ -f "$GEO_DIR/geosite.dat" ]]; then
     cp -p "$GEO_DIR/geosite.dat" "$txn_stage/geosite.old" || { rm -rf -- "$txn_stage"; exit 1; }
     printf '1\n' > "$txn_stage/had_geosite" || { rm -rf -- "$txn_stage"; exit 1; }
+elif [[ -e "$GEO_DIR/geosite.dat" ]]; then
+    # 04b-01: same non-regular-target refusal as geoip.dat above.
+    rm -rf -- "$txn_stage"; exit 1
 else
     printf '0\n' > "$txn_stage/had_geosite" || { rm -rf -- "$txn_stage"; exit 1; }
 fi
@@ -26989,7 +26998,13 @@ stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transacti
 stage_site=$(mktemp "$GEO_DIR/.geosite.A-Box-new.XXXXXX") || { rm -f "$stage_ip"; restore_geo_transaction || true; exit 1; }
 install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
 install -m 644 "$tmpdir/geosite.dat" "$stage_site" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+# 04b-01: refuse a directory (or symlink) target before moving, mirroring
+# the R16-F07-04 guard in restore_geo_transaction: without -T, mv drops
+# the staged file inside the directory and reports success, while the
+# target path itself stays a directory.
+[[ ( ! -e "$GEO_DIR/geoip.dat" || -f "$GEO_DIR/geoip.dat" ) && ! -L "$GEO_DIR/geoip.dat" ]] || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
 mv -f "$stage_ip" "$GEO_DIR/geoip.dat" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+[[ ( ! -e "$GEO_DIR/geosite.dat" || -f "$GEO_DIR/geosite.dat" ) && ! -L "$GEO_DIR/geosite.dat" ]] || { rm -f "$stage_site"; restore_geo_transaction || true; exit 1; }
 mv -f "$stage_site" "$GEO_DIR/geosite.dat" || { rm -f "$stage_site"; restore_geo_transaction || true; exit 1; }
 restart_ok=0
 if is_systemd; then

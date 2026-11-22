@@ -27517,7 +27517,13 @@ xray_ensure_stats() {
            )
            and (
                if .api.listen != null then
-                   .routing.rules[0] == abox_loopback_rule
+                   # H1 (04c1): the loopback routing rule does not protect
+                   # .api.listen -- it is an independent gRPC socket, not
+                   # traffic through inbounds/routing. A non-loopback
+                   # listen (e.g. 0.0.0.0) must fail the fast check so
+                   # the normalisation below rewrites it to loopback.
+                   (.api.listen == ("127.0.0.1:" + ($ap | tostring)))
+                   and (.routing.rules[0] == abox_loopback_rule)
                else
                    (.routing.rules[0] == abox_api_rule($t)
                     and .routing.rules[1] == abox_loopback_rule)

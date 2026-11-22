@@ -19404,7 +19404,7 @@ EOF_ABOX_FW_RESTORE
 # $1=old_restore $2=tx_dir $3=old_unit $4=old_unit_path $5=old_unit_enabled
 __abox_firewall_persistence_rollback() {
     local old_restore="$1" tx_dir="$2" old_unit="$3" old_unit_path="$4" old_unit_enabled="$5"
-    local fail=0
+    local fail=0 _rb_en=''
     if [[ "$old_restore" == 1 ]]; then
         cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
     else
@@ -19425,6 +19425,17 @@ __abox_firewall_persistence_rollback() {
                     enabled-runtime) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1; systemctl enable --runtime A-Box-firewall.service >/dev/null 2>&1 || fail=1; [[ "$(systemctl is-enabled A-Box-firewall.service 2>/dev/null)" == enabled-runtime ]] || fail=1 ;;
                     *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
                 esac
+            else
+                # 03c-M2: a fresh-install rollback never verified that
+                # the new enablement was actually cancelled: a failed
+                # disable leaves a dangling .wants/ link behind while
+                # the unit file is gone. Verify by the live state, not
+                # by the swallowed disable rc: still enabled means the
+                # rollback did not land.
+                _rb_en=$(systemctl is-enabled A-Box-firewall.service 2>/dev/null || true)
+                case "$_rb_en" in
+                    enabled|enabled-runtime) fail=1 ;;
+                esac
             fi
             ;;
         openrc)
@@ -19443,6 +19454,13 @@ __abox_firewall_persistence_rollback() {
                     rc-update del A-Box-firewall default >/dev/null 2>&1 || true
                 fi
                 if [[ "$old_unit" == 1 ]] && [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
+                    fail=1
+                fi
+                # 03c-M2: same fresh-install gap as the systemd branch:
+                # a failed rc-update del leaves the service listed in
+                # the default runlevel while the unit file is gone.
+                # Verify the listing is actually gone.
+                if [[ "$old_unit" == 0 ]] && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
                     fail=1
                 fi
             else

@@ -33765,6 +33765,12 @@ warp_deploy_inner() {
             2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
             *) msg "$(tr_msg warp_apply_fail)" ;;
         esac
+        # H1 (05a): the failed apply may have committed the new config
+        # to one core before the other failed, leaving live diverged
+        # from the restored state: re-push the restored state so live
+        # converges back too. Best effort; the failure is reported
+        # either way. (Same pattern as warp_apply_preset.)
+        routing_apply_all_managed >/dev/null 2>&1 || true
         return 1
     fi
     rm -f "$_warp_snap"
@@ -33817,6 +33823,10 @@ warp_undeploy() {
             2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
             *) msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}" ;;
         esac
+        # H1 (05a): same re-push as warp_deploy_inner. No force-retire
+        # argument here: the restored state carries warp-out again, so
+        # it must be applied back, not retired.
+        routing_apply_all_managed >/dev/null 2>&1 || true
         return 1
     fi
     rm -f "$_warp_snap"
@@ -33957,6 +33967,9 @@ split_apply_preset() {
             1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
             2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
         esac
+        # H1 (05a): re-push the rolled-back state so live converges back
+        # too (same pattern as split_rule_add_interactive).
+        routing_apply_all_managed >/dev/null 2>&1 || true
         return 1
     fi
     msg "$(tr_msg warp_preset_done)"
@@ -34081,6 +34094,9 @@ split_add_socks_interactive() {
             2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
             *) msg "${RED}$(tr_msg split_add_fail)${NC}" ;;
         esac
+        # H1 (05a): re-push the rolled-back state so live converges back
+        # too (same pattern as split_rule_add_interactive).
+        routing_apply_all_managed >/dev/null 2>&1 || true
         pause_return; return 1
     fi
     pause_return

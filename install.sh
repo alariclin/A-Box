@@ -60900,79 +60900,15 @@ EOF_CLASH
         if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
                 echo '  # Hy2 omitted: port configuration invalid; refusing to emit a node with a bad port.'
-            elif [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
-                if [[ "${HY2_HOP:-}" == 'true' ]]; then
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "${HY2_DOMAIN:-}"
-    port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS:-}
-    hop-interval: 30
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    sni: "${HY2_DOMAIN:-}"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                else
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "${HY2_DOMAIN:-}"
-    port: ${HY2_BASE_PORT:-443}
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    sni: "${HY2_DOMAIN:-}"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                fi
-                _hy2_emit=1
-                _hy2_emit_names+=("$hy2_name")
-            elif [[ "$hy2_yaml_emit" == true ]]; then
-                if [[ "${HY2_HOP:-}" == 'true' ]]; then
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$S_IP"
-    port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS:-}
-    hop-interval: 30
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    skip-cert-verify: true
-    fingerprint: "$hy2_fp_yaml"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                else
-                    cat <<EOF_CLASH
-  - name: "$hy2_name"
-    type: hysteria2
-    server: "$S_IP"
-    port: ${HY2_BASE_PORT:-443}
-    password: ${hy2_pass_yaml}
-    alpn:
-      - h3
-    skip-cert-verify: true
-    fingerprint: "$hy2_fp_yaml"
-    obfs: salamander
-    obfs-password: ${hy2_obfs_yaml}
-EOF_CLASH
-                fi
-                _hy2_emit=1
-                _hy2_emit_names+=("$hy2_name")
             elif [[ "$hy2_yaml_emit" != true ]]; then
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             else
-                # H-24(3): one node per resolved Hy2 user. The domain
-                # branch implies hy2_yaml_emit (see above), so gating
-                # on it first keeps the two branches' behaviour
-                # identical while the loop drives all four templates.
+                # H-24(3): one node per resolved Hy2 user. 08b-H1: the
+                # old domain and == true single-node branches are gone
+                # (with == true / != true they covered every value and
+                # this loop was unreachable); the loop drives all four
+                # templates itself (domain/IP x hop/plain), so a domain
+                # no longer pins the output to one legacy node.
                 # Single-user lists hold exactly the legacy pair, so
                 # the single node is byte-identical to before.
                 local _hy2_i=0

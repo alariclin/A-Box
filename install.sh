@@ -19306,7 +19306,12 @@ _fw_restore_leg() {
         ' "$backup" > "$_rb_clamped" 2>/dev/null && [[ -s "$_rb_clamped" ]]; then
             _rb_src="$_rb_clamped"
         else
-            _rb_src="$backup"
+            # R16-F06-01: never flush-restore the raw backup. Its INPUT
+            # policy may be ACCEPT, and restoring it re-opens the host
+            # (a fail-open window until the re-clamp below, permanent
+            # if the re-clamp fails). Keep the backup for manual
+            # recovery and report failure instead.
+            _rb_src=''
         fi
         if [[ -n "$_rb_src" ]] && { "$restore_cmd" -w < "$_rb_src" >/dev/null 2>&1 || "$restore_cmd" < "$_rb_src" >/dev/null 2>&1; }; then
             _rb_ok=1

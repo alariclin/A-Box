@@ -47361,6 +47361,115 @@ dns_enable_doh() {
         msg "${RED}[!] Cannot parse $config as TOML; refusing to enable DoH on an unverifiable config.${NC}"
         dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
         return 1
+    elif python3 -I - "$config" <<'PY_DOH_FR_SCAN' 2>/dev/null; then
+import re, sys
+# 06e-01: Python exists but has no tomllib (Python < 3.11). Scan the
+# top-level keys with escape decoding, so an escaped key such as
+# "\u0066orwarding_rules" is not missed and then silently removed by
+# the rewriter without the warning above. Mirrors the rewriter's
+# _parse_key_path for the first segment: bare segments are
+# [A-Za-z0-9_-]+, double-quoted segments decode \uXXXX / \UXXXXXXXX
+# and the basic escapes, single-quoted segments are literal. A dotted
+# key counts by its first segment (forwarding_rules.sub IS a root
+# key); a quoted "forwarding_rules.sub" is one segment and does not
+# count. Stops at the first '[' line (same scope rule as the awk
+# fallback below). Exit 0 on a hit, 1 otherwise; python3 missing
+# falls through to the awk branch.
+_BASIC = {'b': '\b', 't': '\t', 'n': '\n', 'f': '\f', 'r': '\r', '"': '"', '\\': '\\'}
+
+def _decode_basic(raw):
+    out = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        c = raw[i]
+        if c != '\\':
+            out.append(c)
+            i += 1
+            continue
+        if i + 1 >= n:
+            raise ValueError('trailing backslash')
+        e = raw[i + 1]
+        if e in _BASIC:
+            out.append(_BASIC[e])
+            i += 2
+        elif e == 'u':
+            if i + 6 > n:
+                raise ValueError('short \\u escape')
+            out.append(chr(int(raw[i + 2:i + 6], 16)))
+            i += 6
+        elif e == 'U':
+            if i + 10 > n:
+                raise ValueError('short \\U escape')
+            out.append(chr(int(raw[i + 2:i + 10], 16)))
+            i += 10
+        else:
+            raise ValueError('unknown escape')
+    return ''.join(out)
+
+def _first_segment(line):
+    i = 0
+    n = len(line)
+    while i < n and line[i] in ' \t':
+        i += 1
+    if i >= n:
+        return None
+    if line[i] == '"':
+        j = i + 1
+        parts = []
+        while j < n:
+            if line[j] == '\\':
+                if j + 1 >= n:
+                    return None
+                parts.append(line[j:j + 2])
+                j += 2
+                continue
+            if line[j] == '"':
+                try:
+                    return _decode_basic(''.join(parts)), j + 1
+                except ValueError:
+                    return None
+            parts.append(line[j])
+            j += 1
+        return None
+    if line[i] == "'":
+        j = line.find("'", i + 1)
+        if j == -1:
+            return None
+        return line[i + 1:j], j + 1
+    m = re.match(r'[A-Za-z0-9_-]+', line[i:])
+    if m is None:
+        return None
+    return m.group(0), i + len(m.group(0))
+
+def main():
+    try:
+        f = open(sys.argv[1], 'r', encoding='utf-8', errors='strict')
+    except (OSError, ValueError):
+        return 1
+    with f:
+        for raw in f:
+            line = raw.rstrip('\r\n')
+            s = line.lstrip(' \t')
+            if not s or s.startswith('#'):
+                continue
+            if s.startswith('['):
+                break
+            parsed = _first_segment(line)
+            if parsed is None:
+                continue
+            seg, end = parsed
+            rest = line[end:].lstrip(' \t')
+            if seg == 'forwarding_rules' and rest[:1] in ('=', '.'):
+                return 0
+    return 1
+
+sys.exit(main())
+PY_DOH_FR_SCAN
+        # No tomllib (Python < 3.11): the escape-aware scan above
+        # matched a top-level forwarding_rules key the awk fallback
+        # below cannot see.
+        _doh_fr_present=1
     elif awk '
         /^[[:space:]]*#/ { next }
         /^[[:space:]]*$/ { next }

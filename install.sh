@@ -42185,7 +42185,7 @@ users_reg_merge_fresh() {
 # unchanged). Returns 1 if any present-tag re-adopt fails; the deploy
 # caller treats that as a best-effort warning, never a deploy failure.
 users_reg_reconcile_after_deploy() {
-    local core="$1" dir='' f='' c='' t='' rc=0 _scratch='' _preserved=0
+    local core="$1" dir='' f='' c='' t='' rc=0 _scratch='' _preserved=0 _live_rc=0
     dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
     [[ -d "$dir" ]] || return 0
     for f in "$dir/$core"__*.json; do
@@ -42215,6 +42215,26 @@ users_reg_reconcile_after_deploy() {
                 fi
             else
                 rc=1
+            fi
+        else
+            # 05h-M3: the adopt failure used to be swallowed (the
+            # whole if body was skipped and rc stayed 0), so a
+            # present tag whose re-adopt genuinely failed looked
+            # like success, and the discarded diagnostics could not
+            # tell "tag deleted" from a real failure. Distinguish
+            # them with the live gate: only a confirmed-absent tag
+            # (rc 1) is left alone silently; a live tag (rc 0) or
+            # an unverifiable config (rc 2, or no helper) is a real
+            # reconcile failure, rc 1, with a warning.
+            _live_rc=0
+            if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+                _users_live_inbound_exists "$core" "$t" || _live_rc=$?
+            else
+                _live_rc=2
+            fi
+            if [[ "$_live_rc" != 1 ]]; then
+                rc=1
+                msg "S2-NEW-04: re-adopt failed for ${core}/${t} though the tag could not be confirmed absent from the live config; registry left unchanged." >&2
             fi
         fi
         rm -f -- "$_scratch"

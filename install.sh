@@ -19102,10 +19102,16 @@ reorder_plain_accepts() {
             fi
         done <<< "$_fresh"
         [[ "$_frule_no" == "$accept_idx" ]] || continue
-        _iptables_do "$cmd" -D INPUT "$accept_idx" >/dev/null 2>&1 || { _rc=1; break; }
+        # H2 (03c): delete by rule spec, not by chain number. The
+        # re-read above and this delete are two separate commands: a
+        # foreign writer inserting a rule in between shifts every
+        # number, and -D <n> then deletes the foreign rule. A spec
+        # delete is immune to shifts (iptables matches the rule
+        # itself); the re-read stays as a fast pre-check.
         spec="${line#-A INPUT }"
         spec=$(printf '%s' "$spec" | tr -d '"')
         read -r -a argv <<< "$spec"
+        _iptables_do "$cmd" -D INPUT "${argv[@]}" >/dev/null 2>&1 || { _rc=1; break; }
         _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1 || { _rc=1; break; }
     done
     __abox_firewall_unlock "$lock_fd"

@@ -55444,8 +55444,13 @@ _wallos_recover_interrupted_upgrade_impl() {
     if [[ -z "$old_image_id" ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
         # N-11: old image not present locally. Try fetching the exact previous
         # version from the versioned mirror instead of refusing.
-        # N-03: look up the journal's old_image tag in the version list;
-        # blind N-1 (2nd line) is wrong if the user had rolled back before.
+        # N-03: look up the journal's old_image tag in the version list.
+        # 07e-01: the old blind N-1 fallback (2nd line of the list) is
+        # removed: it is wrong if the user had rolled back before, and
+        # the pull helper binds the returned image ID to the requested
+        # tag, so recovery would run a different version against the
+        # old backup data. When the journal's version is not in the
+        # mirror list, refuse instead of substituting any other version.
         local _n1_tag _old_tag
         _old_tag="${old_image##*:}"
         _n1_tag=''
@@ -55453,7 +55458,8 @@ _wallos_recover_interrupted_upgrade_impl() {
            wallos_mirror_version_list 2>/dev/null | grep -qx "v${_old_tag}"; then
             _n1_tag="v${_old_tag}"
         else
-            _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+            msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"
+            return 1
         fi
         if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
             # N-03: verify the fetched image matches the journal's old_image.
@@ -65410,12 +65416,14 @@ N11EOF
         [[ "$(head -n 1 "$n11_tmp/SHA256SUMS" | awk '{print $2}')" == 'wallos-linux-amd64-v2.5.1.tar.gz' ]] || {
             echo 'FAIL: N-11 SHA256SUMS sort order'; failures=$((failures + 1)); }
         rm -rf -- "$n11_tmp"
-        # S169: N-1 auto-select must go through the production path,
-        # not a fixed-input sed check: build a 0:0/600 8-line journal
-        # whose old tag is absent from the stub list (forcing the N-1
-        # else branch), stub docker + version list + backup ops in a
-        # subshell (stubs do not leak), and assert the pulled tag is
-        # the stub list's second line.
+        # S169: the N-11 version lookup must go through the production
+        # path, not a fixed-input sed check. 07e-01: the old blind N-1
+        # fallback (2nd line of the list) is removed, so build two
+        # 0:0/600 8-line journals and stub docker + version list +
+        # backup ops in subshells (stubs do not leak): (a) an old tag
+        # absent from the stub list must refuse without pulling
+        # anything, keeping the journal; (b) an old tag present in
+        # the stub list must pull exactly that tag and recover.
         if (( EUID == 0 )); then
             ( _n1_tmp=$(mktemp -d /tmp/A-Box-n1.XXXXXX) || exit 1
               trap 'rm -rf -- "$_n1_tmp"' EXIT
@@ -65445,12 +65453,37 @@ N11EOF
               # stopped state (a failed state query no longer reads as
               # stopped). This sandbox's init system cannot answer the
               # query, and the scenario has no fronts installed, so stub
-              # the state query to stopped; the N-1 tag assertion below
-              # is what this block actually tests.
+              # the state query to stopped; the tag assertions below
+              # are what this block actually tests.
+              service_active_state_value() { printf '0\n'; return 0; }
+              wallos_recover_interrupted_upgrade >/dev/null 2>&1 && exit 1
+              [[ ! -e "$_n1_log" ]] || exit 1
+              [[ -f "$WALLOS_DIR/.upgrade-transaction" ]] || exit 1
+            ) || { echo 'FAIL: N-11 recovery must refuse when the old tag is absent from the version list'; failures=$((failures + 1)); }
+            ( _n1_tmp=$(mktemp -d /tmp/A-Box-n1.XXXXXX) || exit 1
+              trap 'rm -rf -- "$_n1_tmp"' EXIT
+              WALLOS_DIR="$_n1_tmp"
+              mkdir -p "$WALLOS_DIR/backups"
+              echo 'backup' > "$WALLOS_DIR/backups/wallos-test.tar.gz"
+              { echo 'phase=active'
+                echo 'old_image=bellamy/wallos:9.9.0'
+                echo 'old_port=8080'
+                echo 'old_tz=UTC'
+                echo 'old_bind='
+                echo "backup=$WALLOS_DIR/backups/wallos-test.tar.gz"
+                echo 'was_running=0'
+                echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
+              chmod 600 "$WALLOS_DIR/.upgrade-transaction"
+              _n1_log="$_n1_tmp/pulled"
+              docker() { case "$1" in image) return 1 ;; container) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
+              wallos_validate_backup() { return 0; }
+              wallos_restore_backup() { return 0; }
+              _wallos_pull_versioned_image() { echo "$1" > "$_n1_log"; WALLOS_IMAGE_RESULT='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0; }
               service_active_state_value() { printf '0\n'; return 0; }
               wallos_recover_interrupted_upgrade || exit 1
               [[ "$(cat "$_n1_log")" == 'v9.9.0' ]] || exit 1
-            ) || { echo 'FAIL: N-11 N-1 auto-select via production path'; failures=$((failures + 1)); }
+            ) || { echo 'FAIL: N-11 recovery must pull the exact old tag via production path'; failures=$((failures + 1)); }
         # R16-F15-03: an inspect failure WITHOUT Docker's "No such
         # container" text is "state unknown", not "absent": the
         # same journal must refuse instead of restoring data.

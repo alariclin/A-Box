@@ -36020,7 +36020,7 @@ stop_owned() {
                 local _live_state _live_pid
                 _live_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
                 case "$_live_state" in
-                    inactive|failed|dead|not-found) return 0 ;;
+                    inactive|failed|dead|not-found) stop_core_residual_process "$srv" || return 1; return 0 ;;
                     active|activating|deactivating|reloading)
                         _live_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
                         if ! core_process_matches "$srv" "$_live_pid"; then
@@ -36035,7 +36035,7 @@ stop_owned() {
                 esac
             else
                 rc-service "$srv" status >/dev/null 2>&1; rc=$?
-                case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
+                case "$rc" in 3|16|32) stop_core_residual_process "$srv" || return 1; return 0 ;; *) return 1 ;; esac
             fi
         fi
     fi
@@ -39382,7 +39382,7 @@ stop_owned() {
                 local _live_state _live_pid
                 _live_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
                 case "$_live_state" in
-                    inactive|failed|dead|not-found) return 0 ;;
+                    inactive|failed|dead|not-found) stop_core_residual_process "$srv" || return 1; return 0 ;;
                     active|activating|deactivating|reloading)
                         _live_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
                         if ! core_process_matches "$srv" "$_live_pid"; then
@@ -39397,7 +39397,7 @@ stop_owned() {
                 esac
             else
                 rc-service "$srv" status >/dev/null 2>&1; rc=$?
-                case "$rc" in 3|16|32) return 0 ;; *) return 1 ;; esac
+                case "$rc" in 3|16|32) stop_core_residual_process "$srv" || return 1; return 0 ;; *) return 1 ;; esac
             fi
         fi
     fi

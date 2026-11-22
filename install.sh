@@ -27633,6 +27633,20 @@ PY_HOT_BIND
     fi
     tmpd=$(mktemp -d /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
     tmp="$tmpd/config.json"
+    # H2 (04c1): the guard below only fixes the disk config. Record
+    # whether the pre-merge disk config already carries it: if it does
+    # not, the running config (loaded from disk) cannot be proven
+    # guarded either, so a successful hot-add must restart onto the
+    # guarded disk config instead of returning 0 with the window open.
+    # An unreadable config reads as unguarded (fail closed: restart).
+    local _hot_pre_guarded=0
+    if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e '
+        {type: "field", ip: ["127.0.0.0/8", "::1/128"], outboundTag: "block"} as $rule
+        | ((.routing.rules // []) | index($rule)) != null
+          and ((.outbounds // []) | map(.tag) | index("block")) != null
+    ' >/dev/null 2>&1; then
+        _hot_pre_guarded=1
+    fi
     if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --slurpfile nb "$json_file" '.inbounds += $nb' > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
@@ -27652,6 +27666,15 @@ PY_HOT_BIND
     rm -f "$tmp"; rm -rf "$tmpd"
     # Hot path first: no connection drop. Fallback: restart (old behavior).
     if xray_api_available && xray_api_add_inbound "$json_file"; then
+        if (( _hot_pre_guarded == 0 )); then
+            # H2 (04c1): disk is guarded now, but the running config was
+            # never proven guarded -- restart so live loads the guarded
+            # config. Otherwise the new inbound stays reachable via the
+            # old unguarded routes (incl. the unauthenticated loopback
+            # API) until the next restart.
+            restart_service_soft xray
+            return $?
+        fi
         return 0
     fi
     restart_service_soft xray

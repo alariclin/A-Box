@@ -25407,6 +25407,16 @@ hysteria_official_hop_firewall_ok() {
                     v4 = ($0 ~ /meta nfproto ipv4/ || $0 ~ /meta nfproto != ipv6/)
                     v6 = ($0 ~ /meta nfproto ipv6/ || $0 ~ /meta nfproto != ipv4/)
                     if (!v4 && !v6) { v4 = 1; v6 = 1 }
+                    # R10C8-02b (04a-M1): family-specific expressions
+                    # narrow the rule the same way: `ip saddr/daddr/
+                    # protocol/...` can only match IPv4, `ip6 ...` and
+                    # `icmpv6` only IPv6, even with no meta nfproto
+                    # marker. A rule carrying expressions of only one
+                    # family must not count for the other.
+                    has4 = ($0 ~ /(^|[^A-Za-z0-9_])ip (saddr|daddr|protocol|ttl|frag-off|length|tos|dscp|ecn|ihl|version|id|checksum)/ || $0 ~ /(^|[^A-Za-z0-9_])icmp type/)
+                    has6 = ($0 ~ /(^|[^A-Za-z0-9_])ip6 (saddr|daddr|nexthdr|hoplimit|flowlabel|priority|length)/ || $0 ~ /(^|[^A-Za-z0-9_])icmpv6/)
+                    if (has4 && !has6) v6 = 0
+                    if (has6 && !has4) v4 = 0
                     if (v4) hit4 = 1
                     if (v6) hit6 = 1
                 }
@@ -26402,6 +26412,16 @@ hysteria_official_hop_firewall_ok() {
                     v4 = ($0 ~ /meta nfproto ipv4/ || $0 ~ /meta nfproto != ipv6/)
                     v6 = ($0 ~ /meta nfproto ipv6/ || $0 ~ /meta nfproto != ipv4/)
                     if (!v4 && !v6) { v4 = 1; v6 = 1 }
+                    # R10C8-02b (04a-M1): family-specific expressions
+                    # narrow the rule the same way: `ip saddr/daddr/
+                    # protocol/...` can only match IPv4, `ip6 ...` and
+                    # `icmpv6` only IPv6, even with no meta nfproto
+                    # marker. A rule carrying expressions of only one
+                    # family must not count for the other.
+                    has4 = ($0 ~ /(^|[^A-Za-z0-9_])ip (saddr|daddr|protocol|ttl|frag-off|length|tos|dscp|ecn|ihl|version|id|checksum)/ || $0 ~ /(^|[^A-Za-z0-9_])icmp type/)
+                    has6 = ($0 ~ /(^|[^A-Za-z0-9_])ip6 (saddr|daddr|nexthdr|hoplimit|flowlabel|priority|length)/ || $0 ~ /(^|[^A-Za-z0-9_])icmpv6/)
+                    if (has4 && !has6) v6 = 0
+                    if (has6 && !has4) v4 = 0
                     if (v4) hit4 = 1
                     if (v6) hit6 = 1
                 }

@@ -28393,7 +28393,19 @@ hy2_resync_running_config() {
     [[ -n "$pre_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (pre-reconcile checksum unreadable)." >&2; return 1; }
     post_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || post_sha=''
     [[ -n "$post_sha" ]] || { msg "S2-NEW-06: cannot verify Hysteria running config (config unreadable after reconcile)." >&2; return 1; }
-    [[ "$post_sha" == "$pre_sha" ]] && return 0
+    # 04c2-M2: an unchanged checksum proves nothing about liveness: the
+    # service may have died after it started (reconcile rewrote nothing,
+    # so this branch is exactly the one a dead-after-start service takes).
+    # Verify the PID before reporting a successful deploy; the caller
+    # treats this function as the fail-closed deploy gate.
+    if [[ "$post_sha" == "$pre_sha" ]]; then
+        post_pid=$(managed_service_pid hysteria 2>/dev/null || true)
+        if [[ -z "$post_pid" ]]; then
+            msg "S2-NEW-06: Hysteria config unchanged but the service is not running; refusing to report a successful deploy." >&2
+            return 1
+        fi
+        return 0
+    fi
     # The reconcile rewrote the config after the service started.
     post_pid=$(managed_service_pid hysteria 2>/dev/null || true)
     if [[ -z "$post_pid" ]]; then

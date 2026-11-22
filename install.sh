@@ -57662,6 +57662,9 @@ wallos_db_health() { # $1=quick skips the restart-stability sampling
         _rc1=$(docker inspect -f '{{.RestartCount}}' wallos 2>/dev/null || echo '?')
         sleep 6
         _rc2=$(docker inspect -f '{{.RestartCount}}' wallos 2>/dev/null || echo '?')
+        # 07g1-M02: two failed reads both produce '?', and '? == ?'
+        # would pass as healthy. Require both to be numbers first.
+        [[ "$_rc1" =~ ^[0-9]+$ && "$_rc2" =~ ^[0-9]+$ ]] || return 1
         [[ "$_rc1" == "$_rc2" ]] || return 1
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] || return 1
     fi

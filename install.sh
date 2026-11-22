@@ -43944,7 +43944,15 @@ _nsni_apply() {
                 fi
                 _ebak=$(mktemp /tmp/A-Box-nsni-envbak.XXXXXX 2>/dev/null || true)
                 if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null && chmod 600 "$_ebak" 2>/dev/null; then
-                    if cat "$_etmp" > "$_envf" 2>/dev/null; then
+                    # 06b2-M1: commit the .env atomically (tmp+mv) with
+                    # the original mode/owner restored, like the config
+                    # commit above. The old `cat tmp > envf` truncated
+                    # the live file first: a SIGKILL mid-copy left an
+                    # empty/truncated .env with no fallback.
+                    local _envmode='600' _envowner='root:root'
+                    _envmode=$(stat -c %a "$_envf" 2>/dev/null || printf '600')
+                    _envowner=$(stat -c %U:%G "$_envf" 2>/dev/null || printf 'root:root')
+                    if install_file_atomically "$_etmp" "$_envf" "$_envmode" && chown "$_envowner" "$_envf" 2>/dev/null; then
                         rm -f "$_ebak"
                     elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
                         rm -f "$_etmp" "$_ebak"
@@ -43962,7 +43970,10 @@ _nsni_apply() {
                     return 1
                 fi
             else
+                # 06b2-L1: clean up the temp file on the awk-failure
+                # path too, like every other failure branch here.
                 if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                rm -f "$_etmp"
                 return 1
             fi
             rm -f "$_etmp"

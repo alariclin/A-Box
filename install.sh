@@ -25544,7 +25544,10 @@ _xrc_config_has_expected_data_inbound() {
     local cfg="$1" envf="${ABOX_ENV:-/etc/ddr/.env}"
     local _var _val _ports _p _e _found
     local -a _expected=() _live_ports=()
-    [[ -e "$envf" ]] || return 0
+    # 04a-M2: a dangling symlink must reach the symlink ban below (rc 2,
+    # unverifiable), never the missing-file early return (rc 0, covered):
+    # -e is false for a dangling link, so test -L as well.
+    [[ -e "$envf" || -L "$envf" ]] || return 0
     [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]] || return 2
     for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
         _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')

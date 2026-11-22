@@ -57253,8 +57253,21 @@ wallos_public_urls() {
     if [[ "$_hmode" == https ]] && is_service_running abox-wallos-caddy 2>/dev/null; then
         local _hp='' _hip=''
         _hp=$(wallos_state_value PUBPORT 2>/dev/null || true)
-        _hip=$(get_public_ip 2>/dev/null || true); [[ -n "$_hip" ]] || _hip="${GLOBAL_PUBLIC_IP:-}"
-        if [[ "$_hp" =~ ^[0-9]+$ && -n "$_hip" ]]; then
+        # 07f-M01: use the preference-independent IPv4 lookup,
+        # not get_public_ip: with IP_PREF=ipv6 the latter returns
+        # an IPv6 address, but the Caddy certificate subject,
+        # default SNI and sole Host route all use the IPv4 address
+        # from wallos_public_ipv4, so an IPv6 URL is not a valid
+        # entry point. The GLOBAL_PUBLIC_IP fallback is kept for a
+        # stale-but-valid IPv4, but it must pass the same IPv4
+        # shape gate (GLOBAL_PUBLIC_IP itself comes from the
+        # preference-respecting SWR lookup, so it can be IPv6 too);
+        # with no usable IPv4 the branch falls through to the
+        # docker-inspect fallback below instead of printing a URL
+        # that cannot serve the site.
+        _hip=$(wallos_public_ipv4 2>/dev/null || true)
+        [[ "$_hip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || _hip="${GLOBAL_PUBLIC_IP:-}"
+        if [[ "$_hp" =~ ^[0-9]+$ && "$_hip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             msg "${GREEN}$(tprintf wl_pu_url_https "$_hip" "$_hp")${NC}"
             msg ''
             msg "${BOLD}$(tr_msg wl_pu_guide_https_t)${NC}"

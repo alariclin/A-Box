@@ -20589,7 +20589,11 @@ apply_native_firewall_rules_from_state() {
                         failed=1; continue
                     else
                         ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
-                        ufw_owned_rule_exists "$spec" "$proto" || { failed=1; continue; }
+                        # 03d-M02: first creation must verify ALL
+                        # families, not just any: a single surviving
+                        # family must not count as success, or the
+                        # deleted counterpart is never replenished.
+                        _ufw_owned_families_complete "$spec" "$proto" || { failed=1; continue; }
                     fi
                 fi
                 ;;
@@ -20686,7 +20690,11 @@ allowPort() {
                     die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
                 else
                     ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
-                    if ! ufw_owned_rule_exists "$spec" "$type"; then
+                    # 03d-M02: first creation must verify ALL
+                    # families, not just any: a single surviving
+                    # family is a failed install, compensated by
+                    # deleting the partial rule, never recorded.
+                    if ! _ufw_owned_families_complete "$spec" "$type"; then
                         ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
                         die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
                     fi
@@ -58199,6 +58207,13 @@ wallos_fw_open_once() {
                 return 1
             fi
             ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+            # 03d-M02: first creation must verify ALL families, not
+            # just any. An owned rule that covers only one family is
+            # a partial allow: compensate like unknown state (delete
+            # the partial rule, record it for cleanup if it survives).
+            if (( _orc == 0 )) && ! _ufw_owned_families_complete "$spec" "$type"; then
+                _orc=2
+            fi
             if (( _orc == 1 )); then
                 # Confirmed absent: allow reported success but no owned
                 # rule exists. Nothing is live to track.

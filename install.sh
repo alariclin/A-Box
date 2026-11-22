@@ -43851,10 +43851,28 @@ print(base64.urlsafe_b64encode(p.stdout[-32:]).decode().rstrip("="))
 PYEOF
 }
 
+# 06b1-M2: print the PID listening on TCP 127.0.0.1:$1, or fail.
+# /proc/net/tcp based (no ss dependency): match the LISTEN socket inode
+# for the port, then map the inode to its owner via /proc/*/fd.
+_nsni_tcp_listener_pid() {
+    local _port="$1" _hex='' _inode='' _fd='' _pid=''
+    [[ "$_port" =~ ^[0-9]+$ ]] || return 1
+    printf -v _hex '%04X' "$_port"
+    _inode=$(awk -v p="$_hex" '$2 ~ ("^0100007F:" p "$") && $4 == "0A" { print $10; exit }' /proc/net/tcp 2>/dev/null || true)
+    [[ -n "$_inode" ]] || return 1
+    for _fd in /proc/[0-9]*/fd/*; do
+        [[ -e "$_fd" ]] || continue
+        if [[ "$(readlink "$_fd" 2>/dev/null || true)" == "socket:[$_inode]" ]]; then
+            _pid=${_fd#/proc/}; _pid=${_pid%%/*}; printf '%s\n' "$_pid"; return 0
+        fi
+    done
+    return 1
+}
+
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
     local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' grpc_service='' sid='' pbk=''
-    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv='' tport='443' _tgt='' _tport_cand='' _thost='' _transport=''
+    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv='' tport='443' _tgt='' _tport_cand='' _thost='' _transport='' _owner=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}" ;;
@@ -44017,7 +44035,19 @@ _nsni_handshake_check() {
         "$bin" run -config "$cc" >"$cerr" 2>&1 & pid=$!
     fi
     while (( i < 40 )); do
-        if (exec 3<>"/dev/tcp/127.0.0.1/$sport") 2>/dev/null; then up=1; break; fi
+        if (exec 3<>"/dev/tcp/127.0.0.1/$sport") 2>/dev/null; then
+            # 06b1-M2: a connectable port is not proof OUR temp client
+            # owns it: the port was picked then released, so a squatter
+            # may have bound it first (our client then fails to bind
+            # and curl would probe through the stranger). Verify the
+            # listener's PID before trusting the port; anything else is
+            # unavailable (2), never a handshake verdict.
+            _owner=$(_nsni_tcp_listener_pid "$sport" 2>/dev/null || true)
+            if [[ "$_owner" == "$pid" ]]; then up=1; break; fi
+            { printf 'nsni-check temp-socks-squatted owner=%s\n' "${_owner:-unknown}"; } >> "$logf" 2>/dev/null || true
+            kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+            rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2
+        fi
         sleep 0.25; i=$((i + 1))
     done
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; fi

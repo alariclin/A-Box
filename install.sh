@@ -27740,7 +27740,10 @@ xray_api_remove_inbound() {
 xray_ensure_stats() {
     local cfg="$1" api_port="${2:-10085}" tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    if jq -e --argjson ap "$api_port" '
+    # 04c1-M1: the live config may carry // or /* */ comments (Xray
+    # accepts JSONC); strip them before jq, like xray_hot_add_inbound
+    # does -- bare jq rejects a commented config at both steps below.
+    if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --argjson ap "$api_port" '
         def abox_loopback_rule:
             {type:"field", ip:["127.0.0.0/8","::1/128"], outboundTag:"block"};
         def abox_api_rule($t):
@@ -27782,11 +27785,11 @@ xray_ensure_stats() {
                end
            )
     )
-    ' "$cfg" >/dev/null 2>&1; then
+    ' >/dev/null 2>&1; then
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1
-    if ! jq --argjson ap "$api_port" '
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --argjson ap "$api_port" '
         def abox_loopback_rule:
             {type:"field", ip:["127.0.0.0/8","::1/128"], outboundTag:"block"};
         def abox_api_rule($t):
@@ -27840,7 +27843,11 @@ xray_ensure_stats() {
                   ))
               )
           )
-    ' "$cfg" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    ' > "$tmp"; then rm -f "$tmp"; return 1; fi
+    # A stripped-to-empty input makes jq emit nothing with rc 0, and
+    # `jq empty` also passes on an empty file: refuse an empty
+    # transform output instead of installing an empty config.
+    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
     rm -f "$tmp"

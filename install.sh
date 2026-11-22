@@ -44438,8 +44438,17 @@ user_guard_tick() {
     # fd 8 is used because fd 9 carries both this guard lock and,
     # in interactive processes, the runtime flock itself.
     if command -v flock >/dev/null 2>&1; then
-        exec 8>>"${LOCK_FILE:-/run/A-Box.lock}" || return 0
-        flock -n 8 || return 0
+        # 06b2-M2: same rc rule as the fd 9 block above: rc 1 is
+        # contention (skip silently); an open failure or any other
+        # flock error must not masquerade as success, or the quota
+        # enforcement after this point would be silently disabled
+        # (R10C12-01).
+        exec 8>>"${LOCK_FILE:-/run/A-Box.lock}" || { msg "${RED}A-Box: cannot open main runtime lock ${LOCK_FILE:-/run/A-Box.lock}.${NC}" >&2; return 1; }
+        flock -n 8; _flock_rc=$?
+        if (( _flock_rc != 0 )); then
+            (( _flock_rc == 1 )) || { msg "${RED}A-Box: flock failed (rc=$_flock_rc), not contention.${NC}" >&2; return 1; }
+            return 0
+        fi
     fi
     local now_s='' period='' hhmm=''
     now_s=$(date +%s); period=$(date '+%Y-%m'); hhmm=$(date '+%H:%M')

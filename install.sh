@@ -58625,7 +58625,23 @@ wallos_install_or_update() {
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then _rebind_ok=1; fi
             if (( _rebind_ok == 1 )); then
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
-                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" "$image_version" || msg "${YELLOW}$(tr_msg wl_iu_state_save_fail)${NC}"
+                # 07h2-H1: a failed state save after the HTTP fallback
+                # must fail the install, not just warn: the live
+                # service is now HTTP on 0.0.0.0 while the persisted
+                # state may still hold the old mode/port, and
+                # continuing would commit the journal and delete the
+                # recovery material (S143). Same failure handling as
+                # the sibling branches below: roll the firewall
+                # increments back and recover the old container, so
+                # the journal stays active for the next run.
+                if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" "$image_version"; then
+                    msg "${RED}$(tr_msg wl_iu_state_save_fail)${NC}"
+                    wallos_fw_rollback_added "${_fw_added[@]}" || true
+                    if (( running == 1 )); then
+                        wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    fi
+                    return 1
+                fi
                 case "${ABOX_LANG:-zh}" in
                     *) security_note="$(tr_msg wl_note_http)" ;;
                 esac

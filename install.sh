@@ -38899,7 +38899,7 @@ sync_env_ports_after_removal() {
     # main combo and an independent node survives while any listener
     # remains. HY2 hop-range vars are not listener ports and are out
     # of scope here.
-    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
+    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _val_parts=()
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
@@ -38907,7 +38907,15 @@ sync_env_ports_after_removal() {
         info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
         IFS='|' read -r cfg _ _ <<< "$info"
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
-        _ports=$(jq -r '.inbounds[]? | (.port // .listen_port // empty)' "$cfg" 2>/dev/null) || { _read_failed=1; continue; }
+        # 05e2-M3: the live config may carry // or /* */ comments
+        # (Xray/sing-box accept JSONC); strip them before jq, like
+        # the inbound-removal path does. A strip failure, or a
+        # stripped-to-blank config, stays fail-closed: jq returns 0
+        # with no output on empty input, which would otherwise be
+        # misread as "no live ports" and clear live .env ports.
+        _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || { _read_failed=1; continue; }
+        [[ "$_stripped" =~ [^[:space:]] ]] || { _read_failed=1; continue; }
+        _ports=$(jq -r '.inbounds[]? | (.port // .listen_port // empty)' <<< "$_stripped" 2>/dev/null) || { _read_failed=1; continue; }
         while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done <<< "$_ports"
     done
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then

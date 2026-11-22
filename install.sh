@@ -43009,10 +43009,18 @@ refresh_subscription_after_deploy() {
     # again on any validation failure), then the public-IP cache.
     # 'N/A' is treated as empty, like the view_config gate.
     local _s2n12_fip="${LINK_IP:-}"
+    # 06a1-M3: normalize 'N/A' to empty at EACH step, not only at
+    # the end of the chain. 'N/A' is non-empty, so it used to block
+    # every later fallback (GLOBAL_PUBLIC_IP, .env, cache) and the
+    # final F_IP came out empty, even though the comment calls
+    # 'N/A' empty "like the view_config gate".
+    [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
     [[ -n "$_s2n12_fip" ]] || _s2n12_fip="${GLOBAL_PUBLIC_IP:-}"
+    [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
     if [[ -z "$_s2n12_fip" && -f "${ABOX_ENV:-/etc/ddr/.env}" ]]; then
         _s2n12_fip=$(sed -n 's/^LINK_IP="\([^"]*\)"$/\1/p' "${ABOX_ENV}" 2>/dev/null | head -1)
     fi
+    [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
     [[ -n "$_s2n12_fip" ]] || _s2n12_fip=$(read_cached_public_ip 2>/dev/null || true)
     [[ "$_s2n12_fip" == 'N/A' ]] && _s2n12_fip=''
     [[ "$_s2n12_fip" =~ : ]] && _s2n12_fip="[$_s2n12_fip]"

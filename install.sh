@@ -38056,8 +38056,11 @@ abox_caddy_owned() {
         grep -q 'is not owned by any package' <<< "$_rpm_err" 2>/dev/null || return 1
     fi
     # Legacy: any non-A-Box unit/script referencing the binary means
-    # something else uses it; keep it.
-    for _ref in /etc/systemd/system/*.service /run/systemd/system/*.service /usr/local/lib/systemd/system/*.service /usr/lib/systemd/system/*.service /lib/systemd/system/*.service /etc/init.d/*; do
+    # something else uses it; keep it. 05e1-M4: the scan must also cover
+    # systemd drop-ins (*.service.d/*.conf): an external service can
+    # reference the binary only from a drop-in while its main unit
+    # shows no trace of it.
+    for _ref in /etc/systemd/system/*.service /run/systemd/system/*.service /usr/local/lib/systemd/system/*.service /usr/lib/systemd/system/*.service /lib/systemd/system/*.service /etc/systemd/system/*.service.d/*.conf /run/systemd/system/*.service.d/*.conf /usr/local/lib/systemd/system/*.service.d/*.conf /usr/lib/systemd/system/*.service.d/*.conf /lib/systemd/system/*.service.d/*.conf /etc/init.d/*; do
         [[ -f "$_ref" ]] || continue
         case "$_ref" in
             /etc/systemd/system/abox-wallos-caddy.service|/etc/init.d/abox-wallos-caddy) continue ;;

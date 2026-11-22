@@ -15939,7 +15939,11 @@ residue_takeover_plan() {
         # it after the user already said yes. A stack with only an
         # empty aux dir (binary + config dir already gone) is takeable
         # on its own; a stack with neither is skipped.
-        if [[ -e "$_bin" || -L "$_bin" ]] && [[ -d "$_cfg" && ! -L "$_cfg" ]]; then
+        # 02b2b-M-01: a real directory at the binary slot is not a
+        # binary (existence alone admitted it); admitting it would let
+        # the executor rm -rf it. A regular file or a symlink is the
+        # only residue shape for a binary.
+        if [[ ( -f "$_bin" || -L "$_bin" ) ]] && [[ -d "$_cfg" && ! -L "$_cfg" ]]; then
             ABOX_RESIDUE_TAKEOVER+="$_srv|$_bin $_srv|$_cfg "
         elif [[ -z "$_aux" ]]; then
             continue
@@ -15962,7 +15966,7 @@ residue_takeover_plan() {
 # for its family, unit still absent) before deleting it. A path
 # that changed shape since the plan is left alone.
 residue_takeover_clear() {
-    local _item='' _srv='' _path='' _unit='' _rp='' _failed=0
+    local _item='' _srv='' _path='' _unit='' _rp='' _failed=0 _rp_bin='' _rp_cfg=''
     [[ -n "${ABOX_RESIDUE_TAKEOVER:-}" ]] || return 0
     for _item in $ABOX_RESIDUE_TAKEOVER; do
         _srv="${_item%%|*}"; _path="${_item#*|}"
@@ -15973,6 +15977,21 @@ residue_takeover_clear() {
         printf '%s\n' "$_rp" | grep -Fxq -- "$_path" || continue
         _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
         if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
+        # 02b2b-M-01: re-verify the shape, not just the listing: the
+        # family path list is static, so a binary slot that is (or
+        # became) a real directory, or a config slot that is no longer
+        # a real directory, is left alone and fails the takeover
+        # instead of being rm -rf/rm -f'd. Aux paths need no extra
+        # check here: the aux listing above only emits a still-empty
+        # real directory, so a changed aux path already fails the
+        # grep -Fxq above.
+        _rp_bin=$(printf '%s\n' "$_rp" | sed -n '1p')
+        _rp_cfg=$(printf '%s\n' "$_rp" | sed -n '2p')
+        if [[ "$_path" == "$_rp_bin" ]]; then
+            if [[ -d "$_path" && ! -L "$_path" ]]; then _failed=1; continue; fi
+        elif [[ "$_path" == "$_rp_cfg" ]]; then
+            if [[ ! -d "$_path" || -L "$_path" ]]; then _failed=1; continue; fi
+        fi
         # R6C6-01: refuse mounted trees before rm; a bind mount would
         # delete shared foreign data. Failures propagate (no || true).
         # 3B-U3: ancestor-aware (same shape as R16-F05-02): a bind

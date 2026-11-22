@@ -35962,24 +35962,36 @@ stop_core_residual_process() {
     # every signal (exe + cmdline + starttime), mirroring
     # kill_managed_residual_pids; a PID reused in between is never
     # signalled. Returns 0 iff no same-instance residual remains.
-    local srv="$1" pid='' start='' waited=0
-    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
-    [[ -n "$pid" ]] || return 0
-    kill -0 "$pid" 2>/dev/null || return 0
-    start=$(proc_starttime "$pid" 2>/dev/null || true)
-    [[ -n "$start" ]] || return 1
-    core_process_matches "$srv" "$pid" || return 0
-    kill -TERM "$pid" 2>/dev/null || true
-    sleep 1
-    if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
-        kill -KILL "$pid" 2>/dev/null || true
-    fi
-    while (( waited < 50 )); do
-        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
-        if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then return 0; fi
-        core_process_matches "$srv" "$pid" || return 0
-        sleep 0.1
-        waited=$((waited + 1))
+    # H2 (05c1): find_core_residual_pid returns only the first match,
+    # so handling a single PID reported success while a second
+    # same-instance residual kept running. Re-scan after each kill
+    # until none remains (bounded: a respawning process fails instead
+    # of looping forever).
+    local srv="$1" pid='' start='' waited=0 _passes=0
+    while (( _passes < 10 )); do
+        _passes=$(( _passes + 1 ))
+        pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+        [[ -n "$pid" ]] || return 0
+        kill -0 "$pid" 2>/dev/null || continue
+        start=$(proc_starttime "$pid" 2>/dev/null || true)
+        [[ -n "$start" ]] || return 1
+        core_process_matches "$srv" "$pid" || continue
+        kill -TERM "$pid" 2>/dev/null || true
+        sleep 1
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+        waited=0
+        while (( waited < 50 )); do
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then break; fi
+            core_process_matches "$srv" "$pid" || break
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+            return 1
+        fi
     done
     return 1
 }
@@ -39323,24 +39335,36 @@ stop_core_residual_process() {
     # every signal (exe + cmdline + starttime), mirroring
     # kill_managed_residual_pids; a PID reused in between is never
     # signalled. Returns 0 iff no same-instance residual remains.
-    local srv="$1" pid='' start='' waited=0
-    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
-    [[ -n "$pid" ]] || return 0
-    kill -0 "$pid" 2>/dev/null || return 0
-    start=$(proc_starttime "$pid" 2>/dev/null || true)
-    [[ -n "$start" ]] || return 1
-    core_process_matches "$srv" "$pid" || return 0
-    kill -TERM "$pid" 2>/dev/null || true
-    sleep 1
-    if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
-        kill -KILL "$pid" 2>/dev/null || true
-    fi
-    while (( waited < 50 )); do
-        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
-        if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then return 0; fi
-        core_process_matches "$srv" "$pid" || return 0
-        sleep 0.1
-        waited=$((waited + 1))
+    # H2 (05c1): find_core_residual_pid returns only the first match,
+    # so handling a single PID reported success while a second
+    # same-instance residual kept running. Re-scan after each kill
+    # until none remains (bounded: a respawning process fails instead
+    # of looping forever).
+    local srv="$1" pid='' start='' waited=0 _passes=0
+    while (( _passes < 10 )); do
+        _passes=$(( _passes + 1 ))
+        pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+        [[ -n "$pid" ]] || return 0
+        kill -0 "$pid" 2>/dev/null || continue
+        start=$(proc_starttime "$pid" 2>/dev/null || true)
+        [[ -n "$start" ]] || return 1
+        core_process_matches "$srv" "$pid" || continue
+        kill -TERM "$pid" 2>/dev/null || true
+        sleep 1
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+        waited=0
+        while (( waited < 50 )); do
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            if [[ "$(proc_starttime "$pid" 2>/dev/null || true)" != "$start" ]]; then break; fi
+            core_process_matches "$srv" "$pid" || break
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && core_process_matches "$srv" "$pid"; then
+            return 1
+        fi
     done
     return 1
 }

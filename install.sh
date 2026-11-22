@@ -19121,7 +19121,15 @@ reorder_plain_accepts() {
         spec=$(printf '%s' "$spec" | tr -d '"')
         read -r -a argv <<< "$spec"
         _iptables_do "$cmd" -D INPUT "${argv[@]}" >/dev/null 2>&1 || { _rc=1; break; }
-        _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1 || { _rc=1; break; }
+        if ! _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1; then
+            # 03c-M1: the ACCEPT is already deleted; a failed insert
+            # must not lose it permanently. Put it back at its old
+            # chain number (the rules after it shifted up by one on
+            # delete, so this restores the original order) and still
+            # report the reorder as failed.
+            _iptables_do "$cmd" -I INPUT "$accept_idx" "${argv[@]}" >/dev/null 2>&1 || true
+            _rc=1; break
+        fi
     done
     __abox_firewall_unlock "$lock_fd"
     return "$_rc"

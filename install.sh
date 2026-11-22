@@ -45273,7 +45273,11 @@ restore_dns_snapshot_body() {
         # only when the socket unit is enabled or active: restarting an
         # inactive socket would start listening on the packaged
         # endpoints (and socket-activate the service on first query).
-        if (( _socket_changed == 1 )) && command -v systemctl >/dev/null 2>&1; then
+        # 06c2-01: same _dns_no_systemd gate as the resolved restart
+        # and service-state blocks below: on a host without a bus,
+        # list-unit-files succeeds offline but daemon-reload fails
+        # and would truncate the rest of the restore.
+        if (( _socket_changed == 1 )) && (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
             systemctl daemon-reload >/dev/null 2>&1 || return 1
             if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
                 systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
@@ -45337,7 +45341,10 @@ restore_dns_snapshot_body() {
             rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
         fi
     fi
-    if [[ -f "$dir/dnscrypt-socket-listen" ]] && command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files --type=socket --no-legend --no-pager dnscrypt-proxy.socket 2>/dev/null | grep -q '^dnscrypt-proxy\.socket'; then
+    # 06c2-01: same _dns_no_systemd gate as above: list-unit-files
+    # succeeds offline on a bus-less host, and the daemon-reload
+    # inside would then fail and truncate the rest of the restore.
+    if (( _dns_no_systemd == 0 )) && [[ -f "$dir/dnscrypt-socket-listen" ]] && command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files --type=socket --no-legend --no-pager dnscrypt-proxy.socket 2>/dev/null | grep -q '^dnscrypt-proxy\.socket'; then
         local _sock_listen_now='' _sock_listen_want=''
         systemctl daemon-reload >/dev/null 2>&1 || return 1
         if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then

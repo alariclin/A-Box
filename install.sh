@@ -37490,7 +37490,14 @@ PY_TRAFFIC_DASH
             unset ABOX_DIE_HOOK
             if [[ -n "$old_die_hook" ]]; then ABOX_DIE_HOOK="$old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_cleanup)"; continue; }
+            # 05d-M4: the quota is committed at this point. A cleanup
+            # failure must NOT invoke the business rollback: rolling
+            # back would restore the service to stopped while the
+            # quota stays submitted. Warn, leave the directory for
+            # manual cleanup, and report success.
+            if ! rm -rf -- "$traffic_tx_dir"; then
+                msg "${YELLOW}[!] $(tr_msg tf_tx_cleanup) $traffic_tx_dir${NC}"
+            fi
             unset -f traffic_quota_menu_die_rollback
             msg "${GREEN}$(tprintf traffic_management_menu_limit_set "${limit_gb}" "${mode_choice}")${NC}"
             pause_return
@@ -37568,7 +37575,11 @@ PY_TRAFFIC_DASH
             unset ABOX_DIE_HOOK
             if [[ -n "$unblock_old_die_hook" ]]; then ABOX_DIE_HOOK="$unblock_old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_cleanup)"; continue; }
+            # 05d-M4: same as the quota branch above: the unblock is
+            # committed; a cleanup failure only warns.
+            if ! rm -rf -- "$unblock_tx_dir"; then
+                msg "${YELLOW}[!] $(tr_msg tf_unblock_cleanup) $unblock_tx_dir${NC}"
+            fi
             unset -f traffic_unblock_menu_die_rollback
             msg "${GREEN}$(tr_msg traffic_management_menu_limit_removed)${NC}"
             pause_return

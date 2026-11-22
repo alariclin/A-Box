@@ -64050,7 +64050,17 @@ acquire_runtime_lock() {
         # with python fcntl instead; when neither verifier exists the
         # holder state is unknown and this refuses (fail closed, same
         # tri-state discipline as the flock branch above).
-        if command -v flock >/dev/null 2>&1; then
+        # 08e-H02 (H20): promotion is only attempted when flock can
+        # actually take a timed lock. When flock exists but lacks -w
+        # (BusyBox), upgrade_runtime_lock_to_flock_if_possible returns 0
+        # for "stayed on fallback", which the old bare `command -v flock`
+        # test misread as "promotion done" and skipped the reverse probe
+        # below entirely — a live flock holder was then never verified.
+        # Route that combination to the probe instead. (The upgrade
+        # function's own return-0 on missing -w is kept: the
+        # ensure_commands caller treats it as "stay on fallback", not
+        # as an error.)
+        if command -v flock >/dev/null 2>&1 && _abox_flock_w_ok; then
             upgrade_runtime_lock_to_flock_if_possible || { runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_another_instance_after_fallback)"; }
         else
             local _flock_probe_rc=0

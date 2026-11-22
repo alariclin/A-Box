@@ -42906,7 +42906,14 @@ users_link_combo() {
             # R15C11-03: keep certificate validation for trusted
             # certificates; only self-signed (or undeterminable)
             # keeps insecure=1. ACME implies publicly trusted.
-            acme_domain=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.acme.domain // ""' "$cfg" 2>/dev/null | head -1)
+            # 06a1-M4: .tls.acme.domain is an ARRAY in sing-box:
+            # plain `jq -r` prints it as several lines whose first
+            # is `[`, so the old `| head -1` read `[` as the domain
+            # (non-empty, so it misjudged the link trusted AND used
+            # `[` as the URI host). Take the first element when it
+            # is an array (empty array -> no domain), and keep
+            # accepting a plain string for tolerance.
+            acme_domain=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.acme.domain | if type == "array" then (.[0] // "") elif type == "string" then . else "" end)' "$cfg" 2>/dev/null | head -1)
             if [[ -n "$acme_domain" ]]; then
                 insecure=0
             else

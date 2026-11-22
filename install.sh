@@ -58561,7 +58561,7 @@ _wallos_hy2_http01_keeps_80() {
 }
 
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
-    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept=''
+    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept='' _reg_content='' _tmp=''
     reg=$(wallos_fw_registry_file)
     if [[ ! -f "$reg" || -L "$reg" ]]; then
         # M-28 follow-up: a missing registry used to mean silent
@@ -58575,6 +58575,13 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
         fi
         [[ -f "$reg" && ! -L "$reg" ]] || return 0
     fi
+    # 07h1-03: read the whole registry up front and check the read:
+    # a `while read` loop cannot report a mid-read I/O failure (its
+    # exit status is the last body command's), and the old in-place
+    # truncate below would then deregister entries that were never
+    # read, let alone deleted. On a read failure, return 1 with the
+    # file untouched.
+    _reg_content=$(cat -- "$reg" 2>/dev/null) || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
         case "$line" in */tcp|*/udp) ;; *) continue ;; esac
@@ -58606,9 +58613,16 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
             _kept+="${line}"$'\n'; _failed=1; continue
         fi
         _removed=1
-    done < "$reg"
-    printf '%s' "$_kept" > "$reg" || return 1
-    chmod 600 "$reg" 2>/dev/null || true
+    done <<< "$_reg_content"
+    # 07h1-03: publish the new registry atomically (temp file in the
+    # same directory + mv): the old in-place truncate destroyed the
+    # original the moment the write failed, deregistering entries
+    # whose rules may still be live. Any failure here leaves the
+    # original file untouched.
+    _tmp=$(mktemp "${reg}.tmp.XXXXXX") || return 1
+    printf '%s' "$_kept" > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$reg" || { rm -f -- "$_tmp"; return 1; }
     if (( _removed == 1 )); then save_firewall_rules || return 1; fi
     (( _failed == 0 ))
 }

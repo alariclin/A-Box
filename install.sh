@@ -62952,7 +62952,11 @@ core_expected_listen_ports() {
                         # C-01: Port ranges like :20000-25000 must use FIRST port, not concat to 2000025000.
                         sub(/-.*$/, "", v)
                         gsub(/[^0-9]/, "", v)
-                        if (v != "") print "udp/" v
+                        # 08d-03: normalize a leading-zero port (Hysteria
+                        # accepts listen: :0443) to decimal, so it does
+                        # not reach ss matching as udp/0443 (ss shows
+                        # :443). The empty check stays on the string form.
+                        if (v != "") { v = v + 0; print "udp/" v }
                     }
                 }
                 END { if (!found) print "udp/443" }
@@ -62979,10 +62983,14 @@ core_ports_listening() {
             # is probed instead of skipped (a range-only inbound no longer
             # yields any=0, and a failing port inside a range is caught).
             # A reversed range yields no entries (the for loop is skipped).
-            proto="${BASH_REMATCH[1]}"; lo="${BASH_REMATCH[2]}"; hi="${BASH_REMATCH[3]}"
+            # 08d-03: 10# so a leading-zero bound (0443) is decimal 443,
+            # not octal 291 in arithmetic context.
+            proto="${BASH_REMATCH[1]}"; lo=$((10#${BASH_REMATCH[2]})); hi=$((10#${BASH_REMATCH[3]}))
             for ((p=lo; p<=hi; p++)); do checks+=("$proto/$p"); done
         elif [[ "$spec" =~ ^(tcp|udp)/([0-9]+)$ ]]; then
-            checks+=("$spec")
+            # 08d-03: normalize a leading-zero spec (udp/0443) to
+            # decimal here too, so the ss match below sees :443.
+            checks+=("${BASH_REMATCH[1]}/$((10#${BASH_REMATCH[2]}))")
         fi
     done < <(printf '%s\n' "$enum_out" | awk '!seen[$0]++')
     for spec in "${checks[@]}"; do

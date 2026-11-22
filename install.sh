@@ -41048,8 +41048,15 @@ list_extra_uuids() {
 # UUID-shaped password in any other registry must never leak in.
 list_usersd_uuids() {
     local dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" f='' _u='' _proto=''
+    # 05g-M2: check the symlink FIRST. The old order tested -d first,
+    # so a dangling symlink (or a present-but-not-a-directory path)
+    # returned 0 before the symlink check ran, and callers treated a
+    # broken registry store as a legitimate empty list, silently
+    # dropping users.d users in merge/sync/export. A wholly absent
+    # directory is still a legitimate empty list (fresh install).
+    [[ -L "$dir" ]] && return 1
+    [[ -e "$dir" && ! -d "$dir" ]] && return 1
     [[ -d "$dir" ]] || return 0
-    [[ ! -L "$dir" ]] || return 1
     for f in "$dir"/*.json; do
         [[ -e "$f" || -L "$f" ]] || continue
         [[ ! -L "$f" ]] || return 1

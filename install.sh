@@ -57684,7 +57684,42 @@ wallos_fw_open_once() {
                 msg "${YELLOW}[!] Cannot determine the firewall state for ${spec}/${type}; leaving it unchanged.${NC}" >&2
                 return 1
             fi
-            ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || { msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2; return 1; }
+            # 07g2-H1: ufw allow applies v4/v6 in two steps; a failure
+            # may leave the v4 rule already live, so a failed allow
+            # must NOT return here. Fall through to the tri-state
+            # verify below, but a live partial rule is compensated
+            # (deleted), never adopted: delete it, re-check, and only
+            # when it cannot be verified gone record the ledger entry
+            # so a later cleanup can find it. Always return 1.
+            local _allow_rc=0
+            ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || _allow_rc=$?
+            if (( _allow_rc != 0 )); then
+                ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+                if (( _orc == 1 )); then
+                    # Confirmed absent: nothing live to track.
+                    msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                    return 1
+                fi
+                # Present (0) or unknown (2): try to delete the
+                # partial rule this call may have left live, then
+                # re-check tri-state.
+                ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+                if (( _orc == 1 )); then
+                    msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                    return 1
+                fi
+                # Still present (0) or still unknown (2): the partial
+                # rule may still be live with no record. Record it so
+                # a later cleanup can find it (the ledger deleter
+                # re-verifies live state before deleting).
+                if record_native_firewall_rule ufw "$spec" "$type" rule; then
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed; the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
+                else
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed and its ledger record could not be written; manual cleanup may be required.${NC}" >&2
+                fi
+                return 1
+            fi
             ufw_owned_rule_exists "$spec" "$type"; _orc=$?
             if (( _orc == 1 )); then
                 # Confirmed absent: allow reported success but no owned

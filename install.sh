@@ -34820,7 +34820,6 @@ _xl_legacy_retire_coexist() {
     local _snapdir="${XL_LEGACY_SNAPSHOT_DIR:-$_abox_dir/backups}"
     mkdir -p "$_snapdir" 2>/dev/null || { msg "${RED}[!] Could not create the retire snapshot directory; refusing to retire.${NC}" >&2; return 1; }
     chmod 700 "$_snapdir" 2>/dev/null || true
-    _snapfile="$_snapdir/xray-latest-retired-$(date +%Y%m%d-%H%M%S).tar.gz"
     local -a _snap_paths=()
     [[ -e "$_bin" || -L "$_bin" ]] && _snap_paths+=("$_bin")
     [[ -e "$_dir" || -L "$_dir" ]] && _snap_paths+=("$_dir")
@@ -34834,6 +34833,16 @@ _xl_legacy_retire_coexist() {
         [[ -f "$_sp" && ! -L "$_sp" ]] && _snap_paths+=("$_sp")
     done
     if (( ${#_snap_paths[@]} > 0 )); then
+        # 05b-01: the snapshot name must be unique per retire, not just
+        # per second. A fixed second-resolution name let a same-second
+        # retry overwrite the only complete snapshot of the previous
+        # instance. mktemp creates the file atomically; XXXXXX must be
+        # the last 6 characters of the template, so the .tar.gz suffix
+        # is added by renaming the just-created file, whose name no
+        # other process can know. Any failure refuses the retire.
+        _snapfile=$(mktemp "$_snapdir/xray-latest-retired-$(date +%Y%m%d-%H%M%S)-XXXXXX" 2>/dev/null) || { msg "${RED}[!] Could not create the retire snapshot file; refusing to retire.${NC}" >&2; return 1; }
+        mv -f -- "$_snapfile" "$_snapfile.tar.gz" || { rm -f -- "$_snapfile"; msg "${RED}[!] Could not name the retire snapshot file; refusing to retire.${NC}" >&2; return 1; }
+        _snapfile="$_snapfile.tar.gz"
         tar -czf "$_snapfile" -- "${_snap_paths[@]}" 2>/dev/null || { msg "${RED}[!] Could not snapshot the xray-latest instance; refusing to retire.${NC}" >&2; return 1; }
         chmod 600 "$_snapfile" 2>/dev/null || true
     fi

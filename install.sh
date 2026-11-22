@@ -57680,7 +57680,12 @@ try:
             ok = con.execute("PRAGMA integrity_check").fetchone()
             if ok is None or ok[0] != 'ok':
                 return None
-            return {(r[0], r[1]) for r in con.execute("select type, name from sqlite_master")}
+            # 07g1-M03: compare the definition too, not just (type,
+            # name): a same-name table with a different schema (an
+            # extra column, a changed type) is a different object, not
+            # the known template's. sql is NULL for auto-indexes and
+            # sqlite_sequence; normalise it to ''.
+            return {(r[0], r[1], r[2] or '') for r in con.execute("select type, name, sql from sqlite_master")}
         finally:
             con.close()
     l = _objs(live)

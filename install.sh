@@ -57384,13 +57384,19 @@ wallos_preseed_db() { # $1=image
         return 1
     fi
     docker rm "$_cid" >/dev/null 2>&1 || true
-    cp "$_tmp/wallos.db" "$WALLOS_DIR/db/wallos.db" || { rm -rf "$_tmp"; return 1; }
+    # 07g1-M01: publish atomically, so a failed copy never leaves a
+    # partial target that the next call mistakes for a seeded database.
+    install_file_atomically "$_tmp/wallos.db" "$WALLOS_DIR/db/wallos.db" 644 || { rm -rf "$_tmp"; return 1; }
     rm -rf "$_tmp"
-    [[ -s "$WALLOS_DIR/db/wallos.db" ]] || return 1
+    # An empty or root-owned seed must not survive either: the next
+    # call returns 0 on [[ -f ]] alone and would start the container
+    # against a broken database (the crash-loop this preseed exists
+    # to prevent).
+    [[ -s "$WALLOS_DIR/db/wallos.db" ]] || { rm -f -- "$WALLOS_DIR/db/wallos.db"; return 1; }
     # The installer passes no PUID/PGID, so the container runs as the
     # image default www-data (82:82); a root-owned seed would leave
     # migrations unable to write.
-    chown 82:82 "$WALLOS_DIR/db/wallos.db" || return 1
+    chown 82:82 "$WALLOS_DIR/db/wallos.db" || { rm -f -- "$WALLOS_DIR/db/wallos.db"; return 1; }
     return 0
 }
 

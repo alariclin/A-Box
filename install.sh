@@ -64015,6 +64015,23 @@ acquire_runtime_lock() {
         esac
         open_runtime_flock_fd || die "$(tr_msg acquire_runtime_lock_lock_path_unsafe)"
         flock -n 9 || die "$(tr_msg acquire_runtime_lock_another_instance_running)"
+        # 08e-H01 (H19): post-acquire recheck of the fallback lock. The
+        # pre-check above and the flock can straddle a scheduling gap in
+        # which another instance takes the fallback lock; without this
+        # recheck both instances hold different lock objects at once
+        # (the fallback branch's R6C17-01 recheck is the mirror image).
+        # A live fallback holder — or an unknown holder state — releases
+        # the flock and refuses. The EXIT trap is installed only after
+        # this branch, so the release here must be explicit.
+        local _fb_recheck_rc=0
+        fallback_runtime_lock_held || _fb_recheck_rc=$?
+        case "$_fb_recheck_rc" in
+            1) : ;;
+            0) eval "exec 9>&-" 2>/dev/null || true
+               die "$(tr_msg acquire_runtime_lock_another_instance_running)" ;;
+            *) eval "exec 9>&-" 2>/dev/null || true
+               die "$(tr_msg acquire_runtime_lock_fallback_owner_unknown)" ;;
+        esac
         ABOX_RUNTIME_LOCK_MODE='flock'
     else
         acquire_fallback_runtime_lock || die "$(tr_msg acquire_runtime_lock_another_instance_no_flock)"

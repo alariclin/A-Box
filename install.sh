@@ -45512,8 +45512,17 @@ dns_snapshot_install_new() {
         mv -- "$DNS_BACKUP_DIR" "$old_backup" || { rm -f -- "$pending"; rm -rf -- "$staging"; return 1; }
         # Target was moved to $old_backup above, so plain POSIX mv replaces cleanly.
         if ! mv -- "$staging" "$DNS_BACKUP_DIR"; then
-            mv -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
-            rm -f -- "$pending"
+            # 06d-M3: only delete the pending record when the old
+            # snapshot was actually moved back. If the move-back
+            # fails too, the old snapshot is intact at $old_backup
+            # and the pending record is the only pointer to it:
+            # keep it so dns_snapshot_recover_pending_swap can find
+            # and restore it.
+            if mv -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null; then
+                rm -f -- "$pending"
+            else
+                msg "${YELLOW}[!] DNS snapshot swap failed and the old snapshot could not be moved back; pending record kept at ${pending}, old snapshot at ${old_backup}.${NC}" >&2
+            fi
             return 1
         fi
         rm -rf -- "$old_backup"

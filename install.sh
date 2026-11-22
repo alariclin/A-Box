@@ -41476,11 +41476,38 @@ users_commit_cfg() {
         hy2) : ;; # no offline checker; service restart is the validation
     esac
     install_file_atomically "$newf" "$cfg" 600 || return 1
+    local _perm_ok=1
     case "$core" in
-        xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-        sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
-        hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
+        xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || _perm_ok=0 ;;
+        sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || _perm_ok=0 ;;
+        hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || _perm_ok=0 ;;
     esac
+    # 05g-M3: a failed permission prep used to be swallowed (|| true)
+    # and the commit reported success -- with the service deliberately
+    # stopped the restart/rollback branch below never ran, so the
+    # caller deleted $bak while the live config was root:root 600 and
+    # the service could not start on it. Treat it like the restart
+    # failure below: restore $bak when possible (rc 1, callers delete
+    # $bak because the disk holds the old config again); when the
+    # restore itself fails (including a failed prep on the restored
+    # file) it is a failed restore, rc 2, callers keep $bak -- the
+    # same R15-F11-02定性 as the rollback branch. No restart is
+    # attempted here: there is no validly committed config to
+    # restart into, and a stopped service must stay stopped (H-23).
+    if (( _perm_ok == 0 )); then
+        if [[ -n "$bak" && -f "$bak" ]]; then
+            if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
+                case "$core" in
+                    xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || return 2 ;;
+                    sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || return 2 ;;
+                    hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || return 2 ;;
+                esac
+                return 1
+            fi
+            return 2
+        fi
+        return 1
+    fi
     # H-23 (Carbon R3): restart only when the desired state is RUNNING
     # and the service was already running; otherwise the new config is
     # already on disk and restarting would resurrect a deliberately

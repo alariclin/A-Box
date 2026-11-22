@@ -37837,7 +37837,7 @@ manage_ss_whitelist() {
 # Best-effort: a failure warns and never blocks cleanup. Groups are
 # not removed.
 remove_abox_created_service_users() {
-    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _safe_grp='' _g='' _kept=''
+    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _safe_grp='' _g='' _kept='' _new='' _moved=0
     rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
     if [[ ! -f "$rec" || -L "$rec" ]]; then
         for u in abox-xray abox-singbox abox-hysteria; do
@@ -37884,6 +37884,7 @@ remove_abox_created_service_users() {
         # is ALWAYS moved off the same-name group first; userdel then
         # cannot delete it. The group itself is left behind, per
         # "Groups are not removed" above.
+        _moved=0
         if getent group "$u" >/dev/null 2>&1; then
             _safe_grp=''
             for _g in nogroup nobody; do
@@ -37894,6 +37895,7 @@ remove_abox_created_service_users() {
                 printf '%s\n' "$_line" >> "$_kept"
                 continue
             fi
+            _moved=1
         fi
         if command -v userdel >/dev/null 2>&1; then
             if userdel "$u" >/dev/null 2>&1; then
@@ -37901,10 +37903,20 @@ remove_abox_created_service_users() {
             else
                 msg "${YELLOW}[!] Could not remove service user ${u}; keeping it.${NC}" >&2
                 printf '%s\n' "$_line" >> "$_kept"
+                # 05d-low: the user was moved off its same-name group
+                # above to protect that group from userdel. Since the
+                # user is kept, move it back: the same-name group is
+                # still there (userdel never ran).
+                if (( _moved == 1 )); then
+                    usermod -g "$u" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
+                fi
             fi
         else
             msg "${YELLOW}[!] userdel unavailable; keeping service user ${u}.${NC}" >&2
             printf '%s\n' "$_line" >> "$_kept"
+            if (( _moved == 1 )); then
+                usermod -g "$u" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
+            fi
         fi
     done < "$rec"
     # SYD-B2 E22: also list unrecorded abox-* users (kept, never
@@ -37918,10 +37930,20 @@ remove_abox_created_service_users() {
     # rewrite it with exactly the kept entries so a transient
     # failure keeps its retry basis.
     if [[ -s "$_kept" ]]; then
-        cat -- "$_kept" > "$rec" 2>/dev/null || true
-        chmod 600 "$rec" 2>/dev/null || true
+        # 05e1-M1: rewrite the registry atomically (temp file + cp +
+        # chmod 600 + mv). The old `cat > "$rec"` truncated the
+        # registry before copying, swallowed the failure, and the
+        # kept-entries file was then deleted, leaving no copy of the
+        # retry basis. On any failure here the kept file is NOT
+        # deleted (its path is in the warning) and the function fails.
+        # Atomicity also means a failed write leaves the old registry
+        # untruncated, so it stays a valid retry basis.
+        _new=$(mktemp /tmp/A-Box-kept-users-new.XXXXXX) || { msg "${YELLOW}[!] Could not rewrite the service-user registry; kept entries preserved at ${_kept}.${NC}" >&2; return 1; }
+        cp -- "$_kept" "$_new" 2>/dev/null || { rm -f -- "$_new"; msg "${YELLOW}[!] Could not rewrite the service-user registry; kept entries preserved at ${_kept}.${NC}" >&2; return 1; }
+        chmod 600 "$_new" 2>/dev/null || { rm -f -- "$_new"; msg "${YELLOW}[!] Could not rewrite the service-user registry; kept entries preserved at ${_kept}.${NC}" >&2; return 1; }
+        mv -f -- "$_new" "$rec" || { rm -f -- "$_new"; msg "${YELLOW}[!] Could not rewrite the service-user registry; kept entries preserved at ${_kept}.${NC}" >&2; return 1; }
     else
-        rm -f -- "$rec" 2>/dev/null || true
+        rm -f -- "$rec" 2>/dev/null || { msg "${YELLOW}[!] Could not remove the service-user registry ${rec}.${NC}" >&2; rm -f -- "$_kept" 2>/dev/null || true; return 1; }
     fi
     rm -f -- "$_kept" 2>/dev/null || true
     return 0

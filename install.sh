@@ -44031,6 +44031,19 @@ _nsni_handshake_check() {
     kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
     { printf 'nsni-check temp-client-stderr-tail:\n'; tail -n 20 "$cerr" 2>/dev/null; printf 'nsni-check curl-stderr-tail:\n'; tail -n 5 "$cerr_curl" 2>/dev/null; } >> "$logf" 2>/dev/null || true
     rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"
+    # 06b1-M1: a TLS-layer curl failure proves the tunnel carried the
+    # handshake to the target, so it is indeterminate (2), never a
+    # deterministic REALITY failure (1). curl 60 (peer cert untrusted
+    # by the local CA store), 51 (peer cert not OK) and 35 (TLS
+    # handshake error) can only happen after the SOCKS/REALITY leg
+    # delivered the ClientHello and the target answered with TLS.
+    # Connection-layer failures (7, 28, 97, ...) stay 1: the tunnel
+    # itself never proved up.
+    if [[ "$curl_rc" == 60 || "$curl_rc" == 51 || "$curl_rc" == 35 ]]; then
+        printf 'nsni-check verdict=INDETERMINATE curl-rc=%s (TLS-layer failure; tunnel proven up)\n' "$curl_rc" >> "$logf" 2>/dev/null || true
+        msg "${YELLOW}[!] SNI handshake check indeterminate (curl rc $curl_rc: TLS-layer failure, tunnel proven up); new SNI is unverified.${NC}" >&2
+        return 2
+    fi
     if [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]]; then
         printf 'nsni-check verdict=PASS\n' >> "$logf" 2>/dev/null || true
         return 0

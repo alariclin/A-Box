@@ -36032,7 +36032,10 @@ month_bytes() {
             case "$mode" in
                 rx) echo "$rx" ;;
                 tx) echo "$tx" ;;
-                total) python3 -I - "$rx" "$tx" <<'PY_VNSTAT_TOTAL_MONITOR'
+                # 05c1-M2: the exact-integer sum must be checked: a failed
+                # interpreter prints nothing yet the old code returned 0
+                # unconditionally, reporting a successful read.
+                total) python3 -I - "$rx" "$tx" <<'PY_VNSTAT_TOTAL_MONITOR' || return 1
 import sys
 print(int(sys.argv[1]) + int(sys.argv[2]))
 PY_VNSTAT_TOTAL_MONITOR

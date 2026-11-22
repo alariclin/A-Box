@@ -59615,7 +59615,18 @@ wallos_install_or_update() {
     if (( running == 1 )); then
         if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id"; then
             msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
-            docker rm -f wallos >/dev/null 2>&1 || true
+            # 07h2-M2: same R15-F15-02 protection as the health-check
+            # failure branch above: delete only the container THIS
+            # attempt created, by its --cidfile ID plus the ownership-
+            # label re-check. Never delete by name here: a concurrently
+            # appearing container that now owns 'wallos' must survive.
+            # No verified ID means leave it and fail loudly.
+            if [[ "$_wallos_created_id" =~ ^[0-9a-f]{64}$ ]] &&
+                [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_wallos_created_id" 2>/dev/null || true)" == "true" ]]; then
+                docker rm -f "$_wallos_created_id" >/dev/null 2>&1 || true
+            else
+                msg "${YELLOW}No verified container ID for this attempt; not deleting 'wallos' by name.${NC}" >&2
+            fi
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1

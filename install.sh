@@ -56662,7 +56662,17 @@ EOF_WF2B_FILTER
         fi
         local _f2b_out
         _f2b_out=$(fail2ban-regex --print-all-matched "$_sample" A-Box-wallos 2>&1 || true)
-        if ! grep -q '203.0.113.7' <<< "$_f2b_out" || { [[ "$wmode" != https ]] && ! grep -q '203.0.113.8' <<< "$_f2b_out"; }; then
+        # 07f-M02: grepping the whole output for the sample IP passes
+        # on zero matches -- --print-all-matched shows the sample
+        # lines as unmatched lines too. Parse the `Lines:` summary's
+        # matched count instead (same shape as the main script's
+        # self-check): https has 1 sample line, the rest 2; an
+        # unparseable summary fails closed.
+        local _f2b_summary='' _f2b_matched='' _f2b_need=1
+        [[ "$wmode" != https ]] && _f2b_need=2
+        _f2b_summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$_f2b_out" | tail -n 1)
+        _f2b_matched=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$_f2b_summary")
+        if [[ ! "$_f2b_matched" =~ ^[0-9]+$ ]] || (( _f2b_matched < _f2b_need )); then
             rm -f -- "$_sample" "$jail" "$filter"
             msg "${YELLOW}[!] Wallos fail2ban jail NOT created: the login filter matches no failed-login line. Login brute-force protection is OFF.${NC}"
             return 1

@@ -36690,10 +36690,14 @@ capture_traffic_env_state_file() {
     [[ ! -L "$source_file" ]] || return 1
     # Missing env file: fresh system where no core was installed yet; treat as
     # "no traffic limit configured" instead of a fatal error.
-    if [[ ! -f "$source_file" ]]; then
+    if [[ ! -e "$source_file" ]]; then
         : > "$out" || return 1
         return 0
     fi
+    # 05c2-M2: a present but non-regular file (directory, FIFO, ...)
+    # is not "missing": snapshotting it as empty would make the
+    # caller believe no limit was configured. Fail instead.
+    [[ -f "$source_file" ]] || return 1
     awk '/^TRAFFIC_LIMIT_(GB|MODE)=/{print}' "$source_file" | LC_ALL=C sort > "$out"
 }
 

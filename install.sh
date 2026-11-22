@@ -42154,7 +42154,7 @@ users_reg_merge_fresh() {
             [.users[] | . as $u
              | ([$fresh[] | select(.secret == $u.secret and (if (.password_only // false) then true else (.name == $u.name) end) and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
              | ([$fresh[] | select(name_matches(.; $u))] | .[0]) as $nm
-             | if $m != null then (if ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end)
+             | if $m != null then ((if ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end) + (if ($m.password_only // false) then {} else {flow: ($m.flow // ""), alterId: ($m.alterId // 0)} end))
                elif $nm != null then $u + {secret: $nm.secret, uuid: ($nm.uuid // ""), flow: ($nm.flow // ""), alterId: ($nm.alterId // 0), login: ($nm.login // $nm.name), password_only: ($nm.password_only // false)}
                else $u end]
             + (reduce ([$fresh[] | . as $f | select(

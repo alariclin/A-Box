@@ -49616,8 +49616,16 @@ case "${1:-}" in
             sboot=$(sed -n 's/^BOOT=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
             if [[ "$sdev" =~ ^/dev/zram[0-9]+$ && -n "$sboot" && "$sboot" == "$(_abox_boot_id)" ]]; then
                 swapoff "$sdev" 2>/dev/null || exit 1
-                if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$sdev" >/dev/null 2>&1 || true;
-                else _reset_dev "$sdev"; fi
+                # 06h1-M1: a failed reset must fail the stop: the
+                # device stays sized and the state file must be kept
+                # (teardown deletes helper/config, and the state is
+                # the only stop proof). Only when no reset mechanism
+                # exists at all is the missing reset not a failure.
+                if command -v zramctl >/dev/null 2>&1; then
+                    zramctl --reset "$sdev" >/dev/null 2>&1 || exit 1
+                elif [[ -e "/sys/block/${sdev#/dev/}/reset" ]]; then
+                    echo 1 > "/sys/block/${sdev#/dev/}/reset" 2>/dev/null || exit 1
+                fi
                 rm -f /etc/ddr/zram.state
             else
                 echo "abox-zram: stale or unproven device record in /etc/ddr/zram.state (boot mismatch, missing boot id, or malformed device); refusing to stop, state kept for inspection" >&2

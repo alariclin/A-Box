@@ -6408,6 +6408,12 @@ tr_msg() {
         fa:setup_zram_swap_autostart_systemd_fail) echo 'zram فعال است، اما تنظیم شروع خودکار هنگام بوت ناموفق بود (systemctl enable شکست خورد)؛ پس از راه‌اندازی مجدد باید آن را دستی دوباره فعال کنید.' ;;
         zh-tw:setup_zram_swap_autostart_systemd_fail) echo 'zram 已啟用，但開機自動啟動設定未成功（systemctl enable 失敗），重新開機後需手動再次啟用。' ;;
         ja:setup_zram_swap_autostart_systemd_fail) echo 'zram は有効ですが、起動時の自動起動設定に失敗しました（systemctl enable 失敗）。再起動後は手動で再度有効化する必要があります。' ;;
+        zh:setup_zram_swap_unit_write_fail) echo 'zram 已启用，但开机自启单元写入失败，未设置开机自启。' ;;
+        en:setup_zram_swap_unit_write_fail) echo 'zram is enabled, but writing the boot autostart unit failed; boot autostart was not set up.' ;;
+        ru:setup_zram_swap_unit_write_fail) echo 'zram включён, но запись юнита автозапуска при загрузке не удалась; автозапуск не настроен.' ;;
+        fa:setup_zram_swap_unit_write_fail) echo 'zram فعال است، اما نوشتن واحد شروع خودکار هنگام بوت ناموفق بود؛ شروع خودکار تنظیم نشد.' ;;
+        zh-tw:setup_zram_swap_unit_write_fail) echo 'zram 已啟用，但開機自啟單元寫入失敗，未設定開機自啟。' ;;
+        ja:setup_zram_swap_unit_write_fail) echo 'zram は有効ですが、起動時の自動起動ユニットの書き込みに失敗しました。自動起動は設定されていません。' ;;
         zh:setup_zram_swap_autostart_openrc_fail) echo 'zram 已启用，但开机自启设置未成功（rc-update 失败），重启后需手动重新启用。' ;;
         en:setup_zram_swap_autostart_openrc_fail) echo 'zram is enabled, but boot autostart setup failed (rc-update failed); you must enable it again manually after reboot.' ;;
         ru:setup_zram_swap_autostart_openrc_fail) echo 'zram включён, но настройка автозапуска при загрузке не удалась (сбой rc-update); после перезагрузки потребуется включить его вручную.' ;;
@@ -49890,7 +49896,11 @@ EOF_ZRAM_CONF
     init=$(effective_init_system)
     case "$init" in
         systemd)
-            write_file_atomically_from_stdin /etc/systemd/system/abox-zram.service 644 <<'EOF_ZRAM_UNIT' || true
+            # 06h1-M3: a failed unit write must not be swallowed: do
+            # not enable a unit that was never written, and do not
+            # print the success summary (same shape as the config /
+            # helper write-failure paths above).
+            if ! write_file_atomically_from_stdin /etc/systemd/system/abox-zram.service 644 <<'EOF_ZRAM_UNIT'
 [Unit]
 Description=A-Box zram compressed swap
 After=local-fs.target
@@ -49904,11 +49914,16 @@ ExecStop=/usr/local/sbin/abox-zram stop
 [Install]
 WantedBy=multi-user.target
 EOF_ZRAM_UNIT
+            then
+                msg "${RED}$(tr_msg setup_zram_swap_unit_write_fail)${NC}"
+                pause_return
+                return 0
+            fi
             systemctl daemon-reload >/dev/null 2>&1 || true
             systemctl enable abox-zram.service >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg setup_zram_swap_autostart_systemd_fail)${NC}"
             ;;
         openrc)
-            write_file_atomically_from_stdin /etc/init.d/abox-zram 755 <<'EOF_ZRAM_RC' || true
+            if ! write_file_atomically_from_stdin /etc/init.d/abox-zram 755 <<'EOF_ZRAM_RC'
 #!/sbin/openrc-run
 description="A-Box zram compressed swap"
 depend() {
@@ -49926,6 +49941,11 @@ stop() {
     eend $?
 }
 EOF_ZRAM_RC
+            then
+                msg "${RED}$(tr_msg setup_zram_swap_unit_write_fail)${NC}"
+                pause_return
+                return 0
+            fi
             rc-update add abox-zram default >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg setup_zram_swap_autostart_openrc_fail)${NC}"
             ;;
         *)

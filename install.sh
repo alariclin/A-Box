@@ -48430,7 +48430,7 @@ normalize_fa_ar_digits() {
 }
 
 dns_setup_tri_mode() {
-    local mode='' choice='' v4='' v6='' v6_auto='' input
+    local mode='' choice='' v4='' v6='' v6_auto='' input _apply_mode='plain'
     local -a providers=()
     while IFS= read -r line; do providers+=("$line"); done < <(_dns_provider_list)
 
@@ -48524,7 +48524,13 @@ dns_setup_tri_mode() {
         # (nothing listens there). The liveness probe in
         # resolved_global_dns_check fails the apply if the proxy is
         # actually dead, so keeping :5353 cannot mask a dead proxy.
-        if _dns_state_mode_doh; then v4='127.0.0.1:5353'; fi
+        # 06f-X1: applying that endpoint as plain tears the proxy
+        # down first (apply_host_dns runs dns_disable_doh for any
+        # non-doh mode), so the probe that follows can never pass.
+        # Apply as doh instead: the teardown is skipped, the probe
+        # still runs, and a dead proxy still fails the apply and
+        # rolls back; the state file records mode=doh.
+        if _dns_state_mode_doh; then v4='127.0.0.1:5353'; _apply_mode='doh'; fi
     fi
 
     # Safety: refuse to apply if both are empty (would break DNS)
@@ -48535,7 +48541,7 @@ dns_setup_tri_mode() {
     fi
     msg ""
     msg "$(tprintf dns_apply "${GREEN}${v4:-none}${NC}" "${CYAN}${v6:-none}${NC}")"
-    apply_host_dns plain "$v4" "$v6"
+    apply_host_dns "$_apply_mode" "$v4" "$v6"
     pause_return
 }
 

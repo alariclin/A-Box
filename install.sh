@@ -15010,6 +15010,15 @@ def _is_artifact_tree_fd(fd, path):
     # O_NONBLOCK) and validated by fstat on that fd; a swapped-in
     # symlink is refused (ELOOP) and a FIFO is refused by fstat
     # without ever blocking in open().
+    # H1 (02b2a-H1): a bind mount nested inside the tree is a real
+    # directory (or a real file), so the type/owner/mode/hash bars
+    # above cannot see it -- and st_dev cannot either, a same-
+    # filesystem bind mount shares the parent's st_dev. A mountpoint
+    # at any depth is foreign data, never a doubling artifact: refuse
+    # the whole tree when any recursive child is a mountpoint (the
+    # root itself is already checked by _is_artifact_tree).
+    if _repair_is_mountpoint(path):
+        return False
     try:
         st = os.fstat(fd)
     except OSError:
@@ -15136,24 +15145,33 @@ def _rmdir_fd(path):
         os.rmdir(leaf, dir_fd=fd)
     finally:
         os.close(fd)
-def _clear_fd_tree(dfd):
+def _clear_fd_tree(dfd, path):
     for name in os.listdir(dfd):
+        _child = os.path.join(path, name)
+        # H1 (02b2a-H1) defence in depth: the validation gate above
+        # already refuses mountpoints, but a mount swapped in between
+        # validation and deletion must never be descended into -- the
+        # unlink/rmdir below would delete the mount source's data.
+        if _repair_is_mountpoint(_child):
+            raise OSError('refusing to delete inside mountpoint: ' + _child)
         st = os.lstat(name, dir_fd=dfd)
         if stat.S_ISDIR(st.st_mode):
             cfd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dfd)
             try:
-                _clear_fd_tree(cfd)
+                _clear_fd_tree(cfd, _child)
             finally:
                 os.close(cfd)
             os.rmdir(name, dir_fd=dfd)
         else:
             os.unlink(name, dir_fd=dfd)
 def _rmtree_fd(path):
+    if _repair_is_mountpoint(path):
+        raise OSError('refusing to delete mountpoint tree: ' + path)
     parent_fd, leaf = _open_parent_fd(path)
     try:
         dfd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
         try:
-            _clear_fd_tree(dfd)
+            _clear_fd_tree(dfd, path)
         finally:
             os.close(dfd)
         os.rmdir(leaf, dir_fd=parent_fd)

@@ -50149,7 +50149,13 @@ ALGO=zstd
 # lines are accepted; anything else fails closed instead of running
 # as shell code (the helper runs as root, even for `status`).
 if [[ -f "$CONF" ]]; then
-    grep -qvE '^(SIZE_MB=[0-9]+|ALGO=(zstd|lz4|lzo-rle|lzo))$' "$CONF" && exit 1
+    # 06g-M2: take grep's exit code explicitly. rc 0 means an illegal
+    # line was found and rc 2 means the config could not be read; only
+    # rc 1 (every line matched the whitelist) may continue. The old
+    # `&& exit 1` fired on rc 0 only, so an unreadable config silently
+    # kept the SIZE_MB=512/ALGO=zstd defaults.
+    grep -qvE '^(SIZE_MB=[0-9]+|ALGO=(zstd|lz4|lzo-rle|lzo))$' "$CONF" 2>/dev/null; _conf_rc=$?
+    (( _conf_rc == 1 )) || exit 1
     _conf_size=$(grep -E '^SIZE_MB=[0-9]+$' "$CONF" 2>/dev/null | tail -1 | cut -d= -f2)
     _conf_algo=$(grep -E '^ALGO=(zstd|lz4|lzo-rle|lzo)$' "$CONF" 2>/dev/null | tail -1 | cut -d= -f2)
     [[ -n "$_conf_size" ]] && SIZE_MB="$_conf_size"

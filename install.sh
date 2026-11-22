@@ -26772,7 +26772,13 @@ restore_geo_transaction() {
         # trusted deploy/repair flow.
         _geo_manifest_invalidate || return 1
     fi
-    rm -rf -- "$txn" || return 1
+    # 04b-02: the transaction log is the recovery intent. It must NOT
+    # be deleted here: the caller restarts the service only after this
+    # function returns, and a kill or a failed restart in between
+    # would leave no log to retry the restore. Callers delete the log
+    # once the recovery restart has succeeded (or was correctly
+    # skipped because the service must stay stopped).
+    return 0
 }
 fetch_one() {
     local asset="$1" out="$2" release_file="$3" release_json asset_json url digest expected actual size
@@ -26833,6 +26839,11 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
             rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || { exec 10>&-; exit 1; }
         fi
     fi
+    # 04b-02: delete the transaction log only now, after the recovery
+    # restart has succeeded (or was correctly skipped because the
+    # service must stay stopped). A failed restart above exits with
+    # the log intact, so the next run can retry the recovery.
+    rm -rf -- "$GEO_TXN" || { exec 10>&-; exit 1; }
     exec 10>&-
 fi
 desired=RUNNING

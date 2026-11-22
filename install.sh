@@ -49831,8 +49831,12 @@ abox_zram_teardown() {
             # remove the unit file and any enablement symlinks, then
             # decide by what remains.
             systemctl disable abox-zram.service >/dev/null 2>&1 || true
-            rm -f /etc/systemd/system/abox-zram.service /etc/systemd/system/*.{wants,requires,upholds}/abox-zram.service 2>/dev/null || persist_rc=1
-            for _zram_p in /etc/systemd/system/abox-zram.service /etc/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+            # 06h1-M2: delete and re-verify across the same five roots
+            # the probe above covers: a unit (or enablement link) left
+            # under /run or /usr/lib would otherwise survive with
+            # persist_rc == 0 and execute the deleted helper on next boot.
+            rm -f /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service 2>/dev/null || persist_rc=1
+            for _zram_p in /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
                 if [[ -e "$_zram_p" || -L "$_zram_p" ]]; then
                     persist_rc=1
                     break

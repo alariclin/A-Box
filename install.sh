@@ -62674,7 +62674,12 @@ view_config() {
         generate_qr "$SS_URL"
     fi
 
-    CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
+    # 08c-M1: H-24 menu tolerance: a failed Clash YAML must not kill
+    # the whole view. The writer refusing an empty config is correct
+    # fail-closed; losing the mihomo YAML, the subscription refresh
+    # and the return to menu over it is not. Warn and continue with
+    # no Clash file; the YAML display below is guarded on it.
+    CLASH_FILE=$(write_clash_yaml) || { msg "${YELLOW}[!] $(tr_msg view_config_clash_yaml_failed)${NC}"; CLASH_FILE=''; }
     MIHOMO_USER_FILE=$(write_mihomo_user_yaml 2>/dev/null) || _mihomo_single_rc=$?
     # S2-NEW-03 follow-up: menu 12 reprints the YAML from the live
     # state; refresh the subscription export alongside it so the two
@@ -62686,6 +62691,7 @@ view_config() {
         refresh_subscription_after_deploy || true
     fi
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
+    if [[ -n "$CLASH_FILE" ]]; then
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_clash_full_config_title) ]${NC}"
     msg "${GREEN}Local YAML: ${CLASH_FILE}${NC}"
@@ -62703,6 +62709,7 @@ view_config() {
         msg "${YELLOW}$(tprintf view_config_clash_sub_url_missing "${CLASH_FILE}")${NC}"
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
     fi
+    fi
 
     if [[ -n "${MIHOMO_USER_FILE:-}" ]]; then
         msg "${YELLOW}[ $(tr_msg view_config_mihomo_single_title) ]${NC}"
@@ -62712,9 +62719,11 @@ view_config() {
         msg "${YELLOW}$(tr_msg view_config_mihomo_single_failed)${NC}"
     fi
 
+    if [[ -n "$CLASH_FILE" ]]; then
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_clash_yaml_preview_title) ]${NC}"
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
+    fi
 
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
     if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1 )); then

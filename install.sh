@@ -16810,7 +16810,10 @@ shortcut_migrate_write() {
     # R14-F05-03: refuse a directory target: `mv tmp dir` succeeds
     # by moving the temp file inside the directory and returns 0,
     # while the record path itself stays a directory.
-    [[ ! -d "$_file" ]] || { rm -f -- "$_tmp"; return 1; }
+    # 03a-02: refuse a symlink target too: `mv -f` would replace the
+    # link itself, discarding the pending/new debt recorded in the
+    # file it points at.
+    [[ ! -d "$_file" && ! -L "$_file" ]] || { rm -f -- "$_tmp"; return 1; }
     mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; return 1; }
     return 0
 }
@@ -16916,6 +16919,12 @@ shortcut_change_transaction() {
     # kept, temp cleaned, lock released).
     local _mfile _mcontent _mline _mval _mn
     _mfile=$(shortcut_migrate_path)
+    # 03a-02: a symlinked record is fail-closed, not silently
+    # skipped: skipping the merge and then overwriting the link
+    # would discard the pending/new debt it points at.
+    if [[ -L "$_mfile" ]]; then
+        rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_symlink'; return 1
+    fi
     if [[ -f "$_mfile" && ! -L "$_mfile" ]]; then
         # M-34: same owner/mode gate as the state file (the
         # writer creates the record 0600 root:root); a drifted

@@ -26189,7 +26189,7 @@ import json, sys
 path, proto, port = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     raw = open(path, encoding='utf-8', errors='strict').read()
-except OSError:
+except (OSError, UnicodeDecodeError):
     raise SystemExit(2)
 out = []
 i, n = 0, len(raw)
@@ -26227,6 +26227,12 @@ while i < n:
 try:
     cfg = json.loads(''.join(out))
 except ValueError:
+    raise SystemExit(2)
+# 04a-M3: a non-dict top level (array, null, ...) has no .get: the old
+# code raised AttributeError, exited 1, and the shell read that as
+# "inbound confirmed absent" and skipped the socket check. Undecodable
+# or unshaped config is unverifiable (2), never proof of absence.
+if not isinstance(cfg, dict):
     raise SystemExit(2)
 found = False
 for ib in cfg.get('inbounds', []) or []:

@@ -51200,7 +51200,7 @@ append_managed_service_state_entry() {
 }
 
 _apply_managed_service_state_file() {
-    local state_file="${1:-}" expected_file="${2:-}" changed_file="${3:-}" observed_file="${4:-}" line srv active enabled extra seen_srvs="|"
+    local state_file="${1:-}" expected_file="${2:-}" changed_file="${3:-}" observed_file="${4:-}" before_observed_file="${5:-}" line srv active enabled extra seen_srvs="|"
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     [[ "$(stat -c %u:%g "$state_file" 2>/dev/null || true)" == 0:0 ]] || return 1
     local mode
@@ -51251,6 +51251,16 @@ _apply_managed_service_state_file() {
             local expected_state_before
             expected_state_before=$(awk -F'|' -v target="$srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$expected_file") || return 2
             [[ "$current_state_before" == "$expected_state_before" ]] || return 2
+        fi
+
+        # 07a-M1: record the applier's own before-state (observed just
+        # before this service is changed) so rollback restores the
+        # state the applier actually saw, not the wrapper's
+        # pre-capture, which may already be stale. A failed journal
+        # append returns the distinct status 3, like the observed /
+        # changed appends below.
+        if [[ -n "$before_observed_file" ]]; then
+            printf '%s\n' "$current_state_before" >> "$before_observed_file" || return 3
         fi
 
         # Apply with a failure flag instead of immediate returns, so a
@@ -51353,7 +51363,7 @@ _apply_managed_service_state_file() {
 }
 
 restore_managed_service_state() {
-    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file changed_file observed_file line srv before after rc=0
+    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file changed_file observed_file before_observed_file line srv before after rc=0
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     validate_services_state_file "$state_file" || return 1
     tx_dir=$(mktemp -d /run/A-Box-service-restore.XXXXXX) || return 1
@@ -51373,8 +51383,11 @@ restore_managed_service_state() {
     observed_file="$tx_dir/observed.state"
     : > "$observed_file" || { rm -rf -- "$tx_dir"; return 1; }
     chmod 600 "$observed_file" || { rm -rf -- "$tx_dir"; return 1; }
+    before_observed_file="$tx_dir/before-observed.state"
+    : > "$before_observed_file" || { rm -rf -- "$tx_dir"; return 1; }
+    chmod 600 "$before_observed_file" || { rm -rf -- "$tx_dir"; return 1; }
 
-    if _apply_managed_service_state_file "$state_file" "$expected_file" "$changed_file" "$observed_file"; then
+    if _apply_managed_service_state_file "$state_file" "$expected_file" "$changed_file" "$observed_file" "$before_observed_file"; then
         rm -rf -- "$tx_dir" || return 1
         return 0
     else
@@ -51440,7 +51453,20 @@ restore_managed_service_state() {
                 return 1
             fi
             p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$observed_file") || p_line=''
-            printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+            # 07a-M1: the rollback baseline is the applier's own
+            # before-state, recorded just before this service was
+            # changed -- not the wrapper's pre-capture in before_file,
+            # which may already be stale. A changed service with no
+            # (or no unique) before-state has an unknown baseline:
+            # preserve the transaction, do not roll back.
+            local bo_count bo_line
+            bo_count=$(grep -c "^${srv}|" "$before_observed_file" 2>/dev/null || true)
+            if [[ "$bo_count" != 1 ]]; then
+                printf '%s\n' "A-Box service restore failed; no recorded before-state for changed service $srv, recovery state preserved at $tx_dir" >&2
+                return 1
+            fi
+            bo_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$before_observed_file") || bo_line=''
+            printf '%s\n' "$bo_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
             printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
         else
             # Not changed by this restore: compare the live

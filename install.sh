@@ -29505,8 +29505,16 @@ _hysteria_listens_on_port() {
     p=$((10#$port))
     (( p >= 1 && p <= 65535 )) || return 0
 
+    # 04d2-M1: a quoted key ("listen": / 'listen':) is legal YAML; the
+    # old pattern required a bare key, so the main listen line was
+    # skipped while a later listen line still set found=1 and the
+    # function reported the port uncovered without ever having parsed
+    # the main listen line. The pattern lives in a variable: bare
+    # double quotes inside [[ =~ ]] would be parsed as shell quoting
+    # and break the [[ ]] close.
+    local _hy_listen_re="^[[:space:]]*[\"']?listen[\"']?:[[:space:]]*(.*)$"
     while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*listen:[[:space:]]*(.*)$ ]] || continue
+        [[ "$line" =~ $_hy_listen_re ]] || continue
         value="${BASH_REMATCH[1]}"
 
         # Managed single-line YAML scalar; other forms are conservative.

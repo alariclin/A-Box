@@ -53137,6 +53137,7 @@ for p in root.glob('A-Box-backup-*.tar.gz'):
     try:
         if p.is_file() and not p.is_symlink(): items.append((p.stat().st_mtime_ns, p))
     except OSError: pass
+retention_failed = False
 for _, p in sorted(items, reverse=True)[keep:]:
     # The old code printed names to bash and split them with mapfile: a
     # newline inside an archive name split into a bare tail piece, and rm
@@ -53144,11 +53145,19 @@ for _, p in sorted(items, reverse=True)[keep:]:
     # while the real archive survived. NUL-delimited output is no fix:
     # bash command substitution cannot carry NUL bytes.
     if last is not None and p == last: continue
+    # 07c-M1: a failed archive unlink must not silently continue to
+    # delete that archive's authentication sidecars: the surviving
+    # archive would lose its verification files. Record the failure
+    # and leave its sidecars alone.
     try: p.unlink()
-    except OSError: pass
+    except OSError:
+        retention_failed = True
+        continue
     for suffix in ('.sha256', '.hmac', '.key'):
         try: Path(str(p) + suffix).unlink()
-        except OSError: pass
+        except FileNotFoundError: pass
+        except OSError: retention_failed = True
+sys.exit(1 if retention_failed else 0)
 PY_BACKUP_RETENTION
     then
         :

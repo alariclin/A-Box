@@ -18071,7 +18071,7 @@ standalone_preserve_cleanup() {
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
-    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0 tmpd=''
+    local cfg="$2" bak='' merged='' keepf='' stripped='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0 tmpd=''
     if ! command -v jq >/dev/null 2>&1; then
         msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'jq')${NC}"
         standalone_preserve_cleanup
@@ -18082,6 +18082,21 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     merged="$tmpd/new.json"
     keepf="$tmpd/keep.json"
     cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; standalone_preserve_cleanup; return 1; }
+    # 03b-M2: $bak stays the verbatim backup (a rollback restores the
+    # original text, comments included); jq reads a comment-stripped
+    # copy instead. The live config may legally carry // or /* */
+    # comments, which bare jq rejects -- before this, the merge and
+    # the firewall enumeration both read $bak, so the full and nost
+    # attempts failed on the same file. A stripped copy that is empty
+    # or whitespace-only is unparseable too: fail closed instead of
+    # installing an empty merged config.
+    stripped="$tmpd/bak-stripped.json"
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null > "$stripped" || ! grep -q '[^[:space:]]' "$stripped" 2>/dev/null; then
+        rm -f -- "$bak" "$merged" "$keepf" "$stripped"; rm -rf -- "$tmpd"
+        msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"
+        standalone_preserve_cleanup
+        return 1
+    fi
     for attempt in full nost; do
         if [[ "$attempt" == nost ]]; then
             jq '[.[] | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$") | not)]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
@@ -18187,7 +18202,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             # that inflates the added count and serves nothing.
             | ([$add1[] | .detour // empty] | unique) as $dt
             | [$add1[] | select(if (binding) == null then (.tag as $t | ($dt | index($t)) != null) else true end)] as $add
-            | .inbounds = ($cur + $add)' "$bak" > "$merged" 2>/dev/null || continue
+            | .inbounds = ($cur + $add)' "$stripped" > "$merged" 2>/dev/null || continue
         jq empty "$merged" >/dev/null 2>&1 || continue
         install_file_atomically "$merged" "$cfg" 600 || continue
         case "$1" in
@@ -18200,7 +18215,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         chmod 600 "$cfg" 2>/dev/null || true
     done
     if (( ok == 1 )); then
-        before=$(jq '.inbounds | length' "$bak" 2>/dev/null || printf '0')
+        before=$(jq '.inbounds | length' "$stripped" 2>/dev/null || printf '0')
         after=$(jq '.inbounds | length' "$cfg" 2>/dev/null || printf '0')
         added=$(( after - before ))
         dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
@@ -18222,7 +18237,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         # follows settings.network, the rest follow transport_set.
         if (( added > 0 )); then
             local _fw_ports='' _fw_failed=0 _fw_spec='' _fw_proto='' _fw_port=''
-            _fw_ports=$(jq -r --slurpfile bak "$bak" '
+            _fw_ports=$(jq -r --slurpfile bak "$stripped" '
             # 03b-M1: same shared transport rule as snapshot/restore
             # above (renamed from `transports` so the three defs
             # stay textually identical).
@@ -18267,7 +18282,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             if (( _fw_failed == 1 )); then
                 if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
                     msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
-                    rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"
+                    rm -f -- "$bak" "$merged" "$keepf" "$stripped"; rm -rf -- "$tmpd"
                     standalone_preserve_cleanup
                     return 1
                 else
@@ -18281,7 +18296,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
-            rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"
+            rm -f -- "$bak" "$merged" "$keepf" "$stripped"; rm -rf -- "$tmpd"
             standalone_preserve_cleanup
             return 1
         else
@@ -18291,7 +18306,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             return 1
         fi
     fi
-    rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"
+    rm -f -- "$bak" "$merged" "$keepf" "$stripped" "$ABOX_PRESERVE_FILE"
     rm -rf -- "$tmpd"
     [[ -n "${ABOX_PRESERVE_DIR:-}" ]] && rm -rf -- "$ABOX_PRESERVE_DIR"
     ABOX_PRESERVE_FILE=''

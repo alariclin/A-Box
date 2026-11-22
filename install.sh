@@ -925,14 +925,27 @@ rebuild_standalone_links() {
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
-                _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                # N3 (followup5 D-leg): same fixed-stem defect as
-                # TUIC above: register under the matched inbound's
-                # own stem (anytls-in -> anytls, anytls-in-2 ->
-                # anytls-in-2).
-                _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
-                [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
-                register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+                # N3 (followup5 D-leg): register under the matched
+                # inbound's own stem (anytls-in -> anytls, anytls-in-2
+                # -> anytls-in-2).
+                # B01-02: derivation and registration must NOT be one
+                # && chain with comments in between. Bash skips comment
+                # lines when looking for the && operand, so the stem
+                # assignment below IS the chain's right operand: a
+                # failed derivation short-circuits it, and under the
+                # script's set -u the later unbound _anytls_stem
+                # aborts the whole script (|| true cannot save it);
+                # without set -u it registers a pbk= bad link over
+                # the good cache. Gate the registration on a
+                # non-empty derived key explicitly instead.
+                _pub=$(x25519_pub_from_priv "$_pk" 2>/dev/null) || _pub=''
+                if [[ -n "$_pub" ]]; then
+                    _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
+                    [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
+                    register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+                else
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
+                fi
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi

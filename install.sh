@@ -32099,7 +32099,13 @@ argo_uninstall() {
     # on (same version, no ownership recorded). Remove it only when
     # A-Box ownership is recorded AND no Wallos tunnel needs it.
     if [[ -f /etc/ddr/.abox-cloudflared-owned && ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
-        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned
+        # 05e1-M2: binary first, marker only once the binary is gone
+        # (same reason as the do_cleanup block).
+        if rm -f /usr/local/bin/cloudflared; then
+            rm -f /etc/ddr/.abox-cloudflared-owned || true
+        else
+            msg "${YELLOW}[!] Failed to remove /usr/local/bin/cloudflared; keeping the ownership marker so the leftover binary can be removed later.${NC}"
+        fi
     fi
     msg "${GREEN}$(tr_msg argo_uninstalled)${NC}"
 }
@@ -38160,7 +38166,16 @@ do_cleanup() {
         # a foreign binary is kept. (do_cleanup tears Wallos down below, so no
         # remaining-consumer gate is needed here, unlike check_virgin_state.)
         if [[ -f /etc/ddr/.abox-cloudflared-owned ]]; then
-            rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+            # 05e1-M2: remove the binary first and the ownership marker
+            # only once the binary is gone: a failed binary removal in
+            # the same rm as the marker still deletes the marker, and
+            # the leftover binary can then never be removed again (the
+            # marker is the deletion gate). Record the failure.
+            if rm -f /usr/local/bin/cloudflared; then
+                rm -f /etc/ddr/.abox-cloudflared-owned || true
+            else
+                msg "${YELLOW}[!] Failed to remove /usr/local/bin/cloudflared; keeping the ownership marker so the leftover binary can be removed later.${NC}"
+            fi
         fi
         # L-07: only Argo's own state stays gated on a successful unit
         # removal (a retry needs its token and state). Everything else
@@ -38201,7 +38216,13 @@ do_cleanup() {
     # proven above AND the front is confirmed stopped; a still-running
     # front, or any doubt in the ownership verdict, keeps the binary.
     if (( _caddy_owned == 1 )) && ! is_service_running abox-wallos-caddy 2>/dev/null; then
-        rm -f /usr/local/bin/caddy /etc/ddr/.abox-caddy-owned || true
+        # 05e1-M2: binary first, marker only once the binary is gone
+        # (same reason as the cloudflared block above).
+        if rm -f /usr/local/bin/caddy; then
+            rm -f /etc/ddr/.abox-caddy-owned || true
+        else
+            msg "${YELLOW}[!] Failed to remove /usr/local/bin/caddy; keeping the ownership marker so the leftover binary can be removed later.${NC}"
+        fi
     fi
     users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
     abox_zram_teardown || die 'zram teardown failed; aborting cleanup.'
@@ -40006,7 +40027,13 @@ check_virgin_state() {
     # R12C11-02: cloudflared is deleted only when A-Box ownership is recorded
     # and no Wallos cftunnel consumer remains; a foreign binary is kept.
     if [[ -f /etc/ddr/.abox-cloudflared-owned && ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
-        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+        # 05e1-M2: binary first, marker only once the binary is gone
+        # (same reason as the do_cleanup block).
+        if rm -f /usr/local/bin/cloudflared; then
+            rm -f /etc/ddr/.abox-cloudflared-owned || true
+        else
+            msg "${YELLOW}[!] Failed to remove /usr/local/bin/cloudflared; keeping the ownership marker so the leftover binary can be removed later.${NC}"
+        fi
     fi
     rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'; rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
     # L-07: the same runtime-state sweep as do_cleanup (shared helper):

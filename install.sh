@@ -36059,8 +36059,15 @@ core_process_matches() {
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
     { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
     pid_exe_matches "$pid" "$exe" || return 1
-    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-    [[ "$cmdline" == *"$cfg"* ]]
+    # 05c1-M1: match the config as one whole argv token, not a
+    # substring: tr '\0' ' ' erases the NUL boundaries, so
+    # .../config.json.foreign.json contains the expected path and a
+    # foreign process is misjudged as ours. All three cores pass the
+    # config as a standalone argv (xray run -config <cfg>, sing-box
+    # run -c <cfg>, hysteria server -c <cfg>).
+    [[ -n "$cfg" ]] || return 1
+    cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    grep -Fxq -- "$cfg" <<< "$cmdline"
 }
 find_core_residual_pid() {
     local srv="$1" exe='' cfg='' pid='' cmdline=''
@@ -36069,8 +36076,11 @@ find_core_residual_pid() {
         pid="${d#/proc/}"
         [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || continue
         pid_exe_matches "$pid" "$exe" || continue
-        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        [[ "$cmdline" == *"$cfg"* ]] || continue
+        # 05c1-M1: whole-argv-token match, as in core_process_matches
+        # above: a foreign .../config.json.foreign.json must not match.
+        [[ -n "$cfg" ]] || return 1
+        cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        grep -Fxq -- "$cfg" <<< "$cmdline" || continue
         printf '%s\n' "$pid"
         return 0
     done
@@ -39505,8 +39515,15 @@ core_process_matches() {
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
     { IFS= read -r exe; IFS= read -r cfg; } <<< "$(_core_exe_and_config "$srv")" || return 1
     pid_exe_matches "$pid" "$exe" || return 1
-    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-    [[ "$cmdline" == *"$cfg"* ]]
+    # 05c1-M1: match the config as one whole argv token, not a
+    # substring: tr '\0' ' ' erases the NUL boundaries, so
+    # .../config.json.foreign.json contains the expected path and a
+    # foreign process is misjudged as ours. All three cores pass the
+    # config as a standalone argv (xray run -config <cfg>, sing-box
+    # run -c <cfg>, hysteria server -c <cfg>).
+    [[ -n "$cfg" ]] || return 1
+    cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    grep -Fxq -- "$cfg" <<< "$cmdline"
 }
 
 find_core_residual_pid() {
@@ -39516,8 +39533,11 @@ find_core_residual_pid() {
         pid="${d#/proc/}"
         [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || continue
         pid_exe_matches "$pid" "$exe" || continue
-        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        [[ "$cmdline" == *"$cfg"* ]] || continue
+        # 05c1-M1: whole-argv-token match, as in core_process_matches
+        # above: a foreign .../config.json.foreign.json must not match.
+        [[ -n "$cfg" ]] || return 1
+        cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        grep -Fxq -- "$cfg" <<< "$cmdline" || continue
         printf '%s\n' "$pid"
         return 0
     done

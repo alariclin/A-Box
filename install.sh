@@ -46142,7 +46142,10 @@ apply_host_dns() {
             # H-09: install -d -m 755 creates the dir at 0755 and also
             # repairs an existing 0700 dir left by the old umask 077
             # leak (mkdir -p never fixes an existing dir mode).
-            install -d -m 755 /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
+            # 06d-M4: the old DoH was already torn down above, so a
+            # failed install -d must roll back first (like the next
+            # failure branch), not die directly.
+            install -d -m 755 /etc/systemd/resolved.conf.d || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg hd_resolved_dir)"; }
             resolved_strip_global_dns_sources || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_clear_sources_failed)"; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then

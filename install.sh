@@ -41218,6 +41218,70 @@ users_hy2_yaml_scalar() {
     printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
 }
 
+# Decode a YAML block scalar body already collected in _bs_lines (base
+# indent stripped, blank lines kept as empty entries). Inputs (globals
+# set by the caller): _bs_lines (array), _bs_folded (0 literal / 1
+# folded), _bs_chomp (strip/clip/keep). Outputs _hy2_bs_pw (decoded
+# value) and _hy2_bs_count (non-empty body lines). Returns 1 on an
+# empty body, or on a literal body with more than one non-empty line
+# (a password/secret is a single line; a multi-line literal body is
+# refused fail-closed, mirroring the R15-F11-03 password path).
+# Shared by the password: path and the userpass: entries: a
+# block-scalar header ('|-', '|', '>-', ...) is never a credential.
+_hy2_decode_block_scalar_lines() {
+    local _bs_started=0 _bs_nl='' _bs_line=''
+    _hy2_bs_pw=''; _hy2_bs_count=0
+    if (( _bs_folded == 1 )); then
+        for _bs_line in "${_bs_lines[@]}"; do
+            if [[ -z "$_bs_line" ]]; then
+                _bs_nl+=$'\n'
+                continue
+            fi
+            _hy2_bs_count=$(( _hy2_bs_count + 1 ))
+            if (( _bs_started == 0 )); then
+                _hy2_bs_pw="$_bs_nl$_bs_line"
+                _bs_started=1
+            elif [[ -n "$_bs_nl" ]]; then
+                _hy2_bs_pw+="$_bs_nl$_bs_line"
+            elif [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then
+                _hy2_bs_pw+=$'\n'"$_bs_line"
+            else
+                _hy2_bs_pw+=" $_bs_line"
+            fi
+            _bs_nl=''
+        done
+        (( _bs_started == 1 )) || return 1
+        case "$_bs_chomp" in
+            strip) : ;;
+            clip) _hy2_bs_pw+=$'\n' ;;
+            keep) _hy2_bs_pw+="$_bs_nl"$'\n' ;;
+        esac
+    else
+        for _bs_line in "${_bs_lines[@]}"; do
+            if [[ -n "$_bs_line" ]]; then
+                _hy2_bs_count=$(( _hy2_bs_count + 1 ))
+                if (( _hy2_bs_count > 1 )); then
+                    return 1
+                fi
+            fi
+            if (( _bs_started == 0 )); then
+                _hy2_bs_pw="$_bs_line"
+                _bs_started=1
+            else
+                _hy2_bs_pw+=$'\n'"$_bs_line"
+            fi
+        done
+        (( _bs_started == 1 )) || return 1
+        case "$_bs_chomp" in
+            strip) while [[ "$_hy2_bs_pw" == *$'\n' ]]; do _hy2_bs_pw=${_hy2_bs_pw%$'\n'}; done ;;
+            clip) while [[ "$_hy2_bs_pw" == *$'\n' ]]; do _hy2_bs_pw=${_hy2_bs_pw%$'\n'}; done; _hy2_bs_pw+=$'\n' ;;
+            keep) _hy2_bs_pw+=$'\n' ;;
+        esac
+    fi
+    (( _hy2_bs_count >= 1 )) || return 1
+    return 0
+}
+
 users_hy2_read_users() {
     local cfg="$1" block='' type='' pw='' out='[]' _bs_folded=0 _bs_chomp='' _bs_ind='' _bs_count=0 _bs_line='' _bs_re='' _bs_lines=()
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
@@ -41232,11 +41296,19 @@ users_hy2_read_users() {
         # Indent-relative: userpass at any indent, entries at +2.
         out=$(printf '%s\n' "$block" | awk '
             u == "" && /^[[:space:]]*userpass:/{match($0, /^ */); u=RLENGTH; next}
-            u != "" && /^[[:space:]]*($|#)/{next}
+            u != "" && /^[[:space:]]*$/ { if (bs) print "B"; next }
+            u != "" && /^[[:space:]]*#/ && !bs { next }
             u != "" {
                 match($0, /^ */); ind=RLENGTH
                 if (ind <= u) exit
+                if (bs && ind != u + 2) {
+                    if (!bind) bind=ind
+                    line=substr($0, bind+1); sub(/\r$/, "", line)
+                    printf "B%s\n", line
+                    next
+                }
                 if (ind != u + 2) next
+                bs=0; bind=0
                 line=$0; sub(/^ */, "", line)
                 sq=sprintf("%c", 39)
                 q=substr(line, 1, 1)
@@ -41270,19 +41342,66 @@ users_hy2_read_users() {
                 name=substr(line, 1, sep-1)
                 val=substr(line, sep+1)
                 sub(/^[ \t]*/, "", val)
-                printf "K%s\nV%s\n", name, val
+                # H10 (05h-H1): a block-scalar header is not a
+                # secret; emit a W record (folded:chomp) and let the
+                # following B records carry the body.
+                if (val ~ /^[|>]([+-][0-9]?|[0-9][+-]?)?[[:space:]]*(#.*)?$/) {
+                    bs=1
+                    folded=(substr(val, 1, 1) == ">") ? 1 : 0
+                    chomp="clip"
+                    if (val ~ /-/) chomp="strip"
+                    else if (val ~ /\+/) chomp="keep"
+                    printf "K%s\nW%d:%s\n", name, folded, chomp
+                } else {
+                    printf "K%s\nV%s\n", name, val
+                }
             }') || return 1
-        local list='[]' n='' v=''
-        while IFS= read -r n && IFS= read -r v; do
-            n=${n#K}
-            v=${v#V}
-            [[ -n "$n" ]] || continue
-            v=$(users_hy2_yaml_scalar "$v") || return 1
-            v=${v%__ABOX_TRAILING_NL_KEEP__}
-            n=$(users_hy2_yaml_scalar "$n") || return 1
-            n=${n%__ABOX_TRAILING_NL_KEEP__}
-            list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
-        done <<< "$out"
+        local list='[]' n='' v='' _rec='' _pend_n='' _pend_v='' _pend_block=0
+        _bs_lines=()
+        _bs_folded=0; _bs_chomp='clip'
+        # Records from awk: K<name>, V<plain value>, W<folded>:<chomp>
+        # (block-scalar header), B<body line>. A K record ends the
+        # previous entry, so a block body is decoded when the next K
+        # arrives; the trailing sentinel K flushes the last entry.
+        while IFS= read -r _rec; do
+            case "${_rec:0:1}" in
+            K)
+                if [[ -n "$_pend_n" ]]; then
+                    if (( _pend_block == 1 )); then
+                        _hy2_decode_block_scalar_lines || return 1
+                        v="$_hy2_bs_pw"
+                    else
+                        v=$(users_hy2_yaml_scalar "$_pend_v") || return 1
+                        v=${v%__ABOX_TRAILING_NL_KEEP__}
+                    fi
+                    n=$(users_hy2_yaml_scalar "$_pend_n") || return 1
+                    n=${n%__ABOX_TRAILING_NL_KEEP__}
+                    list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
+                fi
+                _pend_n=${_rec#K}
+                _pend_v=''; _pend_block=0; _bs_lines=()
+                ;;
+            V)
+                _pend_v=${_rec#V}
+                _pend_block=0
+                ;;
+            W)
+                _pend_block=1
+                _bs_folded=0; _bs_chomp='clip'
+                case "${_rec#W}" in
+                    1:*) _bs_folded=1 ;;
+                esac
+                case "${_rec#W}" in
+                    *:strip) _bs_chomp='strip' ;;
+                    *:keep) _bs_chomp='keep' ;;
+                esac
+                _bs_lines=()
+                ;;
+            B)
+                _bs_lines+=("${_rec#B}")
+                ;;
+            esac
+        done <<< "$out"$'\nK'
         # R6C11-03 fail-closed: a userpass section that yields nothing is
         # an unrecognized mapping, not an empty user list. Returning []
         # would let adoption revoke the live credentials.
@@ -41325,57 +41444,9 @@ users_hy2_read_users() {
                 sub(/\r$/, "", line)
                 print line
             }')
-        _bs_count=0; pw=''
-        if (( _bs_folded == 1 )); then
-            local _bs_started=0 _bs_nl=''
-            for _bs_line in "${_bs_lines[@]}"; do
-                if [[ -z "$_bs_line" ]]; then
-                    _bs_nl+=$'\n'
-                    continue
-                fi
-                _bs_count=$(( _bs_count + 1 ))
-                if (( _bs_started == 0 )); then
-                    pw="$_bs_nl$_bs_line"
-                    _bs_started=1
-                elif [[ -n "$_bs_nl" ]]; then
-                    pw+="$_bs_nl$_bs_line"
-                elif [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then
-                    pw+=$'\n'"$_bs_line"
-                else
-                    pw+=" $_bs_line"
-                fi
-                _bs_nl=''
-            done
-            (( _bs_started == 1 )) || return 1
-            case "$_bs_chomp" in
-                strip) : ;;
-                clip) pw+=$'\n' ;;
-                keep) pw+="$_bs_nl"$'\n' ;;
-            esac
-        else
-            local _bs_started=0
-            for _bs_line in "${_bs_lines[@]}"; do
-                if [[ -n "$_bs_line" ]]; then
-                    _bs_count=$(( _bs_count + 1 ))
-                    if (( _bs_count > 1 )); then
-                        return 1
-                    fi
-                fi
-                if (( _bs_started == 0 )); then
-                    pw="$_bs_line"
-                    _bs_started=1
-                else
-                    pw+=$'\n'"$_bs_line"
-                fi
-            done
-            (( _bs_started == 1 )) || return 1
-            case "$_bs_chomp" in
-                strip) while [[ "$pw" == *$'\n' ]]; do pw=${pw%$'\n'}; done ;;
-                clip) while [[ "$pw" == *$'\n' ]]; do pw=${pw%$'\n'}; done; pw+=$'\n' ;;
-                keep) pw+=$'\n' ;;
-            esac
-        fi
-        (( _bs_count >= 1 )) || return 1
+        _hy2_decode_block_scalar_lines || return 1
+        pw="$_hy2_bs_pw"
+        _bs_count="$_hy2_bs_count"
     else
         pw=$(users_hy2_yaml_scalar "$pw") || return 1
         pw=${pw%__ABOX_TRAILING_NL_KEEP__}

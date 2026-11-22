@@ -58440,7 +58440,7 @@ wallos_fw_register_opened() { # $1=spec $2=proto
 # reading as capture_abox_iptables_snapshot); a probe error on a present
 # binary is unknown, never "absent".
 _wallos_fw_rule_live() {
-    local spec="$1" proto="$2" _rc=0
+    local spec="$1" proto="$2" _rc=0 _grep_rc=0
     spec=$(normalize_port_spec "$spec") || return 2
     [[ "$proto" == tcp || "$proto" == udp ]] || return 2
     if command -v "$IPT" >/dev/null 2>&1; then
@@ -58456,7 +58456,15 @@ _wallos_fw_rule_live() {
     # Native backends (ufw/firewalld) keep their own ledger of live rules.
     if [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]]; then
         validate_native_firewall_state_file "$ABOX_FW_STATE" || return 2
-        if grep -qE "^(ufw|firewalld)\\|${spec}\\|${proto}\\|" "$ABOX_FW_STATE" 2>/dev/null; then return 0; fi
+        # 07h1-02: a grep read failure (exit 2) is a probe error,
+        # not a confirmed absence: it must return 2 per this
+        # function's tri-state contract, never fall through to 1.
+        grep -qE "^(ufw|firewalld)\\|${spec}\\|${proto}\\|" "$ABOX_FW_STATE" 2>/dev/null || _grep_rc=$?
+        case "$_grep_rc" in
+            0) return 0 ;;
+            1) ;;
+            *) return 2 ;;
+        esac
     fi
     return 1
 }

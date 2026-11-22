@@ -61084,14 +61084,16 @@ hy2_effective_password_for_user() {
     [[ -n "$users" && "$users" != '[]' ]] || return 1
     pw_only=$(printf '%s' "$users" | jq -r '.[0].password_only // false' 2>/dev/null || echo false)
     if [[ "$pw_only" == 'true' ]]; then
-        secret=$(printf '%s' "$users" | jq -r '.[0].secret // ""' 2>/dev/null || true)
+        secret=$(printf '%s' "$users" | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+        secret=${secret%__ABOX_TRAILING_NL_KEEP__}
         [[ -n "$secret" ]] || return 1
         printf '%s__ABOX_TRAILING_NL_KEEP__' "$secret"
         return 0
     fi
     entry=$(printf '%s' "$users" | jq -c --arg n "$login" '.[] | select(.name == $n)' 2>/dev/null) || return 1
     [[ -n "$entry" && "$entry" != 'null' ]] || return 1
-    secret=$(printf '%s' "$entry" | jq -r '.secret // ""' 2>/dev/null || true)
+    secret=$(printf '%s' "$entry" | jq -r '((.secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+    secret=${secret%__ABOX_TRAILING_NL_KEEP__}
     [[ -n "$secret" ]] || return 1
     printf '%s__ABOX_TRAILING_NL_KEEP__' "${login}:${secret}"
     return 0

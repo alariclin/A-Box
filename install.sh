@@ -744,6 +744,7 @@ rebuild_standalone_links() {
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
     local _tj_row='' _tj_rows='' _tj_tag='' _tj_stem='' _tj_seen='' _tj_legacy_n='' _tj_n='' _tj_leg='' _tj_leg_port='' _tj_sfx='' _tj_pc='' _tj_pc_port=''
     local _sk_row='' _sk_rows='' _sk_tag='' _sk_stem='' _sk_seen='' _sk_legacy_n='' _sk_n='' _sk_leg='' _sk_leg_port='' _sk_sfx='' _sk_pc='' _sk_pc_port=''
+    local _tuic_row='' _tuic_rows='' _tuic_seen='' _anytls_row='' _anytls_rows='' _anytls_seen='' _sh_row='' _sh_rows='' _sh_seen=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
         _tj_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != "")) | [(.tag // ""), (.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null) || _tj_rows=''
         _tj_seen=''
@@ -859,9 +860,25 @@ rebuild_standalone_links() {
             fi
         done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+            # B01-01: iterate every matching inbound (same rows loop
+            # as Trojan/SOCKS5 above); first(...) only rebuilt the
+            # first tuic-in and left tuic-in-2 stale.
+            _tuic_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null) || _tuic_rows=''
+            _tuic_seen=''
+            while IFS= read -r _tuic_row; do
+            [[ -n "$_tuic_row" ]] || continue
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul _tuic_tag
+            _tsv_split "$_tuic_row" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul _tuic_tag
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
+            # N3 (followup5 D-leg): register under the matched
+            # inbound's own stem (tuic-in -> tuic, tuic-in-2 ->
+            # tuic-in-2). The old fixed stem `tuic` rewrote
+            # tuic.link from the -2 survivor, duplicating the
+            # tuic-in-2.link URI in menu 12 output.
+            _tuic_stem=$(users_link_stem sing-box "${_tuic_tag:-}" 2>/dev/null || printf '%s' 'tuic')
+            [[ -n "$_tuic_stem" ]] || _tuic_stem='tuic'
+            case " $_tuic_seen " in *" $_tuic_stem "*) continue ;; esac
+            _tuic_seen+=" $_tuic_stem"
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
@@ -887,14 +904,14 @@ rebuild_standalone_links() {
                 # still registered, just without allow_insecure=1.
                 local _cert_inline_state='unknown' _cert_inline_present='' _inline_tmp=''
                 _cert_inline=''
-                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
+                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_tuic_tag" 'first(.inbounds[]? | select(.tag == $t)) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
                         true) _cert_inline_state='present' ;;
                         false) _cert_inline_state='absent' ;;
                     esac
                 fi
                 if [[ "$_cert_inline_state" == 'present' ]]; then
-                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
+                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_tuic_tag" 'first(.inbounds[]? | select(.tag == $t)) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
                     # R15-F01-02: the inline PEM goes through the same
@@ -906,28 +923,33 @@ rebuild_standalone_links() {
                 elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
                     if _tuic_cert_self_signed "$_cert"; then _insecure='allow_insecure=1'; fi
                 fi
-                # N3 (followup5 D-leg): register under the matched
-                # inbound's own stem (tuic-in -> tuic, tuic-in-2 ->
-                # tuic-in-2). The old fixed stem `tuic` rewrote
-                # tuic.link from the -2 survivor, duplicating the
-                # tuic-in-2.link URI in menu 12 output.
-                _tuic_stem=$(users_link_stem sing-box "${_tuic_tag:-}" 2>/dev/null || printf '%s' 'tuic')
-                [[ -n "$_tuic_stem" ]] || _tuic_stem='tuic'
                 register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
+            done <<< "$_tuic_rows"
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
+            # B01-01: iterate every matching inbound (same rows loop
+            # as Trojan/SOCKS5 above); first(...) only rebuilt the
+            # first anytls-in and left anytls-in-2 stale.
+            _anytls_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null) || _anytls_rows=''
+            _anytls_seen=''
+            while IFS= read -r _anytls_row; do
+            [[ -n "$_anytls_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000")), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _anytls_tag
+            _tsv_split "$_anytls_row" _port _pass _pk _sni _sid _nul _anytls_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
+            # N3 (followup5 D-leg): register under the matched
+            # inbound's own stem (anytls-in -> anytls, anytls-in-2
+            # -> anytls-in-2).
+            _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
+            [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
+            case " $_anytls_seen " in *" $_anytls_stem "*) continue ;; esac
+            _anytls_seen+=" $_anytls_stem"
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
-                # N3 (followup5 D-leg): register under the matched
-                # inbound's own stem (anytls-in -> anytls, anytls-in-2
-                # -> anytls-in-2).
                 # B01-02: derivation and registration must NOT be one
                 # && chain with comments in between. Bash skips comment
                 # lines when looking for the && operand, so the stem
@@ -940,8 +962,6 @@ rebuild_standalone_links() {
                 # non-empty derived key explicitly instead.
                 _pub=$(x25519_pub_from_priv "$_pk" 2>/dev/null) || _pub=''
                 if [[ -n "$_pub" ]]; then
-                    _anytls_stem=$(users_link_stem sing-box "${_anytls_tag:-}" 2>/dev/null || printf '%s' 'anytls')
-                    [[ -n "$_anytls_stem" ]] || _anytls_stem='anytls'
                     register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
                 else
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
@@ -949,6 +969,7 @@ rebuild_standalone_links() {
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
+            done <<< "$_anytls_rows"
         fi
         # R8-F1-3: an existing link is trusted, except a
         # proven-empty shadow-tls parameter (see
@@ -956,9 +977,23 @@ rebuild_standalone_links() {
         # link the old unchecked pipeline published, and the
         # next rebuild must retry it instead of skipping forever.
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor (empty-shadowtls retry subsumed)
+            # B01-01: iterate every matching inbound (same rows loop
+            # as Trojan/SOCKS5 above); first(...) only rebuilt the
+            # first shadowtls-in and left shadowtls-in-2 stale.
+            _sh_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // "")] | @tsv' 2>/dev/null) || _sh_rows=''
+            _sh_seen=''
+            while IFS= read -r _sh_row; do
+            [[ -n "$_sh_row" ]] || continue
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour _sh_tag
+            _tsv_split "$_sh_row" _port _pass _sni _detour _sh_tag
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
+            # N3 (followup5 D-leg): register under the matched
+            # inbound's own stem (shadowtls-in -> shadowtls,
+            # shadowtls-in-2 -> shadowtls-in-2).
+            _sh_stem=$(users_link_stem sing-box "${_sh_tag:-}" 2>/dev/null || printf '%s' 'shadowtls')
+            [[ -n "$_sh_stem" ]] || _sh_stem='shadowtls'
+            case " $_sh_seen " in *" $_sh_stem "*) continue ;; esac
+            _sh_seen+=" $_sh_stem"
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
@@ -989,13 +1024,6 @@ rebuild_standalone_links() {
                        [[ -n "$_pb_json" ]] &&
                        _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
                        [[ -n "$_pb" ]]; then
-                        # N3 (followup5 D-leg): same fixed-stem
-                        # defect as TUIC above: register under the
-                        # matched inbound's own stem
-                        # (shadowtls-in -> shadowtls, shadowtls-in-2
-                        # -> shadowtls-in-2).
-                        _sh_stem=$(users_link_stem sing-box "${_sh_tag:-}" 2>/dev/null || printf '%s' 'shadowtls')
-                        [[ -n "$_sh_stem" ]] || _sh_stem='shadowtls'
                         register_standalone_link "$_sh_stem" "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                     else
                         printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
@@ -1007,6 +1035,7 @@ rebuild_standalone_links() {
             elif [[ -n "$_port$_pass$_sni$_inner" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
             fi
+            done <<< "$_sh_rows"
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
             _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null) || _sk_rows=''

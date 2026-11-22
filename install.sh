@@ -39030,25 +39030,47 @@ tuic_cert_tag() {
 # range. Idempotent: a rule that is already gone is not an error.
 # Returns 1 only when a rule that is still present cannot be deleted.
 remove_hy2_hop_nat_rules() {
-    local _start="$1" _end="$2" _base="$3" _iface="$4" cmd _probe _spec
+    local _start="$1" _end="$2" _base="$3" _iface="$4" cmd _probe _spec _crc _probe_rc
     local _failed=0
     for cmd in "$IPT" "$IPT6"; do
         if [[ "$cmd" == "$IPT6" ]]; then
             if ! command -v "$IPT6" >/dev/null 2>&1; then continue; fi
-            _iptables_q "$IPT6" -t nat -S PREROUTING >/dev/null 2>&1 || continue
+            # 05e2-M4: an -S query failure must not silently skip the
+            # whole v6 branch (it used to bypass the -L fail-closed
+            # probe below too). S27/R4C6-03: a failed query means v6
+            # rules may still be present; fail unless IPv6 is
+            # confirmed unusable, in which case no v6 rules can exist.
+            if ! _iptables_q "$IPT6" -t nat -S PREROUTING >/dev/null 2>&1; then
+                if host_has_usable_ipv6; then _failed=1; fi
+                continue
+            fi
             if ! _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1; then
                 # Usable IPv6 is not guaranteed; a non-empty IPv6
                 # rulebase we cannot enumerate is fail-closed: leave
-                # the v6 rules in place and report failure.
-                _probe=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>/dev/null)
+                # the v6 rules in place and report failure. A probe
+                # that itself errors proves nothing about emptiness,
+                # so it fails closed the same way.
+                _probe=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>/dev/null); _probe_rc=$?
+                if (( _probe_rc != 0 )); then
+                    if host_has_usable_ipv6; then _failed=1; fi
+                    continue
+                fi
                 [[ -z "$_probe" ]] && continue
                 _failed=1
                 continue
             fi
         fi
         _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -j REDIRECT --to-ports "$_base")
-        while _iptables_q "$cmd" -t nat -C PREROUTING "${_spec[@]}" 2>/dev/null; do
-            _iptables_q "$cmd" -t nat -D PREROUTING "${_spec[@]}" 2>/dev/null || { _failed=1; break; }
+        # 05e2-M4: tri-state -C (same contract as
+        # iptables_rule_check): 0 = present, 1 = absent, anything
+        # else = query error, which must fail, never read as absent.
+        while :; do
+            _iptables_q "$cmd" -t nat -C PREROUTING "${_spec[@]}" 2>/dev/null; _crc=$?
+            case "$_crc" in
+                0) _iptables_q "$cmd" -t nat -D PREROUTING "${_spec[@]}" 2>/dev/null || { _failed=1; break; } ;;
+                1) break ;;
+                *) _failed=1; break ;;
+            esac
         done
     done
     (( _failed == 0 ))

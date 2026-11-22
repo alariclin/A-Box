@@ -57126,7 +57126,13 @@ wallos_stack_teardown() {
                     # so purge refuses, and an unknown recheck fails
                     # keep-data instead of reporting success.
                     if _recheck_err=$(docker inspect wallos 2>&1 >/dev/null); then
-                        :
+                        # 07g1-M04: inspect still succeeds after rm -f,
+                        # so the container is present (recreated). That
+                        # is an unknown state for keep-data: set
+                        # _unknown so the tail below fails instead of
+                        # reporting success (purge already refuses via
+                        # _gone == 0).
+                        _unknown=1
                     elif _wallos_container_gone "$_recheck_err"; then
                         _gone=1
                     else

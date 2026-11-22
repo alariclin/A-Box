@@ -44702,8 +44702,19 @@ timezone_apply_with_rollback() {
     # single rollback step is kept by design. Multi-step rollback
     # would need a separate design (retention + selection); out of
     # scope for this batch, recorded as a design limitation.
-    rm -rf -- "$ABOX_DIR/.tz-rollback"
-    mv -- "$stage" "$ABOX_DIR/.tz-rollback" || {
+    # 06c1-M2: the old rollback dir's removal must be checked: if it
+    # cannot be deleted, an unchecked mv would nest the new snapshot
+    # inside the old directory and report success. Roll back and fail
+    # instead; mv -T below is the second line of defence.
+    rm -rf -- "$ABOX_DIR/.tz-rollback" || {
+        if ! restore_timezone_snapshot "$snap"; then
+            msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
+        else
+            rm -rf -- "$snap" "$stage"
+        fi
+        return 1
+    }
+    mv -T -- "$stage" "$ABOX_DIR/.tz-rollback" || {
         if ! restore_timezone_snapshot "$snap"; then
             msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
         else

@@ -40829,7 +40829,25 @@ fetch_abox_mirror_asset() {
     elif ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
-    curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    # 05g-M4: the .sig download below used to have no deadline check and
+    # no `timeout` wrapper (fixed -m 30, 2 retries, up to ~94s past the
+    # budget), while the SHA256SUMS download just above and the asset
+    # downloads below both re-check the deadline. Mirror the SHA256SUMS
+    # pattern: refuse to start when the budget is spent, else cap with
+    # `timeout` when available (plain curl stays the fallback where
+    # timeout is absent). A failed .sig download stays tolerated
+    # (`|| true`): the sig gate below still fails closed when the
+    # signature is missing or bad.
+    _mirror_max_time=30
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_abox_mirror_asset $repo $requested_version (SHA256SUMS.sig)" || { rm -rf -- "$sum_dir"; return 1; }
+        _mirror_max_time=$(abox_fetch_curl_max_time 30) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] && command -v timeout >/dev/null 2>&1; then
+        timeout "$_mirror_max_time" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    else
+        curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    fi
     if [[ -L "$sum_file" || -L "$sum_sig" ]]; then
         rm -rf -- "$sum_dir"; return 1
     fi

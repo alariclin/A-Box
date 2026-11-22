@@ -55922,7 +55922,12 @@ _wallos_recover_interrupted_upgrade_impl() {
         local _rc_lbl='' _rc_mounts=''
         _rc_lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
         _rc_mounts=$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' wallos 2>/dev/null || true)
-        if [[ "$_rc_lbl" != "true" ]] || [[ "$_rc_mounts" != *"$WALLOS_DIR/db:/var/www/html/db"* ]] || [[ "$_rc_mounts" != *"$WALLOS_DIR/logos:/var/www/html/images/uploads/logos"* ]]; then
+        # 07e-02: match each bind mount as one whole space-separated
+        # token, not a substring: a source with a prefix
+        # (/other$WALLOS_DIR/db) or a destination with a suffix
+        # (/var/www/html/db-extra) must not pass. The quoted token
+        # expansions are literal; the surrounding spaces anchor both ends.
+        if [[ "$_rc_lbl" != "true" ]] || [[ " $_rc_mounts " != *" ""$WALLOS_DIR/db:/var/www/html/db"" "* ]] || [[ " $_rc_mounts " != *" ""$WALLOS_DIR/logos:/var/www/html/images/uploads/logos"" "* ]]; then
             msg "${RED}Refusing recovery: existing 'wallos' container is not A-Box-managed (label or bind mounts mismatch).${NC}"
             return 1
         fi

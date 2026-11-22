@@ -37371,7 +37371,11 @@ start_services_for_traffic_unblock() {
             printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || return 1
         fi
         (( op_rc == 0 )) || return 1
-        [[ "$after" == "$srv|1|enabled" ]] || return 1
+        # 05d-M3: the post-operation check must accept the same three
+        # states the initial and final checks accept: a soft start /
+        # enable that lands on enabled-runtime or indirect has
+        # succeeded, and rejecting it here forces a spurious rollback.
+        [[ "$after" == "$srv|1|enabled" || "$after" == "$srv|1|enabled-runtime" || "$after" == "$srv|1|indirect" ]] || return 1
     done <<< "$services"
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue

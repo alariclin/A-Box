@@ -36885,11 +36885,19 @@ traffic_optional_state_matches_expected() {
 }
 
 capture_vnstat_runtime_state() {
-    local name='' active enabled _st='' _ufs='' _ufs_rc=0 _ru=''
+    local name='' active enabled _st='' _ufs='' _ufs_rc=0 _ru='' _luf=''
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then
+        # 05c2-M3: the old pipeline's exit status was awk's, so a failed
+        # query (no output) was indistinguishable from "unit absent" and
+        # misreported as absent. List once without a pattern and check
+        # ITS return code: a failed listing is a query failure (return 1,
+        # fail-closed); only a successful listing with neither name
+        # present is absent. (A patterned query exits 1 for "no match"
+        # too, so its rc cannot serve as the failure signal.)
+        _luf=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null) || return 1
+        if awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' <<< "$_luf"; then
             name=vnstat
-        elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then
+        elif awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' <<< "$_luf"; then
             name=vnstatd
         else
             printf '%s\n' 'absent'

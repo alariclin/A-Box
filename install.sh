@@ -47858,7 +47858,15 @@ def _scan_text(text):
     # bracket depth 0 at a line start -- never inside a multiline
     # string or a nested array. Raises ValueError on input that cannot
     # be bounded reliably.
-    lines = text.splitlines(keepends=True)
+    # 06e-02: TOML lines end only at LF (CRLF keeps the \r).
+    # str.splitlines() also splits on U+2028/U+2029 and other Unicode
+    # boundaries, so a legal comment containing U+2028 was cut into a
+    # second segment with no '=' and raised ValueError below. Split
+    # on '\n' only; ''.join(lines) == text is preserved.
+    parts = text.split('\n')
+    lines = [p + '\n' for p in parts[:-1]]
+    if parts[-1] != '':
+        lines.append(parts[-1])
     line_start = []
     off = 0
     for ln in lines:

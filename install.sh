@@ -38904,6 +38904,22 @@ _manifest_drop_paths() {
 # Only regular files are removed, never symlinks; the legacy unprefixed
 # tuic.crt/tuic.key do not match tuic-*.crt/.key and stay. Best-effort,
 # always returns 0.
+# 05f-H-05f-02: a cert/key file is referenced when ANY inbound of any
+# protocol names it as certificate_path/key_path. Returns 0 when the
+# path is referenced (or when the reference set cannot be determined --
+# fail-closed, keep the file); returns 1 only when the live config is
+# readable and no inbound references the path. Checking only the
+# owning protocol's inbounds deletes a file another protocol still uses.
+_singbox_cert_referenced() {
+    local _cfg="$1" _path="$2" _stripped='' _refs=''
+    [[ -n "$_cfg" && -n "$_path" ]] || return 0
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 0
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 0
+    _refs=$(printf '%s' "$_stripped" | jq -r '.inbounds[]? | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null) || return 0
+    grep -Fxq -- "$_path" <<< "$_refs" || return 1
+    return 0
+}
+
 _singbox_cleanup_tuic_certs_when_none_remain() {
     local cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _sb_dir='' _stripped='' _tuic_jq_rc=0 _f=''
     [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]] || return 0
@@ -39178,8 +39194,15 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             local _hy2_jq_rc=0
             jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
             if [[ "$_hy2_jq_rc" == 1 ]]; then
-                [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
-                [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+                # 05f-H-05f-02: delete each file only when no inbound
+                # of ANY protocol still references it (a manual or
+                # other-protocol inbound may share the pair).
+                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.crt; then
+                    [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
+                fi
+                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.key; then
+                    [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+                fi
             fi
         fi
     fi
@@ -39196,7 +39219,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         if [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]]; then
             local _tuic_stripped='' _tuic_refs='' _tuic_cert_file='' _tuic_base=''
             _tuic_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || _tuic_stripped=''
-            if [[ -n "${_tuic_stripped//[[:space:]]/}" ]] && _tuic_refs=$(printf '%s' "$_tuic_stripped" | jq -r '.inbounds[]? | select(.type == "tuic") | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null); then
+            if [[ -n "${_tuic_stripped//[[:space:]]/}" ]] && _tuic_refs=$(printf '%s' "$_tuic_stripped" | jq -r '.inbounds[]? | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null); then
                 for _tuic_cert_file in /etc/sing-box/tuic-*.crt /etc/sing-box/tuic-*.key /etc/sing-box/tuic-*.crt.A-Box-bak /etc/sing-box/tuic-*.key.A-Box-bak; do
                     [[ -f "$_tuic_cert_file" && ! -L "$_tuic_cert_file" ]] || continue
                     _tuic_base="${_tuic_cert_file%.A-Box-bak}"
@@ -39248,7 +39271,12 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                     *tuic*)
                         _tuic_ct=$(tuic_cert_tag "$tag")
                         for _tuic_f in "/etc/sing-box/tuic-${_tuic_ct}.crt" "/etc/sing-box/tuic-${_tuic_ct}.key" "/etc/sing-box/tuic-${_tuic_ct}.crt.A-Box-bak" "/etc/sing-box/tuic-${_tuic_ct}.key.A-Box-bak"; do
-                            [[ -f "$_tuic_f" && ! -L "$_tuic_f" ]] && rm -f -- "$_tuic_f" 2>/dev/null || true
+                            [[ -f "$_tuic_f" && ! -L "$_tuic_f" ]] || continue
+                            # 05f-H-05f-02: keep when any inbound of any
+                            # protocol still references this file (for a
+                            # .A-Box-bak file, its live base path).
+                            _singbox_cert_referenced /etc/sing-box/config.json "${_tuic_f%.A-Box-bak}" && continue
+                            rm -f -- "$_tuic_f" 2>/dev/null || true
                         done
                         ;;
                 esac

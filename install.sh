@@ -50049,6 +50049,12 @@ def redact_text(value):
     value = url_userinfo.sub(r"\1***REDACTED***@", value)
     value = inline_authorization.sub(r"\1***REDACTED***", value)
     value = inline_cookie.sub(r"\1***REDACTED***", value)
+    # 06h2-H02: a JSON string may carry a VLESS client id ("id: ...")
+    # that the dict walk never sees as a key. The text path already
+    # runs _redact_id_text; the walk string branch did not, so the id
+    # survived verbatim. Same position as the text path (after the
+    # authorization/cookie rules, before the key-assignment rule).
+    value = _redact_id_text(value)
     value = inline_secret_assignment.sub(r'\1"***REDACTED***"', value)
     return value
 

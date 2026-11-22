@@ -36392,7 +36392,7 @@ capture_pre_block_states_once() {
 # are started. Never enables or starts a deliberately disabled/stopped
 # service. Services no longer owned are skipped, mirroring start_owned.
 restore_pre_block_states() {
-    local period="$1" srv active enabled_state _rc=0
+    local period="$1" srv active enabled_state _rc=0 _handled=0
     local file="${PRE_BLOCK_STATES_PREFIX}-${period}"
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while read -r srv active enabled_state; do
@@ -36400,6 +36400,13 @@ restore_pre_block_states() {
         # L-07(C): skip the '# captured <epoch>' stamp line.
         [[ "$srv" == \#* ]] && continue
         owned "$srv" 2>/dev/null || continue
+        # 05c2-M1: count records actually handled. The capture side
+        # guarantees a valid snapshot holds at least one record
+        # ([[ -s $tmp ]] before publish), so zero handled records
+        # means an empty or wholly-skipped snapshot: report failure
+        # instead of 0, or the caller would commit RUNNING and delete
+        # the snapshot on the strength of nothing restored.
+        _handled=$(( _handled + 1 ))
         case "$enabled_state" in
             enabled)
                 if is_systemd; then systemctl enable "$srv" >/dev/null 2>&1 || _rc=1;
@@ -36421,6 +36428,7 @@ restore_pre_block_states() {
             else rc-service "$srv" status >/dev/null 2>&1 9>&- 10>&- || _rc=1; fi
         fi
     done < "$file"
+    (( _handled > 0 )) || _rc=1
     return "$_rc"
 }
 # R7C10-01: rollover entry point. With a snapshot for the blocked

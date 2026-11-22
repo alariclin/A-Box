@@ -45394,11 +45394,19 @@ restore_dns_snapshot_body() {
             rm -f -- "$_abox_listen" || return 1
             cp -a "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" || return 1
         elif [[ "$_listen_state" == absent ]]; then
-            if [[ -e "$_abox_listen" || -L "$_abox_listen" ]]; then
+            if [[ -f "$_abox_listen" ]]; then
+                # 06c2-02: same marker gate as the dropin-state restore
+                # below: a foreign admin drop-in created after the
+                # snapshot must never be deleted. Only a drop-in
+                # carrying the A-Box marker may go; an unmarked one
+                # fails closed instead of being silently removed (the
+                # second set's protection never fires once this branch
+                # has already deleted the file).
+                grep -Fq '# Managed by A-Box' "$_abox_listen" 2>/dev/null || return 1
                 _socket_changed=1
+                rm -f -- "$_abox_listen" 2>/dev/null || true
+                rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
             fi
-            rm -f -- "$_abox_listen" 2>/dev/null || true
-            rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
         else
             return 1
         fi

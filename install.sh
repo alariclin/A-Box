@@ -56743,10 +56743,19 @@ EOF_WF2B_JAIL
         rm -f -- "$jail"
         return 1
     fi
+    # 07f-M03: a failed restart used to be swallowed by `|| true`
+    # and the function returned 0, so callers could not tell the
+    # jail was written but never loaded. Report loudly (msg goes to
+    # stdout, which the callers do not discard) and fail.
+    local _f2b_restart_rc=0
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        systemctl restart fail2ban >/dev/null 2>&1 || true
+        systemctl restart fail2ban >/dev/null 2>&1 || _f2b_restart_rc=$?
     else
-        rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&- || true
+        rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&- || _f2b_restart_rc=$?
+    fi
+    if (( _f2b_restart_rc != 0 )); then
+        msg "${RED}[!] Wallos fail2ban jail written but fail2ban restart failed (rc=${_f2b_restart_rc}); login brute-force protection is NOT live.${NC}"
+        return 1
     fi
     return 0
 }

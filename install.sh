@@ -19994,7 +19994,30 @@ ufw_rule_exists() { ufw_rule_state "$1" "$2"; }
 # key all count as enabled.
 ufw_ipv6_enabled() {
     [[ -f /etc/default/ufw ]] || return 0
-    grep -Eq '^[[:space:]]*IPV6=yes' /etc/default/ufw
+    # 03d-M01: /etc/default/ufw is a shell-sourced file, so the last
+    # effective assignment wins and the value may be quoted
+    # (IPV6="yes" / IPV6='yes'). A missing key (or a commented-out
+    # one) counts as enabled: UFW defaults to IPV6=yes. Only an
+    # explicit last value of "yes" (case-insensitive) counts as
+    # enabled; anything else (no, empty, garbage) is disabled.
+    local _line='' _val='' _sq='' _dq=''
+    _line=$(grep -E '^[[:space:]]*(export[[:space:]]+)?IPV6[[:space:]]*=' /etc/default/ufw 2>/dev/null | tail -n 1)
+    [[ -n "$_line" ]] || return 0
+    _val="${_line#*=}"
+    _val="${_val#${_val%%[![:space:]]*}}"
+    # Quote chars via printf, not literals: a literal-quote glob
+    # pattern is easy to misquote (a star inside the quotes turns
+    # literal and never matches). Compare the first character
+    # against the generated quote chars instead.
+    _sq=$(printf '\x27'); _dq=$(printf '\x22')
+    if [[ "${_val:0:1}" == "$_dq" ]]; then
+        _val="${_val:1}"; _val="${_val%%\"*}"
+    elif [[ "${_val:0:1}" == "$_sq" ]]; then
+        _val="${_val:1}"; _val="${_val%%\'*}"
+    else
+        _val="${_val%%[[:space:]#]*}"
+    fi
+    [[ "${_val,,}" == yes ]]
 }
 
 # R5C6-03: true when the A-Box-owned rule exists for every

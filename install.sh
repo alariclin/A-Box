@@ -63965,7 +63965,7 @@ upgrade_hysteria_core_only() {
     get_architecture
     active_state=$(service_active_state_value hysteria 2>/dev/null) || die "$(tr_msg upgrade_hysteria_core_only_state_unknown)"
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die "$(tr_msg upgrade_hysteria_core_only_state_invalid)" ;; esac
-    [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | head -n 1 || true)
+    [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
     core_version_probe_safe /usr/local/bin/hysteria "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "$(tr_msg upgrade_hysteria_core_only_version_unreadable)"
     local target_ref='' current_tag='' decision=0
     clear_core_release_resolution HyNetworks/hysteria
@@ -63994,7 +63994,7 @@ upgrade_hysteria_core_only() {
     hy2_bin="$tmp/hysteria_core"
     fetch_github_release HyNetworks/hysteria hysteria_core "$hy2_bin"
     chmod 755 "$hy2_bin" || { rm -rf "$tmp"; die 'Hysteria staged binary chmod failed.'; }
-    new_ver=$("$hy2_bin" version 2>/dev/null | head -n 1 || true)
+    new_ver=$("$hy2_bin" version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'Hysteria staged binary execution check failed.'; }
     core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "$(tprintf upgrade_hysteria_core_only_final_mismatch "${ABOX_LAST_CORE_RELEASE_REF}")"; }
     if [[ -n "$current_tag" ]]; then

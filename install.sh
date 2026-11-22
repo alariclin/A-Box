@@ -25582,8 +25582,17 @@ xray_config_autorecover() {
     elif (( test_rc != 23 )); then
         return 2
     fi
-    bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || return 1
-    [[ -n "$bad_sha" ]] || return 1
+    bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || bad_sha=''
+    if [[ -z "$bad_sha" ]]; then
+        # H1 (04a): rc 1 promises the probe "stopped + latched", so it
+        # may never be returned while the service is still (or unknown
+        # to be) running. Stop first, as every other failure branch does.
+        _xrc_marker_append "$marker" failed "$bad_sha" "bad-config-sha-unreadable" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery cannot read broken config sha; manual restore required"
+        _xrc_rc=$?
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    fi
     now=$(date +%s)
     if [[ -f "$marker" && ! -L "$marker" ]]; then
         # 3B-U2: the gate must not key on the current config's sha:
@@ -25621,8 +25630,23 @@ xray_config_autorecover() {
         return 1
     }
     local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src=''
-    _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
-    chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
+    _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || {
+        # H1 (04a): same "stopped + latched" contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "autorecover-workdir-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery work directory could not be created; manual restore required"
+        _xrc_rc=$?
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
+    chmod 700 "$_work" || {
+        # H1 (04a): same contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "autorecover-workdir-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery work directory could not be secured; manual restore required"
+        _xrc_rc=$?
+        rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
     local _list
     # R16-F07-01: BusyBox find (Alpine) has no -printf; python3 is already
     # a hard dependency, so enumerate by mtime in python (newest first),
@@ -25742,10 +25766,42 @@ PY_XRC_ENUM
     [[ "$_desired" == 'RUNNING' ]] || { rm -rf "$_work"; return 2; }
     # Preserve the broken config aside (0600; keeps the failure evidence),
     # then atomically install the good config next to the live one.
-    install -m 600 -- "$cfg" "$abox/xray-config.broken-${bad_sha:0:12}.json" 2>/dev/null || { rm -rf "$_work"; return 1; }
-    _stage=$(umask 077; mktemp "$(dirname "$cfg")/.xray-config.A-Box-new.XXXXXX") || { rm -rf "$_work"; return 1; }
-    cp -f -- "$_good" "$_stage" 2>/dev/null || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
-    mv -f -- "$_stage" "$cfg" || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
+    install -m 600 -- "$cfg" "$abox/xray-config.broken-${bad_sha:0:12}.json" 2>/dev/null || {
+        # H1 (04a): same "stopped + latched" contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "broken-config-preserve-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery could not preserve the broken config; manual restore required"
+        _xrc_rc=$?
+        rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
+    _stage=$(umask 077; mktemp "$(dirname "$cfg")/.xray-config.A-Box-new.XXXXXX") || {
+        # H1 (04a): same contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "restore-stage-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery could not stage the restored config; manual restore required"
+        _xrc_rc=$?
+        rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
+    cp -f -- "$_good" "$_stage" 2>/dev/null || {
+        # H1 (04a): same contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "restore-stage-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery could not stage the restored config; manual restore required"
+        _xrc_rc=$?
+        rm -f -- "$_stage"; rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
+    mv -f -- "$_stage" "$cfg" || {
+        # H1 (04a): same contract as above.
+        _xrc_marker_append "$marker" failed "$bad_sha" "restore-commit-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery could not install the restored config; manual restore required"
+        _xrc_rc=$?
+        rm -f -- "$_stage"; rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
     # R15-F07-01: the live config must be readable by the xray runtime
     # user (the unit runs as User=abox-xray). The old 0600 root:root
     # install made every restore fail at restart; use the same

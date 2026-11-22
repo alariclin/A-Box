@@ -25391,12 +25391,17 @@ hysteria_official_hop_firewall_ok() {
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
-            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hit4 = 0; hit6 = 0 }
+            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hookok = 0; hit4 = 0; hit6 = 0 }
             /^[[:space:]]*table[[:space:]]/ { fam = $2; tbl = $3 }
-            /^[[:space:]]*chain[[:space:]]/ { chain = $2 }
+            /^[[:space:]]*chain[[:space:]]/ { chain = $2; hookok = 0 }
+            # 04b-04: only a base chain with an ingress hook counts:
+            # a plain chain merely named PREROUTING (no type line, or
+            # a filter/input hook) has no entry point, so its rules
+            # must not count as coverage.
+            /^[[:space:]]*type[[:space:]]+nat[[:space:]]+hook[[:space:]]+prerouting([[:space:]]|;)/ { if (chain != "") hookok = 1 }
             /\{[[:space:]]*$/ { depth++ }
-            /^[[:space:]]*\}/ { depth--; if (depth == 1) chain = ""; if (depth == 0) { fam = ""; tbl = ""; chain = "" } next }
-            chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
+            /^[[:space:]]*\}/ { depth--; if (depth == 1) { chain = ""; hookok = 0 } if (depth == 0) { fam = ""; tbl = ""; chain = ""; hookok = 0 } next }
+            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {
@@ -26396,12 +26401,17 @@ hysteria_official_hop_firewall_ok() {
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
-            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hit4 = 0; hit6 = 0 }
+            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hookok = 0; hit4 = 0; hit6 = 0 }
             /^[[:space:]]*table[[:space:]]/ { fam = $2; tbl = $3 }
-            /^[[:space:]]*chain[[:space:]]/ { chain = $2 }
+            /^[[:space:]]*chain[[:space:]]/ { chain = $2; hookok = 0 }
+            # 04b-04: only a base chain with an ingress hook counts:
+            # a plain chain merely named PREROUTING (no type line, or
+            # a filter/input hook) has no entry point, so its rules
+            # must not count as coverage.
+            /^[[:space:]]*type[[:space:]]+nat[[:space:]]+hook[[:space:]]+prerouting([[:space:]]|;)/ { if (chain != "") hookok = 1 }
             /\{[[:space:]]*$/ { depth++ }
-            /^[[:space:]]*\}/ { depth--; if (depth == 1) chain = ""; if (depth == 0) { fam = ""; tbl = ""; chain = "" } next }
-            chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
+            /^[[:space:]]*\}/ { depth--; if (depth == 1) { chain = ""; hookok = 0 } if (depth == 0) { fam = ""; tbl = ""; chain = ""; hookok = 0 } next }
+            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {

@@ -33793,7 +33793,12 @@ warp_deploy_inner() {
     if [[ -z "$core" ]]; then
         if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray && ! service_is_abox_managed hysteria; then
             msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
-            routing_outbound_del 'warp-out' >/dev/null 2>&1 || true
+            # 05a-M1: do NOT delete 'warp-out' here. This deploy has
+            # not registered anything yet, so any warp-out in the
+            # state is a previous successful deploy's, and the
+            # snapshot that could restore it is only created below.
+            # A stale entry (if any) is an explicit undeploy/cleanup
+            # concern, not this abort path's to destroy.
             return 1
         fi
     fi

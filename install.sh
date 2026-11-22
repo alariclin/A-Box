@@ -38031,7 +38031,7 @@ remove_ddr_runtime_state_files() {
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
-    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au='' _argo_state_moved=0 _argo_f=''
+    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au='' _argo_state_moved=0 _argo_f='' _argo_state_expected=0 _argo_state_copied=0
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
         chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
@@ -38249,9 +38249,24 @@ do_cleanup() {
             install -d -m 700 "$uninstall_tx_dir/argo-retry" 2>/dev/null || true
             for _argo_f in .argo-token .extra-uuids .traffic-pair-state .desired_state .traffic-block-state .argo-state .routing-state .abox-cloudflared-owned; do
                 if [[ -f "$ABOX_DIR/$_argo_f" && ! -L "$ABOX_DIR/$_argo_f" ]]; then
-                    cp -a -- "$ABOX_DIR/$_argo_f" "$uninstall_tx_dir/argo-retry/$_argo_f" 2>/dev/null && _argo_state_moved=1 || true
+                    # 05e1-M3: count what should be preserved and what
+                    # actually was. The old code only recorded "at
+                    # least one copy succeeded", so a partially failed
+                    # copy still deleted every original below.
+                    _argo_state_expected=$(( _argo_state_expected + 1 ))
+                    if cp -a -- "$ABOX_DIR/$_argo_f" "$uninstall_tx_dir/argo-retry/$_argo_f" 2>/dev/null; then
+                        _argo_state_copied=$(( _argo_state_copied + 1 ))
+                        _argo_state_moved=1
+                    fi
                 fi
             done
+            # Abort before ABOX_DIR is destroyed when the preserve
+            # copy is incomplete: the originals are the retry basis,
+            # and the deployment transaction is still active, so die
+            # can still roll the pre-uninstall backup back.
+            if (( _argo_state_expected > 0 && _argo_state_copied < _argo_state_expected )); then
+                die "Argo state preservation incomplete (${_argo_state_copied}/${_argo_state_expected} files copied); aborting uninstall before ABOX_DIR is destroyed so the originals can be retried."
+            fi
         fi
         # Keep the deployment transaction active until the final data-directory
         # deletion has been confirmed. If rm/race/permission errors occur, the

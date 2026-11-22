@@ -41784,7 +41784,7 @@ users_hy2_yaml_scalar() {
 # Shared by the password: path and the userpass: entries: a
 # block-scalar header ('|-', '|', '>-', ...) is never a credential.
 _hy2_decode_block_scalar_lines() {
-    local _bs_started=0 _bs_nl='' _bs_line=''
+    local _bs_started=0 _bs_nl='' _bs_line='' _bs_prev_more=0 _bs_more=0
     _hy2_bs_pw=''; _hy2_bs_count=0
     if (( _bs_folded == 1 )); then
         for _bs_line in "${_bs_lines[@]}"; do
@@ -41792,17 +41792,27 @@ _hy2_decode_block_scalar_lines() {
                 _bs_nl+=$'\n'
                 continue
             fi
+            # 05h-M2: a more-indented line keeps the line breaks
+            # around it. The old code only looked at the current
+            # line, so an ordinary line after a more-indented one
+            # was folded to a space instead of keeping the break.
+            # Blank lines never change the flag: the _bs_nl branch
+            # already joins with a break.
+            if [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then _bs_more=1; else _bs_more=0; fi
             _hy2_bs_count=$(( _hy2_bs_count + 1 ))
             if (( _bs_started == 0 )); then
                 _hy2_bs_pw="$_bs_nl$_bs_line"
                 _bs_started=1
             elif [[ -n "$_bs_nl" ]]; then
                 _hy2_bs_pw+="$_bs_nl$_bs_line"
-            elif [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then
+            elif (( _bs_more == 1 )); then
+                _hy2_bs_pw+=$'\n'"$_bs_line"
+            elif (( _bs_prev_more == 1 )); then
                 _hy2_bs_pw+=$'\n'"$_bs_line"
             else
                 _hy2_bs_pw+=" $_bs_line"
             fi
+            _bs_prev_more=$_bs_more
             _bs_nl=''
         done
         (( _bs_started == 1 )) || return 1

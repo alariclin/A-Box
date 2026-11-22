@@ -51251,7 +51251,7 @@ uuid_val = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f
 # kept; a quoted "123" is a string and is redacted. The key boundary
 # is unchanged (\\bid\\b): a `client-id` key tail is still matched.
 _ID_KEY_RE = re.compile(r"(?i)\bid\b[\"']?")
-_BARE_ID_RE = re.compile(r"[^\s,}\]]+")
+# (M01: the old _BARE_ID_RE `[^\s,}\]]+` is replaced by _bare_id_end below.)
 
 
 def _skip_id_gap(text, pos):
@@ -51324,6 +51324,37 @@ _BARE_ID_STOP_RE = re.compile(
 )
 
 
+def _bare_id_end(text, pos):
+    # M01 (06h2-M01): a bare id scalar is the WHOLE scalar, not the first
+    # whitespace-delimited token. Extend to end of line, or to the first
+    # `,`, `}`, `]` (or a `;` that starts a following sensitive key, the
+    # R12B-C2 rule), or to a following sensitive-key head after whitespace
+    # (`id: alpha beta token: xyz` leaves `token:` for its own redaction).
+    # Trailing blanks before the boundary are trimmed from the value.
+    # The old _BARE_ID_RE (`[^\s,}\]]+`) stopped at the first blank, so
+    # `id: alpha beta` leaked `beta` and `id: 123 beta` was judged (and
+    # kept whole) by its first token `123` alone.
+    n = len(text)
+    end = pos
+    i = pos
+    while i < n:
+        c = text[i]
+        if c in ",}\]\r\n":
+            break
+        if c == ";":
+            if _bare_id_stops(text, i):
+                break
+            i += 1
+            end = i
+            continue
+        if i > pos and text[i - 1] in " \t" and _BARE_ID_STOP_RE.match(text, i):
+            break
+        i += 1
+        if c not in " \t":
+            end = i
+    return end
+
+
 def _bare_id_stops(text, pos):
     # At a ';' inside a bare id value, stop only when a sensitive key-head
     # follows (after optional whitespace / JSONC comments, skipped with the
@@ -51390,25 +51421,18 @@ def _redact_id_text(text):
             val_text = text[pos:val_end]
             keep = False
         else:
-            bm = _BARE_ID_RE.match(text, pos)
-            if bm is None:
+            # M01 (06h2-M01): complete-scalar boundary (see _bare_id_end):
+            # the old _BARE_ID_RE stopped at the first blank, leaking the
+            # rest (`id: alpha beta` kept `beta`) and judging `123 beta`
+            # by its first token alone (kept whole as an "integer").
+            val_end = _bare_id_end(text, pos)
+            if val_end <= pos:
                 if saw_comment:
                     raise _SuppressDocument()
-                continue
-            val_end = bm.end()
-            # R12B-C2: tempered ';'. The bare match above swallows a ';'
-            # followed by a sensitive key (`abcd;token:`), stranding the
-            # key's quoted value; stop before the FIRST such ';' instead.
-            # A ';' with no following key stays part of the value (P4).
-            _j = pos
-            while True:
-                _k = text.find(";", _j, val_end)
-                if _k == -1:
-                    break
-                if _bare_id_stops(text, _k):
-                    val_end = _k
-                    break
-                _j = _k + 1
+                if pos >= len(text) or text[pos] != ";":
+                    continue
+                # Empty value before a `;`-led key (`id: ;token: ...`):
+                # the old code redacted the empty span; keep that shape.
             val_text = text[pos:val_end]
             keep = re.fullmatch(r"-?\d+", val_text) is not None
         out.append(text[cursor:m.start()])

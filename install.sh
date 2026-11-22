@@ -17939,22 +17939,34 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
                   (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
                 else null end
               else null end;
+            # 03b-M1: one transport rule shared by snapshot, restore
+            # and the firewall enumeration below. Xray socks listens
+            # on UDP exactly when settings.udp is true; Xray
+            # shadowsocks and dokodemo-door follow settings.network
+            # (default tcp); sing-box shadowsocks follows .network
+            # (absent means tcp+udp); any other sing-box inbound
+            # with .network set follows it; the rest follow
+            # streamSettings.network.
             def transport_set:
-              if (.network // null) != null then
-                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
-              elif (.streamSettings.network // null) != null then
-                (.streamSettings.network
-                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
-                   elif . == "kcp" or . == "quic" then ["udp"]
-                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
-                   else ["tcp"] end)
-              elif (.protocol // null) != null then
-                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
-              # R14-F05-02: a sing-box shadowsocks inbound with no
-              # .network listens on tcp+udp by default; ["tcp"]
-              # would miss UDP conflicts.
+              if (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
+                 elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
+                 elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.streamSettings.network // null) != null then
+                   (.streamSettings.network
+                    | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                      elif . == "kcp" or . == "quic" then ["udp"]
+                      elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                      else ["tcp"] end)
+                 else ["tcp"] end)
               elif (.type // null) != null then
-                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
+                 elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.network // null) != null then (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+                 else ["tcp"] end)
+              elif (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
               else ["tcp"] end;
             def binding:
               ((.listen_port // .port) as $ps
@@ -18085,26 +18097,28 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                   (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
                 else null end
               else null end;
+            # 03b-M1: same shared transport rule as the snapshot
+            # above and the firewall enumeration below; see there.
             def transport_set:
-              if (.network // null) != null then
-                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
-              elif (.streamSettings.network // null) != null then
-                (.streamSettings.network
-                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
-                   elif . == "kcp" or . == "quic" then ["udp"]
-                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
-                   else ["tcp"] end)
-              elif (.protocol // null) != null then
-                # Carbon H-11(3): an Xray socks inbound listens on UDP
-                # exactly when settings.udp is true; ["tcp"] misses the
-                # UDP conflict. (The sing-box type branch below stays
-                # ["tcp"] for socks/mixed until upstream docs settle it.)
-                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end) else ["tcp"] end)
-              # R14-F05-02: a sing-box shadowsocks inbound with no
-              # .network listens on tcp+udp by default; ["tcp"]
-              # would miss UDP conflicts.
+              if (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
+                 elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
+                 elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.streamSettings.network // null) != null then
+                   (.streamSettings.network
+                    | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                      elif . == "kcp" or . == "quic" then ["udp"]
+                      elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                      else ["tcp"] end)
+                 else ["tcp"] end)
               elif (.type // null) != null then
-                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
+                 elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.network // null) != null then (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+                 else ["tcp"] end)
+              elif (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
               else ["tcp"] end;
             def binding:
               ((.listen_port // .port) as $ps
@@ -18209,25 +18223,35 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if (( added > 0 )); then
             local _fw_ports='' _fw_failed=0 _fw_spec='' _fw_proto='' _fw_port=''
             _fw_ports=$(jq -r --slurpfile bak "$bak" '
-            def transports:
+            # 03b-M1: same shared transport rule as snapshot/restore
+            # above (renamed from `transports` so the three defs
+            # stay textually identical).
+            def transport_set:
               if (.protocol // null) != null then
                 (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
                  elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
                  elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
                  elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
                  elif (.streamSettings.network // null) != null then
-                   (.streamSettings.network | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"] elif . == "kcp" or . == "quic" then ["udp"] elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"] else ["tcp"] end)
+                   (.streamSettings.network
+                    | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                      elif . == "kcp" or . == "quic" then ["udp"]
+                      elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                      else ["tcp"] end)
                  else ["tcp"] end)
               elif (.type // null) != null then
                 (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
                  elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.network // null) != null then (.network | split(",") | map(select(. == "tcp" or . == "udp")))
                  else ["tcp"] end)
+              elif (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
               else ["tcp"] end;
             [.inbounds[]? | select(.tag as $t | (($bak[0].inbounds // []) | map(.tag) | index($t)) == null)
              | select(.tag != "api")
              | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1"))
              | select((.port // .listen_port) != null)
-             | (transports) as $trs
+             | (transport_set) as $trs
              | ((.port // .listen_port) | tostring | split(",")) as $ps
              | $ps[] as $p | $trs[] | "\(.)/\($p)"] | unique | .[]' "$cfg" 2>/dev/null) || _fw_failed=1
             if (( _fw_failed == 0 )); then
@@ -21962,19 +21986,30 @@ _preserve_snapshot_binds_port() {
                   (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
                 else null end
               else null end;
+            # 03b-M1: same shared transport rule as snapshot/restore
+            # (see standalone_preserve_snapshot); a socks inbound
+            # with settings.udp=true binds UDP too, so a udp:port
+            # probe must see it here as well.
             def transport_set:
-              if (.network // null) != null then
-                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
-              elif (.streamSettings.network // null) != null then
-                (.streamSettings.network
-                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
-                   elif . == "kcp" or . == "quic" then ["udp"]
-                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
-                   else ["tcp"] end)
-              elif (.protocol // null) != null then
-                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+              if (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
+                 elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
+                 elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.streamSettings.network // null) != null then
+                   (.streamSettings.network
+                    | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                      elif . == "kcp" or . == "quic" then ["udp"]
+                      elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                      else ["tcp"] end)
+                 else ["tcp"] end)
               elif (.type // null) != null then
-                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
+                 elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+                 elif (.network // null) != null then (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+                 else ["tcp"] end)
+              elif (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
               else ["tcp"] end;
             def binding:
               ((.listen_port // .port) as $ps
@@ -39160,19 +39195,28 @@ removed_inbound_ports() {
     local _tags_json=''
     _tags_json=$(printf '%s\n' "$@" | jq -R . | jq -sc . 2>/dev/null) || return 1
     jq -r --argjson tags "$_tags_json" '
-    def transports:
+    # 03b-M1: same shared transport rule as snapshot/restore (see
+    # standalone_preserve_snapshot); renamed from `transports`.
+    def transport_set:
       if (.protocol // null) != null then
         (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"]
          elif .protocol == "socks" then (if .settings.udp == true then ["tcp", "udp"] else ["tcp"] end)
          elif .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
          elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then ["tcp"] elif (.settings.network // "tcp") == "udp" then ["udp"] else ["tcp", "udp"] end)
          elif (.streamSettings.network // null) != null then
-           (.streamSettings.network | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"] elif . == "kcp" or . == "quic" then ["udp"] elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"] else ["tcp"] end)
+           (.streamSettings.network
+            | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+              elif . == "kcp" or . == "quic" then ["udp"]
+              elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+              else ["tcp"] end)
          else ["tcp"] end)
       elif (.type // null) != null then
         (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"]
          elif .type == "shadowsocks" then (if .network == "tcp" then ["tcp"] elif .network == "udp" then ["udp"] else ["tcp", "udp"] end)
+         elif (.network // null) != null then (.network | split(",") | map(select(. == "tcp" or . == "udp")))
          else ["tcp"] end)
+      elif (.network // null) != null then
+        (.network | split(",") | map(select(. == "tcp" or . == "udp")))
       else ["tcp"] end;
     ($tags) as $want
     | .inbounds[]?
@@ -39180,7 +39224,7 @@ removed_inbound_ports() {
     | select(.tag != "api")
     | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1"))
     | select((.port // .listen_port) != null)
-    | (transports) as $trs
+    | (transport_set) as $trs
     | ((.port // .listen_port) | tostring | split(",")) as $ps
     | $ps[] as $p | $trs[] | "\(.)/\($p)"' "$cfg" 2>/dev/null
 }

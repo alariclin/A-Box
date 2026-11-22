@@ -39099,12 +39099,26 @@ removed_inbound_ports() {
 # YAML listen port). A live range that contains the port also counts.
 _firewall_port_live() {
     local _proto="$1" _port="$2" _live="$3" _l _lp _lr _lo _hi
+    # 05e2-M2: live ports may carry leading zeros ("00443" from jq
+    # tostring / Hy2 strings): compare numerically with 10# so they
+    # are never read as octal (00443 is 443, not 291; 00800 is a
+    # hard arithmetic error, not a miss). A malformed live entry --
+    # reversed range, unparseable value, unparseable query port --
+    # is treated as live (fail-closed), like _firewall_range_live.
+    [[ "$_port" =~ ^[0-9]+$ ]] || return 0
     while IFS= read -r _l; do
         [[ "$_l" == "$_proto/$_port" ]] && return 0
+        if [[ "$_l" =~ ^$_proto/([0-9]+)$ ]]; then
+            if (( 10#$_port == 10#${BASH_REMATCH[1]} )); then return 0; fi
+            continue
+        fi
         if [[ "$_l" =~ ^$_proto/([0-9]+)[-:]([0-9]+)$ ]]; then
             _lo="${BASH_REMATCH[1]}"; _hi="${BASH_REMATCH[2]}"
-            if (( _port >= _lo && _port <= _hi )); then return 0; fi
+            if (( 10#$_lo > 10#$_hi )); then return 0; fi
+            if (( 10#$_port >= 10#$_lo && 10#$_port <= 10#$_hi )); then return 0; fi
+            continue
         fi
+        [[ "$_l" == "$_proto/"* ]] && return 0
     done <<< "$_live"
     return 1
 }
@@ -39114,14 +39128,21 @@ _firewall_port_live() {
 # treated as live (fail-closed).
 _firewall_range_live() {
     local _proto="$1" _lo="$2" _hi="$3" _live="$4" _l _lp _lr _rlo _rhi
+    # 05e2-M2: same 10# normalization as _firewall_port_live
+    # (leading-zero endpoints are decimal, never octal); a reversed
+    # live range or a reversed query range is malformed and treated
+    # as live (fail-closed), per this function's header contract.
+    [[ "$_lo" =~ ^[0-9]+$ && "$_hi" =~ ^[0-9]+$ ]] || return 0
+    if (( 10#$_lo > 10#$_hi )); then return 0; fi
     while IFS= read -r _l; do
         [[ "$_l" == "$_proto/"* ]] || continue
         _lr="${_l#*/}"
         if [[ "$_lr" =~ ^([0-9]+)[-:]([0-9]+)$ ]]; then
             _rlo="${BASH_REMATCH[1]}"; _rhi="${BASH_REMATCH[2]}"
-            if (( _lo <= _rhi && _hi >= _rlo )); then return 0; fi
+            if (( 10#$_rlo > 10#$_rhi )); then return 0; fi
+            if (( 10#$_lo <= 10#$_rhi && 10#$_hi >= 10#$_rlo )); then return 0; fi
         elif [[ "$_lr" =~ ^[0-9]+$ ]]; then
-            if (( _lr >= _lo && _lr <= _hi )); then return 0; fi
+            if (( 10#$_lr >= 10#$_lo && 10#$_lr <= 10#$_hi )); then return 0; fi
         else
             return 0
         fi

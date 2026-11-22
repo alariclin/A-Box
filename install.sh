@@ -25959,6 +25959,16 @@ PY_XRC_ENUM
             _xrc_restore_divergence_check "$cfg" "$_st_tmp" || true
             chmod 600 -- "$_st_tmp" 2>/dev/null || true
             mv -f -- "$_st_tmp" "$statusf" 2>/dev/null || rm -f -- "$_st_tmp"
+        else
+            # 04a-M4: the status temp file could not be created, so the
+            # divergence check has nowhere to stage its record. Never
+            # skip it silently: warn loudly and run the check directly
+            # against the status file (best-effort append) so a missing
+            # protocol is still recorded. rc 1 is forbidden here: it
+            # promises the service was stopped, and the service is up.
+            msg "${RED}[!] xray config auto-restore DIVERGENCE CHECK DEGRADED: status temp file could not be created; recording divergence directly to the status file (a missing protocol must never be silent).${NC}" >&2
+            printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" >> "$statusf" 2>/dev/null || true
+            _xrc_restore_divergence_check "$cfg" "$statusf" || true
         fi
         rm -rf "$_work"
         return 0

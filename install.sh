@@ -16784,6 +16784,25 @@ shortcut_check_candidate() {
 # and may be stolen. Waits up to 30 seconds, then fails (never infinite).
 # Sets SHORTCUT_LOCK_HELD=1 while held. Release removes only a lock this
 # process owns (pid file matches $$).
+# 03a-01: reclaim a shortcut lock dir only if the PID recorded in it
+# is STILL the same dead PID when re-read immediately before removing.
+# Without the re-read, two reclaimers can both read the old PID and the
+# second deletes the first's fresh lock; and an age-only delete kills a
+# live holder whose transaction simply ran past 120 s. A missing /
+# unreadable PID (holder crashed between mkdir and the pid write) with
+# age > 120 is still reclaimable: the caller only passes such an
+# expectation from the age branch.
+_shortcut_lock_remove_if_pid_still() {
+    local _lock="$1" _expect="$2" _cur
+    _cur=$(cat "$_lock/pid" 2>/dev/null || true)
+    [[ "$_cur" == "$_expect" ]] || return 1
+    if [[ "$_expect" =~ ^[0-9]+$ ]]; then
+        kill -0 "$_expect" 2>/dev/null && return 1
+    fi
+    rm -rf -- "$_lock" 2>/dev/null || true
+    return 0
+}
+
 shortcut_lock_acquire() {
     local _lock _wait=0 _pid _age _now
     _lock=$(shortcut_lock_path)
@@ -16798,7 +16817,7 @@ shortcut_lock_acquire() {
         _pid=$(cat "$_lock/pid" 2>/dev/null || true)
         _now=$(date +%s 2>/dev/null || echo 0)
         if [[ "$_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$_pid" 2>/dev/null; then
-            rm -rf -- "$_lock" 2>/dev/null || true
+            _shortcut_lock_remove_if_pid_still "$_lock" "$_pid" || true
         fi
         _age=0
         if [[ -n "$_now" && "$_now" =~ ^[0-9]+$ ]]; then
@@ -16807,7 +16826,7 @@ shortcut_lock_acquire() {
             [[ "$_mtime" =~ ^[0-9]+$ ]] && _age=$(( _now - _mtime ))
         fi
         if (( _age > 120 )); then
-            rm -rf -- "$_lock" 2>/dev/null || true
+            _shortcut_lock_remove_if_pid_still "$_lock" "$_pid" || true
         fi
         if (( _wait >= 60 )); then SHORTCUT_ERR='lock_timeout'; return 1; fi
         sleep 0.5

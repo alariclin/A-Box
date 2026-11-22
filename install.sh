@@ -57718,7 +57718,7 @@ PY_WALLOS_DIAGNOSE2
 # a known-broken state.
 # Returns 0 on success (or when no repair was needed), 1 otherwise.
 wallos_db_repair_poisoned() {
-    local _db="$WALLOS_DIR/db/wallos.db" _image='' _diag='' _drc=0
+    local _db="$WALLOS_DIR/db/wallos.db" _image='' _diag='' _drc=0 _image_rc=0
     local _had_container=0 _was_running=0 _backup_dir='' _journal='' _inspect_err='' _managed=''
     local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts='' _stage_dir='' _src_hash='' _dst_hash=''
     local _side=''
@@ -57753,12 +57753,17 @@ wallos_db_repair_poisoned() {
         # repair seed another version's template over the live db.
         # R14-F14-02 fixed the same confusion at the rollback
         # capture point; this is the database-repair call site.
-        _image=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
-        _image="${_image#docker.io/}"
-        if [[ -n "$_image" && ! "$_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        _image=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null); _image_rc=$?
+        # 07g2-M1: when the container exists, its image ID is the
+        # only trusted reference. A failed or empty .Image query (or
+        # a non-digest value) must refuse here; falling back to the
+        # state-file IMAGE would let a stale/mutable tag (latest)
+        # seed the repair template and bypass R15-F15-05.
+        if (( _image_rc != 0 )) || [[ -z "$_image" ]] || [[ ! "$_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             msg "${RED}$(tprintf wl_repair_abort 'container image ID unknown')${NC}"
             return 1
         fi
+        _image="${_image#docker.io/}"
     elif _wallos_container_gone "$_inspect_err"; then
         _had_container=0
     else
@@ -57772,6 +57777,12 @@ wallos_db_repair_poisoned() {
     # Same image-reference gate as the upgrade path; a repair must
     # never become an implicit upgrade by pulling a latest image.
     [[ "$_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || _image=''
+    # 07g2-M1: the tag regex above still matches the mutable `latest`
+    # tag; refuse it explicitly. A repair seeded from latest would
+    # pull the current latest image and upgrade the database.
+    case "$_image" in
+        bellamy/wallos:latest|docker.io/bellamy/wallos:latest) _image='' ;;
+    esac
     _diag=$(wallos_db_diagnose "$_image"); _drc=$?
     case "$_drc" in
         1) msg "${GREEN}$(tr_msg wl_repair_healthy)${NC}"; return 0 ;;

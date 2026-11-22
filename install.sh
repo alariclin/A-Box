@@ -41231,12 +41231,26 @@ export_lightweight_subscription() {
     fi
     # R9C11-03 (same mechanism): skip XHTTP when its port is gone.
     if [[ -n "${XHTTP_PORT:-}" && "${XHTTP_PORT:-}" =~ ^[0-9]+$ ]] && [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        # 05g-M1 (E62-NEW-01 parity, same as write_clash_yaml):
+        # XHTTP links are emitted only for UUIDs the live XHTTP
+        # inbound actually has. list_xhttp_live_uuids rc 0 is
+        # authoritative even when the list is empty; only an
+        # unreadable live state (or no xhttp inbound) falls back
+        # to the merged registry list.
+        local _xhttp_uuid_list_tmp=''
+        _xhttp_uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-xhttp-uuid-list.XXXXXX) || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
+        if list_xhttp_live_uuids > "$_xhttp_uuid_list_tmp" 2>/dev/null; then
+            : # live list is authoritative (it may be empty)
+        else
+            cp -f -- "$_uuid_list_tmp" "$_xhttp_uuid_list_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp" "$_xhttp_uuid_list_tmp"; return 1; }
+        fi
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
             url="vless://$client_uuid@$F_IP:${XHTTP_PORT:-}?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
-            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
-        done < "$_uuid_list_tmp"
+            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp" "$_xhttp_uuid_list_tmp"; return 1; }
+        done < "$_xhttp_uuid_list_tmp"
+        rm -f -- "$_xhttp_uuid_list_tmp"
     fi
     rm -f -- "$_uuid_list_tmp"
     # FIX: If neither VISION nor XHTTP branch ran (e.g. HY2-only or SS-only

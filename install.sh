@@ -44083,7 +44083,35 @@ _wait_tcp_port() {
         if command -v timeout >/dev/null 2>&1; then
             if timeout 2 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$host" "$port" 2>/dev/null; then return 0; fi
         else
-            if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then return 0; fi
+            # J02 (06b1-M3): no `timeout` binary here, so bound the bare
+            # /dev/tcp connect the same way `timeout 2` bounds it above:
+            # run the connect in a background subshell that records its
+            # exit status in a flag file, poll for up to 2s, then kill it.
+            # A blackholed SYN otherwise blocks one attempt for kernel
+            # TCP-retry time (up to ~100s+), and tries=60 only limits the
+            # count, not the total. The connect primitive is a plain
+            # `printf` (a regular builtin, so a failed redirection ends
+            # the command with rc 1 instead of killing the subshell, and
+            # the flag is still written).
+            local _wflag _wpid _wrc _wwait
+            _wrc=1; _wwait=0
+            _wflag=$(mktemp) || { sleep 0.25; i=$((i + 1)); continue; }
+            ( printf '' <>"/dev/tcp/$host/$port" 2>/dev/null; printf '%s' "$?" > "$_wflag" ) &
+            _wpid=$!
+            while (( _wwait < 40 )); do
+                [[ -s "$_wflag" ]] && break
+                kill -0 "$_wpid" 2>/dev/null || break
+                sleep 0.05; _wwait=$(( _wwait + 1 ))
+            done
+            if [[ -s "$_wflag" ]]; then
+                _wrc=$(cat "$_wflag")
+                wait "$_wpid" 2>/dev/null || true
+            else
+                kill "$_wpid" 2>/dev/null || true
+                wait "$_wpid" 2>/dev/null || true
+            fi
+            rm -f -- "$_wflag"
+            if (( _wrc == 0 )); then return 0; fi
         fi
         sleep 0.25; i=$((i + 1))
     done

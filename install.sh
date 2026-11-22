@@ -28351,7 +28351,13 @@ hy2_resync_running_config() {
 # script runs as ExecStartPre, so a live unit could re-apply the grant
 # after revoke. Returns non-zero on failure.
 hy2_hop_xtables_lock_revoke() {
-    local lock _first_inode='' _inode _gid _gname _reset
+    local lock _first_inode='' _inode _gid _gname _reset _grant_existed=0
+    # 04c2-M1: the unnamed-GID branch below is only valid while
+    # removing A-Box's own grant artifacts, so record whether either
+    # grant file existed BEFORE deleting them: rm -f succeeds on a
+    # missing file and must never serve as proof of prior existence.
+    [[ -e /usr/local/bin/abox-hy2-xtables-lock-grant || -L /usr/local/bin/abox-hy2-xtables-lock-grant ]] && _grant_existed=1
+    [[ -e /etc/tmpfiles.d/abox-xtables-lock.conf || -L /etc/tmpfiles.d/abox-xtables-lock.conf ]] && _grant_existed=1
     rm -f -- /usr/local/bin/abox-hy2-xtables-lock-grant /etc/tmpfiles.d/abox-xtables-lock.conf || return 1
     for lock in /run/xtables.lock /var/run/xtables.lock; do
         [[ -e "$lock" || -L "$lock" ]] || continue
@@ -28364,9 +28370,12 @@ hy2_hop_xtables_lock_revoke() {
         _reset=0
         if [[ "$_gname" == abox-hysteria ]]; then
             _reset=1
-        elif ! getent group "$_gid" >/dev/null 2>&1; then
+        elif (( _grant_existed == 1 )) && ! getent group "$_gid" >/dev/null 2>&1; then
             # Unnamed GID while removing A-Box's own grant artifacts:
             # the group is gone (or never existed); reset to default.
+            # With no grant file pre-existing, an unnamed GID proves
+            # nothing about ownership (another program's lock, a
+            # container GID) and the lock is left untouched.
             _reset=1
         fi
         if (( _reset == 1 )); then

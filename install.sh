@@ -52709,18 +52709,40 @@ convert_legacy_backup_archive() {
     chmod 700 "$work"
     local _c_input="$work/.legacy-input.tar.gz"
     python3 -I - "$selected" "$_c_input" <<'PY_LEGACY_COPY' || { rm -rf "$work"; die 'Legacy backup copy failed.'; }
-import os, sys
+import os, stat, sys
 src, dst = sys.argv[1], sys.argv[2]
+# J03 (07b-01): cap the private copy BEFORE it can fill /tmp. fstat the
+# already-open source: a sparse (or oversized) input is refused without
+# reading a byte; the running total is capped too, so growth mid-copy
+# (swap/append after open) aborts instead of writing unboundedly.
+# Default 2 GiB: validate_legacy_backup_archive caps the EXTRACTED total
+# at 1 GiB, and a gzip of 1 GiB of incompressible data is ~1 GiB plus
+# small overhead, so 2x leaves generous headroom. ABOX_LEGACY_COPY_MAX_BYTES
+# overrides it (operator tuning for small /tmp); a non-numeric or
+# non-positive value falls back to the default (fail-closed, no breakage).
+try:
+    max_copy = int(os.environ.get("ABOX_LEGACY_COPY_MAX_BYTES", "") or "2147483648")
+    if max_copy <= 0:
+        raise ValueError
+except ValueError:
+    max_copy = 2147483648
 # O_NOFOLLOW on both ends: a symlink at open time fails, and a swap
 # after open cannot redirect an already-open fd.
 sfd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW)
 try:
+    _st = os.fstat(sfd)
+    if not stat.S_ISREG(_st.st_mode) or _st.st_size > max_copy:
+        raise SystemExit(1)
     dfd = os.open(dst, os.O_WRONLY | os.O_TRUNC | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
+        total = 0
         while True:
             chunk = os.read(sfd, 1024 * 1024)
             if not chunk:
                 break
+            total += len(chunk)
+            if total > max_copy:
+                raise SystemExit(1)
             view = memoryview(chunk)
             while view:
                 view = view[os.write(dfd, view):]

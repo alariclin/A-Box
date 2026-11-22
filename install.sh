@@ -15637,7 +15637,11 @@ _prune_standalone_links() {
                 # H-26(3): no longer unconditional. Only delete once
                 # the Hysteria config is confirmed gone; a config
                 # that survived removal keeps its links.
-                if [[ ! -e /etc/hysteria/config.yaml ]]; then
+                # M-29 (02b2a-M1): a dangling symlink config is
+                # unverifiable, not "confirmed absent" (-e is false
+                # for a dangling link); only a fully missing config
+                # deletes the link.
+                if [[ ! -e /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
                     rm -f -- "$link" 2>/dev/null || true
                 fi
                 ;;
@@ -15645,8 +15649,16 @@ _prune_standalone_links() {
         esac
     done
     if [[ "$srv" == sing-box ]]; then
-        if [[ ! -f /etc/sing-box/config.json ]]; then
+        # M-29 (02b2a-M1): a symlinked config is unverifiable (rc 2),
+        # not "confirmed absent" -- a dangling link must keep argo.link,
+        # as must a non-regular config; only a fully missing config
+        # deletes it.
+        if [[ -L /etc/sing-box/config.json ]]; then
+            :
+        elif [[ ! -e /etc/sing-box/config.json ]]; then
             rm -f -- "$dir/argo.link" 2>/dev/null || true
+        elif [[ ! -f /etc/sing-box/config.json ]]; then
+            :
         else
             # H-26(3): strip JSONC before jq (bare jq fails rc 5 on a
             # commented config). A jq failure is unverifiable, so the

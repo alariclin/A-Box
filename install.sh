@@ -46140,7 +46140,7 @@ resolved_strip_global_dns_sources() {
 # real query to each expected server; at least one must answer.
 # Returns 0 if any server answers.
 _resolved_dns_probe_any() {
-    local _tok='' _host='' _port=53
+    local _tok='' _host='' _port=53 _dot_host="${2:-}"
     local -a _toks=()
     IFS=$' \t\n' read -ra _toks <<< "$1" || true
     for _tok in "${_toks[@]}"; do
@@ -46156,13 +46156,19 @@ _resolved_dns_probe_any() {
             *.*:*) _host="${_tok%:*}"; _port="${_tok##*:}" ;;
         esac
         [[ "$_port" =~ ^[0-9]+$ ]] || _port=53
-        if dns_probe_once "$_host" "$_port" example.com >/dev/null 2>&1; then return 0; fi
+        # 06d-M2: a DoT deployment must be verified on its real TLS path
+        # (853 + SNI handshake), never by plain UDP: UDP answering while
+        # 853/TLS is blocked is a false pass, and UDP blocked while DoT
+        # works is a false rollback.
+        if [[ -n "$_dot_host" ]]; then
+            if dns_dot_probe_once "$_host" "$_dot_host" example.com >/dev/null 2>&1; then return 0; fi
+        elif dns_probe_once "$_host" "$_port" example.com >/dev/null 2>&1; then return 0; fi
     done
     return 1
 }
 
 resolved_global_dns_check() {
-    local expected="$1" policy="${2:-strict}" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
+    local expected="$1" policy="${2:-strict}" dot_host="${3:-}" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks='' _fail_domains=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
     # OBS-S1-06: record WHY the check failed so the caller can say it.
     # The verdict itself is unchanged (still fail-closed, F06/R11-15);
@@ -46233,7 +46239,7 @@ resolved_global_dns_check() {
                 # H-25(1): values match, but a matching value can still
                 # be dead (127.0.0.1:53 with the proxy on :5353).
                 # Probe liveness before passing the check.
-                if ! _resolved_dns_probe_any "$expected"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
+                if ! _resolved_dns_probe_any "$expected" "$dot_host"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
                 RESOLVED_DNS_CHECK_WARN="$_fail_domains"
                 return 0
             fi
@@ -46242,7 +46248,7 @@ resolved_global_dns_check() {
         return 1
     fi
     # H-25(1): same liveness probe as the warn path above.
-    if ! _resolved_dns_probe_any "$expected"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
+    if ! _resolved_dns_probe_any "$expected" "$dot_host"; then RESOLVED_DNS_CHECK_FAIL='dns_unreachable'; return 1; fi
     return 0
 }
 
@@ -46353,17 +46359,17 @@ dns_disable_doh() {
 }
 
 apply_host_dns() {
-    local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
+    local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dot_verify_error dns_servers immutable_before=0 resolved_major=''
     local _ns='' _tok=''
     local -a _ns_list=()
     case "${ABOX_LANG:-zh}" in
-        en) confirm_prompt='Apply this host DNS change? A rollback snapshot is kept. [Y/N]: '; immutable_prompt='/etc/resolv.conf has the immutable flag. Remove it and continue? [Y/N]: '; dot_error='The active DNS backend does not support DoT; DNS was not changed.' ;;
-        ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.' ;;
-        fa) confirm_prompt='تنظیم DNS سیستم اعمال شود؟ نسخه بازگشت ذخیره می‌شود. [Y/N]: '; immutable_prompt='پرچم immutable روی /etc/resolv.conf وجود دارد. حذف و ادامه داده شود؟ [Y/N]: '; dot_error='بک‌اند DNS فعلی از DoT پشتیبانی نمی‌کند؛ DNS تغییر نکرد.' ;;
-        zh-tw) confirm_prompt='確認修改本機 DNS？可回滾。[Y/N]: '; immutable_prompt='/etc/resolv.conf 帶 immutable 屬性；是否移除後繼續？[Y/N]: '; dot_error='當前 DNS 後端不支援 DoT；未修改 DNS。' ;;
+        en) confirm_prompt='Apply this host DNS change? A rollback snapshot is kept. [Y/N]: '; immutable_prompt='/etc/resolv.conf has the immutable flag. Remove it and continue? [Y/N]: '; dot_error='The active DNS backend does not support DoT; DNS was not changed.'; dot_verify_error='DoT verification failed: no configured resolver answered the TLS (port 853) probe; DNS was not changed.' ;;
+        ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.'; dot_verify_error='Проверка DoT не удалась: ни один настроенный resolver не ответил на TLS-пробу (порт 853); DNS не изменён.' ;;
+        fa) confirm_prompt='تنظیم DNS سیستم اعمال شود؟ نسخه بازگشت ذخیره می‌شود. [Y/N]: '; immutable_prompt='پرچم immutable روی /etc/resolv.conf وجود دارد. حذف و ادامه داده شود؟ [Y/N]: '; dot_error='بک‌اند DNS فعلی از DoT پشتیبانی نمی‌کند؛ DNS تغییر نکرد.'; dot_verify_error='راستی‌آزمایی DoT ناموفق بود: هیچ‌یک از resolverهای پیکربندی‌شده به آزمون TLS (درگاه 853) پاسخ نداد؛ DNS تغییر نکرد.' ;;
+        zh-tw) confirm_prompt='確認修改本機 DNS？可回滾。[Y/N]: '; immutable_prompt='/etc/resolv.conf 帶 immutable 屬性；是否移除後繼續？[Y/N]: '; dot_error='當前 DNS 後端不支援 DoT；未修改 DNS。'; dot_verify_error='DoT 驗證失敗：設定的解析器未回應 TLS（853 連接埠）探測；未修改 DNS。' ;;
         ja)
-            confirm_prompt='このホストの DNS 設定を適用しますか？ロールバック用スナップショットを保存します。[Y/N]: '; immutable_prompt='/etc/resolv.conf に immutable フラグが設定されています。解除して続行しますか？[Y/N]: '; dot_error='現在の DNS バックエンドは DoT をサポートしていません。DNS は変更されていません。' ;;
-        *) confirm_prompt='确认修改本机 DNS？可回滚。[Y/N]: '; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。' ;;
+            confirm_prompt='このホストの DNS 設定を適用しますか？ロールバック用スナップショットを保存します。[Y/N]: '; immutable_prompt='/etc/resolv.conf に immutable フラグが設定されています。解除して続行しますか？[Y/N]: '; dot_error='現在の DNS バックエンドは DoT をサポートしていません。DNS は変更されていません。'; dot_verify_error='DoT の検証に失敗しました。設定したリゾルバーが TLS（853 番ポート）のプローブに応答しませんでした。DNS は変更されていません。' ;;
+        *) confirm_prompt='确认修改本机 DNS？可回滚。[Y/N]: '; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。'; dot_verify_error='DoT 验证失败：配置的解析器未响应 TLS（853 端口）探测；未修改 DNS。' ;;
     esac
     # DoT requires systemd-resolved; unsupported backends fail closed.
     backend=$(dns_backend_detect)
@@ -46476,7 +46482,14 @@ DNSOverTLS=no
 EOF_DNS
             fi
             systemctl restart systemd-resolved >/dev/null 2>&1 || { dns_rollback_drop_staging "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
-            resolved_global_dns_check "$v4${v6:+ $v6}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(resolved_dns_check_fail_message)"; }
+            if [[ "$mode" == 'dot' ]]; then
+                # 06d-M2: verify the DoT path with the real TLS probe:
+                # the plain-UDP liveness probe below would pass while
+                # 853/TLS is blocked and fail while only DoT works.
+                resolved_global_dns_check "$v4${v6:+ $v6}" strict "$tls_name" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$dot_verify_error"; }
+            else
+                resolved_global_dns_check "$v4${v6:+ $v6}" || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(resolved_dns_check_fail_message)"; }
+            fi
             ;;
         networkmanager)
             local iface connection

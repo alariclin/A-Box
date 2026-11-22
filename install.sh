@@ -41906,6 +41906,14 @@ users_hy2_read_users() {
                     chomp="clip"
                     if (val ~ /-/) chomp="strip"
                     else if (val ~ /\+/) chomp="keep"
+                    # 05h-M1: an explicit indentation indicator N
+                    # fixes the content indent at (key indent) + N;
+                    # without it the first body line indent is used
+                    # (the B branch below only sets bind when unset).
+                    bind=0
+                    _c2=substr(val, 2, 1); _c3=substr(val, 3, 1)
+                    if (_c2 ~ /[0-9]/) bind=(u+2)+_c2
+                    else if (_c3 ~ /[0-9]/) bind=(u+2)+_c3
                     printf "K%s\nW%d:%s\n", name, folded, chomp
                 } else {
                     printf "K%s\nV%s\n", name, val
@@ -41984,17 +41992,21 @@ users_hy2_read_users() {
         _bs_chomp='clip'
         _bs_ind="${BASH_REMATCH[1]:-}"
         case "$_bs_ind" in *'-'*) _bs_chomp='strip' ;; *'+'*) _bs_chomp='keep' ;; esac
+        # 05h-M1: an explicit indentation indicator N fixes the
+        # content indent at (key indent) + N; without it the first
+        # body line's indent is the content indent.
+        _bs_ind_num="${_bs_ind//[^0-9]/}"
         # Read the body lines verbatim via mapfile: command
         # substitution would strip the trailing blank lines a
         # keep-chomped scalar needs.
         _bs_lines=()
-        mapfile -t _bs_lines < <(printf '%s\n' "$block" | awk '
+        mapfile -t _bs_lines < <(printf '%s\n' "$block" | awk -v _bs_ind_num="$_bs_ind_num" '
             !found && /^[[:space:]]*password:/ { match($0, /^ */); pind = RLENGTH; found = 1; next }
             found {
                 if ($0 ~ /^[[:space:]]*$/) { print ""; next }
                 match($0, /^ */); ind = RLENGTH
                 if (ind <= pind) exit
-                if (!started) { bind = ind; started = 1 }
+                if (!started) { bind = (_bs_ind_num != "" ? pind + _bs_ind_num : ind); started = 1 }
                 line = substr($0, bind + 1)
                 sub(/\r$/, "", line)
                 print line

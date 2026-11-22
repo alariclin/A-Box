@@ -58484,7 +58484,7 @@ _wallos_fw_rule_live() {
 # registry could not be written - callers must fail loudly instead of
 # reporting success with rules leaking.
 wallos_fw_import_legacy_registry() {
-    local reg spec proto _entry _port _pubport _state_known=0 _rc=0
+    local reg spec proto _entry _port _pubport _state_known=0 _rc=0 _reg_exists=0
     local -a _candidates=()
     reg=$(wallos_fw_registry_file)
     # Caller-verified Wallos ports first (mode switch: the previous
@@ -58502,8 +58502,13 @@ wallos_fw_import_legacy_registry() {
             *) return 1 ;;
         esac
     done
-    # A registry that already exists needs no further migration.
-    [[ -f "$reg" && ! -L "$reg" ]] && return 0
+    # 07h1-01: an existing registry may be PARTIAL (an earlier import
+    # registered the explicit entries, then failed before probing the
+    # state candidates below), so it must never short-circuit the
+    # candidate probe. Registering is idempotent, so re-probing a
+    # complete registry is harmless; skipping it leaks the unprobed
+    # candidates out of reclaim forever.
+    [[ -f "$reg" && ! -L "$reg" ]] && _reg_exists=1
     # Then the ports the current Wallos state records.
     _port=$(wallos_state_value PORT 2>/dev/null || true)
     if [[ -n "$_port" ]] && valid_canonical_port "$_port"; then
@@ -58522,8 +58527,10 @@ wallos_fw_import_legacy_registry() {
     # A Wallos directory with no readable state port means the install
     # predates state tracking: its openings cannot be identified, so
     # fail loudly rather than claim a verified clean slate - unless the
-    # caller already supplied explicit ports to import.
-    if (( _state_known == 0 )) && (( $# == 0 )) && [[ -d "$WALLOS_DIR" ]]; then
+    # caller already supplied explicit ports to import, or a registry
+    # already exists (it identifies openings to reclaim, and 80/tcp
+    # is still probed below).
+    if (( _state_known == 0 )) && (( $# == 0 )) && [[ -d "$WALLOS_DIR" ]] && (( _reg_exists == 0 )); then
         msg "${YELLOW}[!] Wallos state has no readable port, so pre-registry firewall openings cannot be identified; check the firewall rules manually.${NC}"
         return 1
     fi
@@ -58563,18 +58570,25 @@ _wallos_hy2_http01_keeps_80() {
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
     local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept='' _reg_content='' _tmp=''
     reg=$(wallos_fw_registry_file)
-    if [[ ! -f "$reg" || -L "$reg" ]]; then
-        # M-28 follow-up: a missing registry used to mean silent
-        # success, leaking every opening a pre-registry install made.
-        # Rebuild the registry from the live firewall state first; a
-        # failed rebuild means the live state is unknown, so fail
-        # loudly instead of claiming success with rules leaking.
-        if ! wallos_fw_import_legacy_registry; then
+    # 07h1-01: always (re-)run the migration, not just when the
+    # registry is missing: an earlier interrupted import may have
+    # left a partial registry, and its unprobed candidates would
+    # otherwise stay outside reclaim forever.
+    # M-28 follow-up: a missing registry used to mean silent
+    # success, leaking every opening a pre-registry install made.
+    # Rebuild the registry from the live firewall state first; a
+    # failed rebuild with no registry at all means the live state is
+    # unknown, so fail loudly instead of claiming success with rules
+    # leaking. A failed rebuild with a registry in place only warns:
+    # the registered openings are still reclaimed below.
+    if ! wallos_fw_import_legacy_registry; then
+        if [[ ! -f "$reg" || -L "$reg" ]]; then
             msg "${YELLOW}[!] Could not rebuild the missing Wallos firewall registry from the live firewall rules; check the firewall rules manually.${NC}"
             return 1
         fi
-        [[ -f "$reg" && ! -L "$reg" ]] || return 0
+        msg "${YELLOW}[!] Could not fully verify the Wallos firewall registry from the live firewall rules; reclaiming the registered openings only.${NC}"
     fi
+    [[ -f "$reg" && ! -L "$reg" ]] || return 0
     # 07h1-03: read the whole registry up front and check the read:
     # a `while read` loop cannot report a mid-read I/O failure (its
     # exit status is the last body command's), and the old in-place

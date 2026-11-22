@@ -49951,9 +49951,35 @@ _AUTH_VALUE = (
     + r"|" + _AUTH_PLAIN + _AUTH_EXTRA + r")"
 )
 
+# 06h2-H01: generic (non-Bearer/Basic) scheme value. The bare
+# _AUTH_VALUE above only swallows the scheme word: its plain branch
+# stops at the first space, so the bare token after "Negotiate "
+# survived verbatim. A generic value is scheme + whitespace + one
+# credential blob (the blob keeps the tempered rules: comma-separated
+# Digest params are consumed in full, a following sensitive key-head
+# stops it). A lone scheme with no token still redacts (the tail is
+# optional). Shared by inline_authorization and the text-path copy.
+#
+# Digest params (RFC 7616: username/realm/nonce/uri/response/cnonce/
+# opaque are quoted-string, qop/nc/algorithm are tokens) are a closed
+# name set, so the param tail names them explicitly: a following
+# unrelated "key=value" field (e.g. version=2) is never swallowed,
+# and a following "key: value" field is never touched at all (the
+# tail requires "=").
+_AUTH_DIGEST_PARAM = (
+    r"(?:[ \t]*,?[ \t]*"
+    r"(?:username|realm|nonce|uri|response|cnonce|opaque|qop|nc|algorithm|charset|stale|userhash)"
+    r"[ \t]*=[ \t]*"
+    r"(?:\"(?:\\[^\r\n]|[^\"\\\r\n])*\"|'(?:''|[^'\r\n])*'|[^\s,;}]+))+"
+)
+
+_AUTH_GENERIC_VALUE = (
+    r"[^\s,;}]+(?:[ \t]+" + _AUTH_VALUE + r"(?:" + _AUTH_DIGEST_PARAM + r")?)?"
+)
+
 inline_authorization = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r"[:=]" + _COMMENT_GAP + r")"
-    r"(?:Bearer\s+" + _AUTH_VALUE + r"|Basic\s+" + _AUTH_VALUE + r"|" + _AUTH_VALUE + r")"
+    r"(?:Bearer\s+" + _AUTH_VALUE + r"|Basic\s+" + _AUTH_VALUE + r"|" + _AUTH_GENERIC_VALUE + r")"
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:=]" + _COMMENT_GAP + r")[^\r\n]+")
 
@@ -50397,7 +50423,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|basic\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r"))",
+        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|basic\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|" + _AUTH_GENERIC_VALUE + r")",
         r'\1***REDACTED***',
         text,
     )

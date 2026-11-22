@@ -34615,7 +34615,8 @@ deploy_socks5_landing() {
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080' both) || die 'SOCKS5 port input failed.'
     IFS= read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
-    IFS= read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
+    IFS= read -r -s -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
+    echo
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'

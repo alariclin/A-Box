@@ -62558,7 +62558,7 @@ view_config() {
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME MIHOMO_USER_FILE _mihomo_single_rc=0
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok _host_ok
     # H-24: a bad Hy2 port endpoint skips the Hy2 blocks below (and warns)
     # instead of killing the whole view (menu 12 must not die on one
     # protocol's port problem).
@@ -62601,6 +62601,17 @@ view_config() {
     # emits the raw value with no default (unlike the Clash YAML's
     # :-defaults). The UUID is required for the VLESS URLs as well.
     _vless_ok=1; _xhttp_ok=1; _ss_ok=1; _hy2_json_ok=1; _sb_json_started=0
+    # 08c-M2: LINK_IP empty or 'N/A' is not a usable URI host (the
+    # top already warned about it). The port/UUID gates alone still
+    # emitted `vless://UUID@:port` or host-`N/A` links plus QR codes,
+    # and the XHTTP/SS/Hy2 branches share the same F_IP. A bad host
+    # clears all three F_IP gates (the SS/XHTTP JSON blocks below
+    # read _ss_ok/_xhttp_ok, so they are covered too); the Hy2
+    # blocks below additionally accept a usable HY2_DOMAIN instead
+    # of the host.
+    _host_ok=1
+    [[ -z "${LINK_IP:-}" || "${LINK_IP:-}" == 'N/A' ]] && _host_ok=0
+    if (( _host_ok == 0 )); then _vless_ok=0; _xhttp_ok=0; _ss_ok=0; fi
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         if ! valid_canonical_port "${VLESS_PORT:-}" || [[ -z "${UUID:-}" ]]; then
             msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is invalid or UUID is missing; Vision link skipped.${NC}"
@@ -62647,7 +62658,7 @@ view_config() {
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
-    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]]; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
@@ -62726,7 +62737,7 @@ view_config() {
     fi
 
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
-    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1 )); then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1 )) && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
         S_IP="${LINK_IP:-}"
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then

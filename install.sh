@@ -43076,7 +43076,12 @@ users_export_all() {
         # No enabled users: stale links must not keep serving. Atomically
         # replace both files with empty content (the old code left the
         # previous users' links in place and only failed the export).
-        install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
+        # 06a1-M2: the same fail-closed rule covers the FIRST install:
+        # when the empty uri-list cannot be installed, the old files
+        # still hold revoked users' links -- remove them rather than
+        # leaving the stale subscription serving (a missing
+        # subscription fails closed; a stale one does not).
+        install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp" "$dir/uri-list.txt" "$dir/subscription.base64"; return 1; }
         rm -f -- "$tmp"
         local etmp=''
         # uri-list is already cleared above: if the empty base64 cannot

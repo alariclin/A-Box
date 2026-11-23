@@ -19679,7 +19679,7 @@ EOF_ABOX_FW_RESTORE
 # $1=old_restore $2=tx_dir $3=old_unit $4=old_unit_path $5=old_unit_enabled
 __abox_firewall_persistence_rollback() {
     local old_restore="$1" tx_dir="$2" old_unit="$3" old_unit_path="$4" old_unit_enabled="$5"
-    local fail=0 _rb_en='' _rb_links='' _rb_rc=0
+    local fail=0 _rb_en='' _rb_links='' _rb_rc=0 _rb_show=''
     if [[ "$old_restore" == 1 ]]; then
         cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
     else
@@ -19744,8 +19744,19 @@ __abox_firewall_persistence_rollback() {
                 # a failed rc-update del leaves the service listed in
                 # the default runlevel while the unit file is gone.
                 # Verify the listing is actually gone.
-                if [[ "$old_unit" == 0 ]] && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
-                    fail=1
+                # R19b-M3: a failed query must fail the rollback, not
+                # be read as "not listed": the pipeline's status is
+                # grep's, and grep finds nothing both when the query
+                # succeeded with no match and when it failed with no
+                # output (pipefail does not help either — a failed
+                # query would only make the condition false). Take the
+                # output and the exit code separately.
+                if [[ "$old_unit" == 0 ]]; then
+                    if ! _rb_show=$(rc-update show default 2>/dev/null); then
+                        fail=1
+                    elif grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)' <<< "$_rb_show"; then
+                        fail=1
+                    fi
                 fi
             else
                 fail=1

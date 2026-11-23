@@ -30116,7 +30116,13 @@ LimitNPROC=1048576
 [Install]
 WantedBy=multi-user.target
 EOF_SVC
-        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        # R29b-M4: if the reload fails, remove the unit this call just
+        # wrote. Otherwise the file (with the marker) survives and the
+        # next call takes the early return 0 above without ever
+        # retrying the reload -- while systemd may still cache the old
+        # unit. The write only happens when the file was absent, so
+        # removing it restores the pre-call state.
+        systemctl daemon-reload >/dev/null 2>&1 || { rm -f -- /etc/systemd/system/sing-box.service; return 1; }
     else
         path_parent_chain_safe /etc/conf.d/sing-box || return 1
         mkdir -p /etc/conf.d || return 1
@@ -30147,6 +30153,49 @@ EOF_SVC
     if [[ -e /etc/sing-box/config.json ]]; then
         prepare_abox_runtime_permissions sing-box || return 1
     fi
+    return 0
+}
+
+# R29b-M1/M2/M3: recycle a port's A-Box native firewall rules only
+# when no live inbound in any core still uses it. Each coverage query
+# outputs an explicit boolean (true = port free); only an explicit
+# true (jq rc 0) counts as free. A false (rc 1, covered), a query
+# error, or an empty result all keep the rules (fail closed). This
+# replaces the old inline '! jq -e' pattern, which conflated a
+# runtime error inside the coverage query (e.g. a non-object
+# .inbounds element) with "not covered" and deleted rules for a port
+# the running core still serves. Malformed elements, a malformed
+# .inbounds, and a non-object top level are all treated as covering.
+# Always returns 0: cleanup failure never fails the caller.
+_recycle_port_rules_if_unused() {
+    local port="$1" sb_cfg="${2:-/etc/sing-box/config.json}"
+    [[ "$port" =~ ^[0-9]+$ ]] || return 0
+    # Sing-box config must parse and explicitly show the port free.
+    jq -e . "$sb_cfg" >/dev/null 2>&1 || return 0
+    jq -e --argjson p "$port" '
+        if type != "object" then false
+        elif (.inbounds | type) == "array" then
+            ([.inbounds[] | select(if type == "object" then .listen_port == $p else true end)] | length) == 0
+        elif (.inbounds | type) == "null" then true
+        else false end' "$sb_cfg" >/dev/null 2>&1 || return 0
+    # Xray config: a missing file counts as free; a present one must
+    # parse and explicitly show the port free.
+    if [[ -f /usr/local/etc/xray/config.json ]]; then
+        jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 || return 0
+        jq -e --argjson p "$port" '
+            def covers($p): ((if type == "object" then .port else null end) as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end);
+            if type != "object" then false
+            elif (.inbounds | type) == "array" then
+                ([.inbounds[] | select(covers($p))] | length) == 0
+            elif (.inbounds | type) == "null" then true
+            else false end' /usr/local/etc/xray/config.json >/dev/null 2>&1 || return 0
+    fi
+    # Hysteria returns 1 only when non-coverage is established; 0
+    # (covered or unknown) keeps the rules.
+    if _hysteria_listens_on_port "$port"; then return 0; fi
+    remove_abox_native_firewall_rule "$port" tcp 2>/dev/null || true
+    remove_abox_native_firewall_rule "$port" udp 2>/dev/null || true
+    save_firewall_rules 2>/dev/null || true
     return 0
 }
 
@@ -30335,24 +30384,16 @@ EOF_SVC
 
     # Firewall: TCP + UDP.
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     # Recycle the replaced port's rules when no inbound still uses it.
     # Either core's config counts: a port rule shared with another
     # core's live inbound must survive. Cleanup failure never fails
-    # the deployment itself.
+    # the deployment itself. _recycle_port_rules_if_unused fails
+    # closed: a corrupt config or a query error keeps the rules.
     if [[ "$old_port" =~ ^[0-9]+$ && "$old_port" != "$port" ]]; then
-        # A corrupt config must fail closed: bare '! jq -e' conflates
-        # no-match with parse failure. A symlinked xray config is read
-        # through (jq follows it); only a missing one counts as free.
-        if jq -e . "$cfg" >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
-           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" 'def covers($p): (.port as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end); .inbounds[]? | select(covers($p))' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; } \
-           && ! _hysteria_listens_on_port "$old_port"; then
-            remove_abox_native_firewall_rule "$old_port" tcp 2>/dev/null || true
-            remove_abox_native_firewall_rule "$old_port" udp 2>/dev/null || true
-            save_firewall_rules 2>/dev/null || true
-        fi
+        _recycle_port_rules_if_unused "$old_port" "$cfg" 2>/dev/null || true
     fi
 
     # Ensure the service is running (minimal-install path).
@@ -30451,7 +30492,13 @@ LimitNPROC=1048576
 [Install]
 WantedBy=multi-user.target
 EOF_SVC
-        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        # R29b-M4: if the reload fails, remove the unit this call just
+        # wrote. Otherwise the file (with the marker) survives and the
+        # next call takes the early return 0 above without ever
+        # retrying the reload -- while systemd may still cache the old
+        # unit. The write only happens when the file was absent, so
+        # removing it restores the pre-call state.
+        systemctl daemon-reload >/dev/null 2>&1 || { rm -f -- /etc/systemd/system/xray.service; return 1; }
     else
         path_parent_chain_safe /etc/conf.d/xray || return 1
         mkdir -p /etc/conf.d || return 1
@@ -30487,7 +30534,7 @@ EOF_SVC
 
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
+    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak='' old_port=''
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -30592,6 +30639,11 @@ deploy_xray_trojan_landing() {
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         fi
+        # R29b-M3: capture the replaced inbound's port before the merge
+        # discards it, so the old port's firewall rules can be recycled
+        # below. Only a numeric .port is taken; a range/string port
+        # (hand-edited config) is left alone.
+        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (if (.port | type) == "number" then (.port | tostring) else empty end)' "$cfg" 2>/dev/null || true)
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
@@ -30622,7 +30674,12 @@ deploy_xray_trojan_landing() {
     rm -f "$tmp_json"
 
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; _recycle_port_rules_if_unused "$port" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    # R29b-M3: recycle the replaced port's rules when no inbound still
+    # uses it (same helper as the sing-box SOCKS5 deploy).
+    if [[ "$old_port" =~ ^[0-9]+$ && "$old_port" != "$port" ]]; then
+        _recycle_port_rules_if_unused "$old_port" 2>/dev/null || true
+    fi
     rm -f -- "$cfg_bak"
     ensure_service_running_soft xray || die "$(tr_msg dp_xray_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
@@ -30817,7 +30874,7 @@ EOF_SVC
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -31039,7 +31096,7 @@ EOF_SVC
     restart_service_soft sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_restart)"; }
 
     ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -31232,7 +31289,7 @@ EOF_SVC
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -31441,7 +31498,7 @@ EOF_SVC
 
     restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
     ( allowPort "$port" tcp ) || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tr_msg pi_fw_persist_fail)"; }
+    save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -35261,8 +35318,8 @@ EOF_SVC
 
     # Firewall: TCP + UDP.
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; fi; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; _recycle_port_rules_if_unused "$port" 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; fi; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; _recycle_port_rules_if_unused "$port" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     ensure_service_running_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     rm -f -- "$cfg_bak"

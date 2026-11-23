@@ -760,17 +760,23 @@ rebuild_standalone_links() {
             [[ -n "$_tj_row" ]] || continue
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
             _tsv_split "$_tj_row" _tj_tag _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            # R01b-01: a non-managed tag is NOT the default node --
+            # renaming it to trojan-landing lets a foreign inbound
+            # sorted first claim the trojan-xray stem and the real
+            # default is then skipped by _tj_seen. Skip it.
             case "$_tj_tag" in
                 trojan-landing|trojan-landing-[0-9]*) ;;
-                *) _tj_tag='trojan-landing' ;;
+                *) continue ;;
             esac
             _tj_stem=$(users_link_stem xray "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
             case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
             _tj_seen+=" $_tj_stem"
-            case "$_tj_stem" in
+            # R01b-X: derive the legacy number from the original
+            # tag -- the per-core stem (trojan-xray-N) never matched
+            # trojan-landing-[0-9]*, so _tj_legacy_n stayed empty.
+            case "$_tj_tag" in
                 trojan-landing-[0-9]*)
-                    _tj_n="${_tj_stem#trojan-landing-}"
-                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    _tj_n="${_tj_tag#trojan-landing-}"
                     case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
             esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
@@ -797,12 +803,12 @@ rebuild_standalone_links() {
             fi
         done <<< "$_tj_rows"
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
-            _sk_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // ""), (((.settings.accounts[0].user // "") | contains("\u0000")) or ((.settings.accounts[0].pass // "") | contains("\u0000")))] | @tsv' 2>/dev/null) || _sk_rows=''
             _sk_seen=''
             while IFS= read -r _sk_row; do
                 [[ -n "$_sk_row" ]] || continue
                 _port=''; _user=''; _pass=''
-                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass _nul
                 case "$_sk_tag" in
                     socks5-landing|socks5-landing-[0-9]*) ;;
                     *) _sk_tag='socks5-landing' ;;
@@ -810,14 +816,18 @@ rebuild_standalone_links() {
                 _sk_stem=$(users_link_stem xray "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
                 case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
                 _sk_seen+=" $_sk_stem"
-                case "$_sk_stem" in
+                # R01b-X: derive the legacy number from the original
+                # tag -- the per-core stem (socks5-xray-N) never matched
+                # socks5-landing-[0-9]*, so _sk_legacy_n stayed empty.
+                case "$_sk_tag" in
                     socks5-landing-[0-9]*)
-                        _sk_n="${_sk_stem#socks5-landing-}"
-                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        _sk_n="${_sk_tag#socks5-landing-}"
                         case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
                 esac
                 _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                if [[ "$_nul" == 'true' ]]; then
+                    printf '%s\n' "${YELLOW}socks5 credentials contain a NUL byte, link skipped (${_sk_stem})${NC}" >&2
+                elif [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                     register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
                 elif [[ -n "$_port$_user$_pass" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
@@ -839,10 +849,12 @@ rebuild_standalone_links() {
             _tj_stem=$(users_link_stem sing-box "$_tj_tag" 2>/dev/null || printf '%s' "$_tj_tag")
             case " $_tj_seen " in *" $_tj_stem "*) continue ;; esac
             _tj_seen+=" $_tj_stem"
-            case "$_tj_stem" in
+            # R01b-X: derive the legacy number from the original
+            # tag -- the per-core stem (trojan-xray-N) never matched
+            # trojan-landing-[0-9]*, so _tj_legacy_n stayed empty.
+            case "$_tj_tag" in
                 trojan-landing-[0-9]*)
-                    _tj_n="${_tj_stem#trojan-landing-}"
-                    _tj_n="${_tj_n%-xray}"; _tj_n="${_tj_n%-sb}"
+                    _tj_n="${_tj_tag#trojan-landing-}"
                     case " $_tj_legacy_n " in *" $_tj_n "*) ;; *) _tj_legacy_n+=" $_tj_n" ;; esac ;;
             esac
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
@@ -931,7 +943,7 @@ rebuild_standalone_links() {
                 elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
                     if _tuic_cert_self_signed "$_cert"; then _insecure='allow_insecure=1'; fi
                 fi
-                register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
+                register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=$(urlencode "$_alpn")&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
@@ -988,12 +1000,12 @@ rebuild_standalone_links() {
             # B01-01: iterate every matching inbound (same rows loop
             # as Trojan/SOCKS5 above); first(...) only rebuilt the
             # first shadowtls-in and left shadowtls-in-2 stale.
-            _sh_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // "")] | @tsv' 2>/dev/null) || _sh_rows=''
+            _sh_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // ""), (.tag // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null) || _sh_rows=''
             _sh_seen=''
             while IFS= read -r _sh_row; do
             [[ -n "$_sh_row" ]] || continue
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$_sh_row" _port _pass _sni _detour _sh_tag
+            _tsv_split "$_sh_row" _port _pass _sni _detour _sh_tag _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             # N3 (followup5 D-leg): register under the matched
             # inbound's own stem (shadowtls-in -> shadowtls,
@@ -1002,14 +1014,18 @@ rebuild_standalone_links() {
             [[ -n "$_sh_stem" ]] || _sh_stem='shadowtls'
             case " $_sh_seen " in *" $_sh_stem "*) continue ;; esac
             _sh_seen+=" $_sh_stem"
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
+            if [[ "$_nul" == 'true' ]]; then
+                printf '%s\n' "${YELLOW}shadowtls password contains a NUL byte, link skipped (${_sh_stem})${NC}" >&2
+            elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                 else
-                    _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _inner _inner_method _inner_user
+                    _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // ""), (((.password // "") | contains("\u0000")) or ((.users[0].password // "") | contains("\u0000")))] | @tsv' 2>/dev/null)" _inner _inner_method _inner_user _inner_nul
                     _tsv_unescape "$_inner" _inner; _tsv_unescape "$_inner_method" _inner_method; _tsv_unescape "$_inner_user" _inner_user
                     [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
-                    if [[ -n "$_inner" ]]; then
+                    if [[ "$_inner_nul" == 'true' ]]; then
+                        printf '%s\n' "${YELLOW}shadowtls password contains a NUL byte, link skipped (${_sh_stem})${NC}" >&2
+                    elif [[ -n "$_inner" ]]; then
                         local _ub _pb _pb_json _cred
                         if [[ -n "$_inner_user" ]]; then _cred="${_inner_method}:${_inner}:${_inner_user}"; else _cred="${_inner_method}:${_inner}"; fi
                         # R14-F01-02: check this encoding step too
@@ -1046,12 +1062,12 @@ rebuild_standalone_links() {
             done <<< "$_sh_rows"
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
-            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // ""), (((.users[0].username // "") | contains("\u0000")) or ((.users[0].password // "") | contains("\u0000")))] | @tsv' 2>/dev/null) || _sk_rows=''
             _sk_seen=''
             while IFS= read -r _sk_row; do
                 [[ -n "$_sk_row" ]] || continue
                 _port=''; _user=''; _pass=''
-                _tsv_split "$_sk_row" _sk_tag _port _user _pass
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass _nul
                 case "$_sk_tag" in
                     socks5-landing|socks5-landing-[0-9]*) ;;
                     *) _sk_tag='socks5-landing' ;;
@@ -1059,14 +1075,18 @@ rebuild_standalone_links() {
                 _sk_stem=$(users_link_stem sing-box "$_sk_tag" 2>/dev/null || printf '%s' "$_sk_tag")
                 case " $_sk_seen " in *" $_sk_stem "*) continue ;; esac
                 _sk_seen+=" $_sk_stem"
-                case "$_sk_stem" in
+                # R01b-X: derive the legacy number from the original
+                # tag -- the per-core stem (socks5-xray-N) never matched
+                # socks5-landing-[0-9]*, so _sk_legacy_n stayed empty.
+                case "$_sk_tag" in
                     socks5-landing-[0-9]*)
-                        _sk_n="${_sk_stem#socks5-landing-}"
-                        _sk_n="${_sk_n%-xray}"; _sk_n="${_sk_n%-sb}"
+                        _sk_n="${_sk_tag#socks5-landing-}"
                         case " $_sk_legacy_n " in *" $_sk_n "*) ;; *) _sk_legacy_n+=" $_sk_n" ;; esac ;;
                 esac
                 _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
-                if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                if [[ "$_nul" == 'true' ]]; then
+                    printf '%s\n' "${YELLOW}socks5 credentials contain a NUL byte, link skipped (${_sk_stem})${NC}" >&2
+                elif [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                     register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
                 elif [[ -n "$_port$_user$_pass" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
@@ -1086,7 +1106,7 @@ rebuild_standalone_links() {
         _tj_leg_port=$(_standalone_link_port "$_tj_leg" 2>/dev/null || true)
         [[ -n "$_tj_leg_port" ]] || continue
         for _tj_sfx in sb xray; do
-            _tj_pc="$_dir/trojan-landing-${_tj_n}-${_tj_sfx}.link"
+            _tj_pc="$_dir/trojan-${_tj_sfx}-${_tj_n}.link"
             [[ -f "$_tj_pc" && ! -L "$_tj_pc" ]] || continue
             _tj_pc_port=$(_standalone_link_port "$_tj_pc" 2>/dev/null || true)
             if [[ -n "$_tj_pc_port" && "$_tj_pc_port" == "$_tj_leg_port" ]]; then
@@ -1106,7 +1126,7 @@ rebuild_standalone_links() {
         _sk_leg_port=$(_standalone_link_port "$_sk_leg" 2>/dev/null || true)
         [[ -n "$_sk_leg_port" ]] || continue
         for _sk_sfx in sb xray; do
-            _sk_pc="$_dir/socks5-landing-${_sk_n}-${_sk_sfx}.link"
+            _sk_pc="$_dir/socks5-${_sk_sfx}-${_sk_n}.link"
             [[ -f "$_sk_pc" && ! -L "$_sk_pc" ]] || continue
             _sk_pc_port=$(_standalone_link_port "$_sk_pc" 2>/dev/null || true)
             if [[ -n "$_sk_pc_port" && "$_sk_pc_port" == "$_sk_leg_port" ]]; then

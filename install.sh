@@ -20796,6 +20796,15 @@ remove_abox_native_firewall_rule() {
                 if (( _lo < _req_lo || _hi > _req_hi )); then
                     return 1
                 fi
+                # R20b-M01: never delete the shared 80/tcp opening while
+                # Hy2 HTTP-01 renewal still needs it, even when the
+                # request is a range that contains it (the top gate only
+                # catches an exact-80 request). Skip just the protected
+                # record; the rest of the range is still deleted, and the
+                # skipped record stays registered (its rule stays live).
+                if [[ "$proto" == tcp && "$_spec" == 80 ]] && hy2_http01_port_still_needed; then
+                    continue
+                fi
                 _selected+=("$_spec|$_scope|$_zone")
             done < "$ABOX_FW_STATE"
             for _rec in "${_selected[@]}"; do

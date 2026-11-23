@@ -26692,10 +26692,20 @@ except ValueError:
 # or unshaped config is unverifiable (2), never proof of absence.
 if not isinstance(cfg, dict):
     raise SystemExit(2)
+# R26a-M1: an `inbounds` that is not a list (int, string, dict, null)
+# or a list holding a non-dict element is unshaped, not proof the
+# inbound is absent (same contract as 04a-M3 above): raise 2 so the
+# caller keeps checking the socket instead of skipping it. The old
+# code raised an uncaught TypeError on a non-iterable `inbounds`
+# (exit 1, read as "confirmed absent") and silently skipped string /
+# dict / non-dict-element shapes the same way.
+inbounds = cfg.get('inbounds', [])
+if not isinstance(inbounds, list):
+    raise SystemExit(2)
 found = False
-for ib in cfg.get('inbounds', []) or []:
+for ib in inbounds:
     if not isinstance(ib, dict):
-        continue
+        raise SystemExit(2)
     p = ib.get('port', ib.get('listen_port'))
     ports = []
     if isinstance(p, int):
@@ -26809,6 +26819,34 @@ if [[ "$desired" != RUNNING ]]; then
         # MANUAL_STOPPED read and stop a service the main script has
         # just started. Contention yields this round (the guard exits 0).
         acquire_abox_runtime_guard
+        # R26a-H1: the MANUAL_STOPPED read above predates the guard, so
+        # the guard alone does NOT validate it: a start that completed
+        # (and committed RUNNING) between the read and the guard would
+        # otherwise be stopped here. The guard only serialises
+        # concurrent mutation. Re-read the desired state under the
+        # guard (same safety-checked read as above; keep in sync) and
+        # stop only if it is still MANUAL_STOPPED. A changed or
+        # unreadable state yields this round.
+        desired=RUNNING
+        if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+            [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || exit 0
+            [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || exit 0
+            mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
+            [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+            IFS= read -r _pair < "$PAIR_STATE" || exit 0
+            [[ "$_pair" == *'|'* ]] || exit 0
+            desired=${_pair%%|*}
+            _pair_period=${_pair#*|}
+            if [[ -n "$_pair_period" && ! "$_pair_period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then exit 0; fi
+            case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
+        elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
+            [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
+            [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0
+            mode=$(stat -c %a "$DESIRED" 2>/dev/null) || exit 0
+            [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+            IFS= read -r desired < "$DESIRED" || exit 0
+        fi
+        [[ "$desired" == MANUAL_STOPPED ]] || exit 0
         for _gs in xray sing-box hysteria; do stop_ghost_owned "$_gs" || true; done
     fi
     exit 0

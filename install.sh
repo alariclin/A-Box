@@ -38936,7 +38936,7 @@ manage_ss_whitelist() {
 # Best-effort: a failure warns and never blocks cleanup. Groups are
 # not removed.
 remove_abox_created_service_users() {
-    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _safe_grp='' _g='' _kept='' _new='' _moved=0
+    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _safe_grp='' _g='' _kept='' _new='' _moved=0 _orig_gid=''
     rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
     if [[ ! -f "$rec" || -L "$rec" ]]; then
         for u in abox-xray abox-singbox abox-hysteria; do
@@ -38984,6 +38984,16 @@ remove_abox_created_service_users() {
         # cannot delete it. The group itself is left behind, per
         # "Groups are not removed" above.
         _moved=0
+        # R37-01: record the ORIGINAL primary group (passwd field 4)
+        # before any move. The old code restored to the same-name
+        # group, which was never this user's group when its primary
+        # group was a foreign one.
+        _orig_gid=$(getent passwd "$u" | awk -F: '{print $4}')
+        if [[ ! "$_orig_gid" =~ ^[0-9]+$ ]]; then
+            msg "${YELLOW}[!] Service user ${u} has no readable primary GID; keeping it.${NC}" >&2
+            printf '%s\n' "$_line" >> "$_kept"
+            continue
+        fi
         if getent group "$u" >/dev/null 2>&1; then
             _safe_grp=''
             for _g in nogroup nobody; do
@@ -39002,19 +39012,22 @@ remove_abox_created_service_users() {
             else
                 msg "${YELLOW}[!] Could not remove service user ${u}; keeping it.${NC}" >&2
                 printf '%s\n' "$_line" >> "$_kept"
-                # 05d-low: the user was moved off its same-name group
+                # R37-01: the user was moved off its same-name group
                 # above to protect that group from userdel. Since the
-                # user is kept, move it back: the same-name group is
-                # still there (userdel never ran).
+                # user is kept, move it back to its ORIGINAL primary
+                # group (passwd field 4, saved above): the same-name
+                # group was never its group when its primary group
+                # was a foreign one (userdel never ran, so the
+                # original group is still there).
                 if (( _moved == 1 )); then
-                    usermod -g "$u" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
+                    usermod -g "$_orig_gid" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
                 fi
             fi
         else
             msg "${YELLOW}[!] userdel unavailable; keeping service user ${u}.${NC}" >&2
             printf '%s\n' "$_line" >> "$_kept"
             if (( _moved == 1 )); then
-                usermod -g "$u" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
+                usermod -g "$_orig_gid" "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not restore the primary group of service user ${u}; it remains on ${_safe_grp}.${NC}" >&2
             fi
         fi
     done < "$rec"
@@ -39103,6 +39116,16 @@ abox_caddy_owned() {
             /etc/systemd/system/abox-wallos-caddy.service|/etc/init.d/abox-wallos-caddy) continue ;;
         esac
         if grep -qF '/usr/local/bin/caddy' "$_ref" 2>/dev/null; then
+            return 1
+        fi
+        # R37-02: a bare `ExecStart=caddy ...` is resolved by systemd
+        # through its executable search path to /usr/local/bin/caddy;
+        # the absolute-path grep above misses it, so a foreign service
+        # using the bare name would lose its binary on cleanup. The
+        # second pattern covers indirection (`/usr/bin/env caddy`,
+        # `sh -c 'caddy ...'`).
+        if grep -qE '^[[:space:]]*Exec[A-Za-z]*=[[:space:]]*[-+:@]*caddy([[:space:]]|$)' "$_ref" 2>/dev/null ||
+           grep -qE '^[[:space:]]*Exec[A-Za-z]*=.*[[:space:]]caddy([[:space:]]|$)' "$_ref" 2>/dev/null; then
             return 1
         fi
     done
@@ -39221,6 +39244,15 @@ do_cleanup() {
         # removal (a retry needs its token and state). Everything else
         # is removed unconditionally below, outside the gate.
         rm -f "$ARGO_STATE_FILE" "$ABOX_DIR/.argo-token" 2>/dev/null || true
+        # R37-03: a failed token/state removal must not be swallowed --
+        # the success branches below only check _argo_rm_failed, so a
+        # leftover credential would be reported as cleaned. Verify
+        # both paths are really gone; on failure keep the assets for
+        # retry (the existing _argo_rm_failed machinery) and report.
+        if [[ -e "$ARGO_STATE_FILE" || -L "$ARGO_STATE_FILE" || -e "$ABOX_DIR/.argo-token" || -L "$ABOX_DIR/.argo-token" ]]; then
+            msg "${YELLOW}[!] Argo token/state removal failed; cloudflared binary, token and Argo state were kept for retry.${NC}"
+            _argo_rm_failed=1
+        fi
     fi
     # L-07: the non-Argo runtime state leaves the Argo failure gate as
     # one group (remove_ddr_runtime_state_files): a failed Argo removal

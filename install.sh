@@ -19679,7 +19679,7 @@ EOF_ABOX_FW_RESTORE
 # $1=old_restore $2=tx_dir $3=old_unit $4=old_unit_path $5=old_unit_enabled
 __abox_firewall_persistence_rollback() {
     local old_restore="$1" tx_dir="$2" old_unit="$3" old_unit_path="$4" old_unit_enabled="$5"
-    local fail=0 _rb_en=''
+    local fail=0 _rb_en='' _rb_links='' _rb_rc=0
     if [[ "$old_restore" == 1 ]]; then
         cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
     else
@@ -19707,10 +19707,19 @@ __abox_firewall_persistence_rollback() {
                 # the unit file is gone. Verify by the live state, not
                 # by the swallowed disable rc: still enabled means the
                 # rollback did not land.
-                _rb_en=$(systemctl is-enabled A-Box-firewall.service 2>/dev/null || true)
-                case "$_rb_en" in
-                    enabled|enabled-runtime) fail=1 ;;
-                esac
+                # R19b-M2: `systemctl is-enabled` cannot be that
+                # verification: once the unit file is deleted it
+                # reports not-found even when a dangling .wants/ link
+                # remains (verified on systemd 255), so the check
+                # below could never fire. Check the links directly:
+                # any symlink named after the unit under the unit
+                # file's directory means the enablement was not
+                # actually cancelled. A failed find is also a failure
+                # (the cleanup cannot be proven).
+                _rb_links=$(find "$(dirname -- "$old_unit_path")" -name 'A-Box-firewall.service' -type l 2>/dev/null) || _rb_rc=$?
+                if (( _rb_rc != 0 )) || [[ -n "$_rb_links" ]]; then
+                    fail=1
+                fi
             fi
             ;;
         openrc)

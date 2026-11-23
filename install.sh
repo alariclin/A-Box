@@ -19497,6 +19497,8 @@ _fw_restore_leg() {
     local snapshot="$4" wl_tag="$5" drop_tag="$6"
     local backup tmp='' src='' final_policy=''
     local _rb_ok=0 _rb_clamped='' _rb_src=''
+    local _clamp_i=0 _clamp_left=''
+    local -a _clamp_argv=( -j DROP -m comment --comment "A-Box-restore-clamp" )
 
     backup=$(mktemp /run/A-Box-firewall-restore-backup.XXXXXX) || return 1
     "$save_cmd" > "$backup" 2>/dev/null || {
@@ -19574,11 +19576,46 @@ _fw_restore_leg() {
         return 1
     fi
 
+    # R19b-H-P1: -P INPUT DROP only governs traffic that matches no
+    # rule; it does not stop a foreign ACCEPT below the A-Box DROP from
+    # becoming effective once clean_chain deletes that DROP. Install a
+    # temporary DROP at the head of INPUT before the clean, so the
+    # default-deny holds through the clean/restore/reorder window. A
+    # stale clamp rule left by a crashed earlier run is removed first
+    # (best effort). The comment is outside clean_chain's owned_re, so
+    # the clean does not remove it. It is removed on every exit path
+    # below; a failed install refuses to delete anything.
+    # Note: the clamp is also the first terminal rule while present,
+    # so reorder_plain_accepts may move an A-Box ACCEPT above it during
+    # the reorder; the final order is unchanged (the ACCEPT still lands
+    # before the A-Box DROP) and the window stays closed.
+    _iptables_do "$cmd" -D INPUT "${_clamp_argv[@]}" >/dev/null 2>&1 || true
+    if ! _iptables_do "$cmd" -I INPUT 1 "${_clamp_argv[@]}" >/dev/null 2>&1; then
+        echo "A-Box firewall restore: $cmd temporary clamp rule failed; refusing to delete." >&2
+        if [[ -n "$tmp" ]]; then rm -f -- "$tmp"; fi
+        return 1
+    fi
+
     if clean_chain "$cmd" filter INPUT &&
        clean_chain "$cmd" nat PREROUTING &&
        { [[ -z "$tmp" ]] || restore_one "$tmp" "$restore_cmd"; } &&
        reorder_policy "$cmd" "$wl_tag" "$drop_tag" &&
        _iptables_do "$cmd" -P INPUT "$final_policy" >/dev/null 2>&1; then
+        # R19b-H-P1: remove the temporary clamp rule (loop: a crashed
+        # earlier run may have left more than one behind). If it cannot
+        # be removed, the host is left dropping all new INPUT traffic:
+        # report failure and keep the backup for manual recovery.
+        for (( _clamp_i=0; _clamp_i<10; _clamp_i++ )); do
+            _iptables_do "$cmd" -D INPUT "${_clamp_argv[@]}" >/dev/null 2>&1 || break
+        done
+        _clamp_left=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || {
+            echo "A-Box firewall restore: $cmd could not verify the temporary clamp rule is gone; check manually." >&2
+            return 1
+        }
+        if grep -q 'A-Box-restore-clamp' <<< "$_clamp_left"; then
+            echo "A-Box firewall restore: $cmd temporary clamp rule could not be removed; remove it manually: $cmd -D INPUT -j DROP -m comment --comment \"A-Box-restore-clamp\"" >&2
+            return 1
+        fi
         if [[ -n "$tmp" ]]; then
             rm -f -- "$tmp" || return 1
         fi
@@ -19625,6 +19662,17 @@ _fw_restore_leg() {
         echo "A-Box firewall restore FAILED; pre-delete backup preserved: $backup (restore manually)" >&2
     fi
     if [[ -n "$tmp" ]]; then rm -f -- "$tmp"; fi
+    # R19b-H-P1: remove the temporary clamp rule on the failure path
+    # too (best effort; the flush-restore above already removes it
+    # when it ran, since the backup predates the clamp). If the delete
+    # fails here the rule stays and new INPUT traffic stays dropped:
+    # say so loudly so the operator removes it by hand.
+    for (( _clamp_i=0; _clamp_i<10; _clamp_i++ )); do
+        _iptables_do "$cmd" -D INPUT "${_clamp_argv[@]}" >/dev/null 2>&1 || break
+    done
+    if _iptables_q "$cmd" -S INPUT 2>/dev/null | grep -q 'A-Box-restore-clamp'; then
+        echo "A-Box firewall restore: $cmd temporary clamp rule could not be removed; remove it manually: $cmd -D INPUT -j DROP -m comment --comment \"A-Box-restore-clamp\"" >&2
+    fi
     return 1
 }
 

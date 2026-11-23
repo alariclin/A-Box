@@ -25776,9 +25776,14 @@ hysteria_official_hop_firewall_ok() {
         # R6C8-03: no -q: grep reads the whole listing, so no
         # SIGPIPE under pipefail can turn a found rule into
         # a false negative (healthy Hysteria restarted).
-        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null; then
+        # R25a-M03: a candidate line is not coverage when its --dport is
+        # negated (`! --dport` matches outside the range) or when it is
+        # source-restricted (`-s` covers only that source). Filter those
+        # out; the second grep reads the whole listing too (no -q), so
+        # the R6C8-03 SIGPIPE reasoning still holds.
+        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" | grep -vE -- '! --dport|(^|[[:space:]])-s[[:space:]]' >/dev/null; then
             if has_ipv6; then
-                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null || return 1
+                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" | grep -vE -- '! --dport|(^|[[:space:]])-s[[:space:]]' >/dev/null || return 1
             fi
             return 0
         fi
@@ -25801,7 +25806,11 @@ hysteria_official_hop_firewall_ok() {
             /^[[:space:]]*type[[:space:]]+nat[[:space:]]+hook[[:space:]]+prerouting([[:space:]]|;)/ { if (chain != "") hookok = 1 }
             /\{[[:space:]]*$/ { depth++ }
             /^[[:space:]]*\}/ { depth--; if (depth == 1) { chain = ""; hookok = 0 } if (depth == 0) { fam = ""; tbl = ""; chain = ""; hookok = 0 } next }
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat {
+            # R25a-M03: a source-restricted redirect (ip/ip6 saddr) covers
+            # only that source, not the whole hop range; it must not count.
+            # (A negated dport cannot match `pat`: the range must follow
+            # `udp dport ` directly, so `udp dport != ...` never matches.)
+            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {
@@ -26819,9 +26828,14 @@ hysteria_official_hop_firewall_ok() {
     # R6C8-03: no -q: grep reads the whole listing, so no
     # SIGPIPE under pipefail can turn a found rule into
     # a false negative (healthy Hysteria restarted).
-    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null; then
+    # R25a-M03: a candidate line is not coverage when its --dport is
+    # negated (`! --dport` matches outside the range) or when it is
+    # source-restricted (`-s` covers only that source). Filter those
+    # out; the second grep reads the whole listing too (no -q), so
+    # the R6C8-03 SIGPIPE reasoning still holds.
+    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" | grep -vE -- '! --dport|(^|[[:space:]])-s[[:space:]]' >/dev/null; then
         if has_ipv6; then
-            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null || return 1
+            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" | grep -vE -- '! --dport|(^|[[:space:]])-s[[:space:]]' >/dev/null || return 1
         fi
         return 0
     fi
@@ -26843,7 +26857,11 @@ hysteria_official_hop_firewall_ok() {
             /^[[:space:]]*type[[:space:]]+nat[[:space:]]+hook[[:space:]]+prerouting([[:space:]]|;)/ { if (chain != "") hookok = 1 }
             /\{[[:space:]]*$/ { depth++ }
             /^[[:space:]]*\}/ { depth--; if (depth == 1) { chain = ""; hookok = 0 } if (depth == 0) { fam = ""; tbl = ""; chain = ""; hookok = 0 } next }
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat {
+            # R25a-M03: a source-restricted redirect (ip/ip6 saddr) covers
+            # only that source, not the whole hop range; it must not count.
+            # (A negated dport cannot match `pat`: the range must follow
+            # `udp dport ` directly, so `udp dport != ...` never matches.)
+            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {

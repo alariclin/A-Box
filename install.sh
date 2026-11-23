@@ -48189,8 +48189,13 @@ dns_dot_prefer() {
     esac
     read -r -p "$prompt" result
     is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
-    apply_host_dns dot "$best_v4" "$best_v6" "$best_host"
+    # R46-01: pause_return always returns 0, so a bare apply call
+    # followed by it reports a failed DNS switch as success. Save
+    # the apply result first, pause, then return it.
+    local _apply_rc=0
+    apply_host_dns dot "$best_v4" "$best_v6" "$best_host" || _apply_rc=$?
     pause_return
+    return "$_apply_rc"
 }
 
 dns_doh_probe_once() {
@@ -48331,8 +48336,13 @@ dns_doh_prefer() {
     esac
     read -r -p "$prompt" result
     is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
-    ABOX_DOH_YES=1 dns_enable_doh "$best_srv" "$best"
+    # R46-01: pause_return always returns 0, so a bare apply call
+    # followed by it reports a failed DNS switch as success. Save
+    # the apply result first, pause, then return it.
+    local _apply_rc=0
+    ABOX_DOH_YES=1 dns_enable_doh "$best_srv" "$best" || _apply_rc=$?
     pause_return
+    return "$_apply_rc"
 }
 
 dns_auto_prefer() {
@@ -48427,8 +48437,13 @@ dns_auto_prefer() {
     esac
     read -r -p "$prompt" result
     is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
-    apply_host_dns plain "$best" "$v6"
+    # R46-01: pause_return always returns 0, so a bare apply call
+    # followed by it reports a failed DNS switch as success. Save
+    # the apply result first, pause, then return it.
+    local _apply_rc=0
+    apply_host_dns plain "$best" "$v6" || _apply_rc=$?
     pause_return
+    return "$_apply_rc"
 }
 
 dns_install_dnscrypt_proxy() {
@@ -48717,25 +48732,138 @@ def _first_segment(line):
         return None
     return m.group(0), i + len(m.group(0))
 
+# R46-02: same character scanner as the rewriter below (verbatim
+# copy -- keep in sync). A '[' line is a table header only in normal
+# state at bracket depth 0, never inside a multiline string or a
+# nested array.
+_TRIPLE_DQ = '"' * 3
+_TRIPLE_SQ = "'" * 3
+def _scan_line_chars(seg, state, depth, brace):
+    # Scan one line's characters (seg excludes the trailing newline).
+    # Returns (state, depth, brace). States: 'normal', 'dq'/'sq'
+    # (single-line basic/literal), 'dq_ml'/'sq_ml' (triple-quoted).
+    # A '#' outside a string starts a comment: the rest of the line
+    # is skipped. Brackets inside strings/comments do not count.
+    # A triple-quoted string ends at a run of 3+ quotes: the last
+    # three close it, any earlier quotes in the run are content (so
+    # four/five-quote endings scan right). Raises ValueError on an
+    # unterminated single-line string (a raw newline inside one).
+    i = 0
+    n = len(seg)
+    while i < n:
+        c = seg[i]
+        if state == 'dq':
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                state = 'normal'
+                i += 1
+                continue
+            i += 1
+            continue
+        if state == 'sq':
+            if c == "'":
+                state = 'normal'
+                i += 1
+                continue
+            i += 1
+            continue
+        if state == 'dq_ml':
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                j = i
+                while j < n and seg[j] == '"':
+                    j += 1
+                if j - i >= 3:
+                    state = 'normal'
+                i = j
+                continue
+            i += 1
+            continue
+        if state == 'sq_ml':
+            if c == "'":
+                j = i
+                while j < n and seg[j] == "'":
+                    j += 1
+                if j - i >= 3:
+                    state = 'normal'
+                i = j
+                continue
+            i += 1
+            continue
+        # state == 'normal'
+        if c == '#':
+            break
+        if c == '"':
+            if seg.startswith(_TRIPLE_DQ, i):
+                state = 'dq_ml'
+                i += 3
+            else:
+                state = 'dq'
+                i += 1
+            continue
+        if c == "'":
+            if seg.startswith(_TRIPLE_SQ, i):
+                state = 'sq_ml'
+                i += 3
+            else:
+                state = 'sq'
+                i += 1
+            continue
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+        elif c == '{':
+            brace += 1
+        elif c == '}':
+            brace -= 1
+        i += 1
+    if state in ('dq', 'sq'):
+        raise ValueError('unterminated string')
+    return state, depth, brace
+
 def main():
     try:
         f = open(sys.argv[1], 'r', encoding='utf-8', errors='strict')
     except (OSError, ValueError):
         return 1
+    # R46-02: the old loop broke at ANY line starting with '[',
+    # including one inside a multiline string or a nested array, so
+    # a real top-level forwarding_rules after it was missed, the
+    # H-25(2) confirmation was skipped, and the rewriter deleted
+    # the entry silently (disable_fr defaults to 1). Thread the
+    # scanner state through the loop instead. Unparseable input
+    # counts as present (fail closed toward asking); the rewriter
+    # refuses it anyway.
+    _state, _depth, _brace = 'normal', 0, 0
     with f:
         for raw in f:
             line = raw.rstrip('\r\n')
+            if _state != 'normal' or _depth > 0 or _brace > 0:
+                try:
+                    _state, _depth, _brace = _scan_line_chars(line, _state, _depth, _brace)
+                except ValueError:
+                    return 0
+                continue
             s = line.lstrip(' \t')
             if not s or s.startswith('#'):
-                continue
-            if s.startswith('['):
+                pass
+            elif s.startswith('['):
                 break
-            parsed = _first_segment(line)
-            if parsed is None:
-                continue
-            seg, end = parsed
-            rest = line[end:].lstrip(' \t')
-            if seg == 'forwarding_rules' and rest[:1] in ('=', '.'):
+            else:
+                parsed = _first_segment(line)
+                if parsed is not None:
+                    seg, end = parsed
+                    rest = line[end:].lstrip(' \t')
+                    if seg == 'forwarding_rules' and rest[:1] in ('=', '.'):
+                        return 0
+            try:
+                _state, _depth, _brace = _scan_line_chars(line, _state, _depth, _brace)
+            except ValueError:
                 return 0
     return 1
 

@@ -32685,7 +32685,22 @@ EOF_SVC
     # crash-loop on the bad token until the EXIT trap removes it. The
     # trap still runs on die and deletes the bad token.
     if ! argo_wait_fixed_ready /etc/ddr/argo.log 60; then
-        argo_remove_unit argo 2>/dev/null || true
+        # R31-H2: never delete the unit on an UPDATE failure. The
+        # EXIT trap restores the old token and restarts the service;
+        # with the unit file gone that restart cannot succeed and a
+        # working deployment is destroyed. Only a first deploy (no
+        # token backup) removes the new unit. Stop the crash-looping
+        # service either way so a bad token cannot spin
+        # Restart=on-failure until the trap runs.
+        if [[ -n "$_argo_token_bak" ]]; then
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                systemctl stop argo.service >/dev/null 2>&1 || true
+            else
+                rc-service argo stop >/dev/null 2>&1 9>&- 10>&- || true
+            fi
+        else
+            argo_remove_unit argo 2>/dev/null || true
+        fi
         die 'Fixed Argo tunnel did not become ready (authentication or connection failed); check /etc/ddr/argo.log.'
     fi
     # R5C9-02: fixed tunnel verified; the new token is good, so
@@ -32769,6 +32784,20 @@ argo_unit_managed() { # $1 = unit name -> 0 iff A-Box-managed /etc unit
     [[ -f "$unit" && ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null
 }
 
+# R31-M2: restore the shared sing-box config from the uninstall backup
+# and reload it, so a failure after the rewrite does not leave a
+# half-uninstalled deployment (argo inbounds gone, backup deleted).
+# Consumes the backup (restore_cfg_backup deletes it); safe to call
+# when no backup exists. The on-disk config is restored even if the
+# reload fails, so the state stays retryable instead of a lie.
+_argo_uninstall_restore_cfg() { # $1 = cfg_bak, $2 = cfg
+    local _bak="${1:-}" _cfg="${2:-}"
+    [[ -n "$_bak" && -f "$_bak" ]] || return 0
+    restore_cfg_backup "$_bak" "$_cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+    restart_service_soft sing-box || true
+    return 0
+}
+
 argo_uninstall() {
     local ans=''
     read -r -p "$(tr_msg argo_confirm_uninstall)" ans || ans=''
@@ -32800,7 +32829,13 @@ argo_uninstall() {
             return 1
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '
+        # R31-M1: read through jsonc_strip_comments, like every other
+        # Argo reader (_argo_ws_inbound_present). Sing-box accepts
+        # JSONC comments that jq rejects (R6C9-02); a bare jq read
+        # fails the uninstall on a legal commented config. Under
+        # pipefail a strip failure also fails the pipeline, so a
+        # broken config still fails closed here.
+        if jsonc_strip_comments "$cfg" 2>/dev/null | jq '
             # 2ku residual: an inverted rule whose ONLY inbound condition
             # was argo must become FULL-HIT (strip ALL conditions), not
             # NOT(remaining conditions). invert flips the whole match, so
@@ -32840,7 +32875,7 @@ argo_uninstall() {
               else . end;
             .inbounds |= map(select(.tag != "vmess-ws-in" and .tag != "vless-ws-in"))
             | if (.route.rules | type) == "array" then .route.rules |= map(_fixrule) else . end
-        ' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        ' > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             # R14-F09-05: back up the shared config BEFORE the rewrite:
             # the new config is installed before the permissions setup
@@ -32858,7 +32893,7 @@ argo_uninstall() {
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             return 1
         fi
-        rm -f "$tmp_cfg" "$cfg_bak"
+        rm -f "$tmp_cfg"
     fi
     # R1-09-C05: verify the units actually stop BEFORE deleting
     # their files. Checking after deletion is vacuous: a deleted
@@ -32878,6 +32913,7 @@ argo_uninstall() {
     done
     for _u in "${_argo_remove_targets[@]}"; do
         if ! argo_unit_stopped_confirmed "$_u"; then
+            _argo_uninstall_restore_cfg "$cfg_bak" "$cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             msg "${YELLOW}[!] Argo unit ${_u} could not be confirmed stopped (${_ARGO_STOPPED_DETAIL:-unknown reason}); refusing to uninstall.${NC}"
             return 1
@@ -32885,6 +32921,7 @@ argo_uninstall() {
     done
     for _u in "${_argo_remove_targets[@]}"; do
         if ! argo_remove_unit "$_u"; then
+            _argo_uninstall_restore_cfg "$cfg_bak" "$cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             return 1
         fi
@@ -32893,12 +32930,13 @@ argo_uninstall() {
     # units must be gone (no file, no dangling link); reload so a previous
     # run that deleted files but failed reload can still be retried to green.
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        systemctl daemon-reload >/dev/null 2>&1 || { msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
+        systemctl daemon-reload >/dev/null 2>&1 || { _argo_uninstall_restore_cfg "$cfg_bak" "$cfg"; msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
     fi
     local _upath
     for _u in "${_argo_remove_targets[@]}"; do
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _upath="/etc/systemd/system/${_u}.service"; else _upath="/etc/init.d/${_u}"; fi
         if [[ -e "$_upath" || -L "$_upath" ]]; then
+            _argo_uninstall_restore_cfg "$cfg_bak" "$cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             return 1
         fi
@@ -32913,12 +32951,29 @@ argo_uninstall() {
     # uninstall can be retried or the leftover unit inspected.
     for _u in argo argo-vmess argo-vless; do
         if ! argo_unit_stopped_confirmed "$_u"; then
+            _argo_uninstall_restore_cfg "$cfg_bak" "$cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             msg "${YELLOW}[!] Argo unit ${_u} could not be confirmed stopped (${_ARGO_STOPPED_DETAIL:-unknown reason}); refusing to uninstall.${NC}"
             return 1
         fi
     done
-    rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
+    # R31-M2: the shared-config backup lives until this point: every
+    # failure above restores it, and only a fully gated uninstall
+    # drops it together with the temp file.
+    rm -f "$tmp_cfg" "$cfg_bak"
+    # R31-M3: credential cleanup must be verified: an unchecked rm
+    # reports success while a token or UUID-bearing link survives
+    # (read-only fs, immutable flag). Fail instead of printing success.
+    if ! rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link; then
+        msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+        return 1
+    fi
+    for _upath in "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link; do
+        if [[ -e "$_upath" || -L "$_upath" ]]; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
+    done
     # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel
     # and may be a foreign binary install_cloudflared early-returned
     # on (same version, no ownership recorded). Remove it only when

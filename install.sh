@@ -20981,6 +20981,7 @@ iptables_rule_check() {
 
 allowPort() {
     local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _zone='' _uncovered_out='' _sub='' _rec_failed=0 _rb_failed=0 _sirc=0
+    local _before_numbers='' _after_numbers='' _rb_num=''
     local -a _uncovered_runtime=() _uncovered_permanent=()
     spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
     [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
@@ -21007,6 +21008,13 @@ allowPort() {
                     fi
                     case "$_foreign_rc" in
                         1)
+                            # R20b-M02: snapshot the owned rule numbers
+                            # before completing the missing family, so a
+                            # later record failure can roll back ONLY the
+                            # rule this call added (the pre-existing
+                            # family's rule must survive: a blanket
+                            # ufw_delete_owned_rules would delete it too).
+                            _before_numbers=$(ufw_global_rule_numbers "$spec" "$type" 1 2>/dev/null || true)
                             ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
                             _ufw_owned_families_complete "$spec" "$type" || die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
                             ;;
@@ -21018,7 +21026,23 @@ allowPort() {
                             ;;
                     esac
                 fi
-                record_native_firewall_rule ufw "$spec" "$type" rule || die "$(tr_msg fw2_ufw_record)"
+                if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
+                    # R20b-M02: the record failed after this call added
+                    # the missing family: roll back ONLY the newly added
+                    # rule(s) (owned numbers not present before the
+                    # completion), largest-first so lower numbers do not
+                    # shift. When no completion happened (_before_numbers
+                    # empty) there is nothing to roll back. A failed
+                    # rollback still dies below; the record failure is
+                    # reported either way.
+                    if [[ -n "$_before_numbers" ]]; then
+                        _after_numbers=$(ufw_global_rule_numbers "$spec" "$type" 1 2>/dev/null || true)
+                        for _rb_num in $(printf '%s\n' $_after_numbers | LC_ALL=C sort -rn); do
+                            printf '%s\n' "$_before_numbers" | grep -qx "$_rb_num" || ufw --force delete "$_rb_num" >/dev/null 2>&1 || true
+                        done
+                    fi
+                    die "$(tr_msg fw2_ufw_record)"
+                fi
             elif (( _orc == 2 )); then
                 die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
             else

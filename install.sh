@@ -37918,7 +37918,12 @@ restore_vnstat_runtime_state() {
             case "$enabled" in
                 1) rc-update add "$name" default >/dev/null 2>&1 || return 1 ;;
                 '?') : ;;
-                *) if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi ;;
+                # R36b-M1: a failed listing is unknown, not "not in
+                # default" -- the capture side (R14-F10-03) already
+                # records it as '?'; silently skipping the del here
+                # returned success with the known enabled=0 un-restored.
+                *) _ru=$(rc-update show default 2>/dev/null) || return 1
+                   if grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)" <<< "$_ru"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi ;;
             esac
             case "$active" in
                 1) rc-service "$name" start >/dev/null 2>&1 9>&- 10>&- || rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || return 1 ;;
@@ -38010,7 +38015,7 @@ capture_traffic_quota_expected_state() {
         monitor_hash=$(traffic_snapshot_file_hash "$ABOX_DIR/traffic_monitor.sh") || return 1
         printf '%s\n' "$monitor_hash" > "$tx_dir/post.monitor.hash" || return 1
     else
-        printf '%s\n' none > "$tx_dir/post.monitor.hash"
+        printf '%s\n' none > "$tx_dir/post.monitor.hash" || return 1
     fi
     if ! capture_vnstat_runtime_state > "$tx_dir/post.vnstat"; then
         return 1
@@ -38253,7 +38258,7 @@ prepare_traffic_quota_transaction() {
         printf '1|%s\n' "$(traffic_snapshot_file_hash "$ABOX_DIR/traffic_monitor.sh")" > "$tx_dir/pre.monitor.meta" || return 1
         cp -a -- "$ABOX_DIR/traffic_monitor.sh" "$tx_dir/traffic_monitor.pre" || return 1
     else
-        printf '%s\n' '0|none' > "$tx_dir/pre.monitor.meta"
+        printf '%s\n' '0|none' > "$tx_dir/pre.monitor.meta" || return 1
     fi
     capture_vnstat_runtime_state > "$tx_dir/pre.vnstat" || return 1
     # FINAL-AUDIT: record whether the vnstat binary/package pre-existed, so

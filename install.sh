@@ -25756,7 +25756,10 @@ EOF_F2B_UDP
                 rm -f -- "$filter_bak" "$jail_bak"
             else
                 _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"
-                msg "${YELLOW}[!] $(tr_msg setup_active_defense_restart_fail_restored)${NC}"
+                # R25a-M01: retry the restart after restoring (mirror the
+                # S38 pattern above); a restored config with the service
+                # still stopped leaves every jail unprotected.
+                _f2b_restart || msg "${YELLOW}[!] $(tr_msg setup_active_defense_restart_fail_restored)${NC}"
             fi
         fi
     fi

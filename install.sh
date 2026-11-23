@@ -44312,8 +44312,13 @@ users_apply_reg() {
         # failure (sync rc 2) also keeps the marker: the live
         # config may still hold the new users, so the guard must
         # retry the sync instead of treating the debt as settled.
+        # R42-H1: a pre-existing marker is an OLDER interrupted
+        # apply's debt, not this run's (06a1-M1): rolling back to
+        # the old registry proves nothing about the service, which
+        # may still be one apply behind. Only a marker planted by
+        # this run may be cleared here.
         if users_reg_write "$1" "$2" "$4" >/dev/null 2>&1; then
-            if (( _sync_rc != 2 )) && [[ "$(jq -c . "$_reg" 2>/dev/null)" == "$(printf '%s' "$4" | jq -c . 2>/dev/null)" ]]; then
+            if (( _pending_pre == 0 && _sync_rc != 2 )) && [[ "$(jq -c . "$_reg" 2>/dev/null)" == "$(printf '%s' "$4" | jq -c . 2>/dev/null)" ]]; then
                 rm -f -- "${_reg}.sync-pending"
             fi
         fi
@@ -44694,7 +44699,12 @@ setup_user_guard() {
     local sha_new='' sha_old=''
     sha_new=$(sha256sum -- "$_src" 2>/dev/null | awk '{print $1}')
     sha_old=$(sha256sum -- "$runner" 2>/dev/null | awk '{print $1}')
-    if [[ -z "$sha_new" || "$sha_new" != "$sha_old" ]]; then
+    # R42-M1: sha256sum follows symlinks, so a symlink runner with
+    # the same content skips the replace below, and both repair
+    # branches require a regular file -- yet user_guard_installed
+    # rejects any symlink. Replace a symlink runner outright (mv
+    # onto the link replaces the link itself with a regular file).
+    if [[ -L "$runner" || -z "$sha_new" || "$sha_new" != "$sha_old" ]]; then
         local tmp=''
         tmp=$(mktemp "$(dirname -- "$runner")/.guard-runner.XXXXXX") || return 1
         cp -f -- "$_src" "$tmp" || { rm -f -- "$tmp"; return 1; }

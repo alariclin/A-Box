@@ -18137,6 +18137,18 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
         fi
         mv -- "$out.drop" "$out" || { rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
     fi
+    # R18a-M1: an empty snapshot must fail, not silently succeed. jq
+    # exits 0 on empty input, so neither the snapshot jq above nor
+    # `jq length` here can tell "valid config, zero standalone
+    # inbounds" (a legitimate `[]`) from "no JSON was read at all"
+    # (empty / whitespace-only / comment-only config). Require the
+    # snapshot to hold exactly one JSON array; a legal `[]` still
+    # passes and returns 0 below.
+    if ! jq -s -e 'length == 1 and (.[0] | type == "array")' "$out" >/dev/null 2>&1; then
+        rm -f -- "$out"; rm -rf -- "$tmpd"
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
     n=$(jq 'length' "$out" 2>/dev/null) || { rm -f -- "$out"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
     if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
         # H-26(1): print what was captured, so a dropped -N variant

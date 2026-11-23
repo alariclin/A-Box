@@ -51625,7 +51625,7 @@ _reset_dev() {
 # already-running device instead of creating a second one. `status`
 # is read-only and takes no lock.
 if [[ "${1:-}" == start || "${1:-}" == stop ]]; then
-    exec 9>/run/A-Box-zram.lock 2>/dev/null || exit 1
+    exec 9>/run/A-Box-zram.lock || exit 1
     _zram_lock_i=0
     while ! flock -n 9 2>/dev/null; do
         _zram_lock_i=$((_zram_lock_i + 1))
@@ -51707,7 +51707,16 @@ case "${1:-}" in
             sdev=$(sed -n 's/^DEV=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
             sboot=$(sed -n 's/^BOOT=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
             if [[ "$sdev" =~ ^/dev/zram[0-9]+$ && -n "$sboot" && "$sboot" == "$(_abox_boot_id)" ]]; then
-                swapoff "$sdev" 2>/dev/null || exit 1
+                # R49-M2a: only swapoff when the device is actually
+                # active. After a swapoff-success/reset-failure partial
+                # stop, an unconditional swapoff dies on the already-off
+                # device before the reset is ever retried. On a read
+                # failure assume active (06g-M3 idiom): skipping swapoff
+                # for an active device would leave it swapped on.
+                _active_now=$(zram_active_devs 2>/dev/null) || _active_now="$sdev"
+                if printf '%s\n' "$_active_now" | grep -qxF "$sdev"; then
+                    swapoff "$sdev" 2>/dev/null || exit 1
+                fi
                 # 06h1-M1: a failed reset must fail the stop: the
                 # device stays sized and the state file must be kept
                 # (teardown deletes helper/config, and the state is
@@ -51858,6 +51867,20 @@ abox_zram_teardown() {
         _any_active=1
     fi
     if (( _any_active == 0 )); then
+        # R49-M2b: a swap-inactive record is not necessarily stale. A
+        # stop that failed at the reset leaves the device swapped off
+        # but unreset, and the state file belongs to THIS boot: deleting
+        # the helper/config/state then strands the device with no stop
+        # tool. Only a record from another boot (or no record at all)
+        # is stale enough to clean up. An unreadable boot id cannot
+        # prove staleness either, so keep the files then too.
+        local _sboot='' _cur_boot=''
+        _sboot=$(sed -n 's/^BOOT=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
+        _cur_boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+        if [[ -n "$_sboot" && ( -z "$_cur_boot" || "$_sboot" == "$_cur_boot" ) ]]; then
+            msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_stop_failed)${NC}" >&2
+            return 1
+        fi
         local _rm_rc=0 _left=0 _p
         rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || _rm_rc=$?
         for _p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state; do
@@ -51949,21 +51972,37 @@ setup_zram_swap() {
     size_mb=$(( mem_kb / 1024 / 2 ))
     (( size_mb < 256 )) && size_mb=256
     (( size_mb > 2048 )) && size_mb=2048
+    # R49-M1: the config is overwritten below, then the helper write
+    # may fail. Save the pre-existing config first so a failed
+    # re-install restores it instead of deleting it (the old helper
+    # and boot unit survive, and would fall back to defaults).
+    local _zram_conf_bak=''
+    if [[ -f /etc/ddr/zram.conf && ! -L /etc/ddr/zram.conf ]]; then
+        _zram_conf_bak=$(mktemp /tmp/A-Box-zram-conf.XXXXXX) || _zram_conf_bak=''
+        [[ -n "$_zram_conf_bak" ]] && cp -a /etc/ddr/zram.conf "$_zram_conf_bak" 2>/dev/null || _zram_conf_bak=''
+    fi
     if ! write_file_atomically_from_stdin /etc/ddr/zram.conf 600 <<EOF_ZRAM_CONF
 SIZE_MB=${size_mb}
 ALGO=${algo}
 EOF_ZRAM_CONF
     then
+        [[ -n "$_zram_conf_bak" ]] && rm -f "$_zram_conf_bak"
         msg "${RED}$(tr_msg setup_zram_swap_config_write_fail)${NC}"
         pause_return
         return 0
     fi
     if ! abox_zram_write_helper; then
-        rm -f /etc/ddr/zram.conf
+        if [[ -n "$_zram_conf_bak" ]]; then
+            cp -a "$_zram_conf_bak" /etc/ddr/zram.conf 2>/dev/null || rm -f /etc/ddr/zram.conf
+            rm -f "$_zram_conf_bak"
+        else
+            rm -f /etc/ddr/zram.conf
+        fi
         msg "${RED}$(tr_msg setup_zram_swap_helper_write_fail)${NC}"
         pause_return
         return 0
     fi
+    [[ -n "$_zram_conf_bak" ]] && rm -f "$_zram_conf_bak"
     local _zram_start_rc=0
     /usr/local/sbin/abox-zram start || _zram_start_rc=$?
     if (( _zram_start_rc != 0 )); then
@@ -52006,6 +52045,14 @@ WantedBy=multi-user.target
 EOF_ZRAM_UNIT
             then
                 msg "${RED}$(tr_msg setup_zram_swap_unit_write_fail)${NC}"
+                # R49-M3: the device was just started by this run;
+                # without persistence a re-run hits the "already
+                # running" early return and can never write the unit.
+                # Roll it back so a retry starts clean. The helper
+                # stops only our recorded device from this boot.
+                if ! /usr/local/sbin/abox-zram stop >/dev/null 2>&1; then
+                    msg "${YELLOW}[!] $(tr_msg remove_zram_swap_stop_failed)${NC}" >&2
+                fi
                 pause_return
                 return 0
             fi
@@ -52033,6 +52080,14 @@ stop() {
 EOF_ZRAM_RC
             then
                 msg "${RED}$(tr_msg setup_zram_swap_unit_write_fail)${NC}"
+                # R49-M3: the device was just started by this run;
+                # without persistence a re-run hits the "already
+                # running" early return and can never write the unit.
+                # Roll it back so a retry starts clean. The helper
+                # stops only our recorded device from this boot.
+                if ! /usr/local/sbin/abox-zram stop >/dev/null 2>&1; then
+                    msg "${YELLOW}[!] $(tr_msg remove_zram_swap_stop_failed)${NC}" >&2
+                fi
                 pause_return
                 return 0
             fi
@@ -52146,6 +52201,17 @@ remove_abox_swap() {
         }
       }
     ' /etc/fstab > "$tmp" || { rm -f "$tmp" "$backup"; return 1; }
+    # R49-M4: the awk above strips only the managed block; a /swapfile
+    # entry outside it (foreign line, or markers removed by hand)
+    # survives the rewrite. Deleting /swapfile then leaves a live
+    # fstab reference to a missing file. Refuse while the file still
+    # exists; when it is already gone, proceed (retry path: clean the
+    # residual marker only).
+    if grep -qE '^/swapfile[[:space:]]+[^[:space:]]+[[:space:]]+swap([[:space:]]|$)' "$tmp" 2>/dev/null && [[ -f /swapfile && ! -L /swapfile ]]; then
+        msg "${RED}[!] /etc/fstab still contains a /swapfile swap entry outside the A-Box managed block; refusing to delete /swapfile. Remove the foreign entry first, then retry.${NC}" >&2
+        rm -f "$tmp" "$backup"
+        return 1
+    fi
     # R6C13-01: preserve the original fstab mode
     # explicitly. BusyBox chmod lacks --reference;
     # falling back to 644 would loosen a 0600 fstab

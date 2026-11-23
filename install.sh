@@ -26139,7 +26139,12 @@ xray_config_autorecover() {
         # the most recent marker entry of any sha decides, with the
         # failed/attempt cooldown at 3600s and the restored door at
         # 86400s (a stale restored must not latch recovery forever).
+        # R25b-M01: only well-formed, non-future records gate recovery.
+        # A future epoch makes (n - $3) negative, which satisfies every
+        # window below and would block recovery until that future time
+        # plus the window (mirror the R16-F07-03 latch's `($3 <= n)`).
         gate=$(awk -v n="$now" '
+            $3 !~ /^[0-9]+$/ || $3 > n { next }
             $1 == "failed" || $1 == "attempt" || $1 == "restored" { st = $1; ep = $3 }
             $1 == "restored" && (n - $3) < 86400 { rc24++ }
             END {

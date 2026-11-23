@@ -17385,6 +17385,17 @@ shortcut_migrate_legacy_file() {
     [[ -f "$_file" && ! -L "$_file" ]] || { SHORTCUT_ERR='bad_type'; return 1; }
     # Parent chain must be trusted (no symlink jumps above the file).
     path_parent_chain_safe "$_file" || { SHORTCUT_ERR='bad_parent'; return 1; }
+    # R17-C1: the file itself must pass the same owner/mode gate the
+    # strict reader enforces (M-34: 0:0 + 0600). The parent chain
+    # check above covers ancestors only; without this gate a
+    # drifted-but-parseable file naming xray-latest is rewritten
+    # root:root 0600 first, laundering untrusted names into the
+    # trusted set before the strict read ever sees them.
+    local _owner _mode
+    _owner=$(stat -c %u:%g "$_file" 2>/dev/null || echo -1:-1)
+    [[ "$_owner" == '0:0' ]] || { SHORTCUT_ERR='bad_owner'; return 1; }
+    _mode=$(stat -c %a "$_file" 2>/dev/null || echo 999)
+    [[ "$_mode" =~ ^0?600$ ]] || { SHORTCUT_ERR='bad_mode'; return 1; }
     local _orig
     _orig=$(cat -- "$_file" 2>/dev/null) || { SHORTCUT_ERR='read'; return 1; }
     local _line _val

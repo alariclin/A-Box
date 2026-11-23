@@ -26172,7 +26172,7 @@ xray_config_autorecover() {
         (( _xrc_rc == 2 )) && return 2
         return 1
     }
-    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src=''
+    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src='' _enum_rc=0
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || {
         # H1 (04a): same "stopped + latched" contract as above.
         _xrc_marker_append "$marker" failed "$bad_sha" "autorecover-workdir-failed" || true
@@ -26190,17 +26190,24 @@ xray_config_autorecover() {
         (( _xrc_rc == 2 )) && return 2
         return 1
     }
-    local _list
+    local _cand_file="$_work/candidates"
     # R16-F07-01: BusyBox find (Alpine) has no -printf; python3 is already
     # a hard dependency, so enumerate by mtime in python (newest first),
     # as restore_from_backup does (D-07). An enumeration failure is NOT a
     # latched stop: stop the service and record the failure first, so rc 1
     # keeps its "stopped + latched" promise to the probe.
-    _list=$(
-        python3 -I - "$abox/backups" /root/A-Box-backups <<'PY_XRC_ENUM' || exit 1
+    # R25b-M02: enumerate NUL-separated into a file in the protected
+    # $_work dir. A `for _cand in $_list` word-splits (and glob-expands)
+    # paths, so a backup under a path with spaces is shredded into
+    # nonexistent fragments that also consume the 5-candidate budget.
+    # `while IFS= read -r -d ''` (the file's established pattern) reads
+    # each path whole; the loop body reads no stdin, so the redirection
+    # is safe.
+    python3 -I - "$_cand_file" "$abox/backups" /root/A-Box-backups <<'PY_XRC_ENUM'
 import os, sys
+_out = sys.argv[1]
 _ents = []
-for _d in sys.argv[1:]:
+for _d in sys.argv[2:]:
     try:
         _names = os.listdir(_d)
     except FileNotFoundError:
@@ -26220,23 +26227,25 @@ for _d in sys.argv[1:]:
         except OSError:
             sys.exit(1)
 _ents.sort(key=lambda e: (e[0], e[1]), reverse=True)
-for _, _p in _ents:
-    print(_p)
+with open(_out, 'wb') as _f:
+    for _, _p in _ents:
+        _f.write(_p.encode() + b'\0')
 PY_XRC_ENUM
-    ) || {
+    _enum_rc=$?
+    if (( _enum_rc != 0 )); then
         _xrc_marker_append "$marker" failed "$bad_sha" "backup-enumeration-failed" || true
         _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery backup enumeration failed; manual restore required"
         _xrc_rc=$?
         rm -rf "$_work"
         (( _xrc_rc == 2 )) && return 2
         return 1
-    }
+    fi
     # Newest first; at most 5 candidates examined. A candidate must be
     # TRUSTED (sha256 sidecar + HMAC verify with the live key, the same
     # trust the manual restore path requires) and its config must pass
     # the offline test; anything else is skipped, never installed. Only
     # the single config member is extracted, never the whole archive.
-    for _cand in $_list; do
+    while IFS= read -r -d '' _cand; do
         (( _count >= 5 )) && break
         _count=$(( _count + 1 ))
         backup_checksum_verify "$_cand" "${_cand}.sha256" 2>/dev/null || continue
@@ -26282,7 +26291,7 @@ PY_XRC_ENUM
                 continue
                 ;;
         esac
-    done
+    done < "$_cand_file"
     if [[ -z "$_good" && -n "${_fallback_good:-}" ]]; then
         # F-NEW-04/CD: no candidate covers the full expected set; fall
         # back to the newest trusted, valid backup instead of stopping

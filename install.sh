@@ -26172,7 +26172,7 @@ xray_config_autorecover() {
         (( _xrc_rc == 2 )) && return 2
         return 1
     }
-    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src='' _enum_rc=0
+    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp _fallback_good='' _fallback_src='' _enum_rc=0 _div_rc=0
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || {
         # H1 (04a): same "stopped + latched" contract as above.
         _xrc_marker_append "$marker" failed "$bad_sha" "autorecover-workdir-failed" || true
@@ -26387,7 +26387,17 @@ PY_XRC_ENUM
             printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" > "$_st_tmp" || true
             # F-NEW-04/CD: record any protocol the restored config no
             # longer serves; a missing protocol must never be silent.
-            _xrc_restore_divergence_check "$cfg" "$_st_tmp" || true
+            # R25b-M03: the check returns 2 when it cannot verify at all
+            # (jq unavailable, config unreadable, query failed). That
+            # must not be swallowed: warn loudly and record UNVERIFIABLE
+            # in the status file, so "service up" is not confused with
+            # "coverage verified". The function's return code stays 0:
+            # rc 1 promises the service was stopped, and it is up.
+            _xrc_restore_divergence_check "$cfg" "$_st_tmp"; _div_rc=$?
+            if (( _div_rc == 2 )); then
+                msg "${RED}[!] xray config auto-restore DIVERGENCE CHECK UNVERIFIABLE: the restored config could not be verified (jq unavailable, config unreadable, or query failed); protocol coverage is unconfirmed, re-check the restored config manually.${NC}" >&2
+                printf '%s xray config auto-restore DIVERGENCE CHECK UNVERIFIABLE: protocol coverage could not be verified; re-check the restored config manually.\n' "$(date -u +%FT%TZ)" >> "$_st_tmp" 2>/dev/null || true
+            fi
             chmod 600 -- "$_st_tmp" 2>/dev/null || true
             mv -f -- "$_st_tmp" "$statusf" 2>/dev/null || rm -f -- "$_st_tmp"
         else
@@ -26399,7 +26409,14 @@ PY_XRC_ENUM
             # promises the service was stopped, and the service is up.
             msg "${RED}[!] xray config auto-restore DIVERGENCE CHECK DEGRADED: status temp file could not be created; recording divergence directly to the status file (a missing protocol must never be silent).${NC}" >&2
             printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" >> "$statusf" 2>/dev/null || true
-            _xrc_restore_divergence_check "$cfg" "$statusf" || true
+            # R25b-M03: as above, a return of 2 means the check could
+            # not verify at all; warn loudly and record UNVERIFIABLE
+            # instead of swallowing it.
+            _xrc_restore_divergence_check "$cfg" "$statusf"; _div_rc=$?
+            if (( _div_rc == 2 )); then
+                msg "${RED}[!] xray config auto-restore DIVERGENCE CHECK UNVERIFIABLE: the restored config could not be verified (jq unavailable, config unreadable, or query failed); protocol coverage is unconfirmed, re-check the restored config manually.${NC}" >&2
+                printf '%s xray config auto-restore DIVERGENCE CHECK UNVERIFIABLE: protocol coverage could not be verified; re-check the restored config manually.\n' "$(date -u +%FT%TZ)" >> "$statusf" 2>/dev/null || true
+            fi
         fi
         rm -rf "$_work"
         return 0

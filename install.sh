@@ -39559,14 +39559,32 @@ xl_hy2_port() {
 }
 
 protocol_inventory() {
-    local cfg='' failed=0
+    local cfg='' failed=0 _stripped=''
     cfg="$XRAY_SLOT_CFG"
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
-        jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
+        # R38-M3: jq returns 0 with no output on empty input, so a
+        # config that strips to blank was misread as "no protocols".
+        # Require non-blank stripped content (same guard as
+        # sync_env_ports_after_removal 05e2-M3); a valid
+        # {"inbounds":[]} still reports no protocols.
+        _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; _stripped=''; }
+        if [[ -n "${_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_stripped" | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
+        elif (( failed == 0 )); then
+            echo "A-Box: protocol_inventory: $cfg is empty after stripping comments" >&2
+            failed=1
+        fi
     fi
     cfg='/etc/sing-box/config.json'
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
-        jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
+        # R38-M3: same non-blank guard as the xray branch above.
+        _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; _stripped=''; }
+        if [[ -n "${_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_stripped" | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
+        elif (( failed == 0 )); then
+            echo "A-Box: protocol_inventory: $cfg is empty after stripping comments" >&2
+            failed=1
+        fi
     fi
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         printf 'hy2\thy2-official\thysteria2\t%s\n' "$(xl_hy2_port)"
@@ -39985,6 +40003,8 @@ _manifest_drop_paths() {
 # only when no tuic inbound remains in the live config (mirror of the Hy2
 # pair cleanup in _protocol_removed_side_effects below); a strip/jq failure,
 # a missing/empty config, or a surviving tuic inbound keeps the files.
+# R38-H2: a surviving inbound of ANY protocol referencing a file keeps
+# it too (the helper only proved no TUIC inbound remains).
 # Only regular files are removed, never symlinks; the legacy unprefixed
 # tuic.crt/tuic.key do not match tuic-*.crt/.key and stay. Best-effort,
 # always returns 0.
@@ -40034,6 +40054,9 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
     local _deleted=()
     for _f in "$_sb_dir"/tuic-*.crt "$_sb_dir"/tuic-*.key; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
+        # R38-H2: _singbox_cert_referenced is fail-closed (an unreadable
+        # config keeps the file), so a referenced file is never deleted.
+        _singbox_cert_referenced "$cfg" "$_f" && continue
         rm -f -- "$_f" 2>/dev/null || true
         [[ -e "$_f" ]] || _deleted+=("$_f")
     done
@@ -40223,9 +40246,55 @@ firewall_recycle_freed_ports() {
         _live+="$_out"$'\n'
     fi
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
-        _hy2p=$(xl_hy2_port 2>/dev/null || true)
-        _hy2p="${_hy2p%%-*}"
-        if [[ "$_hy2p" =~ ^[0-9]+$ ]]; then _live+="udp/$_hy2p"$'\n'; fi
+        # R38-M2: enumerate EVERY listen value -- the top-level UDP
+        # listen and trafficStats.listen (TCP) -- with quoted keys.
+        # xl_hy2_port only returns the first unquoted top-level
+        # listen, so a quoted key or the stats listener was missing
+        # from the live set and its firewall rule could be recycled
+        # while still in use. Any listen line that cannot be parsed
+        # fails closed (_live_failed): unknown means keep the rules.
+        # Value parsing mirrors sync_env_ports_after_removal (R7C11-02).
+        local _hy2_key_re="^[[:space:]]*(listen|'listen'|\"listen\")[[:space:]]*:"
+        local _hy2_endpoint_re='^([[:alnum:]_.%-]*|\[[[:alnum:]_.%:-]+\]):([0-9]+(-[0-9]+)?)$'
+        local _hy2_in_stats=0 _hy2_line='' _hy2_value='' _hy2_re='' _hy2_port=''
+        while IFS= read -r _hy2_line; do
+            [[ -n "${_hy2_line//[[:space:]]/}" ]] || continue
+            if [[ "$_hy2_line" =~ ^[^[:space:]#] ]]; then
+                if [[ "$_hy2_line" =~ ^trafficStats[[:space:]]*: ]]; then _hy2_in_stats=1; else _hy2_in_stats=0; fi
+            fi
+            [[ "$_hy2_line" =~ $_hy2_key_re ]] || continue
+            # An indented listen outside trafficStats is unknown: no
+            # other hysteria2 block has a nested listen.
+            if [[ "$_hy2_line" =~ ^[[:space:]] ]] && (( _hy2_in_stats == 0 )); then
+                _live_failed=1
+                continue
+            fi
+            _hy2_value="${_hy2_line#*:}"
+            _hy2_value="${_hy2_value#"${_hy2_value%%[![:space:]]*}"}"
+            if [[ "$_hy2_value" == '"'* ]]; then
+                _hy2_re='^"([^"\\]*)"([[:space:]]+#.*)?[[:space:]]*$'
+            elif [[ "$_hy2_value" == "'"* ]]; then
+                _hy2_re="^'([^']*)'([[:space:]]+#.*)?[[:space:]]*$"
+            else
+                _hy2_re='^([^[:space:]]+)([[:space:]]+#.*)?[[:space:]]*$'
+            fi
+            if [[ "$_hy2_value" =~ $_hy2_re ]]; then
+                _hy2_value="${BASH_REMATCH[1]}"
+            else
+                _live_failed=1
+                continue
+            fi
+            if [[ "$_hy2_value" =~ $_hy2_endpoint_re ]]; then
+                _hy2_port="${BASH_REMATCH[2]}"
+                if (( _hy2_in_stats == 1 )); then
+                    _live+="tcp/$_hy2_port"$'\n'
+                else
+                    _live+="udp/$_hy2_port"$'\n'
+                fi
+            else
+                _live_failed=1
+            fi
+        done < /etc/hysteria/config.yaml || _live_failed=1
     fi
     if (( _live_failed == 1 )); then
         msg "${YELLOW}[!] Cannot enumerate live ports; leaving removed inbounds' firewall rules in place.${NC}"
@@ -40256,7 +40325,7 @@ firewall_recycle_freed_ports() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -40316,7 +40385,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                     esac
                 fi ;;
         esac
-        users_registry_remove "$core" "$tag"
+        # R38-M1: a failed registry removal must not be swallowed --
+        # the registry holds user credentials, and the callers report
+        # success unless this function says otherwise.
+        if ! users_registry_remove "$core" "$tag"; then
+            msg "${YELLOW}[!] Failed to remove the user registry for ${core}/${tag}; credentials may remain on disk.${NC}"
+            _reg_failed=1
+        fi
     done
     # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key
     # pair. Delete it only when no hysteria2 inbound remains and
@@ -40359,6 +40434,10 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                 for _tuic_cert_file in /etc/sing-box/tuic-*.crt /etc/sing-box/tuic-*.key /etc/sing-box/tuic-*.crt.A-Box-bak /etc/sing-box/tuic-*.key.A-Box-bak; do
                     [[ -f "$_tuic_cert_file" && ! -L "$_tuic_cert_file" ]] || continue
                     _tuic_base="${_tuic_cert_file%.A-Box-bak}"
+                    # R38-H1: check the file's ACTUAL path too: a
+                    # surviving inbound may reference the .A-Box-bak
+                    # file directly, not its live base path.
+                    grep -Fxq -- "$_tuic_cert_file" <<< "$_tuic_refs" 2>/dev/null && continue
                     grep -Fxq -- "$_tuic_base" <<< "$_tuic_refs" 2>/dev/null || rm -f -- "$_tuic_cert_file" 2>/dev/null || true
                 done
             fi
@@ -40408,10 +40487,16 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                         _tuic_ct=$(tuic_cert_tag "$tag")
                         for _tuic_f in "/etc/sing-box/tuic-${_tuic_ct}.crt" "/etc/sing-box/tuic-${_tuic_ct}.key" "/etc/sing-box/tuic-${_tuic_ct}.crt.A-Box-bak" "/etc/sing-box/tuic-${_tuic_ct}.key.A-Box-bak"; do
                             [[ -f "$_tuic_f" && ! -L "$_tuic_f" ]] || continue
-                            # 05f-H-05f-02: keep when any inbound of any
-                            # protocol still references this file (for a
-                            # .A-Box-bak file, its live base path).
-                            _singbox_cert_referenced /etc/sing-box/config.json "${_tuic_f%.A-Box-bak}" && continue
+                            # R38-H1 (05f-H-05f-02): keep when any inbound
+                            # of any protocol still references this file:
+                            # the file's ACTUAL path first -- a surviving
+                            # inbound may reference the .A-Box-bak file
+                            # directly -- then, for a .A-Box-bak file,
+                            # its live base path.
+                            _singbox_cert_referenced /etc/sing-box/config.json "$_tuic_f" && continue
+                            if [[ "$_tuic_f" == *.A-Box-bak ]]; then
+                                _singbox_cert_referenced /etc/sing-box/config.json "${_tuic_f%.A-Box-bak}" && continue
+                            fi
                             rm -f -- "$_tuic_f" 2>/dev/null || true
                         done
                         ;;
@@ -40419,7 +40504,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             done
         fi
     fi
-    return 0
+    return "$_reg_failed"
 }
 
 _remove_hy2_official() {
@@ -40476,14 +40561,17 @@ _remove_hy2_official() {
     hy2_hop_xtables_lock_revoke || return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
-    users_registry_remove hy2 hy2-official
+    # R38-M1: propagate a failed registry removal (the caller
+    # reports the Hy2 removal as failed); the old unconditional
+    # `return 0` reported a surviving credential registry as deleted.
+    users_registry_remove hy2 hy2-official || return 1
     return 0
 }
 
 remove_single_protocol_menu() {
     local -a rows=() tags=()
     local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs='' _cfg_stripped='' _freed_ports=''
-    local _inv_tmp='' _inv_rc=0
+    local _inv_tmp='' _inv_rc=0 _side_rc=0
     _inv_tmp=$(mktemp /tmp/A-Box-inventory.XXXXXX) || return 1
     protocol_inventory > "$_inv_tmp"; _inv_rc=$?
     mapfile -t rows < "$_inv_tmp"
@@ -40593,7 +40681,7 @@ remove_single_protocol_menu() {
         fi
         # SYD-B E4: the hy2 branch previously skipped side effects,
         # so stale .env port keys (incl. HY2_URI_PORTS) survived.
-        _protocol_removed_side_effects hy2 hy2-official
+        _protocol_removed_side_effects hy2 hy2-official || _side_rc=1
         # M-12(1): recycle the Hy2 UDP port when nothing else uses it.
         if [[ "$port" =~ ^[0-9]+$ ]]; then printf 'udp/%s\n' "$port" | firewall_recycle_freed_ports; fi
     else
@@ -40601,10 +40689,16 @@ remove_single_protocol_menu() {
             msg "${RED}$(tr_msg cl_fail)${NC}"
             return 1
         fi
-        _protocol_removed_side_effects "$core" "${tags[@]}"
+        _protocol_removed_side_effects "$core" "${tags[@]}" || _side_rc=1
         if [[ -n "$_freed_ports" ]]; then printf '%s\n' "$_freed_ports" | firewall_recycle_freed_ports; fi
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
+    # R38-M1: the protocol is deleted, but a failed registry cleanup
+    # must not be reported as a clean success.
+    if (( _side_rc == 1 )); then
+        msg "${YELLOW}[!] Protocol ${label} removed, but user registry cleanup failed; credentials may remain on disk.${NC}"
+        return 1
+    fi
     msg "${GREEN}$(tr_msg cl_done): ${label}${NC}"
     return 0
 }

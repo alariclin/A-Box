@@ -16084,9 +16084,17 @@ residue_takeover_clear() {
         # function only lists a dir while it is still empty), so a dir
         # that gained files after the plan is left alone, never rm -rf'd.
         _rp=$( { core_family_residue_paths "$_srv" 2>/dev/null; core_family_residue_aux_paths "$_srv" 2>/dev/null; } || true)
-        printf '%s\n' "$_rp" | grep -Fxq -- "$_path" || continue
+        # R16-01: a path that vanished entirely is idempotent success;
+        # a path that still exists but is no longer listed changed
+        # shape since the plan (e.g. an aux dir that gained files)
+        # and must fail, not be silently skipped while the plan is
+        # cleared below. Same for a same-name unit that appeared.
+        if ! printf '%s\n' "$_rp" | grep -Fxq -- "$_path"; then
+            [[ ! -e "$_path" && ! -L "$_path" ]] || _failed=1
+            continue
+        fi
         _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
-        if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
+        if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then _failed=1; continue; fi
         # 02b2b-M-01: re-verify the shape, not just the listing: the
         # family path list is static, so a binary slot that is (or
         # became) a real directory, or a config slot that is no longer
@@ -28680,7 +28688,7 @@ deploy_official_hy2() {
         assert_no_foreign_core_conflicts hysteria
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria || return 1
-        residue_takeover_clear
+        residue_takeover_clear || { deployment_transaction_rollback; return 1; }
         clean_nat_rules || die "$(tr_msg cl_nat)"
         clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
@@ -35502,7 +35510,7 @@ deploy_xray() {
     confirm_deployment_replacement xray "$MODE_IN"
     standalone_preserve_snapshot xray /usr/local/etc/xray/config.json || return 1
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria || return 1; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray || return 1; fi
-    residue_takeover_clear
+    residue_takeover_clear || { deployment_transaction_rollback; return 1; }
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
@@ -35705,7 +35713,7 @@ deploy_singbox() {
     confirm_deployment_replacement singbox "$MODE_IN"
     standalone_preserve_snapshot sing-box /etc/sing-box/config.json || return 1
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box || return 1
-    residue_takeover_clear
+    residue_takeover_clear || { deployment_transaction_rollback; return 1; }
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"

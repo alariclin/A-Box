@@ -19898,6 +19898,17 @@ save_firewall_rules() {
             # A present userspace binary does not prove that the kernel IPv6
             # firewall backend is enabled. Ignore only a failed v6 query when
             # no global IPv6 address/default route is available.
+            # R19b-M1: "no usable address" is not "no IPv6 firewall
+            # state": rules can persist in the kernel while the address
+            # is temporarily unavailable, and the save itself can fail
+            # transiently (e.g. xtables lock contention). If an
+            # existing IPv6 snapshot holds rules, a failed save must
+            # fail the whole save and keep the old file, not silently
+            # downgrade it to an empty snapshot and delete it below.
+            if grep -q '^\*' "$target6" 2>/dev/null; then
+                rm -f "$tmp4" "$tmp6" "${tmp6}.all" "$backup4" "$backup6"
+                return 1
+            fi
             rm -f "${tmp6}.all"
             : > "$tmp6"
         else
@@ -19906,6 +19917,13 @@ save_firewall_rules() {
         fi
     else
         if host_has_usable_ipv6; then
+            rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"
+            return 1
+        fi
+        # R19b-M1: same guard as the failed-save branch above: a
+        # missing ip6tables-save binary does not prove the persisted
+        # IPv6 snapshot is worthless.
+        if grep -q '^\*' "$target6" 2>/dev/null; then
             rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"
             return 1
         fi

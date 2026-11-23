@@ -1493,6 +1493,13 @@ abox_dir_tighten_secrets() {
         chmod 600 "$f" || die "$(tprintf do_secret_chmod "$f")"
     done
     if [[ -d "$dir/backups" && ! -L "$dir/backups" ]]; then
+        # R02-01: the per-file [[ ! -L ]] check below is only sound
+        # when no non-root user can swap entries in this directory.
+        # The parent $dir is pinned by ensure_abox_dir_owned, but the
+        # backups subdir itself was never asserted: refuse an
+        # untrusted one instead of chown/chmod-ing through it.
+        path_owned_by_root "$dir/backups" || die "$(tprintf do_not_root "$dir/backups")"
+        path_mode_has_no_group_other_write "$dir/backups" || die "$(tprintf do_writable "$dir/backups")"
         for f in "$dir/backups"/*.tar.gz; do
             [[ -e "$f" || -L "$f" ]] || continue
             [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"

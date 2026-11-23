@@ -43323,7 +43323,10 @@ users_reg_ensure() {
     reg=$(users_reg_file "$core" "$tag")
     if [[ ! -f "$reg" ]]; then
         users_adopt "$core" "$tag" || return 1
-        users_normalize_default_name "$core" "$tag"
+        # R41b-M3: propagate the normalize failure, like the
+        # existing-registry path below: callers must be able to tell
+        # "adopted and normalized" from "adopted but not normalized".
+        users_normalize_default_name "$core" "$tag" || return 1
         return 0
     fi
     jq -e '.users | type == "array"' "$reg" >/dev/null 2>&1 || return 1
@@ -43352,8 +43355,27 @@ users_reg_ensure() {
         if jq -e --arg t "$tag" '.inbound_snapshot | type == "object" and .tag == $t' "$reg" >/dev/null 2>&1; then
             _cfg09=$(users_cfg_of "$core" 2>/dev/null || echo '')
             if [[ -n "$_cfg09" && -f "$_cfg09" && ! -L "$_cfg09" && -s "$_cfg09" ]]; then
-                jq -s -e --arg t "$tag" '([.[] | .inbounds[]? | select(.tag == $t)] | length) > 0' "$_cfg09" >/dev/null 2>&1 || _live_rc=$?
-                if [[ "$_live_rc" == 1 ]]; then _snap_ok=1; fi
+                # R41b-M1: probe the JSONC-stripped view for
+                # xray/sing-box (same idiom as users_sync R16-F11-02):
+                # raw jq on a commented config fails to parse (rc !=
+                # 1), so a legal JSONC config could never prove the
+                # inbound absent and the snapshot was refused. A strip
+                # failure still refuses admission; on the stripped
+                # view rc 1 still means "confirmed absent" and any
+                # other rc means "unverifiable". Hy2 keeps the raw
+                # file (YAML; the probe cannot confirm absence there).
+                local _cfg09v="$_cfg09"
+                if [[ "$core" == xray || "$core" == sing-box ]]; then
+                    _cfg09v=$(mktemp /tmp/A-Box-ureg-json.XXXXXX) || _cfg09v=''
+                    if [[ -n "$_cfg09v" ]]; then
+                        jsonc_strip_comments "$_cfg09" > "$_cfg09v" 2>/dev/null || { rm -f -- "$_cfg09v"; _cfg09v=''; }
+                    fi
+                fi
+                if [[ -n "$_cfg09v" ]]; then
+                    jq -s -e --arg t "$tag" '([.[] | .inbounds[]? | select(.tag == $t)] | length) > 0' "$_cfg09v" >/dev/null 2>&1 || _live_rc=$?
+                    if [[ "$_live_rc" == 1 ]]; then _snap_ok=1; fi
+                fi
+                [[ "$_cfg09v" != "$_cfg09" ]] && rm -f -- "$_cfg09v"
             fi
         fi
         if (( _snap_ok == 1 )); then
@@ -43735,11 +43757,17 @@ users_link() {
     [[ -n "$user" && "$user" != 'null' ]] || return 1
     main=$(jq -c '.users[] | select(.name == "main")' "$reg" 2>/dev/null)
     proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null)
-    ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
+    # R41b-M2: keep trailing newlines (same sentinel idiom as
+    # users_sync): plain command substitution strips them, so a
+    # secret "p\n" became "p" in the link while the server config
+    # keeps "p\n". Same for server_secret: it joins the same eff.
+    ssecret=$(jq -r '(.server_secret // "") | if type == "string" then . + "__ABOX_TRAILING_NL_KEEP__" else . end' "$reg" 2>/dev/null)
+    ssecret=${ssecret%__ABOX_TRAILING_NL_KEEP__}
     local enabled_count=0
     enabled_count=$(jq -r '[.users[] | select(.disabled != true and ((.blocked // "") == ""))] | length' "$reg" 2>/dev/null) || return 1
     local secret='' use_uuid=''
-    secret=$(printf '%s' "$user" | jq -r '.secret // ""')
+    secret=$(printf '%s' "$user" | jq -r '(.secret // "") | if type == "string" then . + "__ABOX_TRAILING_NL_KEEP__" else . end')
+    secret=${secret%__ABOX_TRAILING_NL_KEEP__}
     use_uuid=$(printf '%s' "$user" | jq -r '.uuid // ""')
     [[ -n "$secret" ]] || return 1
     # M41-NEW-01 follow-up (S2-NEW-09): a registry whose inbound is

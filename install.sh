@@ -15591,10 +15591,21 @@ _standalone_link_tag_survivor() {
     # absent" (rc 1) -- the link target may still serve the tag, and
     # callers delete the link only on rc 1.
     [[ -L "$_cfg" ]] && return 2
-    [[ -f "$_cfg" ]] || return 1
+    # R15b-M2: only a fully missing config is "confirmed absent"
+    # (rc 1). A path that exists but is not a regular file (a
+    # directory, FIFO, ...) is unverifiable (rc 2).
+    [[ -e "$_cfg" ]] || return 1
+    [[ -f "$_cfg" ]] || return 2
     [[ -s "$_cfg" ]] || return 2
     _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
     [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    # R15b-M2: reject a structurally broken config instead of
+    # folding it into "no tag": the top level must be a single
+    # object, and inbounds, when present, must be an array.
+    # (.inbounds[]? silently yields nothing for false/null, which
+    # used to return rc 1.) An absent or empty inbounds is still
+    # "confirmed absent" (rc 1) via the query below.
+    printf '%s' "$_stripped" | jq -s -e 'if length != 1 then error("config is not a single JSON document") elif (.[0] | type) != "object" then error("config top level is not an object") elif (.[0] | has("inbounds")) and ((.[0].inbounds | type) != "array") then error("config inbounds is not an array") else true end' >/dev/null 2>&1 || return 2
     printf '%s' "$_stripped" | jq -s -e --arg tag "$_tag" '([.[] | (.inbounds[]? | select((.tag // "") == $tag))] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
     case "$_jq_rc" in
         0) return 0 ;;
@@ -15617,6 +15628,17 @@ _standalone_link_tag_survivor() {
 _prune_standalone_link_file() {
     local srv="$1" stem="$2" link="$3" _key='' _rc=0 _all_gone=1 _tag='' _cfg=''
     local -a _keys=() _cfgs=()
+    # R15b-M1: [0-9]* in the case below matches a digit followed by
+    # anything, so a user-kept backup such as trojan-xray-2-backup.link
+    # would be treated as instance 2 and deleted. Any stem carrying
+    # a -<digit> segment must be exactly <family>-<digits> (after
+    # stripping an optional -sb/-xray core suffix); anything else is
+    # not a numbered instance and is left alone (fail-closed).
+    local _m1_base="$stem"
+    case "$_m1_base" in *-sb) _m1_base="${_m1_base%-sb}" ;; *-xray) _m1_base="${_m1_base%-xray}" ;; esac
+    if [[ "$_m1_base" =~ -[0-9] ]]; then
+        [[ "$_m1_base" =~ ^(trojan-landing|socks5-landing|trojan-xray|trojan-sb|socks5-xray|socks5-sb|tuic-in|anytls-in|shadowtls-in|mixed-in|socks-in)-[0-9]+$ ]] || return 0
+    fi
     case "$stem" in
         trojan-xray) [[ "$srv" == xray ]] || return 0; _keys=(trojan-xray) ;;
         socks5-xray) [[ "$srv" == xray ]] || return 0; _keys=(socks5-xray) ;;
@@ -39149,7 +39171,10 @@ _standalone_link_survivor() {
     # M-29: a symlinked config is unverifiable (rc 2), not "confirmed
     # absent" (rc 1) -- the link target may still serve the protocol.
     [[ -L "$_cfg" ]] && return 2
-    [[ -f "$_cfg" ]] || return 1
+    # R15b-M2: only a fully missing config is "confirmed absent"
+    # (rc 1); an existing non-regular file is unverifiable (rc 2).
+    [[ -e "$_cfg" ]] || return 1
+    [[ -f "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (config is not a regular file); keeping the link.${NC}" >&2; return 2; }
     [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
     # H-26(3): strip JSONC comments before jq: the live config may
     # legally carry // or /* */ comments, and a bare jq read fails
@@ -39157,6 +39182,10 @@ _standalone_link_survivor() {
     # unverifiable, not "confirmed gone".
     _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (cannot strip comments); keeping the link.${NC}" >&2; return 2; }
     [[ -n "${_stripped//[[:space:]]/}" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config after stripping comments); keeping the link.${NC}" >&2; return 2; }
+    # R15b-M2: same structure gate as _standalone_link_tag_survivor:
+    # a non-object top level or a present-but-non-array inbounds is
+    # unverifiable, not "confirmed absent".
+    printf '%s' "$_stripped" | jq -s -e 'if length != 1 then error("config is not a single JSON document") elif (.[0] | type) != "object" then error("config top level is not an object") elif (.[0] | has("inbounds")) and ((.[0].inbounds | type) != "array") then error("config inbounds is not an array") else true end' >/dev/null 2>&1 || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (bad config structure); keeping the link.${NC}" >&2; return 2; }
     printf '%s' "$_stripped" | jq -s -e "([.[] | (${_prog})] | length) > 0" >/dev/null 2>&1 || _jq_rc=$?
     case "$_jq_rc" in
         0) return 0 ;;

@@ -28338,10 +28338,30 @@ PY_HOT_BIND
     # guarded disk config instead of returning 0 with the window open.
     # An unreadable config reads as unguarded (fail closed: restart).
     local _hot_pre_guarded=0
+    # R27b-H1: the old predicate only checked that the guard rule and a
+    # "block" tag EXIST: a rule AFTER a direct allow rule never matches
+    # first, and a freedom outbound tagged "block" forwards loopback
+    # traffic, yet both read as guarded and skipped the restart. Use
+    # the same semantic predicate as xray_ensure_stats: exactly one
+    # blackhole "block" outbound, and the guard in the canonical
+    # position (first, or second after the API control rule for a
+    # legacy dokodemo-door API; first when .api.listen is set). Any
+    # other layout reads as unguarded (fail closed: restart).
     if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e '
-        {type: "field", ip: ["127.0.0.0/8", "::1/128"], outboundTag: "block"} as $rule
-        | ((.routing.rules // []) | index($rule)) != null
-          and ((.outbounds // []) | map(.tag) | index("block")) != null
+        def abox_loopback_rule:
+            {type: "field", ip: ["127.0.0.0/8", "::1/128"], outboundTag: "block"};
+        def abox_api_rule($t):
+            {type: "field", inboundTag: [$t], outboundTag: $t};
+        (.api.tag // "api") as $t
+        | abox_loopback_rule as $guard
+        | abox_api_rule($t) as $control
+        | ($t != "block")
+          and (([.outbounds[]? | select(.tag == "block")] as $blocks
+                | ($blocks | length) == 1 and $blocks[0].protocol == "blackhole")
+          and (if .api.listen != null then (.routing.rules[0] == $guard)
+               elif ([.routing.rules[]? | select(. == $control)] | length) > 0 then
+                   (.routing.rules[0] == $control and .routing.rules[1] == $guard)
+               else (.routing.rules[0] == $guard) end))
     ' >/dev/null 2>&1; then
         _hot_pre_guarded=1
     fi
@@ -28499,6 +28519,11 @@ singbox_apply_loopback_guard() {
         # duplicated by the old guard repair to canonical on next apply.
         | .route.rules = ($base + (.route.rules | map(select(. != $base[0] and . != $base[1] and . != $base[2] and . != $base[3] and . != {protocol: "tcp", action: "sniff"}))))
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    # R27b-M2: a stripped-to-empty input makes jq emit nothing with rc
+    # 0, and `jq empty` also passes on an empty file: refuse an empty
+    # transform output instead of installing an empty config (same fix
+    # as xray_ensure_stats).
+    [[ -s "$_tmp" ]] || { rm -f -- "$_tmp"; return 1; }
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
     mv -f -- "$_tmp" "$src" || { rm -f -- "$_tmp"; return 1; }
@@ -28508,10 +28533,11 @@ singbox_apply_loopback_guard() {
 # Ensures .routing.rules carries {type:"field", ip:["127.0.0.0/8",
 # "::1/128"], outboundTag:"block"} and .outbounds carries a blackhole
 # outbound tagged "block" (idempotent: no-op when both already
-# present). Standalone configs have no api inbound, so the rule is a
-# pure IP block (unlike the main stack, whose first rule lets the api
-# inbound through). Refuses non-object configs and non-array
-# routing.rules/outbounds. The input file is never modified on failure.
+# present in the canonical order). Standalone configs have no api
+# inbound, so the rule is a pure IP block (unlike the main stack,
+# whose first rule lets the api inbound through). Refuses non-object
+# configs and non-array routing.rules/outbounds. The input file is
+# never modified on failure.
 xray_apply_loopback_guard() {
     local src="$1" _tmp _dir
     [[ -f "$src" && ! -L "$src" ]] || return 1
@@ -28524,9 +28550,35 @@ xray_apply_loopback_guard() {
         | if .routing == null then .routing = {} elif (.routing | type) != "object" then error("xray routing must be an object") else . end
         | if .routing.rules == null then .routing.rules = [] elif (.routing.rules | type) != "array" then error("xray routing.rules must be an array") else . end
         | if .outbounds == null then .outbounds = [] elif (.outbounds | type) != "array" then error("xray outbounds must be an array") else . end
-        | if (.routing.rules | index($rule)) == null then .routing.rules = ([$rule] + .routing.rules) else . end
-        | if (.outbounds | map(.tag) | index("block")) == null then .outbounds += [$blk] else . end
+        # R27b-H1/M1: the old existence-only logic (prepend the rule
+        # when absent, add a blackhole when no "block" tag exists) did
+        # not enforce the guard: a rule AFTER a direct allow rule never
+        # matches first, and a freedom outbound tagged "block" forwards
+        # loopback traffic. Normalise like xray_ensure_stats: the
+        # block outbound must be a unique blackhole (else error), and
+        # the guard sits first -- or second, after the canonical API
+        # control rule when one exists (a legacy dokodemo-door API
+        # inbound routes 127.0.0.1 through it; prepending the guard
+        # ahead of it blackholes the API itself after restart).
+        | (.api.tag // "api") as $t
+        | {type: "field", inboundTag: [$t], outboundTag: $t} as $control
+        | if $t == "block" then error("Xray API tag conflicts with the loopback block tag") else . end
+        | [.outbounds[]? | select(.tag == "block")] as $blocks
+        | if ($blocks | length) == 0 then .outbounds += [$blk]
+          elif (($blocks | length) == 1 and $blocks[0].protocol == "blackhole") then .
+          else error("Xray outbound tag block is not a unique blackhole outbound") end
+        | (.api.listen == null) as $legacy_api
+        | (if $legacy_api then ([.routing.rules[]? | select(. == $control)] | length) > 0 else false end) as $has_control
+        | .routing.rules = (
+              (if $has_control then [$control, $rule] else [$rule] end)
+              + (.routing.rules | map(select(. != $rule and (if $has_control then . != $control else true end))))
+          )
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    # R27b-M2: a stripped-to-empty input makes jq emit nothing with rc
+    # 0, and `jq empty` also passes on an empty file: refuse an empty
+    # transform output instead of installing an empty config (same fix
+    # as xray_ensure_stats).
+    [[ -s "$_tmp" ]] || { rm -f -- "$_tmp"; return 1; }
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
     mv -f -- "$_tmp" "$src" || { rm -f -- "$_tmp"; return 1; }

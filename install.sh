@@ -25072,7 +25072,7 @@ EOF_F2B_SAMPLE
         # dropped from banning. Fail closed if the Date template hits
         # section parses to zero hits.
         local _f2b_date_hits
-        _f2b_date_hits=$(sed -n '/^Date template hits:/,/^`-$/p' <<< "$out" | grep -cE '^[|] +\[1-9][0-9]*\]' || true)
+        _f2b_date_hits=$(sed -n '/^Date template hits:/,/^`-$/p' <<< "$out" | grep -cE '^[|] +\[[1-9][0-9]*\]' || true)
         [[ "$_f2b_date_hits" =~ ^[0-9]+$ ]] && (( _f2b_date_hits >= 1 )) || { printf '%s\n' "$out" >&2; printf '%s\n' "${RED}[!] Fail2Ban date detection failed for a sample log line.${NC}" >&2; return 1; }
         local summary matched_count missed_count matched_lines
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
@@ -25092,7 +25092,11 @@ EOF_F2B_SAMPLE
         # NOTE: if-form, not "grep && { ...; return 1; }": as the block's last
         # statement the && form would leak grep's failing status (1)
         # as the function's return code exactly when the check PASSES.
-        if grep -Fq 'health check succeeded' <<< "$matched_lines"; then
+        # R24-M02: the benign sample is the accepted line
+        # (203.0.113.11:54325), not a 'health check succeeded' line --
+        # no such line exists in the current sample, so the old check
+        # could never fire and an over-broad filter passed validation.
+        if grep -Fq '203.0.113.11:54325 accepted' <<< "$matched_lines"; then
             printf '%s\n' "$out" >&2
             printf '%s\n' "${RED}[!] Fail2Ban must match a representative failure log and leave a benign log unmatched.${NC}" >&2
             return 1

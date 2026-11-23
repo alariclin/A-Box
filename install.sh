@@ -33079,7 +33079,13 @@ trojan_toolbox_entry() {
         2) deploy_with_instance_choice sing-box trojan-landing deploy_singbox_trojan_landing ;;
         *) msg "${RED}$(tr_msg invalid_input): $_core_choice${NC}"; return 1 ;;
     esac
+    # R32-03: keep the deploy rc: the defense line below used to be
+    # the function's last command, so a failed deploy read as success
+    # whenever the defense mounted fine. Defense still runs on
+    # failure; the deploy status is what the function returns.
+    local _trojan_rc=$?
     ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
+    return "$_trojan_rc"
 }
 # ============ Main menu info panel (versions / system / nodes / split) ============
 # Collected once per main_loop invocation (cached), not per redraw.
@@ -33931,7 +33937,12 @@ routing_state_put() {
     routing_state_init || return 1
     tmp=$(mktemp "$(dirname -- "$ROUTING_STATE_FILE")/.routing-state.XXXXXX") || return 1
     if ! cat > "$tmp"; then rm -f "$tmp"; return 1; fi
-    jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' \
+    # R32-01: slurp and require exactly one JSON object. Bare `jq -e`
+    # reports the LAST doc of a multi-doc stream, so a bad doc
+    # followed by a good one passed and the whole stream was mv'd
+    # into state. Empty input, null/array docs and extra docs all
+    # fail here (fail closed).
+    jq -s -e 'length == 1 and (.[0] | type == "object") and (.[0].version == 1) and ((.[0].outbounds | type) == "array") and ((.[0].rules | type) == "array")' \
         "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$ROUTING_STATE_FILE" || { rm -f "$tmp"; return 1; }
@@ -33987,12 +33998,20 @@ routing_outbound_has_live() {
     return 1
 }
 
+# R32-02: exactly one JSON object, nothing else. `jq empty` accepts
+# empty input (rc 0) and --slurpfile then yields [], so $x[0]/$s[0]
+# are null and a null outbound would be committed as success.
+_routing_single_object_file() { # $1 = file -> 0 iff exactly one JSON object
+    [[ -f "$1" && ! -L "$1" ]] || return 1
+    jq -s -e 'length == 1 and (.[0] | type == "object")' "$1" >/dev/null 2>&1
+}
+
 # $1=tag, $2=xray outbound JSON file, $3=singbox outbound JSON file (idempotent)
 routing_outbound_add() {
     local tag="$1" xf="$2" sf="$3" tmp rc
     [[ -n "$tag" && -f "$xf" && -f "$sf" && ! -L "$xf" && ! -L "$sf" ]] || return 1
-    jq empty "$xf" >/dev/null 2>&1 || return 1
-    jq empty "$sf" >/dev/null 2>&1 || return 1
+    _routing_single_object_file "$xf" || return 1
+    _routing_single_object_file "$sf" || return 1
     routing_state_init || return 1
     tmp=$(mktemp) || return 1
     jq --arg t "$tag" --slurpfile x "$xf" --slurpfile s "$sf" \

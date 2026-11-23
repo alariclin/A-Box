@@ -29941,7 +29941,7 @@ singbox_vendor_takeover_gate() {
                 fi
             done
         fi
-        if [[ -n "$vendor_unit" ]] && grep -q 'Managed by A-Box' "$vendor_unit" 2>/dev/null; then return 0; fi
+        if [[ -n "$vendor_unit" ]] && grep -Fxq '# Managed by A-Box' "$vendor_unit" 2>/dev/null; then return 0; fi
         if [[ -z "$vendor_unit" ]]; then
             if systemctl is-enabled --quiet sing-box.service 2>/dev/null ||
                systemctl is-active --quiet sing-box.service 2>/dev/null; then
@@ -29967,7 +29967,7 @@ singbox_vendor_takeover_gate() {
         echo "active=$state_active" >> "${backup}.state" || return 1
         return 0
     fi
-    if [[ -f /etc/init.d/sing-box ]] && grep -q 'Managed by A-Box' /etc/init.d/sing-box 2>/dev/null; then return 0; fi
+    if [[ -f /etc/init.d/sing-box ]] && grep -Fxq '# Managed by A-Box' /etc/init.d/sing-box 2>/dev/null; then return 0; fi
     if [[ ! -f /etc/init.d/sing-box ]]; then return 0; fi
     vendor_unit='/etc/init.d/sing-box'
     rc-service sing-box status >/dev/null 2>&1; _orc_rc=$?
@@ -30012,9 +30012,19 @@ _hysteria_listens_on_port() {
     # the main listen line. The pattern lives in a variable: bare
     # double quotes inside [[ =~ ]] would be parsed as shell quoting
     # and break the [[ ]] close.
-    local _hy_listen_re="^[[:space:]]*[\"']?listen[\"']?:[[:space:]]*(.*)$"
+    # R29a-M2: a space between the key and the colon (`listen :`) is
+    # legal YAML too; allow blank space there as well.
+    local _hy_listen_re="^[[:space:]]*[\"']?listen[\"']?[[:space:]]*:[[:space:]]*(.*)$"
+    # R29a-M2: a listen-like key the strict pattern cannot parse (an
+    # unexpected separator or form) means non-coverage cannot be
+    # established: stay conservative instead of letting a later nested
+    # listen set found=1 and report the main port uncovered.
+    local _hy_listen_like_re="^[[:space:]]*[\"']?listen[\"']?([[:space:]]|:|$)"
     while IFS= read -r line; do
-        [[ "$line" =~ $_hy_listen_re ]] || continue
+        if [[ ! "$line" =~ $_hy_listen_re ]]; then
+            [[ "$line" =~ $_hy_listen_like_re ]] && return 0
+            continue
+        fi
         value="${BASH_REMATCH[1]}"
 
         # Managed single-line YAML scalar; other forms are conservative.
@@ -38745,7 +38755,7 @@ abox_caddy_owned() {
     # Legacy: an A-Box-managed caddy front unit must exist, proving
     # A-Box set up the front that uses this binary.
     for _unit in /etc/systemd/system/abox-wallos-caddy.service /etc/init.d/abox-wallos-caddy; do
-        if [[ -f "$_unit" ]] && grep -q 'Managed by A-Box' "$_unit" 2>/dev/null; then
+        if [[ -f "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null; then
             _unit_found=1
             break
         fi
@@ -46449,7 +46459,7 @@ restore_dns_snapshot_body() {
     # state and must stay. Only a drop-in carrying the A-Box marker
     # is ever removed; a foreign admin override is left alone.
     if [[ ! -f "$dir/dns-state" ]] || ! grep -qE '(^|;)[ \t]*mode=doh([; \t]|$)' "$dir/dns-state" 2>/dev/null; then
-        if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] && grep -q 'Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null; then
+        if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] && grep -Fxq '# Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null; then
             rm -f -- /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || { msg "${YELLOW}[!] Failed to remove A-Box DNS socket drop-in abox-listen.conf; DNS rollback incomplete.${NC}" >&2; _abox_listen_rollback_failed=1; }
             rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
             if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then

@@ -49689,19 +49689,36 @@ _dns_valid_v6_group() {
             local -a lg=() rg=()
             [[ -n "$left" ]] && IFS=':' read -ra lg <<< "$left"
             [[ -n "$right" ]] && IFS=':' read -ra rg <<< "$right"
-            (( ${#lg[@]} + ${#rg[@]} <= 7 )) || continue
             groups=("${lg[@]}" "${rg[@]}")
         elif (( n == 0 )); then
             # F8: without ::, a leading or trailing colon is malformed
             # (IFS splitting drops the trailing empty field).
             [[ "$tok" != :* && "$tok" != *: ]] || continue
             IFS=':' read -ra groups <<< "$tok"
-            (( ${#groups[@]} == 8 )) || continue
         else
             continue
         fi
+        # R47-M1: an IPv4 tail (e.g. 64:ff9b::8.8.8.8) is legal and
+        # occupies two groups. Validate it as IPv4 and count it
+        # double; the hex loop below skips it (it is the last field).
+        local _tail=0 _last=''
+        if (( ${#groups[@]} > 0 )); then
+            _last="${groups[${#groups[@]}-1]}"
+            if [[ "$_last" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                [[ -n "$(_dns_valid_v4_group "$_last")" ]] || continue
+                _tail=1
+            fi
+        fi
+        if (( n == 1 )); then
+            (( ${#groups[@]} + _tail <= 7 )) || continue
+        else
+            (( ${#groups[@]} + _tail == 8 )) || continue
+        fi
+        local _gi=0
         for g in "${groups[@]}"; do
+            if (( _tail == 1 && _gi == ${#groups[@]} - 1 )); then _gi=$(( _gi + 1 )); continue; fi
             [[ "$g" =~ ^[0-9a-fA-F]{1,4}$ ]] || ok=0
+            _gi=$(( _gi + 1 ))
         done
         # R7C12-03: output the ORIGINAL token, scope included; the
         # stripped form is only for validation. Callers write the
@@ -49786,7 +49803,7 @@ _dns_current_v6() {
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ {
             addr = $2
             sub(/%.*/, "", addr)
-            if (addr ~ /:/ && addr !~ /\./)
+            if (addr ~ /:/)
                 print $2
         }' /etc/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v6_group "$cur")
@@ -49796,7 +49813,7 @@ _dns_current_v6() {
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ {
             addr = $2
             sub(/%.*/, "", addr)
-            if (addr ~ /:/ && addr !~ /\./)
+            if (addr ~ /:/)
                 print $2
         }' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v6_group "$cur")

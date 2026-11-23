@@ -46255,7 +46255,10 @@ restore_timezone_snapshot() {
     else
         return 1
     fi
-    if [[ -f "$dir/etc-timezone" ]]; then
+    # R44-M1: -e || -L, not bare -f (same as the localtime
+    # site above): a snapshot symlink with a relative target
+    # dangles inside the snap dir.
+    if [[ -e "$dir/etc-timezone" || -L "$dir/etc-timezone" ]]; then
         rm -f /etc/timezone || return 1
         cp -a "$dir/etc-timezone" /etc/timezone || return 1
         # 06c1-M1: if the snapshot held a symlink, also write the
@@ -46302,7 +46305,10 @@ restore_timezone_snapshot() {
             # falling back to UTC as it did before.
             rm -f /etc/localtime || return 1
         fi
-        if [[ -f "$dir/etc-timezone" ]]; then
+        # R44-M1: -e || -L, not bare -f (same as the localtime
+        # sites above): a snapshot symlink with a relative target
+        # dangles inside the snap dir.
+        if [[ -e "$dir/etc-timezone" || -L "$dir/etc-timezone" ]]; then
             rm -f /etc/timezone || return 1
             cp -a "$dir/etc-timezone" /etc/timezone || return 1
             # 06c1-M1: same target-content write-back as the initial

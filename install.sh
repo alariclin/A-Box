@@ -46777,6 +46777,13 @@ snapshot_dns_state() {
     if [[ -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
         mkdir -p "$dir/dnscrypt-proxy" || return 1
         cp -a /etc/dnscrypt-proxy/dnscrypt-proxy.toml "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" || return 1
+        # R44-M2: a symlinked toml stores the link itself above, but
+        # its relative target is not in the snapshot dir, so the
+        # snapshot link dangles and restore skips it. Save the
+        # target content too (same idiom as the timezone -target).
+        if [[ -L /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
+            cp -aL /etc/dnscrypt-proxy/dnscrypt-proxy.toml "$dir/dnscrypt-proxy/dnscrypt-proxy.toml-target" || return 1
+        fi
         # R16-F12-03: record the config directory's mode as well as
         # the file: rollback must restore the directory it found, not
         # force it to 0755 (GNU install -d -m re-modes an existing
@@ -46957,7 +46964,7 @@ restore_dns_snapshot_body() {
         done
     fi
     dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
-    if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
+    if [[ "$dnscrypt_state" == present && ( -e "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" || -L "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ) ]]; then
         # R16-F12-03: never force the directory to 0755: restore the
         # mode the snapshot recorded, and leave an existing directory
         # alone when the snapshot predates the mode record. A missing
@@ -46977,8 +46984,18 @@ restore_dns_snapshot_body() {
         fi
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
         cp -a "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
+        # R44-M2: write the saved target content back through the
+        # restored link (plain cp follows it); a bare link alone
+        # restores a dangling pointer.
+        if [[ -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml-target" ]]; then
+            cp "$dir/dnscrypt-proxy/dnscrypt-proxy.toml-target" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
+        fi
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
+    elif [[ "$dnscrypt_state" == present ]]; then
+        # R44-M2: present but unrestorable (snapshot toml missing
+        # entirely) must fail loudly, not silently skip the config.
+        return 1
     fi
     # M-21(1)/M-09: restore the socket drop-in the snapshot recorded.
     # A snapshot that predates this record leaves a live drop-in
@@ -47393,10 +47410,11 @@ _nm_dns_norm_set() {
 # modified. Falls back to the first connected device when no
 # device matches (loopback-only resolv.conf, or DNS from elsewhere).
 nm_effective_device() {
-    local first_ns='' dev='' _st='' d4='' d6='' tok=''
+    local first_ns='' dev='' _st='' d4='' d6='' tok='' _n_conn=0
     first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
     while IFS=: read -r dev _st; do
         [[ "$_st" == "connected" ]] || continue
+        _n_conn=$(( _n_conn + 1 ))
         if [[ -n "$first_ns" ]]; then
             d4=$(nmcli -g IP4.DNS device show "$dev" 2>/dev/null || true)
             d6=$(nmcli -g IP6.DNS device show "$dev" 2>/dev/null || true)
@@ -47405,6 +47423,16 @@ nm_effective_device() {
             done
         fi
     done < <(LC_ALL=C nmcli -t -f DEVICE,STATE device 2>/dev/null || true)
+    # R45-M1: when the first nameserver is a loopback front-end, no
+    # device's upstream can match it, so the fallback below would
+    # guess the first connected device -- and apply_host_dns would
+    # then modify (and verify) the wrong connection while another
+    # one still serves the old DNS. With exactly one connected
+    # device there is nothing to guess; with several, refuse
+    # instead (both callers fail closed on an empty result).
+    if [[ "$first_ns" =~ ^127\. ]] && (( _n_conn != 1 )); then
+        return 1
+    fi
     LC_ALL=C nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}'
 }
 
@@ -47876,10 +47904,10 @@ apply_host_dns() {
     # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     local dns_snap_install="${dns_snap_tmp}.install"
-    cp -a -- "$dns_snap_tmp" "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp"; die "Failed to copy DNS snapshot for baseline install."; }
-    dns_snapshot_install_new "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
+    cp -a -- "$dns_snap_tmp" "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp" "$dns_snap_install"; die "Failed to copy DNS snapshot for baseline install."; }
+    dns_snapshot_install_new "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp"; if ! grep -Fxq "new=$dns_snap_install" "${DNS_BACKUP_DIR}.pending-swap" 2>/dev/null; then rm -rf -- "$dns_snap_install"; fi; die "Failed to install new DNS rollback snapshot."; }
     if (( immutable_before == 1 )); then
-        chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
+        chattr -i /etc/resolv.conf 2>/dev/null || { rm -rf -- "$dns_snap_tmp"; die "Failed to clear immutable flag on /etc/resolv.conf."; }
     fi
     # M-21(1): leaving DoH: stop/disable an A-Box-enabled dnscrypt-proxy
     # and remove A-Box's abox-listen.conf socket drop-in (dns_disable_doh

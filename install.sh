@@ -16927,9 +16927,18 @@ shortcut_lock_acquire() {
     SHORTCUT_ERR=''
     while true; do
         if mkdir -- "$_lock" 2>/dev/null; then
-            printf '%s\n' "$$" > "$_lock/pid" 2>/dev/null || true
-            SHORTCUT_LOCK_HELD=1
-            return 0
+            # R17-M2: the pid write is a precondition of holding the
+            # lock, not best-effort: without a readable pid the
+            # release cannot remove the dir, and the lock becomes an
+            # unreleasable stale entry. Verify the write by reading
+            # it back; on any failure remove the fresh dir and fail.
+            if printf '%s\n' "$$" > "$_lock/pid" 2>/dev/null && [[ "$(cat "$_lock/pid" 2>/dev/null || true)" == "$$" ]]; then
+                SHORTCUT_LOCK_HELD=1
+                return 0
+            fi
+            rm -rf -- "$_lock" 2>/dev/null || true
+            SHORTCUT_ERR='pid_write'
+            return 1
         fi
         # Lock exists: stale?
         _pid=$(cat "$_lock/pid" 2>/dev/null || true)

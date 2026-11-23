@@ -35691,11 +35691,23 @@ _xl_legacy_adopt() {
     if is_service_running xray 2>/dev/null; then
         _pid=$(managed_service_pid xray 2>/dev/null || true)
         [[ -n "$_pid" && "$_pid" =~ ^[0-9]+$ ]] || { msg "${RED}[!] Takeover adoption refused: xray is running but its PID cannot be determined.${NC}" >&2; return 1; }
-        _cmd=$(tr '\0' ' ' < "/proc/$_pid/cmdline" 2>/dev/null || true)
-        case "$_cmd" in
-            *"$_slot_bin"*"$_slot_cfg"*) : ;;
-            *) msg "${RED}[!] Takeover adoption refused: running xray does not use the verified binary+config.${NC}" >&2; return 1 ;;
-        esac
+        # R34-M3: the old check joined the NUL-separated cmdline with
+        # spaces and substring-matched the binary+config paths, so a
+        # process running `-config .../config.json.old` passed (the
+        # verified path is a substring of it). Match the exact
+        # -config argument value instead (last one wins, like Go flag
+        # parsing), and confirm the running binary via /proc/PID/exe
+        # rather than the joined cmdline.
+        local _exe='' _arg='' _cfg_arg=''
+        _exe=$(readlink -- "/proc/$_pid/exe" 2>/dev/null || true)
+        [[ "$_exe" == "$_slot_bin" ]] || { msg "${RED}[!] Takeover adoption refused: running xray does not use the verified binary.${NC}" >&2; return 1; }
+        while IFS= read -r -d '' _arg; do
+            case "$_arg" in
+                -config) IFS= read -r -d '' _cfg_arg || _cfg_arg='' ;;
+                -config=*) _cfg_arg="${_arg#-config=}" ;;
+            esac
+        done < "/proc/$_pid/cmdline" 2>/dev/null
+        [[ "$_cfg_arg" == "$_slot_cfg" ]] || { msg "${RED}[!] Takeover adoption refused: running xray does not use the verified binary+config.${NC}" >&2; return 1; }
     fi
     # Version for the adoption notice.
     _ver=$(core_version_from_output "$("$_slot_bin" version 2>/dev/null | head -n 1 || true)" 2>/dev/null || true)
@@ -35728,6 +35740,12 @@ _xl_legacy_retire_coexist() {
     local _initd="${XL_LEGACY_INITD_DIR:-/etc/init.d}"
     local _confd="${XL_LEGACY_CONFD_DIR:-/etc/conf.d}"
     local _mode='coexist' _snapfile='' _ans=''
+    # R34-M2: the user registry dir honours ABOX_USERS_DIR everywhere
+    # else (detect, registries, merge); the four globs below used the
+    # fixed default instead, so an overridden dir's credentials were
+    # never snapshotted, deleted or residual-checked. One local, used
+    # by all four sites.
+    local _udir="${ABOX_USERS_DIR:-$_abox_dir/users.d}"
     # 1. Authorisation.
     if [[ "${ABOX_LEGACY_XL_RETIRE:-0}" != '1' ]]; then
         [[ -t 0 ]] || { msg "${RED}[!] Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.${NC}" >&2; return 1; }
@@ -35795,7 +35813,7 @@ _xl_legacy_retire_coexist() {
     [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _pre_targets+=("$_confd/xray-latest")
     [[ -e "$_state" || -L "$_state" ]] && _pre_targets+=("$_state")
     local _pt _sp2
-    for _sp2 in "$_abox_dir/users.d"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link "$_sysdir"/*.wants/xray-latest.service; do
+    for _sp2 in "$_udir"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link "$_sysdir"/*.wants/xray-latest.service; do
         [[ -e "$_sp2" || -L "$_sp2" ]] && _pre_targets+=("$_sp2")
     done
     for _pt in "${_pre_targets[@]}"; do
@@ -35829,7 +35847,7 @@ _xl_legacy_retire_coexist() {
     [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]] && _snap_paths+=("$_initd/xray-latest")
     [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _snap_paths+=("$_confd/xray-latest")
     local _sp
-    for _sp in "$_abox_dir/users.d"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link; do
+    for _sp in "$_udir"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link; do
         [[ -f "$_sp" && ! -L "$_sp" ]] && _snap_paths+=("$_sp")
     done
     if (( ${#_snap_paths[@]} > 0 )); then
@@ -35932,7 +35950,7 @@ _xl_legacy_retire_coexist() {
         rm -rf -- "$_sysdir/xray-latest.service.d" || { msg "${RED}[!] Could not remove unit drop-ins; state file kept.${NC}" >&2; return 1; }
     fi
     local _rg2
-    for _rg2 in "$_abox_dir/users.d"/xray-latest__*.json; do
+    for _rg2 in "$_udir"/xray-latest__*.json; do
         [[ -f "$_rg2" && ! -L "$_rg2" ]] || continue
         rm -f -- "$_rg2" || { msg "${RED}[!] Could not remove registry $_rg2; state file kept.${NC}" >&2; return 1; }
     done
@@ -35947,7 +35965,7 @@ _xl_legacy_retire_coexist() {
     # to follow symlinks.
     local _resid=0 _rf2 _lf3 _wl2 _marc=0
     [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_sysdir/xray-latest.service.d" || -L "$_sysdir/xray-latest.service.d" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _resid=1
-    for _rf2 in "$_abox_dir/users.d"/xray-latest__*.json; do
+    for _rf2 in "$_udir"/xray-latest__*.json; do
         [[ -e "$_rf2" || -L "$_rf2" ]] && _resid=1
     done
     for _lf3 in "$_abox_dir/standalone-links.d"/latest-*.link; do
@@ -36013,11 +36031,22 @@ restore_filter_legacy_xray_latest() {
         "$_root/etc/ddr/xray-latest" \
         "$_root/etc/ddr/.xray-latest-state" \
         "$_root/etc/systemd/system/xray-latest.service" \
+        "$_root/etc/systemd/system/xray-latest.service.d" \
+        "$_root/etc/systemd/system"/*.wants/xray-latest.service \
         "$_root/etc/init.d/xray-latest" \
         "$_root/etc/conf.d/xray-latest"; do
         if [[ -L "$_p" ]]; then rm -f -- "$_p" || return 1;
         elif [[ -d "$_p" ]]; then rm -rf -- "$_p" || return 1;
         elif [[ -e "$_p" ]]; then rm -f -- "$_p" || return 1; fi
+    done
+    # R34-M4: the detector treats the drop-in dir and the .wants enable
+    # links as legacy evidence, so the filter must strip them too --
+    # and verify they are gone before reporting success. (An unmatched
+    # wants glob stays literal and fails both tests, so it is a no-op
+    # when nothing is linked.)
+    local _chk
+    for _chk in "$_root/etc/systemd/system/xray-latest.service.d" "$_root/etc/systemd/system"/*.wants/xray-latest.service; do
+        [[ -e "$_chk" || -L "$_chk" ]] && return 1
     done
     local _g
     for _g in "$_root/etc/ddr/users.d"/xray-latest__*.json "$_root/etc/ddr/standalone-links.d"/latest-*.link; do

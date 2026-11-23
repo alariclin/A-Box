@@ -36908,7 +36908,15 @@ month_bytes() {
         # A failed interface/database query still falls through and remains fail-closed.
         month_count=$(jq -r '(.interfaces[0].traffic.month // .interfaces[0].traffic.months // []) | length' <<< "$json" 2>/dev/null || printf 'x')
         if [[ "$month_count" == '0' ]]; then
-            case "$mode" in rx|tx|total) printf '0\n'; return 0 ;; *) return 1 ;; esac
+            # R35b-M1: an empty month series is 0 only when the document
+            # actually names the interface and its traffic object (a new
+            # database). A structurally missing document ({}, no
+            # interfaces) also yields length 0 through the // [] fallback
+            # and must NOT read as 0 bytes: fall through to the validated
+            # oneline read below instead.
+            if jq -e '.interfaces | type == "array" and length >= 1 and (.[0].traffic // null | type == "object")' <<< "$json" >/dev/null 2>&1; then
+                case "$mode" in rx|tx|total) printf '0\n'; return 0 ;; *) return 1 ;; esac
+            fi
         fi
         # R6C10-02: 1.x months entries are KiB; normalize to bytes.
         rx=$(jq -r --argjson y "$(date +%Y)" --argjson m "$(date +%-m)" '([.interfaces[0].traffic.month[]? | . + {__unit: "B"}] + [.interfaces[0].traffic.months[]? | . + {__unit: "KiB"}] | map(select(((.year // .date.year // 0) == $y) and ((.month // .date.month // 0) == $m))) | last | if . == null then empty elif .__unit == "KiB" then (.rx * 1024) else .rx end)' <<< "$json" 2>/dev/null)
@@ -37040,6 +37048,20 @@ _core_exe_and_config() {
         *) return 1 ;;
     esac
 }
+_cmdline_has_arg() {
+    # R35b-M2: match one whole argv token by its NUL boundary. The old
+    # `tr '\0' '\n'` + grep -Fxq erased the boundary, so a single argv
+    # containing a newline (e.g. $'/tmp/foreign\n<cfg>\nsuffix') matched
+    # as if <cfg> were a standalone argument, and a foreign process
+    # could be mistaken for ours. Unreadable cmdline refuses (rc 1).
+    local _pid="$1" _want="$2" _arg=''
+    [[ "$_pid" =~ ^[0-9]+$ && "$_pid" -gt 1 && -n "$_want" ]] || return 1
+    while IFS= read -r -d '' _arg; do
+        [[ "$_arg" == "$_want" ]] && return 0
+    done < "/proc/$_pid/cmdline" 2>/dev/null
+    return 1
+}
+
 core_process_matches() {
     local srv="$1" pid="$2" exe='' cfg='' cmdline=''
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
@@ -37052,8 +37074,7 @@ core_process_matches() {
     # config as a standalone argv (xray run -config <cfg>, sing-box
     # run -c <cfg>, hysteria server -c <cfg>).
     [[ -n "$cfg" ]] || return 1
-    cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
-    grep -Fxq -- "$cfg" <<< "$cmdline"
+    _cmdline_has_arg "$pid" "$cfg"
 }
 find_core_residual_pid() {
     local srv="$1" exe='' cfg='' pid='' cmdline=''
@@ -37065,8 +37086,7 @@ find_core_residual_pid() {
         # 05c1-M1: whole-argv-token match, as in core_process_matches
         # above: a foreign .../config.json.foreign.json must not match.
         [[ -n "$cfg" ]] || return 1
-        cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        grep -Fxq -- "$cfg" <<< "$cmdline" || continue
+        _cmdline_has_arg "$pid" "$cfg" || continue
         printf '%s\n' "$pid"
         return 0
     done
@@ -37110,7 +37130,13 @@ stop_core_residual_process() {
             return 1
         fi
     done
-    return 1
+    # R35b-M3: the 10th pass may have cleared the last residual; a final
+    # read-only scan decides instead of unconditionally failing. (An
+    # empty result also covers a lookup failure, exactly as the in-loop
+    # `[[ -n "$pid" ]] || return 0` already does.)
+    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+    [[ -n "$pid" ]] && return 1
+    return 0
 }
 stop_owned() {
     local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
@@ -40642,8 +40668,7 @@ core_process_matches() {
     # config as a standalone argv (xray run -config <cfg>, sing-box
     # run -c <cfg>, hysteria server -c <cfg>).
     [[ -n "$cfg" ]] || return 1
-    cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
-    grep -Fxq -- "$cfg" <<< "$cmdline"
+    _cmdline_has_arg "$pid" "$cfg"
 }
 
 find_core_residual_pid() {
@@ -40656,8 +40681,7 @@ find_core_residual_pid() {
         # 05c1-M1: whole-argv-token match, as in core_process_matches
         # above: a foreign .../config.json.foreign.json must not match.
         [[ -n "$cfg" ]] || return 1
-        cmdline=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        grep -Fxq -- "$cfg" <<< "$cmdline" || continue
+        _cmdline_has_arg "$pid" "$cfg" || continue
         printf '%s\n' "$pid"
         return 0
     done
@@ -40702,7 +40726,13 @@ stop_core_residual_process() {
             return 1
         fi
     done
-    return 1
+    # R35b-M3: the 10th pass may have cleared the last residual; a final
+    # read-only scan decides instead of unconditionally failing. (An
+    # empty result also covers a lookup failure, exactly as the in-loop
+    # `[[ -n "$pid" ]] || return 0` already does.)
+    pid=$(find_core_residual_pid "$srv" 2>/dev/null || true)
+    [[ -n "$pid" ]] && return 1
+    return 0
 }
 
 stop_owned() {

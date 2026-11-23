@@ -25861,7 +25861,15 @@ _xrc_marker_append() {
     local marker="$1" _st="$2" _sha="$3" _detail="${4:-}"
     local _tmp
     _tmp=$(umask 077; mktemp "$(dirname "$marker")/.xray-cfg-autorecover.XXXXXX") || return 1
-    { [[ -f "$marker" && ! -L "$marker" ]] && cat -- "$marker"; printf '%s %s %s %s\n' "$_st" "$_sha" "$(date +%s)" "$_detail"; } > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    # R25a-M02: read the existing history and append the new record as
+    # separate checked steps. A failed read must not be masked by the
+    # following printf (a command group's status comes from its last
+    # command); overwriting the marker then would discard the cooldown
+    # and rate-limit history the marker exists to keep.
+    if [[ -f "$marker" && ! -L "$marker" ]]; then
+        cat -- "$marker" > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    fi
+    printf '%s %s %s %s\n' "$_st" "$_sha" "$(date +%s)" "$_detail" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
     chmod 600 -- "$_tmp" 2>/dev/null || true
     mv -f -- "$_tmp" "$marker" || { rm -f -- "$_tmp"; return 1; }
 }

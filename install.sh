@@ -45043,26 +45043,45 @@ users_guard_eval() {
 # ---- change one deployed node's SNI (credentials untouched) ----
 # Probe one inbound: echoes kind|current|key_path|crt_path|cfg_path.
 _nsni_probe() {
-    local core="$1" tag="$2" cfg='' j=''
+    local core="$1" tag="$2" cfg='' j='' _jq_cfg='' _jq_rc=0
     case "$core" in
         xray) cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
         sing-box) cfg='/etc/sing-box/config.json' ;;
         *) return 0 ;;
     esac
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    # R43-01: Xray configs may carry // comments jq rejects; probe
+    # the JSONC-stripped view like _nsni_apply does, or a legal
+    # commented config is silently skipped by the menu as
+    # "unsupported". sing-box configs are strict JSON and keep the
+    # raw file. A jq parse failure is distinguished from "no such
+    # inbound": it returns 1 with a credential-free diagnostic
+    # (core/tag only); the printed probe still carries the ORIGINAL
+    # $cfg path, which the callers edit.
+    _jq_cfg="$cfg"
+    if [[ "$core" == 'xray' ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-nsni-probe-json.XXXXXX) || return 1
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f -- "$_jq_cfg"; msg "${RED}[!] SNI probe: cannot read $core/$tag config.${NC}" >&2; return 1; }
+    fi
     if [[ "$core" == 'sing-box' ]]; then
         j=$(jq -r --arg t "$tag" '
             .inbounds[]? | select(.tag == $t) |
             if (.tls.reality.handshake.server // "") != "" then "reality-sb|" + (if (.tls.server_name // "") != "" then .tls.server_name else .tls.reality.handshake.server end) + "||"
             elif .type == "tuic" then "tuic|" + (.tls.server_name // "") + "|" + (.tls.key_path // "") + "|" + (.tls.certificate_path // "")
             elif .type == "shadowtls" then "shadowtls|" + (.handshake.server // "") + "||"
-            else "" end' "$cfg" 2>/dev/null)
+            else "" end' "$_jq_cfg" 2>/dev/null) || _jq_rc=$?
     else
         j=$(jq -r --arg t "$tag" '
             .inbounds[]? | select(.tag == $t) |
             if (.streamSettings.realitySettings.serverNames[0] // "") != "" then "reality-xray|" + .streamSettings.realitySettings.serverNames[0] + "||"
-            else "" end' "$cfg" 2>/dev/null)
+            else "" end' "$_jq_cfg" 2>/dev/null) || _jq_rc=$?
     fi
+    if (( _jq_rc != 0 )); then
+        [[ "$_jq_cfg" != "$cfg" ]] && rm -f -- "$_jq_cfg"
+        msg "${RED}[!] SNI probe: cannot parse $core/$tag config.${NC}" >&2
+        return 1
+    fi
+    [[ "$_jq_cfg" != "$cfg" ]] && rm -f -- "$_jq_cfg"
     [[ -n "$j" ]] && printf '%s|%s' "$j" "$cfg"
     return 0
 }
@@ -45829,6 +45848,14 @@ user_guard_tick() {
         gen_xray=$(users_core_generation xray 2>/dev/null || true)
     fi
     local reg='' rcore='' rtag='' stats='' have=0 gen=''
+    # R43-02: accumulate evaluation failures instead of dropping
+    # them: users_guard_eval returns 1 when the registry commit
+    # fails, and the tick used to report success anyway. Keep
+    # processing the other registries; the .sync-pending retry
+    # mechanism is unchanged (the marker is planted before the
+    # commit, so the next tick retries). Diagnostic is core/tag
+    # only -- no credentials.
+    local _eval_failed=0
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
         rcore=$(jq -r '.core // ""' "$reg" 2>/dev/null); rtag=$(jq -r '.tag // ""' "$reg" 2>/dev/null)
@@ -45838,8 +45865,9 @@ user_guard_tick() {
             hy2) stats=''; have=0; gen='' ;;  # M-38: this script does not currently consume any Hy2 stats source; only expiry/window are enforced, quota never triggers
             *) stats=''; have=0; gen='' ;;
         esac
-        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end"
+        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end" || { _eval_failed=1; msg "${RED}[!] A-Box user guard: evaluation failed for ${rcore}/${rtag}; the registry change was not committed and will be retried next tick.${NC}" >&2; }
     done
+    (( _eval_failed == 0 )) || return 1
     return 0
 }
 

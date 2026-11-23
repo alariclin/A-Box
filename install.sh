@@ -30636,8 +30636,15 @@ deploy_xray_trojan_landing() {
     fi
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         local tmp_cfg
+        # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
+        # that merely shares $tag must not be silently replaced by the
+        # merge below; only a genuine Trojan inbound proceeds.
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-            msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="trojan")' "$cfg" >/dev/null 2>&1; then
+                msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+            else
+                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            fi
         fi
         # R29b-M3: capture the replaced inbound's port before the merge
         # discards it, so the old port's firewall rules can be recycled
@@ -30651,7 +30658,20 @@ deploy_xray_trojan_landing() {
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
-                 | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+                 | .inbounds |= (
+                     map(select(.tag!=$t))
+                     + [
+                         $nb[] as $new
+                         | (
+                             ($old | map(select(.tag==$new.tag)) | first) as $ex
+                             | if ($ex and ($ex.settings.clients | type == "array") and ($ex.settings.clients | length) > 1
+                                    and ($new.settings.clients | type == "array") and ($new.settings.clients | length) > 0) then
+                                   $new | .settings.clients = ([$new.settings.clients[0]] + $ex.settings.clients[1:])
+                               else $new
+                               end
+                           )
+                       ]
+                   )' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
         fi
@@ -31046,6 +31066,11 @@ EOF_SVC
     _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
     _tuic_key="/etc/sing-box/tuic-${_tuic_cert_tag}.key"
     _tuic_crt="/etc/sing-box/tuic-${_tuic_cert_tag}.crt"
+    # R30-M03: determine the listen address BEFORE replacing the cert:
+    # a failure here must die before any mutation, so no certificate
+    # rollback is needed on this path.
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     # Back up any existing cert pair before regenerating: sing-box
     # check requires the new cert in place, so generation cannot be
     # deferred past the commit point. An existing .bak is kept (it
@@ -31061,8 +31086,6 @@ EOF_SVC
         || die "$(tr_msg dp_tuic_cert)"
 
     # Build the TUIC inbound object.
-    local listen_addr
-    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
     jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" --arg cert "$_tuic_crt" --arg key "$_tuic_key" --arg listen_addr "$listen_addr" \
         '{type:"tuic",tag:$tag,listen:$listen_addr,listen_port:$port,
@@ -31073,14 +31096,34 @@ EOF_SVC
         > "$tmp_json" || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_json)"; }
 
     local tmp_cfg
+    # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
+    # that merely shares $tag must not be silently replaced by the
+    # merge below; only a genuine TUIC inbound proceeds.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="tuic")' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
             '.inbounds = (.inbounds // [])
              | (.inbounds | map(select(.tag==$t))) as $old
-             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+             | .inbounds |= (
+                 map(select(.tag!=$t))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array") and ($ex.users | length) > 1
+                                and ($new.users | type == "array") and ($new.users | length) > 0) then
+                               $new | .users = ([$new.users[0]] + $ex.users[1:])
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
@@ -31266,14 +31309,34 @@ EOF_SVC
         > "$tmp_json" || die "$(tr_msg dp_anytls_json)"
 
     local tmp_cfg
+    # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
+    # that merely shares $tag must not be silently replaced by the
+    # merge below; only a genuine AnyTLS inbound proceeds.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="anytls")' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '.inbounds = (.inbounds // [])
              | (.inbounds | map(select(.tag==$t))) as $old
-             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+             | .inbounds |= (
+                 map(select(.tag!=$t))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array") and ($ex.users | length) > 1
+                                and ($new.users | type == "array") and ($new.users | length) > 0) then
+                               $new | .users = ([$new.users[0]] + $ex.users[1:])
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
@@ -31480,7 +31543,20 @@ EOF_SVC
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
             '.inbounds = (.inbounds // [])
              | (.inbounds | map(select(.tag==$t or .tag==$it))) as $old
-             | .inbounds |= (map(select(.tag!=$t and .tag!=$it)) + $nb)' \
+             | .inbounds |= (
+                 map(select(.tag!=$t and .tag!=$it))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array") and ($ex.users | length) > 1
+                                and ($new.users | type == "array") and ($new.users | length) > 0) then
+                               $new | .users = ([$new.users[0]] + $ex.users[1:])
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi

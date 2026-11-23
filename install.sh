@@ -108,6 +108,14 @@ _jq_prog_has_literal_name() {
             fi
             _i=$(( _i + 1 )); continue
         fi
+        # R01a-M01: outside a string, '#' starts a jq comment running to
+        # the end of the line -- a '"' inside it must not flip string
+        # state, or a later real string literal is misread as its close
+        # and $NAME inside it gets rewritten ($NAME -> $NAME[0]).
+        if [[ "$_c" == '#' ]]; then
+            while (( _i < _len )) && [[ "${_prog:_i:1}" != $'\n' ]]; do _i=$(( _i + 1 )); done
+            continue
+        fi
         if [[ "$_c" == '"' ]]; then _in_str=1; fi
         _i=$(( _i + 1 ))
     done

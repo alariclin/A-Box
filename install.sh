@@ -27202,12 +27202,20 @@ for target in targets:
         rows.append(['F', 'xray', target, h.hexdigest()])
     else:
         matches[0][3] = h.hexdigest()
+# R26b-M2: cap the published OUTPUT, not just the input. Adding the
+# missing geo rows can push a near-limit manifest over 4 MiB, and the
+# published file would then be refused by this helper's own input
+# check and by _geo_manifest_restore_rows (which loads the current
+# manifest first), leaving no in-place repair path. Same bound as
+# the R11-F R6-4 merged-output cap in _geo_manifest_restore_rows.
+out = ''.join('\t'.join(row) + '\n' for row in sorted(rows, key=lambda r: (r[1], os.fsencode(r[2]))))
+if len(out.encode('utf-8')) > 4 * 1024 * 1024:
+    raise SystemExit(1)
 dirname = os.path.dirname(manifest) or '.'
 fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.geo.', dir=dirname, text=True)
 try:
     with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
-        for row in sorted(rows, key=lambda r: (r[1], os.fsencode(r[2]))):
-            f.write('\t'.join(row) + '\n')
+        f.write(out)
         f.flush(); os.fsync(f.fileno())
     os.chmod(tmp, 0o600); os.chown(tmp, 0, 0); os.replace(tmp, manifest)
 except Exception:
@@ -27357,7 +27365,12 @@ restore_geo_transaction() {
                 link_target=$(cat "$txn/$name.link" 2>/dev/null) || return 1
                 [[ -n "$link_target" ]] || return 1
                 rm -f -- "$base/$name.dat" || return 1
-                ln -s "$link_target" "$base/$name.dat" || return 1
+                # R26b-M1: a recorded link target may start with '-'
+                # (readlink output is recorded verbatim, no leading-dash
+                # check): without `--` ln parses it as options and
+                # fails AFTER the rm above already deleted the .dat,
+                # and every retry fails at the same place.
+                ln -s -- "$link_target" "$base/$name.dat" || return 1
                 ;;
             *) return 1 ;;
         esac

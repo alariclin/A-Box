@@ -34221,9 +34221,27 @@ routing_apply_live() {
             msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
             return 1
         fi
-        prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) elif type == "object" then (.outbounds // [] | map(select(type == "string"))) else [] end' "$applied_src" 2>/dev/null || printf '[]')
-        prev_rules_xray=$(jq -c 'if type == "object" then (.rules_xray // []) else [] end' "$applied_src" 2>/dev/null || printf '[]')
-        prev_rules_singbox=$(jq -c 'if type == "object" then (.rules_singbox // []) else [] end' "$applied_src" 2>/dev/null || printf '[]')
+        # R33-02: the applied record must be an array (legacy) or an
+        # object whose outbounds/rules_* fields, when present, are
+        # arrays. The old `|| printf '[]'` fallback swallowed a type
+        # error (e.g. .outbounds = 42 makes map fail) into empty
+        # history, so retirements were missed and the next commit
+        # overwrote the record, losing the history. A type error now
+        # fails the apply like a syntax error: live config and the
+        # record stay untouched. Missing/null fields still mean
+        # "no history"; non-string array members are still filtered.
+        if ! prev_applied=$(jq -c -e 'if type == "array" then map(select(type == "string")) elif type == "object" then ((.outbounds // []) | if type == "array" then map(select(type == "string")) else error("applied .outbounds is not an array") end) else error("applied record is not an array or object") end' "$applied_src" 2>/dev/null); then
+            msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
+            return 1
+        fi
+        if ! prev_rules_xray=$(jq -c -e 'if type == "object" then ((.rules_xray // []) | if type == "array" then . else error("applied .rules_xray is not an array") end) else [] end' "$applied_src" 2>/dev/null); then
+            msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
+            return 1
+        fi
+        if ! prev_rules_singbox=$(jq -c -e 'if type == "object" then ((.rules_singbox // []) | if type == "array" then . else error("applied .rules_singbox is not an array") end) else [] end' "$applied_src" 2>/dev/null); then
+            msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
+            return 1
+        fi
     fi
     case "$core" in
         xray)
@@ -34814,18 +34832,32 @@ warp_undeploy() {
         core="${CORE:-}"
     fi
     if [[ -z "$core" ]]; then
-        # L6-NEW-01: no core means no routing_apply_live to retire
-        # the endpoint/rules through, but the residue is still on
-        # disk and the menu has no other way to clear it (every
-        # no-core undeploy aborted here). Scrub the live configs
-        # directly, then drop the state entry: scrub first so a
-        # scrub failure keeps the state flag (truthful: the residue
-        # is still live) instead of reporting "not deployed" over
-        # a live warp-out.
-        warp_scrub_live_config || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
-        routing_outbound_del 'warp-out' || return 1
-        msg "$(tr_msg warp_removed)"
-        return 0
+        # R33-01: CORE empty does not mean no core is live. The deploy
+        # side already relaxes this guard (CORE empty + a managed aux
+        # core -> deploy proceeds via routing_apply_all_managed), so a
+        # managed xray/sing-box can be running with warp-out while
+        # CORE is empty; the disk-only scrub below would then report
+        # success over a still-serving tunnel (scrub never restarts
+        # a service). Only scrub when no managed routable core exists
+        # at all; otherwise fall through to the transactional path,
+        # which retires warp-out through the live apply (and restarts
+        # a running service via its own gate). Hysteria is excluded:
+        # it cannot carry routing, so a hysteria-only box keeps the
+        # scrub path instead of failing the apply.
+        if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray; then
+            # L6-NEW-01: no core means no routing_apply_live to retire
+            # the endpoint/rules through, but the residue is still on
+            # disk and the menu has no other way to clear it (every
+            # no-core undeploy aborted here). Scrub the live configs
+            # directly, then drop the state entry: scrub first so a
+            # scrub failure keeps the state flag (truthful: the residue
+            # is still live) instead of reporting "not deployed" over
+            # a live warp-out.
+            warp_scrub_live_config || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+            routing_outbound_del 'warp-out' || return 1
+            msg "$(tr_msg warp_removed)"
+            return 0
+        fi
     fi
     # M-20: snapshot the whole state file before mutating it (same
     # pattern as warp_apply_preset / warp_deploy_inner): if the live

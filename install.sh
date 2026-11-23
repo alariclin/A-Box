@@ -13205,7 +13205,7 @@ cache_public_ip() {
 }
 
 read_cached_public_ip() {
-    local ip now mtime age pref=''
+    local ip now mtime age pref='' _ip2=''
     [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]] || return 1
     [[ "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]] || return 1
     # R14-F04-01: the owner gate alone is not enough: a root-owned
@@ -13229,6 +13229,14 @@ read_cached_public_ip() {
     mtime=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0)
     age=$(( now - mtime ))
     (( age >= 0 && age <= PUBLIC_IP_CACHE_TTL )) || return 1
+    # R13-01: the content above and this mtime were read by separate
+    # path lookups; an atomic-rename refresh landing between them
+    # pairs stale bytes with a fresh mtime. Re-read the content and
+    # serve only if the bytes are unchanged -- a replaced file with
+    # different bytes is always caught, identical bytes are always
+    # safe to serve.
+    _ip2=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
+    [[ "$_ip2" == "$ip" ]] || return 1
     printf '%s\n' "$ip"
 }
 
@@ -13282,7 +13290,7 @@ get_public_ip_swr() {
     # non-root-owned or non-0600 cache must not be served through
     # the SWR fallback either.
     if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" && "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 && "$(stat -c %a "$PUBLIC_IP_CACHE" 2>/dev/null || true)" =~ ^0?600$ ]]; then
-        local _ip='' _now=0 _mt=0 _pref='' _fam_ok=1
+        local _ip='' _now=0 _mt=0 _pref='' _fam_ok=1 _ip2=''
         _ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$_ip"; then
             # Same family gate as read_cached_public_ip: a cache entry
@@ -13295,7 +13303,10 @@ get_public_ip_swr() {
                 ipv6) [[ "$_ip" != *:* ]] && _fam_ok=0 ;;
             esac
             _now=$(date +%s); _mt=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0)
-            if (( _fam_ok == 1 )) && (( _now - _mt >= 0 && _now - _mt <= 86400 )); then
+            # R13-01: same snapshot race as read_cached_public_ip --
+            # re-read and require identical bytes before serving.
+            _ip2=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
+            if (( _fam_ok == 1 )) && [[ "$_ip2" == "$_ip" ]] && (( _now - _mt >= 0 && _now - _mt <= 86400 )); then
                 refresh_public_ip_bg
                 printf '%s\n' "$_ip"; return 0
             fi
@@ -57749,13 +57760,16 @@ _wallos_caddy_config_matches() { # $1=public port $2=internal port
 # ownership/mode/TTL gates as read_cached_public_ip, minus the
 # preference gate), then a fresh IPv4-only probe.
 wallos_public_ipv4() {
-    local ip='' now mtime age
+    local ip='' now mtime age _ip2=''
     if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]] \
         && [[ "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]] \
         && [[ "$(stat -c %a "$PUBLIC_IP_CACHE" 2>/dev/null || true)" =~ ^0?600$ ]]; then
         ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
         now=$(date +%s); mtime=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0); age=$(( now - mtime ))
-        if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && valid_public_ip "$ip" && (( age >= 0 && age <= PUBLIC_IP_CACHE_TTL )); then
+        # R13-01: same snapshot race as read_cached_public_ip --
+        # re-read and require identical bytes before serving.
+        _ip2=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
+        if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$_ip2" == "$ip" ]] && valid_public_ip "$ip" && (( age >= 0 && age <= PUBLIC_IP_CACHE_TTL )); then
             printf '%s\n' "$ip"
             return 0
         fi

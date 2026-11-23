@@ -17664,6 +17664,13 @@ stop_all_managed_services() {
     stop_abox_service xray || failed=1
     stop_abox_service sing-box || failed=1
     stop_abox_service hysteria || failed=1
+    # R17-M3: xray-latest needs the same service-level stop. Residual
+    # pid cleanup alone cannot stop it: with Restart=always the
+    # manager relaunches a fresh instance that no longer matches the
+    # collected (pid,starttime,exe) identity, so the wait can return
+    # 0 while the service is still running. (stop_abox_service is a
+    # no-op returning 0 when the service is not A-Box-owned.)
+    stop_abox_service xray-latest || failed=1
     kill_managed_residual_pids >/dev/null 2>&1 || failed=1
     (( failed == 0 ))
 }

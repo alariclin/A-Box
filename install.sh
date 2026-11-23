@@ -22995,6 +22995,10 @@ abox_fetch_heartbeat() {
 abox_fetch_guard_start() {
     local _label="${1:-deploy}" _seconds="${2:-${ABOX_FETCH_TOTAL_BUDGET_SECONDS:-300}}" _now _srv
     [[ "$_seconds" =~ ^[0-9]+$ ]] || _seconds=300
+    # R22-01: normalize to decimal -- a leading zero (08/010) would
+    # otherwise be read as octal by $((...)) (08 errors and aborts
+    # the guard, 010 silently means 8).
+    _seconds=$((10#$_seconds))
     _now=$(date +%s 2>/dev/null || printf '0')
     ABOX_FETCH_DEADLINE_EPOCH=$(( _now + _seconds ))
     ABOX_FETCH_TOTAL_BUDGET_SECONDS="$_seconds"
@@ -23061,6 +23065,10 @@ abox_deploy_watchdog_loop() {
     local _grace _now _stall _last_hb _srv _rc _rs_mtime _rollback_state
     _grace="${ABOX_FETCH_WATCHDOG_GRACE_SECONDS:-60}"
     [[ "$_grace" =~ ^[0-9]+$ ]] || _grace=60
+    # R22-01: normalize to decimal (see abox_fetch_guard_start) --
+    # 08 would make (( _now < _deadline + _grace )) fail and the
+    # watchdog would enter the recovery branch on its first poll.
+    _grace=$((10#$_grace))
     _stall="${ABOX_DEPLOY_WATCHDOG_STALL_FILE:-/run/A-Box-deploy-watchdog-stall.log}"
     _rollback_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
     while true; do
@@ -23104,7 +23112,7 @@ abox_deploy_watchdog_loop() {
 }
 
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now _api_max_time=60
+    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now _api_max_time=60 _sleep_for=0 _sleep_remaining=''
     local -a args=()
     [[ -n "$url" ]] || return 1
     if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
@@ -23176,7 +23184,18 @@ github_api_get() {
             abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
         fi
         if (( delay > 30 )); then delay=30; fi
-        if (( delay > 0 )); then sleep "$delay"; fi
+        # R22-02 (B-C2): never sleep past the remaining budget -- cap
+        # the retry wait at the seconds left, and abort at once when
+        # none remain. Unarmed callers keep the uncapped behaviour.
+        _sleep_for=$delay
+        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+            _sleep_remaining=$(abox_fetch_deadline_remaining 2>/dev/null) || _sleep_remaining=''
+            if [[ "$_sleep_remaining" =~ ^-?[0-9]+$ ]]; then
+                (( _sleep_remaining <= 0 )) && { rm -f -- "$tmp" "$headers"; return 1; }
+                (( _sleep_remaining < _sleep_for )) && _sleep_for=$_sleep_remaining
+            fi
+        fi
+        if (( _sleep_for > 0 )); then sleep "$_sleep_for"; fi
         if (( delay < 30 )); then delay=$((delay * 2)); fi
         attempt=$((attempt + 1))
     done

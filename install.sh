@@ -50653,11 +50653,18 @@ sni_org_cdn_penalty() {
     local domain="${1,,}" org="${2,,}" penalty=0
     # This is a risk label, not a site-quality bonus. Do not cancel CDN risk
     # with a negative preference for a familiar brand/domain.
-    case "$org $domain" in
-        *cloudflare*|*cloudfront*|*fastly*|*akamai*|*edgecast*|*stackpath*|*bunny*|*cdn77*) penalty=500 ;;
-        *google*|*facebook*|*meta*|*telegram*|*twitter*|*openai*|*anthropic*|*huggingface*|*apple*|*icloud*) penalty=1000 ;;
-        *amazon*|*aws*) penalty=220 ;;
-        *microsoft*|*verizon*) penalty=180 ;;
+    # R48-M1: the old case matched unbounded substrings on "$org $domain",
+    # so an unrelated org such as METANET AG scored as Meta (1000) and
+    # was graded R / excluded from auto-select (which only takes A/B/C).
+    # Match vendor names as whole words in the org (non-alphanumerics
+    # are word separators) and as whole labels in the domain instead.
+    # Penalties and branch precedence are unchanged.
+    local _ow=" ${org//[^a-z0-9]/ } " _dw=" ${domain//./ } "
+    case "$_ow $_dw" in
+        *" cloudflare "*|*" cloudfront "*|*" fastly "*|*" akamai "*|*" edgecast "*|*" stackpath "*|*" bunny "*|*" cdn77 "*) penalty=500 ;;
+        *" google "*|*" facebook "*|*" meta "*|*" telegram "*|*" twitter "*|*" openai "*|*" anthropic "*|*" huggingface "*|*" apple "*|*" icloud "*) penalty=1000 ;;
+        *" amazon "*|*" aws "*) penalty=220 ;;
+        *" microsoft "*|*" verizon "*) penalty=180 ;;
     esac
     printf '%s\n' "$penalty"
 }

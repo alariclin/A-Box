@@ -19280,7 +19280,8 @@ reorder_one() {
 # ACCEPT before the first terminal rule.
 reorder_plain_accepts() {
     local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves _qout _rc=0
-    local _fresh='' _fline='' _frule_no=0
+    local _fresh='' _fline='' _frule_no=0 _spec=''
+    local -A _seen_before=()
     local lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local -a lines=() argv=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
@@ -19326,6 +19327,7 @@ reorder_plain_accepts() {
         (( max_moves < 0 )) && max_moves=${#lines[@]}
         (( iter <= max_moves + 1 )) || { _rc=1; break; }
         terminal_idx=0; accept_idx=0; rule_no=0
+        _seen_before=()
         for (( i=0; i<${#lines[@]}; i++ )); do
             line="${lines[$i]}"
             # R5-08: `iptables -S` prints the -P policy line first; only
@@ -19336,7 +19338,28 @@ reorder_plain_accepts() {
                 [[ "$terminal_idx" == 0 ]] && terminal_idx=$rule_no
                 continue
             fi
-            if [[ "$terminal_idx" != 0 && "$line" =~ --comment[[:space:]]+\"?A-Box-[0-9]{1,5}(:[0-9]{1,5})?-(tcp|udp)\"?([[:space:]]|$) && "$line" =~ [[:space:]]-j[[:space:]]+ACCEPT([[:space:]]|$) ]]; then
+            if [[ "$line" =~ --comment[[:space:]]+\"?A-Box-[0-9]{1,5}(:[0-9]{1,5})?-(tcp|udp)\"?([[:space:]]|$) && "$line" =~ [[:space:]]-j[[:space:]]+ACCEPT([[:space:]]|$) ]]; then
+                # R19a-01: record the normalised spec (same transform
+                # as the delete below) of every A-Box ACCEPT seen
+                # before the terminal rule. A post-terminal candidate
+                # whose spec already exists before the terminal is
+                # redundant for reachability (the front copy already
+                # accepts the port) and must be skipped: a spec
+                # delete removes the FIRST match, i.e. the front
+                # copy, and the move then oscillates until max_moves
+                # leaves the chain DROP-first. The redundant rear copy
+                # is left in place (harmless, shadowed by the front
+                # copy); this function reorders, it does not dedup.
+                # (Both copies come from the same -S output, so the
+                # textual spec comparison is sound: identical rules
+                # have identical -S lines.)
+                _spec="${line#-A INPUT }"
+                _spec=$(printf '%s' "$_spec" | tr -d '"')
+                if [[ "$terminal_idx" == 0 ]]; then
+                    _seen_before["$_spec"]=1
+                    continue
+                fi
+                [[ -n "${_seen_before[$_spec]:-}" ]] && continue
                 accept_idx=$rule_no; accept_line_idx=$i; break
             fi
         done

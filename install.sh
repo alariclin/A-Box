@@ -383,15 +383,15 @@ ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 ABOX_XRAY_DEFAULT_VERSION='v26.11.9'
 # Stable sing-box compatibility pin; refresh and validate client/config
 # compatibility before changing the pinned version.
-ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
+ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'
 # Historical mirror asset mapping, NOT a promise that the version is still in
 # the mirror: superseded mirror assets are pruned on update. Automatic
 # disaster recovery reads the current verified mirror version instead
 # (core_latest_mirror_release_ref). Recovery is refused for other pins.
 ABOX_XRAY_MIRROR_VERSION='v26.11.9'
-ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
-ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
-ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
+ABOX_SINGBOX_MIRROR_VERSION='v1.14.4'
+ABOX_HYSTERIA_MIRROR_VERSION='app/v2.14.0'
+ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'
 # Per-core update policy (2026-11-10, latest-first):
 #   xray:     auto-stable - track the latest official stable release
 #                           (draft/prerelease excluded).
@@ -67079,12 +67079,12 @@ PY_SELFTEST_TAR
     grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
     grep -Fq 'sni_probe_candidate_tier() {' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
     grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
     grep -Fq 'core_latest_stable_release_ref() {' <<< "$source_body" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" <<< "$source_body" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" <<< "$source_body" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' <<< "$source_body" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
     # F-06 fix: default-value assertions must not fail when the user legally
@@ -67108,9 +67108,9 @@ PY_SELFTEST_TAR
         unset ABOX_SINGBOX_VERSION ABOX_SINGBOX_UPDATE_POLICY ABOX_TRY_LATEST_CORE_STABLE
         ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
         core_latest_stable_release_ref() { return 3; }
-        core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.4'; }
         resolve_core_release_target SagerNet/sing-box || exit 1
-        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]]
+        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.4|mirror-latest' ]]
     ) || { echo 'FAIL: ordinary no-candidate path must fall back to mirror-latest'; failures=$((failures + 1)); }
     (
         unset ABOX_HYSTERIA_APP_VERSION
@@ -67118,7 +67118,7 @@ PY_SELFTEST_TAR
         ABOX_HYSTERIA_UPDATE_POLICY='pinned'
         ABOX_RESOLVED_HYSTERIA_VERSION=''; ABOX_RESOLVED_HYSTERIA_SOURCE=''
         core_latest_stable_release_ref() { printf '%s\n' 'app/v2.14.0'; }
-        core_latest_mirror_release_ref() { printf '%s\n' 'app/v2.13.0'; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'app/v2.14.0'; }
         resolve_core_release_target HyNetworks/hysteria || exit 1
         [[ "$ABOX_RESOLVED_HYSTERIA_VERSION|$ABOX_RESOLVED_HYSTERIA_SOURCE" == 'app/v2.14.0|upstream' ]]
     ) || { echo 'FAIL: TRY_LATEST must override pinned policy'; failures=$((failures + 1)); }
@@ -67147,9 +67147,9 @@ PY_SELFTEST_TAR
         unset ABOX_SINGBOX_VERSION
         ABOX_TRY_LATEST_CORE_STABLE=1
         ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
-        core_latest_stable_release_ref() { printf '%s\n' 'v1.14.3'; }
+        core_latest_stable_release_ref() { printf '%s\n' 'v1.14.4'; }
         resolve_core_release_target SagerNet/sing-box || exit 1
-        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|upstream' ]]
+        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.4|upstream' ]]
     ) || { echo 'FAIL: explicit latest action must select stable upstream candidate'; failures=$((failures + 1)); }
     local mock_release_json=''
     mock_release_json='[{"tag_name":"v1.17.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T06:13:25Z"},{"tag_name":"v1.14.2","draft":false,"prerelease":false,"published_at":"2026-10-10T11:47:08Z"},{"tag_name":"v1.14.3","draft":false,"prerelease":false,"published_at":"2026-10-09T05:35:00Z"},{"tag_name":"v1.15.0","draft":false,"prerelease":false,"published_at":"2026-09-01T00:00:00Z"},{"tag_name":"v1.16.0","draft":true,"prerelease":false,"published_at":"2026-10-13T00:00:00Z"}]'
@@ -67174,20 +67174,20 @@ PY_SELFTEST_TAR
     ( XRAY_ARCH=64; [[ "$(core_mirror_asset_leaf XTLS/Xray-core xray_core.zip "$ABOX_XRAY_MIRROR_VERSION")" == 'Xray-linux-64.zip' ]] ) || { echo 'FAIL: pinned Xray mirror should use fixed asset name when version matches pin'; failures=$((failures + 1)); }
     ( XRAY_ARCH=64; [[ "$(core_mirror_asset_leaf XTLS/Xray-core xray_core.zip "$ABOX_XRAY_MIRROR_VERSION" 0)" == 'Xray-linux-64.zip' ]] ) || { echo 'FAIL: pinned Xray mirror should use fixed asset name when prefer is 0'; failures=$((failures + 1)); }
     ( release=alpine; SB_ARCH=amd64; [[ "$(core_mirror_asset_leaf SagerNet/sing-box singbox_core.tar.gz v1.14.3)" == 'sing-box-1.14.3-linux-amd64-musl.tar.gz' ]] ) || { echo 'FAIL: versioned sing-box musl mirror asset naming'; failures=$((failures + 1)); }
-    ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core "$ABOX_HYSTERIA_MIRROR_VERSION" 1)" == 'hysteria-app-v2.13.0-linux-arm64' ]] ) || { echo 'FAIL: pinned Hysteria mirror should prefer versioned asset even when tag matches pin'; failures=$((failures + 1)); }
+    ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core "$ABOX_HYSTERIA_MIRROR_VERSION" 1)" == 'hysteria-app-v2.14.0-linux-arm64' ]] ) || { echo 'FAIL: pinned Hysteria mirror should prefer versioned asset even when tag matches pin'; failures=$((failures + 1)); }
     ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core "$ABOX_HYSTERIA_MIRROR_VERSION")" == 'hysteria-linux-arm64' ]] ) || { echo 'FAIL: pinned Hysteria mirror should use fixed asset name when version matches pin'; failures=$((failures + 1)); }
     ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core "$ABOX_HYSTERIA_MIRROR_VERSION" 0)" == 'hysteria-linux-arm64' ]] ) || { echo 'FAIL: pinned Hysteria mirror should use fixed asset name when prefer is 0'; failures=$((failures + 1)); }
     ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core app/v2.12.5)" == 'hysteria-app-v2.12.5-linux-arm64' ]] ) || { echo 'FAIL: non-pin Hysteria mirror should use versioned asset name when version does not match pin'; failures=$((failures + 1)); }
     ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core app/v2.12.5 1)" == 'hysteria-app-v2.12.5-linux-arm64' ]] ) || { echo 'FAIL: non-pin Hysteria mirror should use versioned asset name with prefer set to 1'; failures=$((failures + 1)); }
     ( ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''; core_set_resolved_target XTLS/Xray-core v26.3.27 mirror-exact && [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.3.27|mirror-exact' ]] ) || { echo 'FAIL: exact-tag mirror source must preserve the requested version'; failures=$((failures + 1)); }
-    ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 2; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
+    ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 2; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.4'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.4|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8-rc.1 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.9.8 prerelease must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.9-rc.1 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.9 prerelease must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' <<< "$source_body" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
-    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.14.0 compatibility pin missing'; failures=$((failures + 1)); }
     # F-06 fix: isolate policy default assertions from user env overrides.
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray update policy must default to auto-stable'; failures=$((failures + 1)); }

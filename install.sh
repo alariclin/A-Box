@@ -42878,15 +42878,22 @@ _hy2_decode_block_scalar_lines() {
             # around it. The old code only looked at the current
             # line, so an ordinary line after a more-indented one
             # was folded to a space instead of keeping the break.
-            # Blank lines never change the flag: the _bs_nl branch
-            # already joins with a break.
+            # R41a-M2: a blank line next to a more-indented line
+            # needs one extra break: the blank contributes one newline
+            # and the more-indented transition another (PyYAML oracle:
+            # 'a\n  b\n\nc', 'a\n\n  b'). The old claim that blank
+            # lines never matter was wrong in exactly this case.
             if [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then _bs_more=1; else _bs_more=0; fi
             _hy2_bs_count=$(( _hy2_bs_count + 1 ))
             if (( _bs_started == 0 )); then
                 _hy2_bs_pw="$_bs_nl$_bs_line"
                 _bs_started=1
             elif [[ -n "$_bs_nl" ]]; then
-                _hy2_bs_pw+="$_bs_nl$_bs_line"
+                if (( _bs_prev_more == 1 || _bs_more == 1 )); then
+                    _hy2_bs_pw+="$_bs_nl"$'\n'"$_bs_line"
+                else
+                    _hy2_bs_pw+="$_bs_nl$_bs_line"
+                fi
             elif (( _bs_more == 1 )); then
                 _hy2_bs_pw+=$'\n'"$_bs_line"
             elif (( _bs_prev_more == 1 )); then
@@ -42938,7 +42945,14 @@ users_hy2_read_users() {
     # following top-level key would.
     block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print} END { print "__ABOX_HY2_BLOCK_END__" }' "$cfg" 2>/dev/null) || return 1
     [[ -n "$block" ]] || return 1
-        type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | tr -d '"'"'"' \r')
+        # R41a-M3: strip a trailing ' #' comment before comparing:
+        # tr only deletes quotes/spaces, so 'type: userpass # x'
+        # became 'userpass#x' and fell through to the password path
+        # (fail-closed, but a legal config failed to read). The
+        # password: value needs no such strip: its block-scalar header
+        # regex allows a comment, and users_hy2_yaml_scalar strips
+        # ' #' itself.
+        type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"' \r')
     if [[ "$type" == 'userpass' ]]; then
         # Indent-relative: userpass at any indent, entries at +2.
         out=$(printf '%s\n' "$block" | awk '
@@ -42996,14 +43010,21 @@ users_hy2_read_users() {
                     bs=1
                     folded=(substr(val, 1, 1) == ">") ? 1 : 0
                     chomp="clip"
-                    if (val ~ /-/) chomp="strip"
-                    else if (val ~ /\+/) chomp="keep"
+                    # R41a-M1: decide chomping from the indicator
+                    # characters only (positions 2-3, also read below
+                    # for the indent). The old code searched the whole
+                    # header line, so a '-' / '+' inside a trailing
+                    # comment flipped clip to strip/keep. (The
+                    # password: path already does it this way: it
+                    # matches the indicator group only.)
+                    _c2=substr(val, 2, 1); _c3=substr(val, 3, 1)
+                    if (_c2 == "-" || _c3 == "-") chomp="strip"
+                    else if (_c2 == "+" || _c3 == "+") chomp="keep"
                     # 05h-M1: an explicit indentation indicator N
                     # fixes the content indent at (key indent) + N;
                     # without it the first body line indent is used
                     # (the B branch below only sets bind when unset).
                     bind=0
-                    _c2=substr(val, 2, 1); _c3=substr(val, 3, 1)
                     if (_c2 ~ /[0-9]/) bind=(u+2)+_c2
                     else if (_c3 ~ /[0-9]/) bind=(u+2)+_c3
                     printf "K%s\nW%d:%s\n", name, folded, chomp
@@ -43146,7 +43167,11 @@ users_reg_merge_fresh() {
             [.users[] | . as $u
              | ([$fresh[] | select(.secret == $u.secret and (if (.password_only // false) then true else (.name == $u.name) end) and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
              | ([$fresh[] | select(name_matches(.; $u))] | .[0]) as $nm
-             | if $m != null then ((if ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end) + (if ($m.password_only // false) then {} else {flow: ($m.flow // ""), alterId: ($m.alterId // 0)} end))
+             # R41a-M4: the $m branch must also take password_only
+             # from fresh: a mode switch with the same secret kept the
+             # stale mode (the header comment already promises this
+             # field updates in place).
+             | if $m != null then ((if ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end) + (if ($m.password_only // false) then {} else {flow: ($m.flow // ""), alterId: ($m.alterId // 0)} end) + {password_only: ($m.password_only // false)})
                elif $nm != null then $u + {secret: $nm.secret, uuid: ($nm.uuid // ""), flow: ($nm.flow // ""), alterId: ($nm.alterId // 0), login: ($nm.login // $nm.name), password_only: ($nm.password_only // false)}
                else $u end]
             + (reduce ([$fresh[] | . as $f | select(

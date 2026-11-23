@@ -37420,27 +37420,32 @@ capture_pre_block_states() {
 # documented start-all-owned fallback (restore_or_start_owned).
 capture_pre_block_states_once() {
     local file="${PRE_BLOCK_STATES_PREFIX}-${1:-}"
-    local _snap_ts='' _now=0
+    local _snap_ts=''
     if [[ -f "$file" ]]; then
         # L-07(C): a snapshot for a block already in effect is this
         # block's own: reuse it untouched (R9-04: a later capture would
         # record post-block states). Only when NO block is in effect
         # for this period can a pre-existing file be a leftover from
-        # an earlier cycle, and only then is it freshness-checked:
-        # reuse it iff its capture stamp is from this cycle's commit
-        # attempt (the monitor runs every minute, so a failed-commit
-        # retry lands ~60s later; 600s is 10 missed runs of margin).
-        # A stamp older than that, or no stamp at all (a snapshot
-        # written before this stamp existed), is stale: fall through
-        # and recapture, which overwrites the file atomically. The
-        # snapshot is never deleted while a block is in effect, so no
-        # "blocked without snapshot" (H-05) combination is created.
+        # an earlier cycle, and only then is it stamp-checked: reuse it
+        # iff it carries a capture stamp, which proves it was written
+        # by the current capture code for this period (the file is
+        # per-period, so a new period gets a new file). R36a-M1: the old
+        # 600s freshness window broke a failed-commit retry chain that
+        # outlasted it -- the monitor retries every minute, but a
+        # persistent commit failure (e.g. disk full) can last hours,
+        # and the recapture then recorded post-block (stopped) states,
+        # so rollover restored nothing. Age is not a period boundary;
+        # a stamp older than any window is still this period's first
+        # snapshot. No stamp at all (a snapshot written before stamps
+        # existed) is stale: fall through and recapture, which
+        # overwrites the file atomically. The snapshot is never deleted
+        # while a block is in effect, so no "blocked without snapshot"
+        # (H-05) combination is created.
         if [[ "$(read_desired 2>/dev/null)" == TRAFFIC_BLOCKED && "$(read_block_period 2>/dev/null)" == "${1:-}" ]]; then
             return 0
         fi
         _snap_ts=$(grep -a '^# captured [0-9][0-9]*$' "$file" 2>/dev/null | tail -1 | awk '{print $3}' || true)
-        _now=$(date +%s 2>/dev/null || echo 0)
-        if [[ "$_snap_ts" =~ ^[0-9]+$ && "$_now" =~ ^[0-9]+$ ]] && (( _snap_ts <= _now )) && (( _now - _snap_ts < 600 )); then
+        if [[ "$_snap_ts" =~ ^[0-9]+$ ]]; then
             return 0
         fi
     fi
@@ -37597,7 +37602,16 @@ esac
 desired=$(read_desired) || { traffic_fail_closed 'desired state unreadable or invalid' || traffic_error 'desired state could not be fail-closed enforced'; exit 1; }
 blocked_period=$(read_block_period 2>/dev/null || true)
 if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then
-    commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || { traffic_error 'traffic-blocked state migration commit failed; leaving prior desired state unchanged'; exit 1; }
+    commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || {
+        # R36a-H1: the migration failure used to exit here, leaving the
+        # U49 stop gate below unreachable while services kept running
+        # under a persisted TRAFFIC_BLOCKED state (fail-open). Stop
+        # best-effort first -- same pattern as the over-quota branch --
+        # then exit 1; the state is still unchanged.
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
+        traffic_error 'traffic-blocked state migration commit failed; services stopped best-effort, state unchanged'
+        exit 1
+    }
     blocked_period="$current_period"
     traffic_error "migrated legacy traffic-blocked state into billing period ${current_period}"
 fi

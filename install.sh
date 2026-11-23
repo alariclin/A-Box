@@ -42047,7 +42047,11 @@ list_usersd_uuids() {
                 [[ "$_o1_live_rc" == 1 ]] && continue
             fi
         fi
-        _u=$(jq -r --arg proto "$_proto" '.users[]? | [(.uuid // ""), (if ($proto == "vless" or $proto == "vmess") then (.secret // "") else "" end)] | map(select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) | .[0] // empty' "$f" 2>/dev/null) || return 1
+        # R40-H1: only ENABLED users contribute UUIDs (same filter as
+        # users_sync SYNC-05 and _clash_registry_users_json). Without it
+        # a disabled user's UUID was re-emitted into the merged list
+        # (and, by the sync below, into every VLESS inbound's clients).
+        _u=$(jq -r --arg proto "$_proto" '.users[]? | select(.disabled != true and ((.blocked // "") == "")) | [(.uuid // ""), (if ($proto == "vless" or $proto == "vmess") then (.secret // "") else "" end)] | map(select(test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) | .[0] // empty' "$f" 2>/dev/null) || return 1
         printf '%s\n' "$_u"
     done
     return 0
@@ -42124,7 +42128,14 @@ sync_uuids_into_xray_config() {
         msg "${RED}UUID list unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
         return 1
     fi
-    extras_json=$(jq -R . "$_uuid_list_tmp" | jq -s -c --arg p "${primary}" 'map(select(length > 0 and (. | ascii_downcase) != ($p | ascii_downcase)))')
+    # R40-M1: check the conversion: the old pipe (jq -R | jq -s) ran
+    # with pipefail unset, so a failing first jq was invisible to the
+    # assignment status and a failed conversion fell through to '[]'
+    # below, silently dropping every non-primary user from the config.
+    # A single jq -Rn call over [inputs] is directly checkable (and
+    # jq -s -R is NOT equivalent: it slurps the whole input as one
+    # string, so map() fails on it).
+    extras_json=$(jq -Rn -c --arg p "${primary}" '[inputs | select(length > 0 and (. | ascii_downcase) != ($p | ascii_downcase))]' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp"; return 1; }
     rm -f -- "$_uuid_list_tmp"
     [[ -n "$extras_json" ]] || extras_json='[]'
     tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
@@ -42516,10 +42527,18 @@ users_commit_cfg() {
 # is not a vision node and stays untagged). Duplicate candidates get a
 # numeric suffix (vision-2, ...) so tags stay unique.
 users_xray_ensure_tags() {
-    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    jq empty "$cfg" >/dev/null 2>&1 || return 1
-    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
+    # R40-M2: read through a JSONC-stripped view (same approach as
+    # users_adopt): raw jq on a commented config fails the probe and
+    # the retrofit silently never runs. The commit still writes the
+    # transformed JSON over the original file, with the original kept
+    # as backup.
+    _jq_cfg=$(mktemp /tmp/A-Box-utag-json.XXXXXX) || return 1
+    trap 'rm -f -- "$_jq_cfg"' RETURN
+    jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
+    jq empty "$_jq_cfg" >/dev/null 2>&1 || return 1
+    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
     tmpd=$(mktemp -d /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
@@ -42537,7 +42556,7 @@ users_xray_ensure_tags() {
                 (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
-    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
+    ' "$_jq_cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
     users_commit_cfg xray "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .protocol == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
@@ -42553,10 +42572,18 @@ users_xray_ensure_tags() {
 }
 
 users_sb_ensure_tags() {
-    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    jq empty "$cfg" >/dev/null 2>&1 || return 1
-    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
+    # R40-M2: read through a JSONC-stripped view (same approach as
+    # users_adopt): raw jq on a commented config fails the probe and
+    # the retrofit silently never runs. The commit still writes the
+    # transformed JSON over the original file, with the original kept
+    # as backup.
+    _jq_cfg=$(mktemp /tmp/A-Box-utag-json.XXXXXX) || return 1
+    trap 'rm -f -- "$_jq_cfg"' RETURN
+    jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
+    jq empty "$_jq_cfg" >/dev/null 2>&1 || return 1
+    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
     tmpd=$(mktemp -d /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
@@ -42574,7 +42601,7 @@ users_sb_ensure_tags() {
                 (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
-    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
+    ' "$_jq_cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
     users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .type == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then

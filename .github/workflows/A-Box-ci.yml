@@ -58,8 +58,8 @@ jobs:
           grep -Eq '^ABOX_BUILD_EPOCH=[0-9]+$' install.sh
           grep -Fq "ABOX_XRAY_UPDATE_POLICY=\"\${ABOX_XRAY_UPDATE_POLICY:-auto-stable}\"" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
-          grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" install.sh
-          grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" install.sh
+          grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" install.sh
+          grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" install.sh
           if grep -Fq 'EOF_SNI_CANDIDATES' install.sh; then echo 'legacy embedded SNI candidate block found' >&2; exit 1; fi
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt

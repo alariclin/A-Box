@@ -20266,13 +20266,16 @@ ufw_global_rule_numbers() {
     target="${spec}/${proto}"
     expected_comment="# A-Box-${spec}-${proto}"
     command -v ufw >/dev/null 2>&1 || return 2
+    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
     # R3C6-06: an inactive UFW lists no rules, so an empty parse cannot
     # prove absence; return 2 (unknown) so callers do not mutate on a
     # blind "absent". Mirrors the R11C6-01 guard in ufw_delete_owned_rules.
-    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
-        return 2
-    fi
-    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
+    # R20a-M1: the liveness check must be on the same snapshot that is
+    # parsed, not on a prior separate `ufw status` query: UFW can be
+    # disabled between the two calls, and the parse of an inactive
+    # snapshot then returns 0 with no numbers (a false "absent"). Only
+    # an explicit `Status: active` first line admits the parse.
+    [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 2
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
         number="${BASH_REMATCH[1]}"
@@ -20358,10 +20361,11 @@ _ufw_owned_families_complete() {
     target="${spec}/${proto}"
     expected_comment="# A-Box-${spec}-${proto}"
     command -v ufw >/dev/null 2>&1 || return 1
-    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
-        return 1
-    fi
     output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 1
+    # R20a-M1: same-snapshot liveness as ufw_global_rule_numbers (see
+    # there): only an explicit `Status: active` first line admits the
+    # parse; an inactive or unrecognised snapshot is "not complete".
+    [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 1
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
         number="${BASH_REMATCH[1]}"
@@ -20402,10 +20406,12 @@ _ufw_missing_family_has_foreign() {
     target="${spec}/${proto}"
     expected_comment="# A-Box-${spec}-${proto}"
     command -v ufw >/dev/null 2>&1 || return 2
-    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
-        return 2
-    fi
     output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
+    # R20a-M1: same-snapshot liveness as ufw_global_rule_numbers (see
+    # there): only an explicit `Status: active` first line admits the
+    # parse; an inactive or unrecognised snapshot is unknown (2), never
+    # "safe to add" (1).
+    [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 2
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
         number="${BASH_REMATCH[1]}"

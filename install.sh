@@ -39156,7 +39156,7 @@ remove_ddr_runtime_state_files() {
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
-    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au='' _argo_state_moved=0 _argo_f='' _argo_state_expected=0 _argo_state_copied=0
+    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au='' _argo_state_moved=0 _argo_f='' _argo_state_expected=0 _argo_state_copied=0 _reg_wipe_failed=0
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
         chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
@@ -39296,7 +39296,10 @@ do_cleanup() {
             msg "${YELLOW}[!] Failed to remove /usr/local/bin/caddy; keeping the ownership marker so the leftover binary can be removed later.${NC}"
         fi
     fi
-    users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
+    # R39-M1: track the failure for the non-full tail below (the
+    # full/wipe path needs no such check: rm -rf $ABOX_DIR destroys
+    # the registries anyway, and its failure already dies).
+    users_registries_wipe || { msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"; _reg_wipe_failed=1; }
     abox_zram_teardown || die 'zram teardown failed; aborting cleanup.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
@@ -39468,6 +39471,11 @@ do_cleanup() {
     remove_abox_swap || msg "${YELLOW}[!] $(tr_msg cl_swap_keep)${NC}"
     if (( _argo_rm_failed == 1 )); then
         msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
+        pause_return
+        return 1
+    fi
+    if (( _reg_wipe_failed == 1 )); then
+        msg "${YELLOW}[!] Cleanup finished with user registry removal incomplete; credentials may remain on disk.${NC}"
         pause_return
         return 1
     fi
@@ -41121,7 +41129,10 @@ clear_all_protocols() {
         # at clear time (side effects above are skipped for an empty
         # tag list), so orphan TUIC certs cannot survive a clear-all.
         _singbox_cleanup_tuic_certs_when_none_remain || true
-        users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
+        # R39-M1: a failed registry wipe used to only warn while
+        # wipe_ok stayed 1, so the clear reported green success with
+        # user credentials still on disk. Fold it into the verdict.
+        users_registries_wipe || { msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"; wipe_ok=0; }
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
         # R26-H-NF-04: the cleared stack has no core/mode anymore.
         # Both vars go together: validate_abox_env_semantics rejects a
@@ -41314,7 +41325,11 @@ check_virgin_state() {
     # runner, .applied records, pre-block snapshots, rollover marker,
     # autorecover marker, Argo logs.
     remove_ddr_runtime_state_files
-    users_registries_wipe || true
+    local _vg_reg_failed=0
+    # R39-M1: a failed registry wipe used to be swallowed (|| true)
+    # and the reset still committed + printed vg_done. Track it and
+    # report the reset incomplete instead of full success.
+    users_registries_wipe || { msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"; _vg_reg_failed=1; }
     abox_zram_teardown || die 'zram teardown failed; aborting environment reset.'
     # Wallos is a standalone addon, not a protocol/core: environment
     # resets and protocol removal never tear it down, and its
@@ -41331,6 +41346,11 @@ check_virgin_state() {
     fi
     commit_deployment_transaction
     remove_abox_swap || msg "${YELLOW}[!] $(tr_msg cl_swap_keep)${NC}"
+    if (( _vg_reg_failed == 1 )); then
+        msg "${YELLOW}[!] Environment reset finished with user registry cleanup incomplete; credentials may remain on disk.${NC}"
+        pause_return
+        return 1
+    fi
     msg "${GREEN}$(tr_msg vg_done)${NC}"
     pause_return
 }
@@ -41483,6 +41503,13 @@ apply_vps_tune() {
         [[ -d "$dir" && ! -L "$dir" ]] || die "$(tr_msg tn_backup_unsafe)"
         [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] $(tr_msg apply_vps_tune_snapshot_incomplete)${NC}"; return 1; }
     fi
+    # R39-M3: load tcp_bbr BEFORE the idempotency check. The desired
+    # set and the missing-items check only see BBR once the module is
+    # loaded, so an available-but-unloaded module made a fully tuned
+    # (non-BBR) system report "already applied" and skip BBR forever.
+    # A failed load keeps the existing skip behaviour (the desired set
+    # simply omits BBR, as before).
+    modprobe tcp_bbr >/dev/null 2>&1 || true
     # Idempotent re-run: inspect live state first, never error out on re-apply.
     missing=$(_tune_missing_items)
     if [[ -z "$missing" ]]; then

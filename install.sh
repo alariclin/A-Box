@@ -50960,7 +50960,16 @@ sni_verify_raw_report() {
     # explicit cleanup at the end; a RETURN trap guarantees the cache
     # directory is removed on every exit path (same pattern as the
     # _jq_cfg trap in routing_apply_live).
-    trap 'rm -rf -- "$asn_cache" 2>/dev/null || true' RETURN
+    # L10-fix: a RETURN trap is a single global slot. The trap above
+    # stayed installed after this function returned and refired on
+    # every later function return with $asn_cache already unbound
+    # (fatal under set -u; it killed $(sni_auto_select_default) and
+    # emptied the default SNI). Save the caller's trap and restore it
+    # from inside the action, else clear the slot, so the cleanup
+    # fires exactly once (same pattern as the jq() shim).
+    local _asn_caller_trap=''
+    _asn_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -rf -- "$asn_cache" 2>/dev/null || true; if [[ -n "${_asn_caller_trap:-}" ]]; then eval "$_asn_caller_trap"; else trap - RETURN; fi; true' RETURN
     vps_ip=$(get_public_ip 2>/dev/null || true)
     vps_meta=$(asn_lookup_ip "$vps_ip" "$asn_cache")
     vps_asn=$(awk -F'\t|=' '{for(i=1;i<=NF;i++) if($i=="asn"){print $(i+1); exit}}' <<< "$vps_meta")

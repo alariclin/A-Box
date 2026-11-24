@@ -491,6 +491,14 @@ ABOX_TRAFFIC_PAIR_STATE='/etc/ddr/.traffic-pair-state'
 HY2_ACME_OWNER_MARKER='/etc/hysteria/acme/.A-Box-managed'
 PUBLIC_IP_CONNECT_TIMEOUT=${PUBLIC_IP_CONNECT_TIMEOUT:-3}
 PUBLIC_IP_MAX_TIME=${PUBLIC_IP_MAX_TIME:-6}
+# M2: total wall-clock budget (seconds) for one get_public_ip_fresh() round
+# (all v4+v6 endpoints combined). Without it, three v4 endpoints at 6 s each
+# plus three v6 endpoints could block the menu for ~36 s on a dead network;
+# with the default 12 s the worst case is about one slow round plus a
+# second attempt. The menu already serves a stale cache while refreshing
+# in the background (get_public_ip_swr); this caps only the synchronous
+# missing-cache path.
+PUBLIC_IP_TOTAL_BUDGET=${PUBLIC_IP_TOTAL_BUDGET:-12}
 ABOX_DEPLOY_TX_ACTIVE=0
 ABOX_DEPLOY_TX_OWNER=''
 ABOX_DEPLOY_TX_TARGETS=''
@@ -13172,10 +13180,22 @@ PY_PUBLIC_IP
 }
 
 # BUG-28: hoisted from get_public_ip_fresh().
+# $1 (optional): deadline epoch seconds for the whole fresh-probe round;
+# each attempt is capped at min(PUBLIC_IP_MAX_TIME, remaining budget) and
+# the round stops when the budget is spent. Empty $1 keeps the old
+# per-endpoint-only behaviour (standalone callers).
 __abox_try_v4() {
-    local api ip
+    local api ip _now _remain _mt
     for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS4 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        _mt="$PUBLIC_IP_MAX_TIME"
+        if [[ -n "${1:-}" ]]; then
+            _now=$(date +%s 2>/dev/null || printf '0')
+            _remain=$(( $1 - _now ))
+            (( _remain > 0 )) || return 1
+            (( _remain < _mt )) && _mt="$_remain"
+            (( _mt >= 1 )) || _mt=1
+        fi
+        ip=$(curl -fsS4 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$_mt" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -13184,10 +13204,19 @@ __abox_try_v4() {
     return 1
 }
 # BUG-28: hoisted from get_public_ip_fresh().
+# $1 (optional): deadline epoch seconds; see __abox_try_v4.
 __abox_try_v6() {
-    local api ip
+    local api ip _now _remain _mt
     for api in 'https://api64.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS6 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        _mt="$PUBLIC_IP_MAX_TIME"
+        if [[ -n "${1:-}" ]]; then
+            _now=$(date +%s 2>/dev/null || printf '0')
+            _remain=$(( $1 - _now ))
+            (( _remain > 0 )) || return 1
+            (( _remain < _mt )) && _mt="$_remain"
+            (( _mt >= 1 )) || _mt=1
+        fi
+        ip=$(curl -fsS6 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$_mt" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -13196,18 +13225,20 @@ __abox_try_v6() {
     return 1
 }
 get_public_ip_fresh() {
-    local ip api pref
+    local ip api pref _ip_deadline='' _ip_budget=12
+    [[ "${PUBLIC_IP_TOTAL_BUDGET:-12}" =~ ^[0-9]+$ ]] && _ip_budget="$PUBLIC_IP_TOTAL_BUDGET"
+    _ip_deadline=$(( $(date +%s 2>/dev/null || printf '0') + _ip_budget ))
     pref=$(read_ip_pref 2>/dev/null || printf 'dual')
     case "$pref" in
         ipv4)
-            __abox_try_v4 && return 0
+            __abox_try_v4 "$_ip_deadline" && return 0
             ;;
         ipv6)
-            __abox_try_v6 && return 0
+            __abox_try_v6 "$_ip_deadline" && return 0
             ;;
         *)
-            __abox_try_v4 && return 0
-            __abox_try_v6 && return 0
+            __abox_try_v4 "$_ip_deadline" && return 0
+            __abox_try_v6 "$_ip_deadline" && return 0
             ;;
     esac
     printf 'N/A\n'
@@ -51513,10 +51544,17 @@ run_builtin_sni_radar() {
         running=$((running + 1))
         processed=$((processed + 1))
         if (( running >= concurrency )); then
-            wait
-            running=0
+            # PERF (2026-11-25): work-conserving worker pool. The old code
+            # waited for the WHOLE batch here, so one 3 s straggler idled
+            # the other (concurrency-1) slots until the batch drained.
+            # `wait -n` reaps one finished probe and the loop launches the
+            # next domain at once, keeping all slots busy. Bounded
+            # concurrency is unchanged (mini 32 / full 36 defaults);
+            # `wait -n` needs bash 4.3+ and the script requires 4.4+.
+            wait -n || true
+            running=$((running - 1))
             valid_count=$(wc -l < "$raw" 2>/dev/null | tr -d ' ')
-            printf '\r[*] Stage 1 progress: %d/%d tested | valid=%s' "$processed" "$total" "${valid_count:-0}" >&2
+            printf '\r[*] Stage 1 progress: %d/%d tested | valid=%s' "$(( processed - running ))" "$total" "${valid_count:-0}" >&2
         elif (( processed % progress_every == 0 )); then
             valid_count=$(wc -l < "$raw" 2>/dev/null | tr -d ' ')
             printf '\r[*] Stage 1 progress: %d/%d queued | valid=%s' "$processed" "$total" "${valid_count:-0}" >&2
@@ -68286,6 +68324,11 @@ run_self_tests() {
     # E-2-FIX: Disable Xray binary version probe for all self-tests.
     # effective_xray_version() prefers installed /usr/local/bin/xray over ABOX_XRAY_VERSION,
     # which made ML-KEM tests environment-dependent (fail on hosts with Xray installed).
+    # PERF accounting note (M5): on the S2 reference run the 30.6 s self-test
+    # decomposed as herestring guards ~18.6 s + fetch fixtures ~3.6 s +
+    # python ~0.8 s + `bash -n` ~0.16 s; the ~7.0 s remainder is misc
+    # builtins plus ~99,550 lines of xtrace overhead (~70 us/line) when
+    # tracing -- a reporting gap, not a performance defect.
     local saved_probe_skip="${ABOX_XRAY_VERSION_PROBE_SKIP:-}"
     export ABOX_XRAY_VERSION_PROBE_SKIP=1
     local tmp failures=0 real_abox_sig='' real_abox_exists=0 selftest_prev_exit_trap selftest_prev_umask selftest_sni_seed='' selftest_script_dir=''
@@ -68387,8 +68430,23 @@ PY_ABOX_SIG
     assert_bad() { "$@" >/dev/null 2>&1 && { echo "FAIL expected bad: $*"; failures=$((failures + 1)); } || true; }
     selftest_has() { command -v "$1" >/dev/null 2>&1; }
     selftest_note() { printf 'SELF_TEST_NOTE: %s\n' "$*"; }
-    local source_body=""
-    source_body=$(sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0") || { echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1)); }
+    # PERF (2026-11-25): the 215 static guards below used to grep a 4.5 MB
+    # in-memory copy via `<<< "$source_body"`, and bash materialised a fresh
+    # 4.5 MB here-string for every assertion (~51 ms each in the sandbox,
+    # ~14 s per self-test run). The filtered source is now snapshotted once
+    # to a file inside $tmp (removed by selftest_cleanup / the EXIT trap on
+    # every exit path) and every guard greps the file instead (~3-5 ms each).
+    # The snapshot keeps the same sed filter: lines from `run_self_tests() {`
+    # through `main() {` are excluded, so an assertion can never match its own
+    # assertion line; never grep "$0" directly for these guards. Consistency
+    # is checked below (non-empty, no self-test-region marker).
+    local source_body_file=""
+    source_body_file="$tmp/source-body.txt"
+    if ! sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0" > "$source_body_file"; then
+        echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1))
+    elif [[ ! -s "$source_body_file" ]] || grep -q '^run_self_tests() {$' "$source_body_file"; then
+        echo 'FAIL: static source snapshot inconsistent (empty or contains self-test region)'; failures=$((failures + 1))
+    fi
     # BusyBox tar rejects GNU --owner/--group; prefer GNU flags, else python, else plain tar.
     # Third arg force_root=1 rewrites members to uid/gid 0 (good/bad fixtures). Default preserves
     # on-disk ownership (needed for ACME runtime-owned backup acceptance tests).
@@ -68758,12 +68816,12 @@ PY_SELFTEST_TAR
     elif [[ -f "$ABOX_DIR/A-Box-sni-candidates.txt" && ! -L "$ABOX_DIR/A-Box-sni-candidates.txt" ]]; then
         selftest_sni_seed="$ABOX_DIR/A-Box-sni-candidates.txt"
     fi
-    grep -Fq 'ABOX_SNI_HARD_MAX=16384' <<< "$source_body" || { echo 'FAIL: SNI hard ceiling missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_HARD_MAX=16384' "$source_body_file" || { echo 'FAIL: SNI hard ceiling missing'; failures=$((failures + 1)); }
     ! sed -n '/^write_sni_candidate_library() {$/,/^sni_domain_penalty() {$/p' "$0" | grep -Fq 'cat > "$raw" <<' || { echo 'FAIL: SNI candidates must live outside install.sh'; failures=$((failures + 1)); }
-    grep -Fq 'data/sni-candidates.txt' <<< "$source_body" || { echo 'FAIL: SNI database URL/path missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_store_candidate_cache' <<< "$source_body" || { echo 'FAIL: SNI cache synchronization helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'remove_sni_candidate_cache' <<< "$source_body" || { echo 'FAIL: SNI cache uninstall cleanup helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_normalize_candidate_file() {' <<< "$source_body" || { echo 'FAIL: SNI database validator missing'; failures=$((failures + 1)); }
+    grep -Fq 'data/sni-candidates.txt' "$source_body_file" || { echo 'FAIL: SNI database URL/path missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_store_candidate_cache' "$source_body_file" || { echo 'FAIL: SNI cache synchronization helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'remove_sni_candidate_cache' "$source_body_file" || { echo 'FAIL: SNI cache uninstall cleanup helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_normalize_candidate_file() {' "$source_body_file" || { echo 'FAIL: SNI database validator missing'; failures=$((failures + 1)); }
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:api.example.org, DNS:*.other.example'
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain deep.api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
@@ -68786,26 +68844,26 @@ PY_SELFTEST_TAR
         mini_count=$(wc -l < "$tmp/sni-mini.txt" | tr -d ' ')
         [[ "$mini_count" =~ ^[0-9]+$ && "$mini_count" -eq "$sni_count" ]] || { echo "FAIL: SNI mini library does not match full library ($mini_count vs $sni_count)"; failures=$((failures + 1)); }
     else
-        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; network is not used by self-test)' >&2
+        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; this skipped test uses no network)' >&2
     fi
     declare -f asn_lookup_ip >/dev/null || { echo 'FAIL: ASN lookup function missing'; failures=$((failures + 1)); }
     declare -f sni_org_cdn_penalty >/dev/null || { echo 'FAIL: ASN/CDN scoring function missing'; failures=$((failures + 1)); }
     [[ "$(tr_msg confirm_local_sni_full)" != *'远程执行第三方脚本'* ]] || { echo 'FAIL: local SNI prompt still says remote third-party'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_non443_warn)' <<< "$source_body" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:apple_sni_warn)' <<< "$source_body" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_title)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_title translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_cannot)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_cannot translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_mihomo)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_ok)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_ok translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_xhttp)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_unverified)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:we_old_quota)' <<< "$source_body" || { echo 'FAIL: English write_env we_old_quota translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_non443_warn)' "$source_body_file" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:apple_sni_warn)' "$source_body_file" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_title)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_title translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_cannot)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_cannot translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_ok)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_ok translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_xhttp)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_unverified)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:we_old_quota)' "$source_body_file" || { echo 'FAIL: English write_env we_old_quota translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
-    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq 'addgroup -S "$group"' <<< "$source_body" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
-    grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' <<< "$source_body" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' "$source_body_file" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' "$source_body_file" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq 'addgroup -S "$group"' "$source_body_file" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
+    grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' "$source_body_file" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
     assert_ok valid_ipv4_cidr 192.0.2.1/24
     assert_bad valid_ipv4_cidr 001.002.003.004/24
     assert_bad valid_ip_address 001.002.003.004
@@ -68864,8 +68922,8 @@ PY_SELFTEST_TAR
     fi
     declare -F backup_current_config >/dev/null 2>&1 || { echo 'FAIL: backup_current_config missing'; failures=$((failures + 1)); }
     declare -F export_diagnostic_bundle >/dev/null 2>&1 || { echo 'FAIL: export_diagnostic_bundle missing'; failures=$((failures + 1)); }
-    grep -Fq 'refusing to report a false Saved state' <<< "$source_body" || { echo 'FAIL: SNI persistence must fail closed'; failures=$((failures + 1)); }
-    grep -Fq 'Diagnostic bundle checksum generation failed' <<< "$source_body" || { echo 'FAIL: diagnostic checksum failures must be blocking'; failures=$((failures + 1)); }
+    grep -Fq 'refusing to report a false Saved state' "$source_body_file" || { echo 'FAIL: SNI persistence must fail closed'; failures=$((failures + 1)); }
+    grep -Fq 'Diagnostic bundle checksum generation failed' "$source_body_file" || { echo 'FAIL: diagnostic checksum failures must be blocking'; failures=$((failures + 1)); }
     declare -F write_diagnostic_checksum >/dev/null 2>&1 || { echo 'FAIL: diagnostic checksum helper missing'; failures=$((failures + 1)); }
     bash -n "$0" >/dev/null 2>&1 || { echo 'FAIL: installer source must pass bash -n'; failures=$((failures + 1)); }
     declare -F confirm_remote_script_hash >/dev/null 2>&1 || { echo 'FAIL: remote script hash gate missing'; failures=$((failures + 1)); }
@@ -68877,10 +68935,10 @@ PY_SELFTEST_TAR
     declare -F record_core_family_ownership >/dev/null 2>&1 || { echo 'FAIL: per-file core ownership missing'; failures=$((failures + 1)); }
     declare -F refresh_dynamic_core_subtree_ownership >/dev/null 2>&1 || { echo 'FAIL: dynamic ACME ownership refresh missing'; failures=$((failures + 1)); }
     declare -F prepare_hysteria_acme_dir_ownership >/dev/null 2>&1 || { echo 'FAIL: Hysteria ACME ownership preparation missing'; failures=$((failures + 1)); }
-    grep -q 'refresh_dynamic_core_subtree_ownership hysteria /etc/hysteria/acme' <<< "$source_body" || { echo 'FAIL: Hysteria cleanup does not refresh dynamic ACME ownership'; failures=$((failures + 1)); }
-    grep -q 'A-Box managed Hysteria ACME directory v1' <<< "$source_body" || { echo 'FAIL: Hysteria ACME ownership marker missing'; failures=$((failures + 1)); }
-    grep -q 'prepare_hysteria_acme_dir_ownership' <<< "$source_body" || { echo 'FAIL: Hysteria ACME ownership gate missing'; failures=$((failures + 1)); }
-    grep -q 'prepare_hysteria_acme_dir_ownership || return 1' <<< "$source_body" || { echo 'FAIL: Hysteria cleanup legacy ownership migration gate missing'; failures=$((failures + 1)); }
+    grep -q 'refresh_dynamic_core_subtree_ownership hysteria /etc/hysteria/acme' "$source_body_file" || { echo 'FAIL: Hysteria cleanup does not refresh dynamic ACME ownership'; failures=$((failures + 1)); }
+    grep -q 'A-Box managed Hysteria ACME directory v1' "$source_body_file" || { echo 'FAIL: Hysteria ACME ownership marker missing'; failures=$((failures + 1)); }
+    grep -q 'prepare_hysteria_acme_dir_ownership' "$source_body_file" || { echo 'FAIL: Hysteria ACME ownership gate missing'; failures=$((failures + 1)); }
+    grep -q 'prepare_hysteria_acme_dir_ownership || return 1' "$source_body_file" || { echo 'FAIL: Hysteria cleanup legacy ownership migration gate missing'; failures=$((failures + 1)); }
     declare -F validate_abox_cron_file >/dev/null 2>&1 || { echo 'FAIL: cron semantic validator missing'; failures=$((failures + 1)); }
     _managed_paths_fixture="$tmp/all-managed-paths.txt"
     _saved_init_for_paths="${INIT_SYS:-}"
@@ -68917,24 +68975,24 @@ PY_SELFTEST_TAR
         printf '%s\n' '# foreign' > "$tmp/foreign-firewall.service"
         ! auxiliary_content_is_abox_managed "$tmp/foreign-firewall.service" /etc/systemd/system/A-Box-firewall.service || { echo 'FAIL: foreign firewall service accepted as managed'; failures=$((failures + 1)); }
     fi
-    grep -Fq 'User=abox-xray' <<< "$source_body" || { echo 'FAIL: Xray systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-xray:abox-xray"' <<< "$source_body" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'capabilities="${HY2_RC_CAPS}"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
-    grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-xray' "$source_body_file" || { echo 'FAIL: Xray systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-xray:abox-xray"' "$source_body_file" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'capabilities="${HY2_RC_CAPS}"' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
+    grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
     # 11 real sites (U35 fix; C2: was 13, the retired xray-latest block
-    # held 2); source_body excludes this assertion line itself.
-    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 11 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
-    grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
-    grep -Fq 'sni_probe_candidate_tier() {' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
-    grep -Fq 'core_latest_stable_release_ref() {' <<< "$source_body" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" <<< "$source_body" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'core_fetch_upstream_release_asset() {' <<< "$source_body" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
+    # held 2); source snapshot excludes this assertion line itself.
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' "$source_body_file")" -ge 11 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-singbox' "$source_body_file" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-singbox:abox-singbox"' "$source_body_file" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-hysteria' "$source_body_file" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-hysteria:abox-hysteria"' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" "$source_body_file" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' "$source_body_file" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
+    grep -Fq 'sni_probe_candidate_tier() {' "$source_body_file" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' "$source_body_file" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
+    grep -Fq 'core_latest_stable_release_ref() {' "$source_body_file" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" "$source_body_file" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'core_fetch_upstream_release_asset() {' "$source_body_file" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
     # F-06 fix: default-value assertions must not fail when the user legally
     # overrides via environment. Isolate in a subshell with overrides unset.
@@ -69035,8 +69093,8 @@ PY_SELFTEST_TAR
     ( ABOX_XRAY_VERSION=v26.9.8-rc.1 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.9.8 prerelease must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.9-rc.1 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.9 prerelease must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
-    grep -Fq 'support-x25519mlkem768: $clash_mlkem' <<< "$source_body" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
-    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.14.0 compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'support-x25519mlkem768: $clash_mlkem' "$source_body_file" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
+    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' "$source_body_file" || { echo 'FAIL: Hysteria v2.14.0 compatibility pin missing'; failures=$((failures + 1)); }
     # F-06 fix: isolate policy default assertions from user env overrides.
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray update policy must default to auto-stable'; failures=$((failures + 1)); }
@@ -69046,13 +69104,13 @@ PY_SELFTEST_TAR
       [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='pinned'; [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray pinned policy override not honored'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' <<< "$source_body" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' "$source_body_file" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
     # C4 (2026-11-10, no-cooling policy): the cooldown helpers are retired;
     # the resolver must no longer define them, and no cooldown variable
     # may remain in the source.
     ! declare -F core_cooldown_allows_age >/dev/null 2>&1 || { echo 'FAIL: retired cooldown helper still exists'; failures=$((failures + 1)); }
     ! declare -F core_stable_release_age_days >/dev/null 2>&1 || { echo 'FAIL: retired release-age helper still exists'; failures=$((failures + 1)); }
-    ! grep -Fq 'ABOX_STABLE_COOLDOWN_DAYS' <<< "$source_body" || { echo 'FAIL: retired cooldown variable still present'; failures=$((failures + 1)); }
+    ! grep -Fq 'ABOX_STABLE_COOLDOWN_DAYS' "$source_body_file" || { echo 'FAIL: retired cooldown variable still present'; failures=$((failures + 1)); }
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1
@@ -69065,18 +69123,18 @@ PY_SELFTEST_TAR
         echo 'FAIL: build metadata format or epoch mismatch'
         failures=$((failures + 1))
     }
-    grep -Fq 'IP_PREF_FILE=' <<< "$source_body" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
-    grep -Fq 'ip_preference_menu()' <<< "$source_body" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_menu()' <<< "$source_body" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_auto_prefer()' <<< "$source_body" || { echo 'FAIL: DNS auto benchmark missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_enable_doh()' <<< "$source_body" || { echo 'FAIL: DoH implementation missing'; failures=$((failures + 1)); }
-    grep -Fq 'timezone_choose_from_list()' <<< "$source_body" || { echo 'FAIL: numbered timezone selector missing'; failures=$((failures + 1)); }
-    grep -Fq 'run_mirrored_test_script()' <<< "$source_body" || { echo 'FAIL: test-script disaster fallback missing'; failures=$((failures + 1)); }
-    grep -Fq 'wallos_install_or_update()' <<< "$source_body" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
-    grep -Fq 'timezone_menu()' <<< "$source_body" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' <<< "$source_body" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
+    grep -Fq 'IP_PREF_FILE=' "$source_body_file" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
+    grep -Fq 'ip_preference_menu()' "$source_body_file" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_menu()' "$source_body_file" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_auto_prefer()' "$source_body_file" || { echo 'FAIL: DNS auto benchmark missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_enable_doh()' "$source_body_file" || { echo 'FAIL: DoH implementation missing'; failures=$((failures + 1)); }
+    grep -Fq 'timezone_choose_from_list()' "$source_body_file" || { echo 'FAIL: numbered timezone selector missing'; failures=$((failures + 1)); }
+    grep -Fq 'run_mirrored_test_script()' "$source_body_file" || { echo 'FAIL: test-script disaster fallback missing'; failures=$((failures + 1)); }
+    grep -Fq 'wallos_install_or_update()' "$source_body_file" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
+    grep -Fq 'timezone_menu()' "$source_body_file" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$source_body_file" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$source_body_file" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$source_body_file" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     declare -F fetch_util_mirror_asset >/dev/null 2>&1 || { echo 'FAIL: pinned-utility mirror fetch missing'; failures=$((failures + 1)); }
     # wgcf latest-tracking: the resolver binds one release (version + digest).
     _wgcf_api_json='{"tag_name":"v2.3.1","draft":false,"prerelease":false,"assets":[{"name":"wgcf_2.3.1_linux_amd64","digest":"sha256:4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8"},{"name":"wgcf_2.3.1_linux_arm64","digest":"sha256:710ab2d8ac145d81a4cf0c11bdb0e05914f77ae2a45f67b87e718d84b4cb7301"},{"name":"checksums.txt","digest":"sha256:15ab012ba30009ca2183483b246fc3b805318a91be9f35db89dfd85e7ca635ad"}]}'
@@ -69110,30 +69168,59 @@ PY_SELFTEST_TAR
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
-    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" <<< "$source_body" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
-    grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
-    grep -Fq 'one_click_reality_deploy()' <<< "$source_body" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_is_fast()' <<< "$source_body" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'try_latest_cores_danger()' <<< "$source_body" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
-    grep -Fq 'export_lightweight_subscription()' <<< "$source_body" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
-    grep -Fq 'xray_ensure_stats()' <<< "$source_body" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
-    grep -Fq 'multi_user_menu()' <<< "$source_body" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_sync()' <<< "$source_body" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
-    grep -Fq 'user_guard_tick()' <<< "$source_body" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
-    grep -Fq 'setup_user_guard()' <<< "$source_body" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_hot_remove()' <<< "$source_body" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
-    grep -Fq 'deploy_with_instance_choice()' <<< "$source_body" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
-    grep -Fq 'get_public_ip_swr()' <<< "$source_body" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
-    grep -Fq '_ip_geo_fetch_now()' <<< "$source_body" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
-    grep -Fq '_MI_SNI_LIST' <<< "$source_body" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
-    grep -Fq '_MI_USER_RECS' <<< "$source_body" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_u_blocked' <<< "$source_body" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_users_none' <<< "$source_body" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_u_days' <<< "$source_body" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
-    grep -Fq 'node_sni_menu' <<< "$source_body" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_prompt_or_auto' <<< "$source_body" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
-    grep -Fq 'statsUserUplink' <<< "$source_body" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
-    grep -Fq 'write_full_uuid_list_to_file' <<< "$source_body" || { echo 'FAIL: extra-UUID full-list writer missing (server-side revocation path)'; failures=$((failures + 1)); }
+    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$source_body_file" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
+    grep -Fq '每月流量管控 / Monthly Traffic' "$source_body_file" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
+    grep -Fq 'one_click_reality_deploy()' "$source_body_file" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_is_fast()' "$source_body_file" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'try_latest_cores_danger()' "$source_body_file" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
+    grep -Fq 'export_lightweight_subscription()' "$source_body_file" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
+    grep -Fq 'xray_ensure_stats()' "$source_body_file" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
+    grep -Fq 'multi_user_menu()' "$source_body_file" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_sync()' "$source_body_file" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
+    grep -Fq 'user_guard_tick()' "$source_body_file" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
+    grep -Fq 'setup_user_guard()' "$source_body_file" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_hot_remove()' "$source_body_file" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
+    grep -Fq 'deploy_with_instance_choice()' "$source_body_file" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
+    grep -Fq 'get_public_ip_swr()' "$source_body_file" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
+    # M2: the fresh-probe round must respect the total budget. Fake clock
+    # (file-backed so it survives command substitution) advances 5 s per
+    # curl call; with a 12 s budget the round must stop after the 3 v4
+    # attempts (caps 6, 6, 2) and never try v6.
+    if ! (
+        _ip_clock="$tmp/ip-fake-clock"
+        _ip_calls="$tmp/ip-calls"
+        _ip_caps="$tmp/ip-caps"
+        printf '1700000000\n' > "$_ip_clock"
+        : > "$_ip_calls"; : > "$_ip_caps"
+        date() {
+            if [[ "${1:-}" == '+%s' ]]; then cat "$_ip_clock"; else command date "$@"; fi
+        }
+        curl() {
+            local _m='' _prev='' _a _n
+            for _a in "$@"; do
+                [[ "$_prev" == '-m' ]] && _m="$_a"
+                _prev="$_a"
+            done
+            printf 'x\n' >> "$_ip_calls"
+            printf '%s\n' "$_m" >> "$_ip_caps"
+            _n=$(cat "$_ip_clock"); printf '%s\n' $(( _n + 5 )) > "$_ip_clock"
+            return 1
+        }
+        PUBLIC_IP_TOTAL_BUDGET=12
+        ! get_public_ip_fresh >/dev/null 2>&1
+        [[ "$(wc -l < "$_ip_calls" | tr -d ' ')" == '3' ]] || exit 1
+        [[ "$(tr '\n' ' ' < "$_ip_caps")" == '6 6 2 ' ]] || exit 1
+    ); then echo 'FAIL: public-IP fresh probe must stop at the total budget (3 v4 attempts, caps 6/6/2, no v6)'; failures=$((failures + 1)); fi
+    grep -Fq '_ip_geo_fetch_now()' "$source_body_file" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_SNI_LIST' "$source_body_file" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_USER_RECS' "$source_body_file" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_blocked' "$source_body_file" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_users_none' "$source_body_file" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_days' "$source_body_file" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
+    grep -Fq 'node_sni_menu' "$source_body_file" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_prompt_or_auto' "$source_body_file" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
+    grep -Fq 'statsUserUplink' "$source_body_file" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
+    grep -Fq 'write_full_uuid_list_to_file' "$source_body_file" || { echo 'FAIL: extra-UUID full-list writer missing (server-side revocation path)'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
     _saved_extra_uuid_file="$EXTRA_UUID_FILE"
     _saved_uuid_set="${UUID+x}"
@@ -69156,15 +69243,15 @@ PY_SELFTEST_TAR
     EXTRA_UUID_FILE="$_saved_extra_uuid_file"
     if [[ "$_saved_uuid_set" == x ]]; then UUID="$_saved_uuid_value"; else unset UUID; fi
     unset _saved_extra_uuid_file _saved_uuid_set _saved_uuid_value _extra_uuid_actual _extra_uuid_expected
-    grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' <<< "$source_body" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
-    grep -Fq 'XHTTP-$client_uuid' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
-    grep -Fq 'probe_core_sources_banner()' <<< "$source_body" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_fetch_guard_start()' <<< "$source_body" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_deploy_watchdog_loop()' <<< "$source_body" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
-    grep -Fq 'preserve_uninstall_transaction_backup()' <<< "$source_body" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
-    grep -Fq 'restore_user_guard_cron_block()' <<< "$source_body" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
-    grep -Fq 'report_restore_cron_status()' <<< "$source_body" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
-    grep -Fq 'fetch_abox_mirror_asset()' <<< "$source_body" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' "$source_body_file" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
+    grep -Fq 'XHTTP-$client_uuid' "$source_body_file" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
+    grep -Fq 'probe_core_sources_banner()' "$source_body_file" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_fetch_guard_start()' "$source_body_file" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_deploy_watchdog_loop()' "$source_body_file" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
+    grep -Fq 'preserve_uninstall_transaction_backup()' "$source_body_file" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
+    grep -Fq 'restore_user_guard_cron_block()' "$source_body_file" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
+    grep -Fq 'report_restore_cron_status()' "$source_body_file" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
+    grep -Fq 'fetch_abox_mirror_asset()' "$source_body_file" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 
     assert_ok valid_ip_pref ipv4
     assert_ok valid_ip_pref ipv6
@@ -69174,7 +69261,7 @@ PY_SELFTEST_TAR
     assert_bad valid_timezone_name '../etc/passwd'
     [[ "$(timezone_for_country CN)" == 'Asia/Shanghai' ]] || { echo 'FAIL: CN timezone heuristic'; failures=$((failures + 1)); }
     [[ "$(timezone_for_country US)" == 'America/New_York' ]] || { echo 'FAIL: US timezone heuristic'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_SNI_DEFAULT_MAX=8192' <<< "$source_body" || { echo 'FAIL: SNI default max missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_DEFAULT_MAX=8192' "$source_body_file" || { echo 'FAIL: SNI default max missing'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.7.28 v26.3.27)" == '1' ]] || { echo 'FAIL: Xray version comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.7.28 v26.7.28)" == '0' ]] || { echo 'FAIL: Xray compatibility pin comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.3.27)" == '0' ]] || { echo 'FAIL: Xray equal version comparison'; failures=$((failures + 1)); }
@@ -69406,6 +69493,12 @@ N11EOF
                 echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
               chmod 600 "$WALLOS_DIR/.upgrade-transaction"
               docker() { case "$1" in image) return 1 ;; container) printf 'Cannot connect to the Docker daemon\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              # M1: the recovery path looks the journal tag up in the
+              # mirror version list; without this mock it fetched the
+              # real list (the one real-network call left in self-test
+              # besides the Cloudflare trace probes). 9.9.9 stays absent
+              # from the mocked list, so the refuse path is unchanged.
+              wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { echo 'RESTORED' > "$_n1u_tmp/restored"; return 0; }
               wallos_recover_interrupted_upgrade >/dev/null 2>&1 && exit 1
@@ -69427,20 +69520,20 @@ N11EOF
     }
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" <<< "$source_body" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
-    # 3 real sites each; source_body excludes these assertion lines themselves.
-    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' <<< "$source_body" || true)
+    grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$source_body_file" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
+    # 3 real sites each; source snapshot excludes these assertion lines themselves.
+    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' "$source_body_file" || true)
     [[ "$runtime_guard_impl_count" =~ ^[0-9]+$ && "$runtime_guard_impl_count" -ge 3 ]] || { echo 'FAIL: all background helpers must recreate the runtime lock after /run recreation'; failures=$((failures + 1)); }
-    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' <<< "$source_body" || true)
+    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' "$source_body_file" || true)
     [[ "$runtime_guard_count" =~ ^[0-9]+$ && "$runtime_guard_count" -ge 3 ]] || { echo 'FAIL: all background helpers must honor the global A-Box runtime lock'; failures=$((failures + 1)); }
-    grep -Fq 'systemctl disable "$srv"' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must disable systemd autostart'; failures=$((failures + 1)); }
-    grep -Fq 'rc-update del "$srv" default' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
-    grep -Fq 'start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1' <<< "$source_body" || { echo 'FAIL: OpenRC stop fallback must bind PID to expected executable'; failures=$((failures + 1)); }
+    grep -Fq 'systemctl disable "$srv"' "$source_body_file" || { echo 'FAIL: traffic quota stop path must disable systemd autostart'; failures=$((failures + 1)); }
+    grep -Fq 'rc-update del "$srv" default' "$source_body_file" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
+    grep -Fq 'start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1' "$source_body_file" || { echo 'FAIL: OpenRC stop fallback must bind PID to expected executable'; failures=$((failures + 1)); }
     ( verify_github_asset_digest /dev/null '' ) >/dev/null 2>&1 && { echo 'FAIL: missing GitHub digest must be rejected'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' <<< "$source_body" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' "$source_body_file" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
     ( ABOX_ASSUME_YES_OTA=1 confirm_ota_script_hash 0000000000000000000000000000000000000000000000000000000000000000 https://example.com/script.sh ) >/dev/null 2>&1 && { echo 'FAIL: ABOX_ASSUME_YES_OTA must be rejected without allowlist'; failures=$((failures + 1)); }
     # N-05: assert the REAL env -i call site (not a self-matching pattern).
-    grep -Fq "env -i \\" <<< "$source_body" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
+    grep -Fq "env -i \\" "$source_body_file" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
 
     [[ "$(normalize_port_spec 020000-025000)" == '20000:25000' ]] || { echo 'FAIL: normalize port range'; failures=$((failures + 1)); }
     HY2_DOMAIN=example.com HY2_ACME_TYPE=http CORE_IN=hysteria MODE_IN=HY2 VLESS_PORT=8443 XHTTP_PORT=9443 SS_PORT=2053 HY2_BASE_PORT=443 HY2_HOP=false HY2_HOP_IMPL=none
@@ -69492,31 +69585,31 @@ N11EOF
     [[ "$(sni_org_cdn_penalty api.cloudflare.com 'AS13335 Cloudflare, Inc.')" -ge 300 ]] || { echo 'FAIL: Cloudflare first-party target must retain CDN-risk label'; failures=$((failures + 1)); }
     [[ "$(sni_org_cdn_penalty api.fastly.com 'AS54113 Fastly, Inc.')" -ge 300 ]] || { echo 'FAIL: Fastly first-party target must retain CDN-risk label'; failures=$((failures + 1)); }
     ! grep -Fq 'NR <= 8' <(sed -n '/^traffic_management_menu() {$/,/^manage_ss_whitelist()/p' "$0") || { echo 'FAIL: monthly vnStat display must not truncate after 8 raw lines'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_SNI_FULL_TOPN:-100' <<< "$source_body" || { echo 'FAIL: full SNI result display count default'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_FULL_TOPN:-100' "$source_body_file" || { echo 'FAIL: full SNI result display count default'; failures=$((failures + 1)); }
     ! grep -q '^MAIN_LOCK=/run/A-Box.lock$' "$0" || { echo 'FAIL: helper health probe still depends on interactive main lock'; failures=$((failures + 1)); }
     traffic_writer_body=$(sed -n '/write_private_line() {/,/^read_desired() {/p' "$0") || { echo 'FAIL: traffic helper writer static extraction'; failures=$((failures + 1)); }
     ! grep -q 'path_parent_chain_safe "\$dest"' <<< "$traffic_writer_body" || { echo 'FAIL: traffic helper calls main-only function'; failures=$((failures + 1)); }
-    grep -q 'export XRAY_LOCATION_ASSET="/usr/local/share/xray"' <<< "$source_body" || { echo 'FAIL: OpenRC Xray asset path is not exported'; failures=$((failures + 1)); }
+    grep -q 'export XRAY_LOCATION_ASSET="/usr/local/share/xray"' "$source_body_file" || { echo 'FAIL: OpenRC Xray asset path is not exported'; failures=$((failures + 1)); }
     # R11C8-02: the geo updater now resolves the manifest via SCRIPT_DIR
     # (its own location), not a hardcoded /etc/ddr literal.
     grep -q '^ABOX_CORE_OWNERSHIP="$SCRIPT_DIR/.managed-core-files.tsv"$' "$0" || { echo 'FAIL: Geo updater ownership manifest path missing'; failures=$((failures + 1)); }
     grep -q '^update_geo_ownership() {' "$0" || { echo 'FAIL: Geo updater ownership refresh helper missing'; failures=$((failures + 1)); }
-    grep -q 'if ! update_geo_ownership; then' <<< "$source_body" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
-    grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' <<< "$source_body" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }
-    grep -q 'Authorization: Bearer %s' <<< "$source_body" || { echo 'FAIL: GitHub bearer token config support missing'; failures=$((failures + 1)); }
+    grep -q 'if ! update_geo_ownership; then' "$source_body_file" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
+    grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' "$source_body_file" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }
+    grep -q 'Authorization: Bearer %s' "$source_body_file" || { echo 'FAIL: GitHub bearer token config support missing'; failures=$((failures + 1)); }
     # H-19: the old assertion grepped the fabricated 'invalid request
     # from' format Xray never emits; the new failregex covers real
     # '... rejected ... invalid request|invalid user' access.log lines.
-    grep -Fq 'invalid request|invalid user' <<< "$source_body" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
-    grep -q 'backend=\$(firewall_backend)' <<< "$source_body" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
+    grep -Fq 'invalid request|invalid user' "$source_body_file" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
+    grep -q 'backend=\$(firewall_backend)' "$source_body_file" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
     grep -q '^remove_abox_native_firewall_rule() {' "$0" || { echo 'FAIL: exact owned firewall port removal helper missing'; failures=$((failures + 1)); }
     grep -q '^forget_native_firewall_rule() {' "$0" || { echo 'FAIL: native firewall ownership-state removal helper missing'; failures=$((failures + 1)); }
     _forget_call_prefix='forget_native_firewall_rule'; _ufw_call_suffix=' "$spec" "$proto" ufw'; _fwd_call_suffix=' "$_spec" "$proto" firewalld'
     grep -Fq -- "${_forget_call_prefix}${_ufw_call_suffix}" "$0" || { echo 'FAIL: UFW firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -Fq -- "${_forget_call_prefix}${_fwd_call_suffix}" "$0" || { echo 'FAIL: firewalld firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -q '^preflight_reset_ownership() {' "$0" || { echo 'FAIL: reset ownership preflight missing'; failures=$((failures + 1)); }
-    grep -Fq 'command clear || true' <<< "$source_body" || { echo 'FAIL: non-interactive clear guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'if [[ -t 0 ]]; then' <<< "$source_body" || { echo 'FAIL: pause_return TTY guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'command clear || true' "$source_body_file" || { echo 'FAIL: non-interactive clear guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'if [[ -t 0 ]]; then' "$source_body_file" || { echo 'FAIL: pause_return TTY guard missing'; failures=$((failures + 1)); }
     _http01_cleanup_call='remove_abox_native_firewall_rule'; _http01_cleanup_args=' 80 tcp'
     ! grep -Fq -- "${_http01_cleanup_call}${_http01_cleanup_args}" "$0" || { echo 'FAIL: HTTP-01 must keep 80/tcp reachable for CertMagic HTTP challenge and renewal'; failures=$((failures + 1)); }
     _hop_udp_regex='-p udp'; _hop_redirect_regex='REDIRECT --to-ports'
@@ -69524,28 +69617,28 @@ N11EOF
     [[ "$_hop_udp_rule_count" -ge 4 ]] || { echo 'FAIL: HY2 official hop iptables checks must require UDP in both verifier copies'; failures=$((failures + 1)); }
     _http01_cleanup_helper='cleanup_http01_port_after_' ; _http01_cleanup_helper+='hy2_start'
     ! grep -Fq -- "$_http01_cleanup_helper" "$0" || { echo 'FAIL: obsolete HTTP-01 post-start cleanup path remains'; failures=$((failures + 1)); }
-    grep -Fq 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙' <<< "$source_body" || { echo 'FAIL: IPv6 whitelist silent-skip guard missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue' <<< "$source_body" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
-    grep -q 'iptables_rule_check() {' <<< "$source_body" || { echo 'FAIL: standalone firewall restore helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙' "$source_body_file" || { echo 'FAIL: IPv6 whitelist silent-skip guard missing'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue' "$source_body_file" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
+    grep -q 'iptables_rule_check() {' "$source_body_file" || { echo 'FAIL: standalone firewall restore helper missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'firewallcmd-multiport'"'"'' "$0" || { echo 'FAIL: Fail2Ban firewalld action mapping missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'ufw'"'"'' "$0" || { echo 'FAIL: Fail2Ban UFW action mapping missing'; failures=$((failures + 1)); }
-    grep -q 'bbr_module_file=' <<< "$source_body" || { echo 'FAIL: BBR module persistence path missing'; failures=$((failures + 1)); }
+    grep -q 'bbr_module_file=' "$source_body_file" || { echo 'FAIL: BBR module persistence path missing'; failures=$((failures + 1)); }
     grep -q '^    local -a pids=() exes=()' "$0" || { echo 'FAIL: parallel residual PID collection missing'; failures=$((failures + 1)); }
-    grep -q 'pid_exe_matches "$pid" "$exe"' <<< "$source_body" || { echo 'FAIL: PID reuse executable recheck missing'; failures=$((failures + 1)); }
+    grep -q 'pid_exe_matches "$pid" "$exe"' "$source_body_file" || { echo 'FAIL: PID reuse executable recheck missing'; failures=$((failures + 1)); }
     declare -F selftest_abox_signature >/dev/null || { echo 'FAIL: live /etc/ddr side-effect regression guard missing'; failures=$((failures + 1)); }
-    grep -q -- '--config -' <<< "$source_body" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
-    grep -q '2300000' <<< "$source_body" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
-    grep -q 'created_by_abox == 1' <<< "$source_body" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
-    grep -Fq 'setup_zram_swap()' <<< "$source_body" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_registries_wipe' <<< "$source_body" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
-    grep -Fq 'users_registry_remove "$core" "$tag"' <<< "$source_body" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy' <<< "$source_body" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy xray' <<< "$source_body" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' <<< "$source_body" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
-    grep -Fq '6) swap_menu ;;' <<< "$source_body" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
-    grep -Fq '/usr/local/sbin/abox-zram' <<< "$source_body" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
+    grep -q -- '--config -' "$source_body_file" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
+    grep -q '2300000' "$source_body_file" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
+    grep -q 'created_by_abox == 1' "$source_body_file" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
+    grep -Fq 'setup_zram_swap()' "$source_body_file" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_registries_wipe' "$source_body_file" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
+    grep -Fq 'users_registry_remove "$core" "$tag"' "$source_body_file" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy' "$source_body_file" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy xray' "$source_body_file" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' "$source_body_file" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq '6) swap_menu ;;' "$source_body_file" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
+    grep -Fq '/usr/local/sbin/abox-zram' "$source_body_file" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }
-    grep -Fq '无法可靠判断 /swapfile 当前是否已激活' <<< "$source_body" || { echo 'FAIL: Swap activity query failure must fail closed'; failures=$((failures + 1)); }
+    grep -Fq '无法可靠判断 /swapfile 当前是否已激活' "$source_body_file" || { echo 'FAIL: Swap activity query failure must fail closed'; failures=$((failures + 1)); }
     swapon() { printf '%s\n' '/swapfile'; }
     [[ "$(swapfile_active_state; echo "$?")" == '0' ]] || { echo 'FAIL: Swap activity query active state'; failures=$((failures + 1)); }
     swapon() { :; }
@@ -69558,21 +69651,21 @@ N11EOF
     [[ "$(swapfile_active_state; echo "$?")" == "$_swap_expect" ]] || { echo 'FAIL: Swap activity query swapon-failure fallback'; failures=$((failures + 1)); }
     unset -f swapon
     grep -q '^fstab_path_is_safe() {' "$0" || { echo 'FAIL: swap fstab trust helper missing'; failures=$((failures + 1)); }
-    grep -q 'fstab_path_is_safe || return 1' <<< "$source_body" || { echo 'FAIL: swap removal must validate trusted fstab before mutation'; failures=$((failures + 1)); }
-    grep -q '保留 fstab 备份' <<< "$source_body" || { echo 'FAIL: Swap rollback must retain fstab recovery material when rollback fails'; failures=$((failures + 1)); }
-    grep -q 'Swap 无法安全关闭' <<< "$source_body" || { echo 'FAIL: Swap setup must not delete an active swapfile when swapoff fails'; failures=$((failures + 1)); }
-    grep -q '检测到全局 IPv6' <<< "$source_body" || { echo 'FAIL: IPv6 manual HY2 hop guard missing'; failures=$((failures + 1)); }
-    grep -q 'tr_msg cl_f2b_restart_reset' <<< "$source_body" || { echo 'FAIL: environment reset must restart Fail2Ban after removing A-Box jail'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$value" != *[[:cntrl:]]* ]]' <<< "$source_body" || { echo 'FAIL: secret validator must reject control characters'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$fmt" != *' <<< "$source_body" || { echo 'FAIL: translation printf must reject backslash escapes'; failures=$((failures + 1)); }
+    grep -q 'fstab_path_is_safe || return 1' "$source_body_file" || { echo 'FAIL: swap removal must validate trusted fstab before mutation'; failures=$((failures + 1)); }
+    grep -q '保留 fstab 备份' "$source_body_file" || { echo 'FAIL: Swap rollback must retain fstab recovery material when rollback fails'; failures=$((failures + 1)); }
+    grep -q 'Swap 无法安全关闭' "$source_body_file" || { echo 'FAIL: Swap setup must not delete an active swapfile when swapoff fails'; failures=$((failures + 1)); }
+    grep -q '检测到全局 IPv6' "$source_body_file" || { echo 'FAIL: IPv6 manual HY2 hop guard missing'; failures=$((failures + 1)); }
+    grep -q 'tr_msg cl_f2b_restart_reset' "$source_body_file" || { echo 'FAIL: environment reset must restart Fail2Ban after removing A-Box jail'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$value" != *[[:cntrl:]]* ]]' "$source_body_file" || { echo 'FAIL: secret validator must reject control characters'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$fmt" != *' "$source_body_file" || { echo 'FAIL: translation printf must reject backslash escapes'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' 'bad\q %s'; }; tprintf synthetic test ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted a backslash escape in a translation'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' '%n'; }; tprintf synthetic ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted an unsupported printf conversion'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
-    grep -q 'command -v ss >/dev/null 2>&1 || return 2' <<< "$source_body" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
-    grep -q '2) exit 0 ;;' <<< "$source_body" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_DASH' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
-    grep -q 'PY_VNSTAT_TOTAL_MONITOR' <<< "$source_body" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_COMPARE' <<< "$source_body" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$source_body_file" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
+    grep -q '2) exit 0 ;;' "$source_body_file" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_DASH' "$source_body_file" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$source_body_file" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_COMPARE' "$source_body_file" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }
     cron_guard_in=$(mktemp /tmp/A-Box-selftest-cron-in.XXXXXX) || { echo 'FAIL: cron regression temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
     cron_guard_out=$(mktemp /tmp/A-Box-selftest-cron-out.XXXXXX) || { rm -f "$cron_guard_in"; echo 'FAIL: cron regression temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
@@ -69582,16 +69675,13 @@ N11EOF
     grep -Fxq '* * * * * /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' "$cron_guard_out" || { echo 'FAIL: unmarked legacy-like GEO cron must be preserved'; failures=$((failures + 1)); }
     ! grep -Fxq '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' "$cron_guard_out" || { echo 'FAIL: marked A-Box GEO cron block was not removed'; failures=$((failures + 1)); }
     rm -f "$cron_guard_in" "$cron_guard_out"
-    static_body=$(mktemp /tmp/A-Box-selftest-static.XXXXXX) || { echo 'FAIL: self-test static filter temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
-    awk '
-      /^run_self_tests\(\)/ {skip=1}
-      /^main\(\) \{/ {skip=0}
-      !skip {print}
-    ' "$0" > "$static_body" || { rm -f "$static_body"; echo 'FAIL: self-test static filter'; failures=$((failures + 1)); return 1; }
-    grep -Eq 'crontab -l[^\n]*\|.*\|\| true' "$static_body" && { rm -f "$static_body"; echo 'FAIL: crontab read failure must not be swallowed'; failures=$((failures + 1)); return 1; }
-    grep -Eq 'remove_abox_cron_block GEO 2>/dev/null \|\| true' "$static_body" && { rm -f "$static_body"; echo 'FAIL: Geo cron removal failure must not be swallowed'; failures=$((failures + 1)); return 1; }
-    rm -f "$static_body"
-    _devfd_pattern='/dev/''fd/3'; ! grep -q "python3 ${_devfd_pattern}" <<< "$source_body" || { echo 'FAIL: /dev/fd/3 portability dependency remains'; failures=$((failures + 1)); }
+    # The source snapshot above is the same filtered body (self-test region
+    # excluded, except that it also omits the `main() {` line itself, which
+    # neither crontab pattern can match); reuse it instead of building a
+    # second filtered copy.
+    grep -Eq 'crontab -l[^\n]*\|.*\|\| true' "$source_body_file" && { echo 'FAIL: crontab read failure must not be swallowed'; failures=$((failures + 1)); return 1; }
+    grep -Eq 'remove_abox_cron_block GEO 2>/dev/null \|\| true' "$source_body_file" && { echo 'FAIL: Geo cron removal failure must not be swallowed'; failures=$((failures + 1)); return 1; }
+    _devfd_pattern='/dev/''fd/3'; ! grep -q "python3 ${_devfd_pattern}" "$source_body_file" || { echo 'FAIL: /dev/fd/3 portability dependency remains'; failures=$((failures + 1)); }
     unset _devfd_pattern
     [[ "$(port_spec_for_firewalld 20000:25000)" == '20000-25000' ]] || { echo 'FAIL: firewalld range conversion'; failures=$((failures + 1)); }
     [[ "$(port_list_for_firewalld '443,2053:2500')" == '443,2053-2500' ]] || { echo 'FAIL: firewalld comma-separated port/range conversion'; failures=$((failures + 1)); }
@@ -69693,7 +69783,7 @@ N11EOF
     ( ip() { printf '%s\n' '8.8.8.8 dev CloudflareWARP src 192.0.2.2'; }; default_route_uses_warp ) || { echo 'FAIL: CloudflareWARP default-route detector'; failures=$((failures + 1)); }
     ! ( ip() { printf '%s\n' '8.8.8.8 dev eth0 src 192.0.2.2'; }; default_route_uses_warp ) || { echo 'FAIL: ordinary default-route detector false positive'; failures=$((failures + 1)); }
     grep -q '^hysteria_official_hop_firewall_ok() {' "$0" || { echo 'FAIL: official HY2 hop firewall verifier missing'; failures=$((failures + 1)); }
-    grep -Fq 'hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"' <<< "$source_body" || { echo 'FAIL: official HY2 deployment must verify hop firewall rules after startup'; failures=$((failures + 1)); }
+    grep -Fq 'hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"' "$source_body_file" || { echo 'FAIL: official HY2 deployment must verify hop firewall rules after startup'; failures=$((failures + 1)); }
     CORE=singbox MODE=HY2 HY2_BASE_PORT=443 HY2_UP=100 HY2_DOWN=1000 HY2_HOP=false HY2_HOP_IMPL=none
     validate_abox_env_semantics >/dev/null 2>&1 || { echo 'FAIL: valid HY2 bandwidth state'; failures=$((failures + 1)); }
     HY2_UP='not-a-number'
@@ -69723,6 +69813,13 @@ N11EOF
     fi
     [[ "$(cat "$geo_existing" 2>/dev/null)" == 'OLD-GEO-CONTENT' ]] || { echo 'FAIL: refused Geo update deleted/replaced valid old file'; failures=$((failures + 1)); }
 
+    # M4: the two Geo fixtures below share one immutable 600 KB zero
+    # payload and its SHA-256 (the success mock hashes it for the API
+    # reply and writes it as the download). Generate once and share;
+    # each fixture keeps its own destination file and assertions.
+    geo_payload="$tmp/geo-payload-600k.bin"
+    dd if=/dev/zero of="$geo_payload" bs=600000 count=1 status=none || { echo 'FAIL: shared Geo fixture payload'; failures=$((failures + 1)); }
+    geo_payload_sha=$(sha256sum < "$geo_payload" 2>/dev/null | awk '{print $1}')
     # GitHub Geo path: digest must fail closed and preserve old content.
     geo_bad_digest="$tmp/geo-bad-digest.dat"
     printf '%s' 'OLD-GEO-CONTENT' > "$geo_bad_digest"
@@ -69751,16 +69848,14 @@ N11EOF
     printf '%s' 'OLD-GEO-CONTENT' > "$geo_success"
     if ! (
         github_api_get() {
-            local dig
-            dig=$(dd if=/dev/zero bs=600000 count=1 status=none | sha256sum | awk '{print $1}')
-            jq -nc --arg dig "$dig" '{tag_name:"latest",assets:[{name:"geosite.dat",browser_download_url:"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/latest/geosite.dat",digest:("sha256:"+$dig)}]}'
+            jq -nc --arg dig "$geo_payload_sha" '{tag_name:"latest",assets:[{name:"geosite.dat",browser_download_url:"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/latest/geosite.dat",digest:("sha256:"+$dig)}]}'
         }
         curl() {
             local out=''
             while (($#)); do
                 case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac
             done
-            dd if=/dev/zero of="$out" bs=600000 count=1 status=none
+            cat "$geo_payload" > "$out"
         }
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$geo_success" >/dev/null 2>&1
     ); then
@@ -69778,18 +69873,36 @@ N11EOF
             printf '%s\n' '{"assets":[{"name":"Xray-linux-64.zip","browser_download_url":"https://github.com/XTLS/Xray-core/releases/download/v26.9.30/Xray-linux-64.zip","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}'
         }
         curl() {
-            local out=''
+            local out='' _w=''
             while (($#)); do
-                case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac
+                case "$1" in
+                    -o) out="$2"; shift 2 ;;
+                    -w) _w=1; shift 2 ;;
+                    -w*) _w=1; shift ;;
+                    *) shift ;;
+                esac
             done
+            # M1: the fetch banner probes availability with `curl -w
+            # '%{http_code}'` and retries 3x with `sleep 1` on a non-200
+            # code. A mock that prints nothing made the probe read an empty
+            # code and burn 2 s of sleep (the 2.37 s S2 hotspot was the
+            # sleeps, not network: the mock does intercept the calls).
+            # Emit 200 for -w probes (banner text only; the invalid-asset
+            # verdict below is unchanged). Download legs carry no -w, so
+            # their stdout stays empty as before.
+            [[ -n "$_w" ]] && printf '200'
             printf '%s' 'invalid-archive' > "$out"
             return 0
         }
-        XRAY_ARCH=64 ABOX_XRAY_VERSION=v26.9.30 fetch_github_release XTLS/Xray-core xray_core.zip "$github_existing" >/dev/null 2>&1
+        XRAY_ARCH=64 ABOX_XRAY_VERSION=v26.9.30 fetch_github_release XTLS/Xray-core xray_core.zip "$github_existing" > "$tmp/github-fixture-out" 2>&1
     ); then
         echo 'FAIL: invalid GitHub asset injection unexpectedly succeeded'
         failures=$((failures + 1))
     fi
+    # M1: the banner above must have seen the mocked HTTP 200s. If it
+    # reports unavailable, either the mock regressed or production added
+    # an unmocked probe (real network inside self-test).
+    grep -q 'release tag XTLS/Xray-core@v26.9.30: available (HTTP 200)' "$tmp/github-fixture-out" 2>/dev/null || { echo 'FAIL: self-test fetch banner must see mocked HTTP 200 (real network or mock regression)'; failures=$((failures + 1)); }
     [[ "$(cat "$github_existing" 2>/dev/null)" == 'OLD-CORE' ]] || { echo 'FAIL: failed core download deleted/replaced existing destination'; failures=$((failures + 1)); }
     [[ "$(msg 'literal\nbackslash\ttext')" == $'literal\\nbackslash\\ttext' ]] || { echo 'FAIL: msg must not reinterpret backslash escapes'; failures=$((failures + 1)); }
     [[ "$(msg "${RED}X${NC}")" == $'\033[0;31mX\033[0m' ]] || { echo 'FAIL: ANSI color escapes must remain functional'; failures=$((failures + 1)); }
@@ -70157,7 +70270,7 @@ EOF_SELFTEST_IPT
         # S9 (R65 follow-up): the ML-KEM warning check is static (it only
         # greps the source), so it stays outside the python3 gate below
         # and still runs when python3 is missing.
-        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
+        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' "$source_body_file" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         # Gate the whole Clash YAML generation segment on python3:
         # write_clash_yaml / write_mihomo_user_yaml need it internally
         # (realpath), so without it every generation would count as a
@@ -70169,6 +70282,11 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
+        # M1: self-test must not do real network I/O. write_clash_yaml
+        # probes the VPS country via a Cloudflare trace fetch; these
+        # fixtures only check YAML structure, so fail the detection here
+        # and exercise the global-nameserver fallback (1.1.1.1/8.8.8.8).
+        _detect_vps_country() { return 1; }
         ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(stat -c %a "$clash_dir/A-Box-clash.yaml" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Clash YAML permissions must be 0600'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=HY2 PUBLIC_KEY=publickey LINK_IP=203.0.113.10 HY2_DOMAIN=hy2.example.com HY2_HOP=true HY2_BASE_PORT=443 HY2_RANGE_START=20000 HY2_RANGE_END=25000 HY2_CLASH_PORTS=20000-25000 HY2_CERT_SHA256_FP=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-hop.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash Hysteria2 hop YAML generation'; failures=$((failures + 1)); }
@@ -70216,6 +70334,7 @@ PY_SELFTEST_YAML
         else
             selftest_note 'Clash YAML secret escaping check skipped (python3 missing)'
         fi
+        unset -f _detect_vps_country
         fi
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
@@ -70260,25 +70379,25 @@ PY_SELFTEST_YAML
     # The old assertion grepped the policy comment itself, so it passed
     # even if the Alpine deps array installed cronie. Check the logic:
     # the alpine) branch's deps array must not contain cronie.
-    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/ {g=1} g{print} g && /\)/{exit}' <<< "$source_body")
+    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/ {g=1} g{print} g && /\)/{exit}' "$source_body_file")
     [[ -n "$_alpine_deps" && "$_alpine_deps" != *'cronie'* ]] || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
-    grep -Fq 'curl-minimal' <<< "$source_body" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
+    grep -Fq 'curl-minimal' "$source_body_file" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
     release="$_saved_release"
     SB_ARCH="$_saved_sb_arch"
 
-    grep -q 'traffic_error() {' <<< "$source_body" || { echo 'FAIL: safe traffic error logger missing'; failures=$((failures + 1)); }
-    grep -Fq '非交互部署检测到 wg/warp/tun 默认出口' <<< "$source_body" || { echo 'FAIL: WARP default-route deployment gate missing'; failures=$((failures + 1)); }
-    grep -q 'A-Box-traffic.log' <<< "$source_body" || { echo 'FAIL: traffic log path missing'; failures=$((failures + 1)); }
+    grep -q 'traffic_error() {' "$source_body_file" || { echo 'FAIL: safe traffic error logger missing'; failures=$((failures + 1)); }
+    grep -Fq '非交互部署检测到 wg/warp/tun 默认出口' "$source_body_file" || { echo 'FAIL: WARP default-route deployment gate missing'; failures=$((failures + 1)); }
+    grep -q 'A-Box-traffic.log' "$source_body_file" || { echo 'FAIL: traffic log path missing'; failures=$((failures + 1)); }
     ! grep -Eq 'deps=\([^\n]*\bvnstat\b' "$0" || { echo 'FAIL: vnStat must not be a baseline hard dependency'; failures=$((failures + 1)); }
     ! grep -Eq '^    need_cmd_pkg vnstat ' "$0" || { echo 'FAIL: vnStat must not be an unconditional command dependency'; failures=$((failures + 1)); }
     ! grep -Eq '^    need_cmd_pkg (qrencode|fail2ban-client) ' "$0" || { echo 'FAIL: optional qrencode/Fail2Ban must not be hard dependencies'; failures=$((failures + 1)); }
-    grep -Fq 'if ! remove_abox_swap; then' <<< "$source_body" || { echo 'FAIL: full uninstall must retain ownership marker when swap cleanup fails'; failures=$((failures + 1)); }
+    grep -Fq 'if ! remove_abox_swap; then' "$source_body_file" || { echo 'FAIL: full uninstall must retain ownership marker when swap cleanup fails'; failures=$((failures + 1)); }
     grep -q '^rollback_new_swap_activation_only() {' "$0" || { echo 'FAIL: early Swap rollback must have fstab-independent activation-only helper'; failures=$((failures + 1)); }
-    grep -Fq 'fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。' <<< "$source_body" || { echo 'FAIL: early Swap backup failure must not invoke fstab-modifying rollback'; failures=$((failures + 1)); }
-    grep -Fq 'rm -rf -- "$ABOX_DIR" || die' <<< "$source_body" || { echo 'FAIL: full uninstall must verify A-Box directory removal'; failures=$((failures + 1)); }
+    grep -Fq 'fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。' "$source_body_file" || { echo 'FAIL: early Swap backup failure must not invoke fstab-modifying rollback'; failures=$((failures + 1)); }
+    grep -Fq 'rm -rf -- "$ABOX_DIR" || die' "$source_body_file" || { echo 'FAIL: full uninstall must verify A-Box directory removal'; failures=$((failures + 1)); }
     ! grep -Eq 'mapfile -t rules < <\(\"\$cmd\" -w -S INPUT|done < <\(\"\$cmd\" -w -S INPUT' "$0" || { echo 'FAIL: firewall reorder must propagate iptables -S failure'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"' <<< "$source_body" || { echo 'FAIL: full uninstall rollback must use an external transaction backup'; failures=$((failures + 1)); }
-    grep -Fq 'backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file"' <<< "$source_body" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"' "$source_body_file" || { echo 'FAIL: full uninstall rollback must use an external transaction backup'; failures=$((failures + 1)); }
+    grep -Fq 'backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file"' "$source_body_file" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
     if (( EUID == 0 )); then
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi
@@ -70289,10 +70408,10 @@ PY_SELFTEST_YAML
             echo 'FAIL: --self-test changed live /etc/ddr directory state'; failures=$((failures + 1))
         fi
     fi
-    ! grep -Fq "asn_cache='/tmp'" <<< "$source_body" || { echo 'FAIL: ASN cache must never fall back to shared /tmp'; failures=$((failures + 1)); }
-    ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' <<< "$source_body" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
-    ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' <<< "$source_body" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
-    grep -q '^traffic_fail_closed() {' <<< "$source_body" || { echo 'FAIL: traffic monitor fail-closed enforcement helper missing'; failures=$((failures + 1)); }
+    ! grep -Fq "asn_cache='/tmp'" "$source_body_file" || { echo 'FAIL: ASN cache must never fall back to shared /tmp'; failures=$((failures + 1)); }
+    ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' "$source_body_file" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
+    ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' "$source_body_file" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
+    grep -q '^traffic_fail_closed() {' "$source_body_file" || { echo 'FAIL: traffic monitor fail-closed enforcement helper missing'; failures=$((failures + 1)); }
     traffic_body=$(sed -n '/cat > \"\$_tm_tmp\" <<'"'"'EOF_TRAFFIC'"'"'/,/^EOF_TRAFFIC$/p' "$0") || traffic_body=''
     ! grep -Fq 'load_state || exit 0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor must not silently exit on persisted state load failure'; failures=$((failures + 1)); }
     grep -Fq 'state_load_failed=0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor persisted-state failure handling missing'; failures=$((failures + 1)); }
@@ -70307,46 +70426,46 @@ PY_SELFTEST_YAML
         [[ -n "$_main_fn" && "$_main_fn" == "$_tmpl_fn" ]] || { echo "FAIL: stop family drift: $_sf differs between main script and traffic_monitor template"; failures=$((failures + 1)); }
     done
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
-    grep -q '^reorder_ss_whitelist_rules_one() {' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
-    grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
-    grep -Fq 'flock -s -n 8' <<< "$source_body" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
-    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
-    ! grep -Fq 'mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must not use .sh suffix (BusyBox mktemp requires template to end with XXXXXX)'; failures=$((failures + 1)); }
-    grep -Fq 'unset ABOX_DIE_HOOK' <<< "$source_body" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
+    grep -q '^reorder_ss_whitelist_rules_one() {' "$source_body_file" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
+    grep -Fq 'exec {lock_fd}>>"$lock_file"' "$source_body_file" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' "$source_body_file" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
+    grep -Fq 'flock -s -n 8' "$source_body_file" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
+    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX' "$source_body_file" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
+    ! grep -Fq 'mktemp /tmp/A-Box-remote.XXXXXX.sh' "$source_body_file" || { echo 'FAIL: remote script temp must not use .sh suffix (BusyBox mktemp requires template to end with XXXXXX)'; failures=$((failures + 1)); }
+    grep -Fq 'unset ABOX_DIE_HOOK' "$source_body_file" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
 
-    grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'recovery snapshot preserved at $recovery_snapshot' <<< "$source_body" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
-    grep -Fq "_restore_input+=$'\\n-D INPUT '" <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
-    grep -Fq 'iptables-restore backend mismatch' <<< "$source_body" || { echo 'FAIL: firewall rollback must match iptables-restore backend before atomic rollback'; failures=$((failures + 1)); }
-    grep -Fq 'current_foreign_lines' <<< "$source_body" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
-    grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
-    grep -Fq 'previous_state=$(get_desired_state)' <<< "$source_body" || { echo 'FAIL: manual service transitions must snapshot desired state'; failures=$((failures + 1)); }
-    grep -Fq 'local pre_state=' <<< "$source_body" || { echo 'FAIL: manual service transactions must capture pre-state'; failures=$((failures + 1)); }
+    grep -Fq 'firewall_rollback() {' "$source_body_file" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'recovery snapshot preserved at $recovery_snapshot' "$source_body_file" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
+    grep -Fq "_restore_input+=$'\\n-D INPUT '" "$source_body_file" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq 'iptables-restore backend mismatch' "$source_body_file" || { echo 'FAIL: firewall rollback must match iptables-restore backend before atomic rollback'; failures=$((failures + 1)); }
+    grep -Fq 'current_foreign_lines' "$source_body_file" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' "$source_body_file" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
+    grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' "$source_body_file" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
+    grep -Fq 'previous_state=$(get_desired_state)' "$source_body_file" || { echo 'FAIL: manual service transitions must snapshot desired state'; failures=$((failures + 1)); }
+    grep -Fq 'local pre_state=' "$source_body_file" || { echo 'FAIL: manual service transactions must capture pre-state'; failures=$((failures + 1)); }
     # R16-05: per-service restore routes each changed service through
     # restore_managed_service_state with its own singleton journals
     # (the old whole-journal call shape is gone; the guard is the same
     # function, so the expected-state conflict preflight still applies).
-    grep -Fq 'restore_managed_service_state "$_rb_sp" "$_rb_se"' <<< "$source_body" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
-    grep -Fq 'current_state_before=$(managed_service_state_value' <<< "$source_body" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
-    grep -Fq 'start_abox_service_soft "$srv"' <<< "$source_body" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
+    grep -Fq 'restore_managed_service_state "$_rb_sp" "$_rb_se"' "$source_body_file" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
+    grep -Fq 'current_state_before=$(managed_service_state_value' "$source_body_file" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
+    grep -Fq 'start_abox_service_soft "$srv"' "$source_body_file" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
     declare -p redacted_json >/dev/null 2>&1 && declare -p redacted_headers >/dev/null 2>&1 || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
-    grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' <<< "$source_body" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
+    grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' "$source_body_file" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
     # L15 (R62-L02): the health gate now lives in _core_upgrade_commit_install
     # (shared by all three cores); check the wiring instead of the old
     # inline call sites: the helper must enforce the gate, and the xray /
     # sing-box call sites must pass their own health argument through.
-    grep -Fq 'core_post_upgrade_health_gate "$health_arg"' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
-    grep -Fq '_core_upgrade_commit_install xray xray' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
-    grep -Fq '_core_upgrade_commit_install sing-box singbox' <<< "$source_body" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq 'core_post_upgrade_health_gate "$health_arg"' "$source_body_file" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install xray xray' "$source_body_file" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install sing-box singbox' "$source_body_file" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     # Audit 2026-10-14: regression guards for P1-1/P1-2/P2/P3 fixes.
     declare -F stop_abox_service_soft >/dev/null || { echo 'FAIL: stop_abox_service_soft must be defined'; failures=$((failures + 1)); }
     # B9-02: core_tls_listen_ports removed (was dead code).
-    grep -Fq "svc='sing-box'" <<< "$source_body" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
-    grep -Fq "ota_choice=''" <<< "$source_body" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
-    grep -Fq "Policy: latest-first (user directive)" <<< "$source_body" || { echo 'FAIL: test-script must stay latest-first with verified-mirror fallback'; failures=$((failures + 1)); }
+    grep -Fq "svc='sing-box'" "$source_body_file" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
+    grep -Fq "ota_choice=''" "$source_body_file" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
+    grep -Fq "Policy: latest-first (user directive)" "$source_body_file" || { echo 'FAIL: test-script must stay latest-first with verified-mirror fallback'; failures=$((failures + 1)); }
     _traffic_menu=$(sed -n '/^traffic_management_menu() {$/,/^manage_ss_whitelist()/p' "$0") || _traffic_menu=''
     _setup_line=$(grep -n -m1 'setup_traffic_monitor' <<< "$_traffic_menu" | cut -d: -f1 || true)
     _update_line=$(grep -n -m1 'update_traffic_state_atomically "$limit_gb" "$mode_choice"' <<< "$_traffic_menu" | cut -d: -f1 || true)
@@ -70354,21 +70473,21 @@ PY_SELFTEST_YAML
     grep -q '^capture_vnstat_runtime_state() {' "$0" || { echo 'FAIL: traffic transaction vnStat snapshot helper missing'; failures=$((failures + 1)); }
     grep -q '^traffic_restore_cron_block() {' "$0" || { echo 'FAIL: traffic transaction must restore only the A-Box TRAFFIC cron block'; failures=$((failures + 1)); }
     grep -q '^traffic_quota_transaction_rollback() {' "$0" || { echo 'FAIL: traffic quota rollback helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'expected_vnstat' <<< "$source_body" || { echo 'FAIL: traffic rollback must not reuse cron expected-state variable for vnStat'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_DIE_HOOK=traffic_quota_menu_die_rollback' <<< "$source_body" || { echo 'FAIL: traffic setup/commit failure must trigger transaction rollback'; failures=$((failures + 1)); }
-    grep -q '^firewall_snapshot_is_abox_managed() {' <<< "$source_body" || { echo 'FAIL: firewall persistence ownership gate missing'; failures=$((failures + 1)); }
-    grep -Fq 'auxiliary_content_is_abox_managed "$fw_file" /etc/ddr/firewall_restore.sh || return 1' <<< "$source_body" || { echo 'FAIL: firewall persistence must preflight ownership before service deletion'; failures=$((failures + 1)); }
-    grep -Fq '(( uid != 0 && gid != 0 )) || return 1' <<< "$source_body" || { echo 'FAIL: runtime service identity must never resolve to root UID/GID'; failures=$((failures + 1)); }
-    grep -Fq 'prepare_abox_runtime_permissions "$srv" || return 1' <<< "$source_body" || { echo 'FAIL: restore must reapply runtime service permissions before start'; failures=$((failures + 1)); }
+    grep -Fq 'expected_vnstat' "$source_body_file" || { echo 'FAIL: traffic rollback must not reuse cron expected-state variable for vnStat'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_DIE_HOOK=traffic_quota_menu_die_rollback' "$source_body_file" || { echo 'FAIL: traffic setup/commit failure must trigger transaction rollback'; failures=$((failures + 1)); }
+    grep -q '^firewall_snapshot_is_abox_managed() {' "$source_body_file" || { echo 'FAIL: firewall persistence ownership gate missing'; failures=$((failures + 1)); }
+    grep -Fq 'auxiliary_content_is_abox_managed "$fw_file" /etc/ddr/firewall_restore.sh || return 1' "$source_body_file" || { echo 'FAIL: firewall persistence must preflight ownership before service deletion'; failures=$((failures + 1)); }
+    grep -Fq '(( uid != 0 && gid != 0 )) || return 1' "$source_body_file" || { echo 'FAIL: runtime service identity must never resolve to root UID/GID'; failures=$((failures + 1)); }
+    grep -Fq 'prepare_abox_runtime_permissions "$srv" || return 1' "$source_body_file" || { echo 'FAIL: restore must reapply runtime service permissions before start'; failures=$((failures + 1)); }
     grep -q '^install_optional_package() {' "$0" || { echo 'FAIL: optional package installer missing'; failures=$((failures + 1)); }
     grep -q '^ensure_abox_log_file() {' "$0" || { echo 'FAIL: safe A-Box log file gate missing'; failures=$((failures + 1)); }
-    grep -q 'firewalld_zone_for_abox' <<< "$source_body" || { echo 'FAIL: firewalld zone-aware routing missing'; failures=$((failures + 1)); }
-    grep -Fq 'read -r -p "$(tr_msg main_command)" choice || exit 0' <<< "$source_body" || { echo 'FAIL: main menu must use EOF-safe non-readline input'; failures=$((failures + 1)); }
+    grep -q 'firewalld_zone_for_abox' "$source_body_file" || { echo 'FAIL: firewalld zone-aware routing missing'; failures=$((failures + 1)); }
+    grep -Fq 'read -r -p "$(tr_msg main_command)" choice || exit 0' "$source_body_file" || { echo 'FAIL: main menu must use EOF-safe non-readline input'; failures=$((failures + 1)); }
     grep -q '^prompt_hy2_bandwidth_mbps_input() {' "$0" || { echo 'FAIL: HY2 bandwidth prompt helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'valid_traffic_limit_gb "$limit_gb"' <<< "$source_body" || { echo 'FAIL: traffic-limit prompt must use the persisted traffic-limit validator'; failures=$((failures + 1)); }
-    grep -Fq 'read -r -p "$prompt" input || return 1' <<< "$source_body" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
-    grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' <<< "$source_body" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
-    grep -Fq 'exec < /dev/tty || die' <<< "$source_body" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    grep -Fq 'valid_traffic_limit_gb "$limit_gb"' "$source_body_file" || { echo 'FAIL: traffic-limit prompt must use the persisted traffic-limit validator'; failures=$((failures + 1)); }
+    grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
+    grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
+    grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))
@@ -70377,12 +70496,12 @@ PY_SELFTEST_YAML
         echo 'FAIL: core path enumeration failure must abort forced cleanup'
         failures=$((failures + 1))
     fi
-    grep -Fq 'local -a paths=()' <<< "$source_body" || { echo 'FAIL: forced core cleanup must preflight all paths before deletion'; failures=$((failures + 1)); }
-    grep -Fq 'core_paths=$(core_family_paths "$srv") || return 1' <<< "$source_body" || { echo 'FAIL: ownership recording must not swallow core path enumeration errors'; failures=$((failures + 1)); }
+    grep -Fq 'local -a paths=()' "$source_body_file" || { echo 'FAIL: forced core cleanup must preflight all paths before deletion'; failures=$((failures + 1)); }
+    grep -Fq 'core_paths=$(core_family_paths "$srv") || return 1' "$source_body_file" || { echo 'FAIL: ownership recording must not swallow core path enumeration errors'; failures=$((failures + 1)); }
     grep -q '^backup_root_contains_service() {' "$0" || { echo 'FAIL: backup service path checker missing'; failures=$((failures + 1)); }
-    grep -Fq 'core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }' <<< "$source_body" || { echo 'FAIL: backup core path enumeration must fail closed'; failures=$((failures + 1)); }
-    grep -Fq 'def path_is_mountpoint(path):' <<< "$source_body" || { echo 'FAIL: core ownership recording must use mountinfo-aware mount detection'; failures=$((failures + 1)); }
-    grep -Fq 'fail closed instead of using the weaker ismount()' <<< "$source_body" || { echo 'FAIL: destructive manifest removal must not fall back to weak mount detection'; failures=$((failures + 1)); }
+    grep -Fq 'core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }' "$source_body_file" || { echo 'FAIL: backup core path enumeration must fail closed'; failures=$((failures + 1)); }
+    grep -Fq 'def path_is_mountpoint(path):' "$source_body_file" || { echo 'FAIL: core ownership recording must use mountinfo-aware mount detection'; failures=$((failures + 1)); }
+    grep -Fq 'fail closed instead of using the weaker ismount()' "$source_body_file" || { echo 'FAIL: destructive manifest removal must not fall back to weak mount detection'; failures=$((failures + 1)); }
     if sed -n "/^python3 -I - \"\$srv\" \"\$ABOX_CORE_OWNERSHIP\" <<'PY_CORE_REMOVE'$/,/^PY_CORE_REMOVE$/p" "$0" | grep -Fq 'return os.path.ismount(path)'; then
         echo 'FAIL: destructive manifest removal still contains fail-open mountinfo fallback'
         failures=$((failures + 1))
@@ -70449,24 +70568,24 @@ PY_MOUNTINFO_DECODE_CONSISTENCY
         rm -f -- "$tmp/python3" "$_guard_fail_bin"
         rm -rf -- "$_guard_fail_fixture"
     fi
-    grep -Fq '/proc/self/mountinfo' <<< "$source_body" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
-    grep -q 'Restore cleanup encountered a mountpoint' <<< "$source_body" || { echo 'FAIL: restore cleanup mountpoint guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_tree_has_mountpoint "$path" && return 1' <<< "$source_body" || { echo 'FAIL: source-absent restore must guard the entire target tree for nested mounts'; failures=$((failures + 1)); }
-    grep -Fq 'remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh"' <<< "$source_body" || { echo 'FAIL: Geo helper deletion must be ownership-gated'; failures=$((failures + 1)); }
-    grep -q 'validate_backup_core_init_compatibility' <<< "$source_body" || { echo 'FAIL: restore must preflight backup/current init compatibility before destructive changes'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf' <<< "$source_body" || { echo 'FAIL: Fail2Ban filter parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local' <<< "$source_body" || { echo 'FAIL: Fail2Ban jail parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/sysctl.d/99-A-Box-tune.conf || return 1' <<< "$source_body" || { echo 'FAIL: tune restore must check sysctl parent chain before restore'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/security/limits.d/A-Box.conf || return 1' <<< "$source_body" || { echo 'FAIL: tune restore must check limits parent chain before restore'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/hysteria || die' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/xray || die' <<< "$source_body" || { echo 'FAIL: Xray OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/sing-box || die' <<< "$source_body" || { echo 'FAIL: sing-box OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'aux_paths=$(managed_auxiliary_paths) ||' <<< "$source_body" || { echo 'FAIL: backup must not swallow managed auxiliary path enumeration errors through process substitution'; failures=$((failures + 1)); }
+    grep -Fq '/proc/self/mountinfo' "$source_body_file" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
+    grep -q 'Restore cleanup encountered a mountpoint' "$source_body_file" || { echo 'FAIL: restore cleanup mountpoint guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_tree_has_mountpoint "$path" && return 1' "$source_body_file" || { echo 'FAIL: source-absent restore must guard the entire target tree for nested mounts'; failures=$((failures + 1)); }
+    grep -Fq 'remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh"' "$source_body_file" || { echo 'FAIL: Geo helper deletion must be ownership-gated'; failures=$((failures + 1)); }
+    grep -q 'validate_backup_core_init_compatibility' "$source_body_file" || { echo 'FAIL: restore must preflight backup/current init compatibility before destructive changes'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf' "$source_body_file" || { echo 'FAIL: Fail2Ban filter parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local' "$source_body_file" || { echo 'FAIL: Fail2Ban jail parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/sysctl.d/99-A-Box-tune.conf || return 1' "$source_body_file" || { echo 'FAIL: tune restore must check sysctl parent chain before restore'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/security/limits.d/A-Box.conf || return 1' "$source_body_file" || { echo 'FAIL: tune restore must check limits parent chain before restore'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/hysteria || die' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/xray || die' "$source_body_file" || { echo 'FAIL: Xray OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/sing-box || die' "$source_body_file" || { echo 'FAIL: sing-box OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'aux_paths=$(managed_auxiliary_paths) ||' "$source_body_file" || { echo 'FAIL: backup must not swallow managed auxiliary path enumeration errors through process substitution'; failures=$((failures + 1)); }
     # R16-03: the reclaim branches (and their lock_dir_created flag)
     # are gone; creation ownership is now tracked by the identity pin
     # (_fb_id: dev:ino captured at mkdir, verified before any cleanup
     # touches the dir), which the failure cleanup below still checks.
-    grep -Fq '_fb_id=$(stat -Lc' <<< "$source_body" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
+    grep -Fq '_fb_id=$(stat -Lc' "$source_body_file" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
     if command -v flock >/dev/null 2>&1; then
         (
             _saved_lock_fallback="$LOCK_FALLBACK_DIR"
@@ -70476,8 +70595,8 @@ PY_MOUNTINFO_DECODE_CONSISTENCY
             [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]
         ) || { echo 'FAIL: fallback runtime lock failure must clean newly created lock directory'; failures=$((failures + 1)); }
     fi
-    grep -Fq 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.' <<< "$source_body" || { echo 'FAIL: manual restore must abort cross-init backups before destructive changes'; failures=$((failures + 1)); }
-    grep -Fq 'service_active_state_value() {' <<< "$source_body" || { echo 'FAIL: service active-state helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.' "$source_body_file" || { echo 'FAIL: manual restore must abort cross-init backups before destructive changes'; failures=$((failures + 1)); }
+    grep -Fq 'service_active_state_value() {' "$source_body_file" || { echo 'FAIL: service active-state helper missing'; failures=$((failures + 1)); }
     _svc_test_bin="$tmp/service-state-bin"
     mkdir -m 700 "$_svc_test_bin" || { echo 'FAIL: service-state test directory'; failures=$((failures + 1)); }
     cat > "$_svc_test_bin/systemctl" <<'EOF_SVC_TEST_SYSTEMCTL' || { echo 'FAIL: service-state systemctl fixture'; failures=$((failures + 1)); }
@@ -70611,13 +70730,13 @@ EOF_SVC_TEST_RCUPDATE
     fi
     # P2-03: Return code contract — 0=success, 1=general failure, 2=preflight failure.
     # Applies to CLI top-level and rollback orchestrators; NOT to polymorphic internals.
-    grep -Fq 'P2-03 Return Code Contract' <<< "$source_body" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
+    grep -Fq 'P2-03 Return Code Contract' "$source_body_file" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
     # traffic_quota_transaction_rollback: missing tx_dir is a preflight failure (return 2).
     traffic_quota_transaction_rollback "/nonexistent-tx-dir-$$" >/dev/null 2>&1; _rc=$?
     (( _rc == 2 )) || { echo "FAIL: traffic rollback preflight must return 2, got $_rc"; failures=$((failures + 1)); }
     # Polymorphic internals must NOT be standardized (callers depend on case $?):
     # remove_recorded_core_family uses 2/3/4; core_version_upgrade_decision uses 2/3/4.
-    grep -Fq 'remove_recorded_core_family() {' <<< "$source_body" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
+    grep -Fq 'remove_recorded_core_family() {' "$source_body_file" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup
@@ -70946,6 +71065,10 @@ main() {
             # Hidden test hook: run SNI radar non-interactively for A/B testing.
             # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \
             #          ABOX_SNI_MINI_MAX=500 bash install.sh --sni-test
+            # Timing note: a driver-side timeout (e.g. 540 s) is not the radar
+            # wall clock -- if the driver kills the parent, orphaned probes
+            # may run on (observed 592 s total on S2); read stage timings
+            # from workdir file mtimes, not the driver clock.
             prepare_noninteractive_file_operation
             run_builtin_sni_radar "${ABOX_SNI_TEST_PROFILE:-mini}" "SNI test (${ABOX_SNI_TEST_PROFILE:-mini})"
             exit 0

@@ -34,21 +34,21 @@
 
 ## Что это
 
-A-Box — это один Bash-скрипт (`install.sh`, около 70 278 строк), который развёртывает и обслуживает прокси и сетевые службы на Linux VPS. Он устанавливает и настраивает Xray, sing-box и официальный сервер Hysteria 2, создаёт клиентские конфигурации и объединяет повседневные операции — правила межсетевого экрана, защиту Fail2Ban, настройки DNS, резервные копии, обновления и диагностику — в одном интерактивном меню на шести языках. Пока вы не выберете пункт меню, ничего не разворачивается, а разрушительные действия требуют подтверждения.
+A-Box — это один Bash-скрипт (`install.sh`, около 70 725 строк), который развёртывает и обслуживает прокси и сетевые службы на Linux VPS. Он устанавливает и настраивает Xray, sing-box и официальный сервер Hysteria 2, создаёт клиентские конфигурации и объединяет повседневные операции — правила межсетевого экрана, защиту Fail2Ban, настройки DNS, резервные копии, обновления и диагностику — в одном интерактивном меню на шести языках. Пока вы не выберете пункт меню, ничего не разворачивается, а разрушительные действия требуют подтверждения.
 
 ## Быстрый старт
 
 Официальный источник, команда закреплена за неизменяемым коммитом:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/58c3d3f3066d2d9c170ad4c2a8981aa248311078/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0d957d43ddb056dcbc5cd163c1cc3ce0d9d67630/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Стороннее зеркало того же закреплённого файла (только канал доставки, не официальный адрес). Не запускайте его напрямую: скачайте, побайтово сверьте с официальным источником и только потом запускайте. Используйте зеркало только если доверяете прокси; непроверенный файл из зеркала нельзя использовать в рабочей среде:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/58c3d3f3066d2d9c170ad4c2a8981aa248311078/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/58c3d3f3066d2d9c170ad4c2a8981aa248311078/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0d957d43ddb056dcbc5cd163c1cc3ce0d9d67630/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0d957d43ddb056dcbc5cd163c1cc3ce0d9d67630/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

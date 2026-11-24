@@ -15,7 +15,7 @@ if [[ "${ABOX_STTY_ERASE_H:-}" == '1' ]]; then
 fi
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
-# Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
+# Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and sing-box HY2 ACME semantics.
 # P2-03 Return Code Contract (standardized 2026-10-15):
 #   0 = success
 #   1 = general failure (operation attempted but failed)
@@ -1582,8 +1582,8 @@ tr_msg() {
         fa:pi_bad_domain) echo 'قالب دامنه نامعتبر است: %s' ;;
         zh-tw:pi_bad_domain) echo '域名格式不合法：%s' ;;
         ja:pi_bad_domain) echo 'ドメイン形式が無効です: %s' ;;
-        zh:setup_swap_2g_title) echo 'Swap 虚拟内存一键划拨' ;;
-        en:setup_swap_2g_title) echo 'One-click allocation of swap virtual memory' ;;
+        zh:setup_swap_2g_title) echo '一键配置 Swap' ;;
+        en:setup_swap_2g_title) echo 'One-click swap setup' ;;
         ru:setup_swap_2g_title) echo 'Выделение виртуальной памяти свопа одним нажатием' ;;
         fa:setup_swap_2g_title) echo 'تخصیص یک‌کلیکی حافظه مجازی سواپ' ;;
         zh-tw:setup_swap_2g_title) echo '一鍵配置交換虛擬記憶體' ;;
@@ -1978,19 +1978,19 @@ tr_msg() {
         fa:view_config_clash_yaml_preview_title) echo 'پیش‌نمایش YAML برای Clash / Mihomo' ;;
         zh-tw:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 預覽' ;;
         ja:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML プレビュー' ;;
-        zh:view_config_singbox_outbound_example) echo 'Sing-box 出站示例' ;;
+        zh:view_config_singbox_outbound_example) echo 'sing-box 出站示例' ;;
         en:view_config_singbox_outbound_example) echo 'sing-box outbound example' ;;
         ru:view_config_singbox_outbound_example) echo 'Пример исходящего подключения sing-box' ;;
         fa:view_config_singbox_outbound_example) echo 'نمونهٔ خروجی sing-box' ;;
         zh-tw:view_config_singbox_outbound_example) echo 'sing-box 出站範例' ;;
         ja:view_config_singbox_outbound_example) echo 'sing-box アウトバウンドの例' ;;
-        zh:view_config_singbox_tls_failed_skip) echo 'Sing-box TLS 配置生成失败；已省略无效的出站示例。' ;;
+        zh:view_config_singbox_tls_failed_skip) echo 'sing-box TLS 配置生成失败；已省略无效的出站示例。' ;;
         en:view_config_singbox_tls_failed_skip) echo 'Failed to generate the sing-box TLS configuration; the invalid outbound example was omitted.' ;;
         ru:view_config_singbox_tls_failed_skip) echo 'Не удалось создать конфигурацию TLS для sing-box; недействительный пример исходящего подключения пропущен.' ;;
         fa:view_config_singbox_tls_failed_skip) echo 'تولید پیکربندی TLS برای sing-box ناموفق بود؛ نمونهٔ خروجی نامعتبر حذف شد.' ;;
         zh-tw:view_config_singbox_tls_failed_skip) echo 'sing-box TLS 配置產生失敗；已省略無效的出站範例。' ;;
         ja:view_config_singbox_tls_failed_skip) echo 'sing-box の TLS 設定の生成に失敗しました。無効なアウトバウンド例は省略しました。' ;;
-        zh:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。' ;;
+        zh:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 sing-box 出站示例。' ;;
         en:view_config_hy2_port_hop_state_invalid) echo 'The Hysteria 2 port-hopping state is missing or invalid; the invalid sing-box outbound example was omitted.' ;;
         ru:view_config_hy2_port_hop_state_invalid) echo 'Состояние смены портов Hysteria 2 отсутствует или недопустимо; недействительный пример исходящего подключения sing-box пропущен.' ;;
         fa:view_config_hy2_port_hop_state_invalid) echo 'وضعیت پرش درگاه Hysteria 2 موجود نیست یا نامعتبر است؛ نمونهٔ خروجی نامعتبر sing-box حذف شد.' ;;
@@ -2666,7 +2666,7 @@ tr_msg() {
         en:wl_pu_ssh_then) echo 'Then open http://127.0.0.1:%s/ in your browser; create the admin account on first visit.' ;;
         ru:wl_pu_ssh_then) echo 'Затем откройте http://127.0.0.1:%s/ и создайте учётную запись при первом визите.' ;;
         fa:wl_pu_ssh_then) echo 'سپس http://127.0.0.1:%s/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.' ;;
-        zh-tw:wl_pu_ssh_then) echo '然後瀏覽器打開 http://127.0.0.1:%s/，首次訪問創建管理員賬號。' ;;
+        zh-tw:wl_pu_ssh_then) echo '然後瀏覽器打開 http://127.0.0.1:%s/，首次訪問創建管理員帳號。' ;;
         ja:wl_pu_ssh_then) echo 'ブラウザで http://127.0.0.1:%s/ を開き、初回に管理者アカウントを作成してください。' ;;
         zh:wl_pu_url) echo 'Wallos 网址：http://%s:%s/' ;;
         en:wl_pu_url) echo 'Wallos URL: http://%s:%s/' ;;
@@ -2742,10 +2742,10 @@ tr_msg() {
         ja:wl_iu_docker_fail) echo 'Docker をインストールまたは起動できませんでした。Wallos コンテナは変更されていません。' ;;
         zh:wl_iu_no_free_port) echo '20000–60000 无可用高位端口，请释放端口后重试。' ;;
         en:wl_iu_no_free_port) echo 'No free high port found in 20000-60000; free one and retry.' ;;
-        ru:wl_iu_no_free_port) echo 'Нет свободного высокого порта 20000–60000.' ;;
-        fa:wl_iu_no_free_port) echo 'درگاه آزاد در 20000 تا 60000 یافت نشد.' ;;
+        ru:wl_iu_no_free_port) echo 'Нет свободного высокого порта 20000–60000. Освободите один из этих портов и повторите попытку.' ;;
+        fa:wl_iu_no_free_port) echo 'درگاه آزاد در 20000 تا 60000 یافت نشد. یکی از درگاه‌های این بازه را آزاد کنید و دوباره تلاش کنید.' ;;
         zh-tw:wl_iu_no_free_port) echo '20000–60000 無可用高位連接埠，請釋放後重試。' ;;
-        ja:wl_iu_no_free_port) echo '20000～60000 に空きポートがありません。' ;;
+        ja:wl_iu_no_free_port) echo '20000～60000 に空きポートがありません。この範囲のポートを1つ解放して、再試行してください。' ;;
         zh:wl_iu_unmanaged) echo '已存在一个非 A-Box 管理的 wallos 容器。请改名或在 A-Box 之外管理它；未尝试接管。' ;;
         en:wl_iu_unmanaged) echo 'An unmanaged container named wallos already exists. Rename it or manage it outside A-Box; no takeover was attempted.' ;;
         ru:wl_iu_unmanaged) echo 'Уже существует неуправляемый контейнер с именем wallos. Переименуйте его или управляйте вне A-Box; попытка захвата не выполнялась.' ;;
@@ -2803,7 +2803,7 @@ tr_msg() {
         zh:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（选 cloudflared），页面会给出一条带 --token 的命令；' ;;
         en:wl_iu_cf_guide_1) echo '1) Zero Trust -> Networks -> Tunnels -> Create a tunnel (cloudflared); its install command contains a --token value.' ;;
         ru:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel (cloudflared); команда установки содержит значение --token.' ;;
-        fa:wl_iu_cf_guide_1) echo '۱) Zero Trust ← Networks ← Tunnels ← ساخت تونل (cloudflared)؛ دستور نصب آن شامل مقدار --token است.' ;;
+        fa:wl_iu_cf_guide_1) echo '۱) Zero Trust → Networks → Tunnels → ساخت تونل (cloudflared)؛ دستور نصب آن شامل مقدار --token است.' ;;
         zh-tw:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（選 cloudflared），頁面會給出一條帶 --token 的命令；' ;;
         ja:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（cloudflared を選択）。表示されるインストールコマンドに --token の値が含まれます。' ;;
         zh:wl_iu_cf_guide_2) echo '2) 在该隧道添加 Public Hostname：域名填你想要的（如 wallos.example.com），Service 选 HTTP，URL 填 127.0.0.1:%s；' ;;
@@ -3888,8 +3888,8 @@ tr_msg() {
         ja:dh_snap_staging) echo 'DNS スナップショットのステージングに失敗しました。リゾルバは変更されていません。' ;;
         zh:dh_snap_rollback) echo 'DNS 回滚快照失败或不完整；已保留先前快照；未更改解析器。' ;;
         en:dh_snap_rollback) echo 'DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.' ;;
-        ru:dh_snap_rollback) echo 'Снимок отката DNS не удался или неполон; предыдущий снимок сохранён; resolvers не изменены.' ;;
-        fa:dh_snap_rollback) echo 'snapshot بازگشت DNS ناموفق یا ناقص بود؛ snapshot قبلی حفظ شد؛ تغییری در resolvers داده نشد.' ;;
+        ru:dh_snap_rollback) echo 'Снимок отката DNS не удался или неполон; предыдущий снимок сохранён; резолверы не изменены.' ;;
+        fa:dh_snap_rollback) echo 'اسنپ‌شات بازگشت DNS ناموفق یا ناقص بود؛ اسنپ‌شات قبلی حفظ شد؛ تغییری در حل‌کننده‌ها داده نشد.' ;;
         zh-tw:dh_snap_rollback) echo 'DNS 回滾快照失敗或不完整；已保留先前快照；未更改解析器。' ;;
         ja:dh_snap_rollback) echo 'DNS ロールバック用スナップショットが失敗または不完全です。前のスナップショットは保持され、リゾルバは変更されていません。' ;;
         zh:dh_snap_install) echo 'DNS 快照安装失败；已保留先前快照；未更改解析器。' ;;
@@ -4398,13 +4398,13 @@ tr_msg() {
         ja:vg_init_fail) echo 'システム環境の初期化に失敗しました。' ;;
         zh:vg_title) echo '删除全部节点与环境初始化（可凭自动备份恢复）' ;;
         en:vg_title) echo 'Delete all nodes and perform environment initialization (recoverable from auto-backup)' ;;
-        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения (восстановление из автобэкапа)' ;;
+        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения (восстановление из автоматической резервной копии)' ;;
         fa:vg_title) echo 'حذف همه گره‌ها و مقداردهی محیط (بازیابی از پشتیبان خودکار ممکن است)' ;;
         zh-tw:vg_title) echo '刪除全部節點與環境初始化（可憑自動備份恢復）' ;;
         ja:vg_title) echo '全ノードを削除して環境を初期化（自動バックアップから復旧可）' ;;
         zh:vg_confirm) echo '将删除全部节点并初始化环境（可凭自动备份恢复），确定执行吗？[Y/N]: ' ;;
         en:vg_confirm) echo 'This deletes all nodes and reinitializes the environment (recoverable from the auto-backup). Proceed? [Y/N]: ' ;;
-        ru:vg_confirm) echo 'Будут удалены все узлы, окружение будет переинициализировано (можно восстановить из автобэкапа). Продолжить? [Y/N]: ' ;;
+        ru:vg_confirm) echo 'Будут удалены все узлы, окружение будет переинициализировано (можно восстановить из автоматической резервной копии). Продолжить? [Y/N]: ' ;;
         fa:vg_confirm) echo 'همهٔ گره‌ها حذف و محیط دوباره مقداردهی می‌شود (بازیابی از پشتیبان خودکار ممکن است). ادامه داده شود؟ [Y/N]: ' ;;
         zh-tw:vg_confirm) echo '將刪除全部節點並初始化環境（可憑自動備份恢復），確定執行嗎？[Y/N]: ' ;;
         ja:vg_confirm) echo '全ノードを削除し環境を初期化します（自動バックアップから復旧可）。実行しますか？[Y/N]: ' ;;
@@ -4469,7 +4469,7 @@ tr_msg() {
         zh-tw:um_back) echo '取消並返回' ;;
         ja:um_back) echo 'キャンセルして戻る' ;;
         zh:um_prompt) echo '请输入执行代码 [0-2]: ' ;;
-        en:um_prompt) echo 'Enter the execution code [0-2]: ' ;;
+        en:um_prompt) echo 'Choose an option [0-2]: ' ;;
         ru:um_prompt) echo 'Введите код выполнения [0-2]: ' ;;
         fa:um_prompt) echo 'کد اجرا را وارد کنید [0-2]: ' ;;
         zh-tw:um_prompt) echo '請輸入執行代碼 [0-2]: ' ;;
@@ -4608,10 +4608,10 @@ tr_msg() {
         ja:ip_pref_current) echo '現在: %s' ;;
         zh:ip_select_0_3) echo '选择 [0-3]: ' ;;
         en:ip_select_0_3) echo 'Select [0-3]: ' ;;
-        ru:ip_select_0_3) echo 'Выбор [0-3]: ' ;;
+        ru:ip_select_0_3) echo 'Выберите [0-3]: ' ;;
         fa:ip_select_0_3) echo 'انتخاب [۰-۳]: ' ;;
         zh-tw:ip_select_0_3) echo '選擇 [0-3]: ' ;;
-        ja:ip_select_0_3) echo '選択 [0-3]: ' ;;
+        ja:ip_select_0_3) echo '選択してください [0-3]: ' ;;
         zh:tz_meta_fail) echo '[!] 时区已切换为 %s，但状态元数据写入失败；回滚信息可能不完整。' ;;
         en:tz_meta_fail) echo '[!] Timezone switched to %s, but state metadata write failed; rollback information may be incomplete.' ;;
         ru:tz_meta_fail) echo '[!] Часовой пояс переключён на %s, но запись метаданных состояния не удалась; информация для отката может быть неполной.' ;;
@@ -4626,26 +4626,26 @@ tr_msg() {
         ja:dns_current) echo '現在: IPv4=%s IPv6=%s' ;;
         zh:dns_select_mode) echo '选择 [0-3]: ' ;;
         en:dns_select_mode) echo 'Select [0-3]: ' ;;
-        ru:dns_select_mode) echo 'Выбор [0-3]: ' ;;
+        ru:dns_select_mode) echo 'Выберите [0-3]: ' ;;
         fa:dns_select_mode) echo 'انتخاب [۰-۳]: ' ;;
         zh-tw:dns_select_mode) echo '選擇 [0-3]: ' ;;
-        ja:dns_select_mode) echo '選択 [0-3]: ' ;;
+        ja:dns_select_mode) echo '選択してください [0-3]: ' ;;
         zh:dns_select_provider) echo '选择服务商 [0-10]: ' ;;
         en:dns_select_provider) echo 'Select provider [0-10]: ' ;;
-        ru:dns_select_provider) echo 'Выбор провайдера [0-10]: ' ;;
+        ru:dns_select_provider) echo 'Выберите провайдера [0-10]: ' ;;
         fa:dns_select_provider) echo 'انتخاب ارائه‌دهنده [۰-۱۰]: ' ;;
         zh-tw:dns_select_provider) echo '選擇服務商 [0-10]: ' ;;
-        ja:dns_select_provider) echo 'プロバイダを選択 [0-10]: ' ;;
+        ja:dns_select_provider) echo 'プロバイダを選択してください [0-10]: ' ;;
         zh:dns_manual_v4) echo 'IPv4 DNS：' ;;
         en:dns_manual_v4) echo 'IPv4 DNS: ' ;;
         ru:dns_manual_v4) echo 'DNS IPv4: ' ;;
-        fa:dns_manual_v4) echo 'DNS نسخه ۴: ' ;;
+        fa:dns_manual_v4) echo 'DNS ‏IPv4: ' ;;
         zh-tw:dns_manual_v4) echo 'IPv4 DNS：' ;;
         ja:dns_manual_v4) echo 'IPv4 DNS: ' ;;
         zh:dns_manual_v6) echo 'IPv6 DNS：' ;;
         en:dns_manual_v6) echo 'IPv6 DNS: ' ;;
         ru:dns_manual_v6) echo 'DNS IPv6: ' ;;
-        fa:dns_manual_v6) echo 'DNS نسخه ۶: ' ;;
+        fa:dns_manual_v6) echo 'DNS ‏IPv6: ' ;;
         zh-tw:dns_manual_v6) echo 'IPv6 DNS：' ;;
         ja:dns_manual_v6) echo 'IPv6 DNS: ' ;;
         zh:dns_invalid_v4) echo 'IPv4 无效' ;;
@@ -4844,13 +4844,13 @@ tr_msg() {
         en:wl_rb_none) echo 'No previous Wallos versions available for rollback.' ;;
         ru:wl_rb_none) echo 'Нет предыдущих версий Wallos для отката.' ;;
         fa:wl_rb_none) echo 'نسخه قبلی Wallos برای بازگشت در دسترس نیست.' ;;
-        zh-tw:wl_rb_none) echo '沒有可用於回復的上一個 Wallos 版本。' ;;
+        zh-tw:wl_rb_none) echo '沒有可用於回滾的上一個 Wallos 版本。' ;;
         ja:wl_rb_none) echo 'ロールバック可能な以前の Wallos バージョンがありません。' ;;
         zh:wl_rb_no_other) echo '没有其他可用于回滚的 Wallos 版本。' ;;
         en:wl_rb_no_other) echo 'No other Wallos versions available for rollback.' ;;
         ru:wl_rb_no_other) echo 'Нет других версий Wallos для отката.' ;;
         fa:wl_rb_no_other) echo 'نسخه دیگری از Wallos برای بازگشت در دسترس نیست.' ;;
-        zh-tw:wl_rb_no_other) echo '沒有其他可用於回復的 Wallos 版本。' ;;
+        zh-tw:wl_rb_no_other) echo '沒有其他可用於回滾的 Wallos 版本。' ;;
         ja:wl_rb_no_other) echo 'ロールバック可能な他の Wallos バージョンがありません。' ;;
         zh:wl_rb_invalid) echo '选择无效。' ;;
         en:wl_rb_invalid) echo 'Invalid selection.' ;;
@@ -4967,17 +4967,17 @@ tr_msg() {
         zh-tw:wl_health_fail) echo 'Wallos 健康檢查未通過：容器在重啟迴圈或資料庫不完整（核心表缺失），實際不可用。請檢查：docker logs wallos' ;;
         ja:wl_health_fail) echo 'Wallos のヘルスチェックに失敗しました：コンテナが再起動ループ中か、データベースが不完全（主要テーブル欠落）で、実際には使用できません。確認：docker logs wallos' ;;
         zh:dp_existing) echo '已部署节点（见磁盘配置）' ;;
-        en:dp_existing) echo 'existing deployment (on disk)' ;;
+        en:dp_existing) echo 'Deployed nodes (on disk)' ;;
         ru:dp_existing) echo 'существующее развёртывание (на диске)' ;;
         fa:dp_existing) echo 'استقرار موجود (روی دیسک)' ;;
         zh-tw:dp_existing) echo '已部署節點（見磁碟設定）' ;;
-        ja:dp_existing) echo '導入済みノード（ディスク上の設定）' ;;
+        ja:dp_existing) echo 'デプロイ済みノード（ディスク上の設定）' ;;
         zh:oc_replace_warn) echo '本机已有部署（当前：%s）。继续将覆盖同核心的现有配置，只保留 Vision，其余协议节点会被清除！' ;;
         en:oc_replace_warn) echo 'This host already has a deployment (current: %s). Continuing overwrites the existing configuration of that core and keeps only Vision; the other protocol nodes will be removed!' ;;
         ru:oc_replace_warn) echo 'На этом хосте уже есть развёртывание (текущее: %s). Продолжение перезапишет существующую конфигурацию этого ядра и оставит только Vision; остальные узлы протоколов будут удалены!' ;;
         fa:oc_replace_warn) echo 'این میزبان از قبل یک استقرار دارد (کنونی: %s). ادامه کار، پیکربندی موجود آن هسته را بازنویسی و فقط Vision را نگه می‌دارد؛ گره‌های سایر پروتکل‌ها حذف می‌شوند!' ;;
         zh-tw:oc_replace_warn) echo '本機已有部署（目前：%s）。繼續將覆蓋同核心的現有設定，只保留 Vision，其餘協議節點會被清除！' ;;
-        ja:oc_replace_warn) echo 'このホストには導入済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
+        ja:oc_replace_warn) echo 'このホストにはデプロイ済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
         zh:pi_input_closed) echo '交互输入已结束。' ;;
         en:pi_input_closed) echo 'Interactive input closed.' ;;
         ru:pi_input_closed) echo 'Ввод завершён.' ;;
@@ -5025,7 +5025,7 @@ tr_msg() {
         ru:pf_warp_confirm) echo 'Продолжить развёртывание с текущим маршрутом по умолчанию? [Y/N]: ' ;;
         fa:pf_warp_confirm) echo 'با همین مسیر پیش‌فرض فعلی استقرار ادامه یابد؟ [Y/N]: ' ;;
         zh-tw:pf_warp_confirm) echo '仍要使用目前預設公網路由繼續部署嗎？[Y/N]: ' ;;
-        ja:pf_warp_confirm) echo '現在のデフォルトルートのまま導入を続けますか？[Y/N]: ' ;;
+        ja:pf_warp_confirm) echo '現在のデフォルトルートのままデプロイを続けますか？[Y/N]: ' ;;
         zh:pf_warp_unconfirmed) echo '未确认使用 wg/warp/tun 默认出口。' ;;
         en:pf_warp_unconfirmed) echo 'Use of the wg/warp/tun default egress was not confirmed.' ;;
         ru:pf_warp_unconfirmed) echo 'Использование выхода wg/warp/tun по умолчанию не подтверждено.' ;;
@@ -5037,7 +5037,7 @@ tr_msg() {
         ru:pf_warp_noninteractive) echo 'Неинтерактивное развёртывание обнаружило выход wg/warp/tun по умолчанию; подтвердите в интерактивном режиме перед развёртыванием.' ;;
         fa:pf_warp_noninteractive) echo 'استقرار غیرتعاملی خروجی پیش‌فرض wg/warp/tun را تشخیص داد؛ پیش از استقرار باید در محیط تعاملی تأیید شود.' ;;
         zh-tw:pf_warp_noninteractive) echo '非互動部署偵測到 wg/warp/tun 預設出口；必須先在互動環境確認後再部署。' ;;
-        ja:pf_warp_noninteractive) echo '非対話型の導入で wg/warp/tun のデフォルト出口を検出しました。導入前に、対話環境で明示的に確認してください。' ;;
+        ja:pf_warp_noninteractive) echo '非対話型のデプロイで wg/warp/tun のデフォルト出口を検出しました。デプロイ前に、対話環境で明示的に確認してください。' ;;
         zh:pf_no_init) echo '未检测到受支持的 init 系统' ;;
         en:pf_no_init) echo 'no supported init system detected' ;;
         ru:pf_no_init) echo 'не обнаружена поддерживаемая система инициализации' ;;
@@ -5085,31 +5085,31 @@ tr_msg() {
         ru:dp_stop_warn) echo 'A-Box остановит управляемые службы перед развёртыванием нового стека.' ;;
         fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
         zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
-        ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        ja:dp_stop_warn) echo 'A-Box は新しいスタックをデプロイする前に、管理対象サービスを停止します。' ;;
         zh:dp_cred_regen) echo '覆盖重部署将重生成主凭据，旧订阅链接随即失效，须重新导出。' ;;
         en:dp_cred_regen) echo 'Overwrite redeploy regenerates the main credentials; old subscription links stop working and must be re-exported.' ;;
         ru:dp_cred_regen) echo 'Переустановка с заменой повторно создаёт основные учётные данные; старые ссылки подписки перестают работать, их нужно экспортировать заново.' ;;
         fa:dp_cred_regen) echo 'استقرار مجدد با بازنویسی، اعتبار اصلی را دوباره تولید می‌کند؛ پیوندهای اشتراک قدیمی از کار می‌افتند و باید دوباره صادر شوند.' ;;
         zh-tw:dp_cred_regen) echo '覆寫重部署將重新產生主憑據，舊訂閱連結隨即失效，須重新匯出。' ;;
-        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古い購読リンクは無効になるため、再エクスポートが必要です。' ;;
+        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古いサブスクリプションリンクは無効になるため、再エクスポートが必要です。' ;;
         zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
         en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
         ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
         fa:dp_current) echo 'پیکربندی کنونی: %s | استقرار جدید: %s' ;;
         zh-tw:dp_current) echo '目前設定：%s | 新部署：%s' ;;
-        ja:dp_current) echo '現在の設定: %s | 新規導入: %s' ;;
+        ja:dp_current) echo '現在の設定: %s | 新規デプロイ: %s' ;;
         zh:dp_fast_skip) echo '[快速/一键] 全新主机，跳过部署确认。' ;;
         en:dp_fast_skip) echo '[fast/one-click] fresh host; skip deploy confirm.' ;;
         ru:dp_fast_skip) echo '[быстрый/в один клик] новый хост; подтверждение развёртывания пропущено.' ;;
         fa:dp_fast_skip) echo '[سریع/یک‌کلیکه] میزبان تازه؛ تأیید استقرار رد شد.' ;;
         zh-tw:dp_fast_skip) echo '[快速/一鍵] 全新主機，略過部署確認。' ;;
-        ja:dp_fast_skip) echo '[高速/ワンクリック] 新規ホストのため、導入確認をスキップします。' ;;
+        ja:dp_fast_skip) echo '[高速/ワンクリック] 新規ホストのため、デプロイ確認をスキップします。' ;;
         zh:dp_cancelled) echo '已取消部署。' ;;
         en:dp_cancelled) echo 'Deployment canceled.' ;;
         ru:dp_cancelled) echo 'Развёртывание отменено.' ;;
         fa:dp_cancelled) echo 'استقرار لغو شد.' ;;
         zh-tw:dp_cancelled) echo '已取消部署。' ;;
-        ja:dp_cancelled) echo '導入をキャンセルしました。' ;;
+        ja:dp_cancelled) echo 'デプロイをキャンセルしました。' ;;
         zh:dp_ports_title) echo '当前端口占用（端口 → 协议）：' ;;
         en:dp_ports_title) echo 'Ports currently in use (port -> protocol):' ;;
         ru:dp_ports_title) echo 'Занятые сейчас порты (порт -> протокол):' ;;
@@ -5130,7 +5130,7 @@ tr_msg() {
         ja:dp_ports_external) echo '外部プロセス/不明' ;;
         zh:dp_choice_overwrite) echo '1) 覆盖部署 — 清除现有部署后重新部署（现有独立协议将被删除）' ;;
         en:dp_choice_overwrite) echo '1) Overwrite - wipe the current deployment and redeploy (existing standalone protocols will be removed)' ;;
-        ru:dp_choice_overwrite) echo '1) Перезапись - снести текущее развёртывание и развернуть заново (отдельные протоколы будут удалены)' ;;
+        ru:dp_choice_overwrite) echo '1) Перезапись - удалить текущее развёртывание и развернуть заново (отдельные протоколы будут удалены)' ;;
         fa:dp_choice_overwrite) echo '1) بازنویسی - حذف استقرار فعلی و استقرار دوباره (پروتکل‌های مستقل موجود حذف می‌شوند)' ;;
         zh-tw:dp_choice_overwrite) echo '1) 覆蓋部署 — 清除現有部署後重新部署（現有獨立協定將被刪除）' ;;
         ja:dp_choice_overwrite) echo '1) 上書き - 現在のデプロイを消去して再デプロイ（既存の独立プロトコルは削除されます）' ;;
@@ -5181,7 +5181,7 @@ tr_msg() {
         ru:dp_preserve_fail) echo 'Сохранить отдельные протоколы того же ядра не удалось (%s); продолжаю только с новой конфигурацией. Их можно добавить заново в разделе «Ещё протоколы».' ;;
         fa:dp_preserve_fail) echo 'حفظ پروتکل‌های مستقلِ هم‌هسته ناموفق بود (%s)؛ فقط با پیکربندی جدید ادامه داده می‌شود. پروتکل‌ها را می‌توان از «پروتکل‌های بیشتر» دوباره افزود.' ;;
         zh-tw:dp_preserve_fail) echo '同核心獨立協定保留失敗（%s），已回退為僅新設定；獨立協定可透過「更多協定」重新加入。' ;;
-        ja:dp_preserve_fail) echo '同じコアの独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「その他のプロトコル」から再追加できます。' ;;
+        ja:dp_preserve_fail) echo '同じコアの独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「追加のプロトコル」から再追加できます。' ;;
         zh:dp_preserve_snapshot_fail) echo '独立入站快照失败，保留未生效。' ;;
         en:dp_preserve_snapshot_fail) echo 'Standalone inbound snapshot failed; preservation is not in effect.' ;;
         ru:dp_preserve_snapshot_fail) echo 'Не удалось создать снимок отдельных входящих; сохранение не действует.' ;;
@@ -5253,7 +5253,7 @@ tr_msg() {
         ru:pi_oneclick_sni_fail) echo 'Автовыбор SNI и запасной Amazon не прошли живую проверку; установка в один клик остановлена, чтобы не развернуть нерабочий узел. Используйте интерактивную установку и введите проверяемый SNI.' ;;
         fa:pi_oneclick_sni_fail) echo 'انتخاب خودکار SNI و جایگزین Amazon هر دو در بررسی زنده رد شدند؛ نصب یک‌کلیکه متوقف شد تا گره غیرقابل استفاده مستقر نشود. از نصب تعاملی استفاده کنید و یک SNI قابل بررسی وارد کنید.' ;;
         zh-tw:pi_oneclick_sni_fail) echo 'SNI 自動優選及 Amazon 回退均未通過即時驗證；為避免部署不可用節點，已停止一鍵安裝。請使用互動式安裝並輸入可驗證的 SNI。' ;;
-        ja:pi_oneclick_sni_fail) echo 'SNI の自動選択と Amazon フォールバックの両方がライブ検証に失敗しました。使用できないノードの導入を避けるため、ワンクリックインストールを停止しました。対話型インストールで検証可能な SNI を入力してください。' ;;
+        ja:pi_oneclick_sni_fail) echo 'SNI の自動選択と Amazon フォールバックの両方がライブ検証に失敗しました。使用できないノードのデプロイを避けるため、ワンクリックインストールを停止しました。対話型インストールで検証可能な SNI を入力してください。' ;;
         zh:pi_oneclick_defaults) echo '[one-click] Vision REALITY 默认值：port=%s SNI=%s' ;;
         en:pi_oneclick_defaults) echo '[one-click] Vision REALITY defaults: port=%s SNI=%s' ;;
         ru:pi_oneclick_defaults) echo '[one-click] Значения Vision REALITY по умолчанию: port=%s SNI=%s' ;;
@@ -5278,12 +5278,12 @@ tr_msg() {
         fa:pi_sni_closed) echo 'ورودی SNI مربوط به %s بسته شد.' ;;
         zh-tw:pi_sni_closed) echo '%s SNI 輸入已結束。' ;;
         ja:pi_sni_closed) echo '%s の SNI 入力が終了しました。' ;;
-        zh:pi_hy2_domain_sb) echo '可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: ' ;;
-        en:pi_hy2_domain_sb) echo 'Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): ' ;;
-        ru:pi_hy2_domain_sb) echo 'Необязательный домен сервера для самоподписанного сертификата/SNI Sing-box HY2 (пусто = IP + pinSHA256): ' ;;
-        fa:pi_hy2_domain_sb) echo 'دامنه اختیاری سرور برای گواهی خودامضا/SNI در Sing-box HY2 (خالی = IP + pinSHA256): ' ;;
-        zh-tw:pi_hy2_domain_sb) echo '可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: ' ;;
-        ja:pi_hy2_domain_sb) echo 'Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: ' ;;
+        zh:pi_hy2_domain_sb) echo '可选填写 sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: ' ;;
+        en:pi_hy2_domain_sb) echo 'Optional server domain for sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): ' ;;
+        ru:pi_hy2_domain_sb) echo 'Необязательный домен сервера для самоподписанного сертификата/SNI sing-box HY2 (пусто = IP + pinSHA256): ' ;;
+        fa:pi_hy2_domain_sb) echo 'دامنه اختیاری سرور برای گواهی خودامضا/SNI در sing-box HY2 (خالی = IP + pinSHA256): ' ;;
+        zh-tw:pi_hy2_domain_sb) echo '可選填寫 sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: ' ;;
+        ja:pi_hy2_domain_sb) echo 'sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: ' ;;
         zh:pi_hy2_domain) echo '是否拥有已解析到本机的域名？(留空使用默认自签证书): ' ;;
         en:pi_hy2_domain) echo 'Do you have a domain already resolved to this server? (empty = self-signed certificate): ' ;;
         ru:pi_hy2_domain) echo 'Есть ли у вас домен, уже направленный на этот сервер? (пусто = самоподписанный сертификат): ' ;;
@@ -5373,13 +5373,13 @@ tr_msg() {
         ru:pi_acme_port_advice) echo 'Сначала освободите 80/tcp или перейдите на Cloudflare DNS-01 ACME перед развёртыванием доменного сертификата HY2.' ;;
         fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
         zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
-        ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
+        ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書をデプロイしてください。' ;;
         zh:tl_body) echo '日常部署：Xray、sing-box 与 Hysteria 默认跟随最新正式稳定版。显式选择 pinned 策略时，三者的固定目标依次为：%s / %s / %s。' ;;
         en:tl_body) echo 'Routine deployment: Xray, sing-box and Hysteria default to the latest official stable release. When the pinned policy is explicitly selected, their fixed targets, in the same order, are: %s / %s / %s.' ;;
         ru:tl_body) echo 'При обычном развёртывании Xray, sing-box и Hysteria по умолчанию используют последний официальный стабильный выпуск. При явном выборе политики pinned фиксированные версии в том же порядке: %s / %s / %s.' ;;
         fa:tl_body) echo 'در استقرار عادی، Xray، sing-box و Hysteria به‌طور پیش‌فرض آخرین نسخه پایدار رسمی را انتخاب می‌کنند. با انتخاب صریح سیاست pinned، نسخه‌های ثابت به همان ترتیب عبارت‌اند از: %s / %s / %s.' ;;
         zh-tw:tl_body) echo '日常部署：Xray、sing-box 與 Hysteria 預設跟隨最新正式穩定版。明確選擇 pinned 策略時，三者的固定目標依序為：%s / %s / %s。' ;;
-        ja:tl_body) echo '通常の導入では、Xray、sing-box、Hysteria は既定で最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
+        ja:tl_body) echo '通常のデプロイでは、Xray、sing-box、Hysteria は既定で最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
         zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
         en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
         ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
@@ -5618,7 +5618,7 @@ tr_msg() {
         en:mu_guard_no_file) echo 'Failed to apply: not running from a regular script file (one-liner install), so the multi-user guard runner cannot be built.' ;;
         ru:mu_guard_no_file) echo 'Не удалось применить: запуск выполнен не из обычного файла скрипта (однострочная установка), поэтому runner многопользовательской защиты создать нельзя.' ;;
         fa:mu_guard_no_file) echo 'تنظیم ناموفق بود: از یک فایل اسکریپت معمولی اجرا نشده است (نصب تک‌خطی)، بنابراین نمی‌توان runner محافظت چندکاربره را ساخت.' ;;
-        zh-tw:mu_guard_no_file) echo '設定失敗：目前不是以常規指令碼檔案執行（一鍵命令），無法產生多使用者守護。' ;;
+        zh-tw:mu_guard_no_file) echo '設定失敗：目前不是以常規腳本檔案執行（一鍵命令），無法產生多使用者守護。' ;;
         ja:mu_guard_no_file) echo '設定に失敗しました：通常のスクリプトファイルから実行されていないため（ワンライナー）、マルチユーザーガードのランナーを作成できません。' ;;
         zh:mu_days_prompt) echo '有效天数 (0=永久): ' ;;
         en:mu_days_prompt) echo 'Valid days (0 = forever): ' ;;
@@ -5715,7 +5715,7 @@ tr_msg() {
         ru:mu_export) echo 'Экспорт всех ссылок пользователей (файлы подписки)' ;;
         fa:mu_export) echo 'خروجی همه پیوندهای کاربران (فایل‌های اشتراک)' ;;
         zh-tw:mu_export) echo '匯出全部用戶連結（訂閱檔案）' ;;
-        ja:mu_export) echo '全ユーザーのリンクをエクスポート（購読ファイル）' ;;
+        ja:mu_export) echo '全ユーザーのリンクをエクスポート（サブスクリプションファイル）' ;;
         zh:mu_back_word) echo '返回' ;;
         en:mu_back_word) echo 'Back' ;;
         ru:mu_back_word) echo 'Назад' ;;
@@ -5727,7 +5727,7 @@ tr_msg() {
         ru:mu_exported) echo 'Ссылки экспортированы в каталог подписки (количество)' ;;
         fa:mu_exported) echo 'پیوندهای کاربران به پوشه اشتراک صادر شد (تعداد)' ;;
         zh-tw:mu_exported) echo '已匯出用戶連結到訂閱目錄（條數）' ;;
-        ja:mu_exported) echo 'ユーザーリンクを購読ディレクトリにエクスポートしました（件数）' ;;
+        ja:mu_exported) echo 'ユーザーリンクをサブスクリプションディレクトリにエクスポートしました（件数）' ;;
         zh:mu_export_fail) echo '导出失败或无可用链接。' ;;
         en:mu_export_fail) echo 'Export failed or no links available.' ;;
         ru:mu_export_fail) echo 'Экспорт не удался или нет доступных ссылок.' ;;
@@ -6374,7 +6374,7 @@ tr_msg() {
         en:manual_start_managed_stack_start_commit_fail) echo 'Starting or enabling at least one managed service, or committing the state, failed; rollback of this operation was attempted.' ;;
         ru:manual_start_managed_stack_start_commit_fail) echo 'Не удалось запустить или включить хотя бы один управляемый сервис либо зафиксировать состояние; предпринята попытка отката этой операции.' ;;
         fa:manual_start_managed_stack_start_commit_fail) echo 'راه‌اندازی یا فعال‌سازی حداقل یک سرویس مدیریت‌شده، یا ثبت نهایی وضعیت ناموفق بود؛ تلاش برای بازگردانی این عملیات انجام شد.' ;;
-        zh-tw:manual_start_managed_stack_start_commit_fail) echo '至少一個受管理服務啟動／啟用或狀態提交失敗；已嘗試回復本次操作。' ;;
+        zh-tw:manual_start_managed_stack_start_commit_fail) echo '至少一個受管理服務啟動／啟用或狀態提交失敗；已嘗試回滾本次操作。' ;;
         ja:manual_start_managed_stack_start_commit_fail) echo '少なくとも1つの管理対象サービスの起動／有効化、または状態のコミットに失敗しました。今回の操作のロールバックを試みました。' ;;
         zh:manual_start_managed_stack_tx_cleanup_fail) echo '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。' ;;
         en:manual_start_managed_stack_tx_cleanup_fail) echo 'Service state transaction cleanup failed; services started as expected, but transaction artifacts could not be removed.' ;;
@@ -6476,19 +6476,19 @@ tr_msg() {
         en:setup_zram_swap_helper_write_fail) echo 'Failed to write the zram helper script.' ;;
         ru:setup_zram_swap_helper_write_fail) echo 'Не удалось записать вспомогательный скрипт zram.' ;;
         fa:setup_zram_swap_helper_write_fail) echo 'نوشتن اسکریپت کمکی zram ناموفق بود.' ;;
-        zh-tw:setup_zram_swap_helper_write_fail) echo 'zram 輔助指令碼寫入失敗。' ;;
+        zh-tw:setup_zram_swap_helper_write_fail) echo 'zram 輔助腳本寫入失敗。' ;;
         ja:setup_zram_swap_helper_write_fail) echo 'zram 補助スクリプトの書き込みに失敗しました。' ;;
         zh:setup_zram_swap_enable_cleanup_fail) echo 'zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。' ;;
         en:setup_zram_swap_enable_cleanup_fail) echo 'Failed to enable zram, and failure cleanup could not deactivate the swap space already activated; the helper and configuration have been retained. Run swapoff manually, then retry.' ;;
         ru:setup_zram_swap_enable_cleanup_fail) echo 'Не удалось включить zram, а очистка после сбоя не смогла отключить уже активированную область подкачки; вспомогательный скрипт и конфигурация сохранены. Выполните swapoff вручную, затем повторите попытку.' ;;
         fa:setup_zram_swap_enable_cleanup_fail) echo 'فعال‌سازی zram ناموفق بود و پاک‌سازی پس از خطا نتوانست فضای مبادله فعال‌شده را غیرفعال کند؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند. swapoff را دستی اجرا کنید، سپس دوباره تلاش کنید.' ;;
-        zh-tw:setup_zram_swap_enable_cleanup_fail) echo 'zram 啟用失敗，且失敗清理無法停用已啟用的交換區；已保留輔助指令碼與設定，請手動執行 swapoff 後重試。' ;;
+        zh-tw:setup_zram_swap_enable_cleanup_fail) echo 'zram 啟用失敗，且失敗清理無法停用已啟用的交換區；已保留輔助腳本與設定，請手動執行 swapoff 後重試。' ;;
         ja:setup_zram_swap_enable_cleanup_fail) echo 'zram の有効化に失敗し、失敗時のクリーンアップでも既に有効になったスワップ領域を無効化できませんでした。補助スクリプトと設定は保持しています。手動で swapoff を実行してから再試行してください。' ;;
         zh:setup_zram_swap_enable_fail) echo 'zram 启用失败（设备创建/格式化/挂载任一环节未通过），已保留助手与配置（既有开机建置不受影响）。请改用磁盘 Swap 文件。' ;;
         en:setup_zram_swap_enable_fail) echo 'Failed to enable zram (device creation, formatting, or mounting failed); the helper and configuration have been retained (existing boot setup is unaffected). Use a disk Swap file instead.' ;;
         ru:setup_zram_swap_enable_fail) echo 'Не удалось включить zram (сбой создания устройства, форматирования или подключения); вспомогательный скрипт и конфигурация сохранены (существующая настройка при загрузке не затронута). Используйте дисковый файл Swap.' ;;
         fa:setup_zram_swap_enable_fail) echo 'فعال‌سازی zram ناموفق بود (ایجاد دستگاه، قالب‌بندی یا اتصال شکست خورد)؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند (تنظیمات موجود هنگام بوت تحت تأثیر نیستند). به‌جای آن از فایل Swap روی دیسک استفاده کنید.' ;;
-        zh-tw:setup_zram_swap_enable_fail) echo 'zram 啟用失敗（裝置建立／格式化／掛載任一環節未通過），已保留輔助指令碼與設定（既有開機設定不受影響）。請改用磁碟 Swap 檔案。' ;;
+        zh-tw:setup_zram_swap_enable_fail) echo 'zram 啟用失敗（裝置建立／格式化／掛載任一環節未通過），已保留輔助腳本與設定（既有開機設定不受影響）。請改用磁碟 Swap 檔案。' ;;
         ja:setup_zram_swap_enable_fail) echo 'zram の有効化に失敗しました（デバイス作成／フォーマット／マウントのいずれかで失敗）。補助スクリプトと設定は保持しています（既存の起動時設定には影響しません）。代わりにディスク Swap ファイルを使用してください。' ;;
         zh:setup_zram_swap_autostart_systemd_fail) echo 'zram 已启用，但开机自启设置未成功（systemctl enable 失败），重启后需手动重新启用。' ;;
         en:setup_zram_swap_autostart_systemd_fail) echo 'zram is enabled, but boot autostart setup failed (systemctl enable failed); you must enable it again manually after reboot.' ;;
@@ -6689,7 +6689,7 @@ tr_msg() {
         zh-tw:manual_stop_managed_stack_tx_cleanup_fail) echo '服務狀態交易清理失敗；服務已按預期停止，但未能清理交易資料。' ;;
         ja:manual_stop_managed_stack_tx_cleanup_fail) echo 'サービス状態トランザクションのクリーンアップに失敗しました。サービスは期待どおり停止しましたが、トランザクションの関連データを削除できませんでした。' ;;
         zh:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
-        en:traffic_management_menu_dash_title) echo 'Monthly Traffic Management / Monthly Traffic' ;;
+        en:traffic_management_menu_dash_title) echo 'Monthly Traffic Management' ;;
         ru:traffic_management_menu_dash_title) echo 'Управление месячным трафиком / Monthly Traffic' ;;
         fa:traffic_management_menu_dash_title) echo 'مدیریت ترافیک ماهانه / Monthly Traffic' ;;
         zh-tw:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
@@ -6811,19 +6811,19 @@ tr_msg() {
         zh:cl_m_all) echo '清空全部节点协议（保留核心与脚本）' ;;
         en:cl_m_all) echo 'Remove all node protocols (keep cores & script)' ;;
         ru:cl_m_all) echo 'Удалить все протоколы узлов (ядра и скрипт сохраняются)' ;;
-        fa:cl_m_all) echo 'حذف همه پروتکل‌های نود (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
+        fa:cl_m_all) echo 'حذف همه پروتکل‌های گره (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
         zh-tw:cl_m_all) echo '清空全部節點協議（保留核心與腳本）' ;;
         ja:cl_m_all) echo '全ノードプロトコルを削除（コアとスクリプトは保持）' ;;
         zh:cl_m_reset) echo '重置环境（删除全部节点，可凭自动备份恢复）' ;;
         en:cl_m_reset) echo 'Reset environment (deletes all nodes; recoverable from auto-backup)' ;;
-        ru:cl_m_reset) echo 'Сброс окружения (удаляет все узлы; восстановление из автобэкапа)' ;;
+        ru:cl_m_reset) echo 'Сброс окружения (удаляет все узлы; восстановление из автоматической резервной копии)' ;;
         fa:cl_m_reset) echo 'بازنشانی محیط (همهٔ گره‌ها حذف می‌شوند؛ بازیابی از پشتیبان خودکار ممکن است)' ;;
         zh-tw:cl_m_reset) echo '重置環境（刪除全部節點，可憑自動備份恢復）' ;;
         ja:cl_m_reset) echo '環境リセット（全ノードを削除、自動バックアップから復旧可）' ;;
         zh:cl_none) echo '当前没有已部署的节点协议。' ;;
         en:cl_none) echo 'No node protocols are currently deployed.' ;;
         ru:cl_none) echo 'Сейчас нет развёрнутых протоколов узлов.' ;;
-        fa:cl_none) echo 'در حال حاضر هیچ پروتکل نودی مستقر نیست.' ;;
+        fa:cl_none) echo 'در حال حاضر هیچ پروتکل گرهی مستقر نیست.' ;;
         zh-tw:cl_none) echo '目前沒有已部署的節點協議。' ;;
         ja:cl_none) echo '現在デプロイ済みのノードプロトコルはありません。' ;;
         zh:cl_select) echo '请选择：' ;;
@@ -6883,13 +6883,13 @@ tr_msg() {
         zh:cl_confirm_all) echo '确认清空全部节点协议？核心与脚本保留。' ;;
         en:cl_confirm_all) echo 'Remove ALL node protocols? Cores and the script are kept.' ;;
         ru:cl_confirm_all) echo 'Удалить ВСЕ протоколы узлов? Ядра и скрипт сохраняются.' ;;
-        fa:cl_confirm_all) echo 'همه پروتکل‌های نود حذف شوند؟ هسته‌ها و اسکریپت حفظ می‌شوند.' ;;
+        fa:cl_confirm_all) echo 'همه پروتکل‌های گره حذف شوند؟ هسته‌ها و اسکریپت حفظ می‌شوند.' ;;
         zh-tw:cl_confirm_all) echo '確認清空全部節點協議？核心與腳本保留。' ;;
         ja:cl_confirm_all) echo '全ノードプロトコルを削除しますか？コアとスクリプトは保持されます。' ;;
         zh:cl_all_done) echo '全部节点协议已清空（核心与脚本保留）。' ;;
         en:cl_all_done) echo 'All node protocols removed (cores & script kept).' ;;
         ru:cl_all_done) echo 'Все протоколы узлов удалены (ядра и скрипт сохранены).' ;;
-        fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
+        fa:cl_all_done) echo 'همه پروتکل‌های گره حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
         zh:cl_all_fail) echo '全部清空未完成，请检查上方失败提示。' ;;
@@ -7024,11 +7024,11 @@ tr_msg() {
         fa:select_prompt) echo 'انتخاب کنید' ;;
         zh-tw:select_prompt) echo '請選擇 / Select' ;;
         ja:select_prompt) echo '選択してください' ;;
-        zh:main_command) echo '请求下发执行代号: ' ;;
+        zh:main_command) echo '请输入选项编号：' ;;
         en:main_command) echo 'Input command: ' ;;
         ru:main_command) echo 'Введите команду: ' ;;
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
-        zh-tw:main_command) echo '請求下發執行代號: ' ;;
+        zh-tw:main_command) echo '請輸入選項編號：' ;;
         ja:main_command) echo 'コマンドを入力: ' ;;
         zh:invalid_input) echo '无效输入' ;;
         en:invalid_input) echo 'Invalid input' ;;
@@ -7058,7 +7058,7 @@ tr_msg() {
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
         ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
         fa:reality_sni_prompt) echo '   %s نام SNI پوششی را وارد کنید (درگاه %s، پیش‌فرض: %s): ' ;;
-        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (端口 %s，回車默認: %s): ' ;;
+        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (連接埠 %s，回車默認: %s): ' ;;
         ja:reality_sni_prompt) echo '   %s カモフラージュ SNI を入力 (ポート %s、デフォルト: %s): ' ;;
         zh:bad_sni) echo 'SNI 格式非法: %s' ;;
         en:bad_sni) echo 'Invalid SNI format: %s' ;;
@@ -7070,7 +7070,7 @@ tr_msg() {
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
-        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽端口 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該端口符合你的網絡環境。' ;;
+        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽連接埠 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該連接埠符合你的網絡環境。' ;;
         ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。ご利用のネットワークでこのポートが適切か確認してください。' ;;
         zh:reality_mlkem_notice_title) echo '[!] REALITY 兼容提示：部分客户端无法直连本节点' ;;
         en:reality_mlkem_notice_title) echo '[!] REALITY compatibility notice: some clients cannot connect directly to this node' ;;
@@ -7130,19 +7130,19 @@ tr_msg() {
         en:port_prompt) echo '   %s Enter listen port (default: %s): ' ;;
         ru:port_prompt) echo '   %s Введите порт прослушивания (по умолчанию: %s): ' ;;
         fa:port_prompt) echo '   %s درگاه شنود را وارد کنید (پیش‌فرض: %s): ' ;;
-        zh-tw:port_prompt) echo '   %s 請輸入監聽端口 (回車默認: %s): ' ;;
+        zh-tw:port_prompt) echo '   %s 請輸入監聽連接埠 (回車默認: %s): ' ;;
         ja:port_prompt) echo '   %s リッスンポートを入力 (デフォルト: %s): ' ;;
         zh:ss_port_prompt) echo '   %s 请输入回程监听端口(TCP/UDP) (回车默认: %s): ' ;;
         en:ss_port_prompt) echo '   %s Enter relay listen port (TCP/UDP, default: %s): ' ;;
         ru:ss_port_prompt) echo '   %s Введите порт ретрансляции (TCP/UDP, по умолчанию: %s): ' ;;
         fa:ss_port_prompt) echo '   %s درگاه رله (TCP/UDP، پیش‌فرض: %s) را وارد کنید: ' ;;
-        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽端口(TCP/UDP) (回車默認: %s): ' ;;
+        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽連接埠(TCP/UDP) (回車默認: %s): ' ;;
         ja:ss_port_prompt) echo '   %s リレー受信ポートを入力 (TCP/UDP、デフォルト: %s): ' ;;
         zh:bad_port) echo '端口非法: %s' ;;
         en:bad_port) echo 'Invalid port: %s' ;;
         ru:bad_port) echo 'Недопустимый порт: %s' ;;
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
-        zh-tw:bad_port) echo '端口非法: %s' ;;
+        zh-tw:bad_port) echo '連接埠無效: %s' ;;
         ja:bad_port) echo '無効なポート: %s' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
@@ -7179,12 +7179,12 @@ tr_msg() {
         ru:socks5_title) echo 'Развёртывание SOCKS5 (Xray-core)' ;;
         fa:socks5_title) echo 'استقرار پروکسی لندینگ SOCKS5 (Xray-core)' ;;
         zh-tw:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
-        ja:socks5_title) echo 'SOCKS5 ランディングプロキシを展開 (Xray-core)' ;;
+        ja:socks5_title) echo 'SOCKS5 ランディングプロキシをデプロイ (Xray-core)' ;;
         zh:socks5_port_prompt) echo '请输入 SOCKS5 监听端口 (回车默认 1080): ' ;;
         en:socks5_port_prompt) echo 'Enter SOCKS5 listen port (default 1080): ' ;;
         ru:socks5_port_prompt) echo 'Введите порт SOCKS5 (по умолчанию 1080): ' ;;
         fa:socks5_port_prompt) echo 'درگاه SOCKS5 را وارد کنید (پیش‌فرض 1080): ' ;;
-        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽端口 (回車默認 1080): ' ;;
+        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽連接埠 (回車默認 1080): ' ;;
         ja:socks5_port_prompt) echo 'SOCKS5 リッスンポートを入力 (デフォルト 1080): ' ;;
         zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 main): ' ;;
         en:socks5_user_prompt) echo 'Enter SOCKS5 username (default main): ' ;;
@@ -7197,36 +7197,36 @@ tr_msg() {
         ru:socks5_sb_title) echo 'Развёртывание SOCKS5/Mixed (sing-box)' ;;
         fa:socks5_sb_title) echo 'استقرار پروکسی لندینگ SOCKS5/Mixed (sing-box)' ;;
         zh-tw:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
-        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシを展開 (sing-box)' ;;
+        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシをデプロイ (sing-box)' ;;
         zh:socks5_proto_prompt) echo '选择协议类型 [1] mixed (推荐, SOCKS5+HTTP同端口) [2] 纯SOCKS5: ' ;;
         en:socks5_proto_prompt) echo 'Protocol [1] mixed (recommended, SOCKS5+HTTP same port) [2] plain SOCKS5: ' ;;
-        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется) [2] только SOCKS5: ' ;;
-        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی) [۲] فقط SOCKS5: ' ;;
-        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同端口) [2] 純SOCKS5: ' ;;
-        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨) [2] SOCKS5のみ: ' ;;
+        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется: SOCKS5 и HTTP на одном порту) [2] только SOCKS5: ' ;;
+        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی: SOCKS5 و HTTP روی یک پورت) [۲] فقط SOCKS5: ' ;;
+        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同一連接埠) [2] 純SOCKS5: ' ;;
+        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨、SOCKS5+HTTP 同一ポート) [2] SOCKS5のみ: ' ;;
         zh:socks5_core_prompt) echo '选择核心 [1] Xray (纯SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
         en:socks5_core_prompt) echo 'Select core [1] Xray (plain SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
-        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
-        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box (mixed): ' ;;
+        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (только SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray (فقط SOCKS5) [۲] sing-box (mixed، SOCKS5+HTTP): ' ;;
         zh-tw:socks5_core_prompt) echo '選擇核心 [1] Xray (純SOCKS5) [2] sing-box (mixed): ' ;;
-        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5 のみ) [2] sing-box (mixed、SOCKS5+HTTP): ' ;;
         zh:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
         en:trojan_title) echo 'Deploy Trojan-Reality landing proxy (Xray-core)' ;;
         ru:trojan_title) echo 'Развёртывание Trojan-Reality (Xray-core)' ;;
         fa:trojan_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (Xray-core)' ;;
         zh-tw:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
-        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシを展開 (Xray-core)' ;;
+        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシをデプロイ (Xray-core)' ;;
         zh:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
         en:trojan_sb_title) echo 'Deploy Trojan-Reality landing proxy (sing-box)' ;;
         ru:trojan_sb_title) echo 'Развёртывание Trojan-Reality (sing-box)' ;;
         fa:trojan_sb_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (sing-box)' ;;
         zh-tw:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
-        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシを展開 (sing-box)' ;;
+        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシをデプロイ (sing-box)' ;;
         zh:trojan_port_prompt) echo '请输入 Trojan 监听端口 (回车默认 443): ' ;;
         en:trojan_port_prompt) echo 'Enter Trojan listen port (default 443): ' ;;
         ru:trojan_port_prompt) echo 'Введите порт Trojan (по умолчанию 443): ' ;;
         fa:trojan_port_prompt) echo 'درگاه Trojan را وارد کنید (پیش‌فرض 443): ' ;;
-        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽端口 (回車默認 443): ' ;;
+        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽連接埠 (回車默認 443): ' ;;
         ja:trojan_port_prompt) echo 'Trojan リッスンポートを入力 (デフォルト 443): ' ;;
         zh:trojan_pass_prompt) echo '请输入 Trojan 密码 (回车自动生成随机密码): ' ;;
         en:trojan_pass_prompt) echo 'Enter Trojan password (Enter to auto-generate): ' ;;
@@ -7245,7 +7245,7 @@ tr_msg() {
         ru:trojan_done) echo 'Trojan-Reality развёрнут, ссылка:' ;;
         fa:trojan_done) echo 'Trojan-Reality مستقر شد، لینک:' ;;
         zh-tw:trojan_done) echo 'Trojan-Reality 部署完成，鏈接如下：' ;;
-        ja:trojan_done) echo 'Trojan-Reality を展開しました、リンク:' ;;
+        ja:trojan_done) echo 'Trojan-Reality をデプロイしました、リンク:' ;;
         zh:trojan_core_prompt) echo '选择核心 [1] Xray [2] sing-box: ' ;;
         en:trojan_core_prompt) echo 'Select core [1] Xray [2] sing-box: ' ;;
         ru:trojan_core_prompt) echo 'Выберите ядро [1] Xray [2] sing-box: ' ;;
@@ -7257,7 +7257,7 @@ tr_msg() {
         ru:tuic_title) echo 'Развернуть TUIC (sing-box)' ;;
         fa:tuic_title) echo 'استقرار TUIC (sing-box)' ;;
         zh-tw:tuic_title) echo '部署 TUIC 落地代理 (sing-box)' ;;
-        ja:tuic_title) echo 'TUIC を展開 (sing-box)' ;;
+        ja:tuic_title) echo 'TUIC をデプロイ (sing-box)' ;;
         zh:tuic_port_prompt) echo '请输入 TUIC 监听端口 (UDP, 回车默认 443): ' ;;
         en:tuic_port_prompt) echo 'Enter TUIC listen port (UDP, Enter for 443): ' ;;
         ru:tuic_port_prompt) echo 'Порт TUIC (UDP, Enter = 443): ' ;;
@@ -7287,13 +7287,13 @@ tr_msg() {
         ru:tuic_done) echo 'TUIC развернут, ссылка ниже:' ;;
         fa:tuic_done) echo 'TUIC مستقر شد، لینک زیر:' ;;
         zh-tw:tuic_done) echo 'TUIC 部署完成，連結如下：' ;;
-        ja:tuic_done) echo 'TUIC を展開しました。リンク：' ;;
+        ja:tuic_done) echo 'TUIC をデプロイしました。リンク：' ;;
         zh:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
         en:anytls_title) echo 'Deploy AnyTLS-Reality landing proxy (sing-box)' ;;
         ru:anytls_title) echo 'Развернуть AnyTLS-Reality (sing-box)' ;;
         fa:anytls_title) echo 'استقرار AnyTLS-Reality (sing-box)' ;;
         zh-tw:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
-        ja:anytls_title) echo 'AnyTLS-Reality を展開 (sing-box)' ;;
+        ja:anytls_title) echo 'AnyTLS-Reality をデプロイ (sing-box)' ;;
         zh:anytls_port_prompt) echo '请输入 AnyTLS 监听端口 (回车默认 443): ' ;;
         en:anytls_port_prompt) echo 'Enter AnyTLS listen port (Enter for 443): ' ;;
         ru:anytls_port_prompt) echo 'Порт AnyTLS (Enter = 443): ' ;;
@@ -7317,13 +7317,13 @@ tr_msg() {
         ru:anytls_done) echo 'AnyTLS развернут, ссылка ниже:' ;;
         fa:anytls_done) echo 'AnyTLS مستقر شد، لینک زیر:' ;;
         zh-tw:anytls_done) echo 'AnyTLS 部署完成，連結如下：' ;;
-        ja:anytls_done) echo 'AnyTLS を展開しました。リンク：' ;;
+        ja:anytls_done) echo 'AnyTLS をデプロイしました。リンク：' ;;
         zh:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
         en:shadowtls_title) echo 'Deploy ShadowTLS landing proxy (sing-box)' ;;
         ru:shadowtls_title) echo 'Развернуть ShadowTLS (sing-box)' ;;
         fa:shadowtls_title) echo 'استقرار ShadowTLS (sing-box)' ;;
         zh-tw:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
-        ja:shadowtls_title) echo 'ShadowTLS を展開 (sing-box)' ;;
+        ja:shadowtls_title) echo 'ShadowTLS をデプロイ (sing-box)' ;;
         zh:shadowtls_port_prompt) echo '请输入 ShadowTLS 监听端口 (回车默认 443): ' ;;
         en:shadowtls_port_prompt) echo 'Enter ShadowTLS listen port (Enter for 443): ' ;;
         ru:shadowtls_port_prompt) echo 'Порт ShadowTLS (Enter = 443): ' ;;
@@ -7347,11 +7347,11 @@ tr_msg() {
         ru:shadowtls_done) echo 'ShadowTLS развернут, ссылка ниже:' ;;
         fa:shadowtls_done) echo 'ShadowTLS مستقر شد، لینک زیر:' ;;
         zh-tw:shadowtls_done) echo 'ShadowTLS 部署完成，連結如下：' ;;
-        ja:shadowtls_done) echo 'ShadowTLS を展開しました。リンク：' ;;
+        ja:shadowtls_done) echo 'ShadowTLS をデプロイしました。リンク：' ;;
         zh:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
         en:argo_title) echo 'Argo / CDN Front (sing-box + cloudflared)' ;;
         ru:argo_title) echo 'Argo / CDN-фронт (sing-box + cloudflared)' ;;
-        fa:argo_title) echo 'Argo / CDN (sing-box + cloudflared)' ;;
+        fa:argo_title) echo 'واسط ورودی Argo / CDN (sing-box + cloudflared)' ;;
         zh-tw:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
         ja:argo_title) echo 'Argo / CDN フロント (sing-box + cloudflared)' ;;
         zh:argo_m_temp) echo '部署临时隧道 (trycloudflare, 免账号)' ;;
@@ -7359,13 +7359,13 @@ tr_msg() {
         ru:argo_m_temp) echo 'Временный туннель (trycloudflare, без аккаунта)' ;;
         fa:argo_m_temp) echo 'استقرار تونل موقت (trycloudflare، بدون حساب)' ;;
         zh-tw:argo_m_temp) echo '部署臨時隧道 (trycloudflare, 免帳號)' ;;
-        ja:argo_m_temp) echo '一時トンネルを展開 (trycloudflare、アカウント不要)' ;;
+        ja:argo_m_temp) echo '一時トンネルをデプロイ (trycloudflare、アカウント不要)' ;;
         zh:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
         en:argo_m_fixed) echo 'Deploy fixed tunnel (token + own domain)' ;;
         ru:argo_m_fixed) echo 'Постоянный туннель (токен + свой домен)' ;;
         fa:argo_m_fixed) echo 'استقرار تونل ثابت (توکن + دامنه شخصی)' ;;
         zh-tw:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
-        ja:argo_m_fixed) echo '固定トンネルを展開 (トークン + 独自ドメイン)' ;;
+        ja:argo_m_fixed) echo '固定トンネルをデプロイ (トークン + 独自ドメイン)' ;;
         zh:argo_m_status) echo '状态与链接' ;;
         en:argo_m_status) echo 'Status and links' ;;
         ru:argo_m_status) echo 'Статус и ссылки' ;;
@@ -7413,7 +7413,7 @@ tr_msg() {
         ru:argo_done) echo 'Argo развернут, ссылки ниже:' ;;
         fa:argo_done) echo 'Argo مستقر شد، لینک‌ها در زیر:' ;;
         zh-tw:argo_done) echo 'Argo 部署完成，連結如下：' ;;
-        ja:argo_done) echo 'Argo を展開しました。リンク：' ;;
+        ja:argo_done) echo 'Argo をデプロイしました。リンク：' ;;
         zh:acheck_no_python) echo '未找到 python3：A-Check 需要 Python 3.8 或更高版本，装好后重试。' ;;
         en:acheck_no_python) echo 'python3 not found: A-Check requires Python 3.8 or newer. Install it and retry.' ;;
         ru:acheck_no_python) echo 'python3 не найден: для A-Check нужен Python 3.8 или новее. Установите его и повторите.' ;;
@@ -7449,7 +7449,7 @@ tr_msg() {
         ru:argo_not_deployed) echo 'Argo ещё не развернут.' ;;
         fa:argo_not_deployed) echo 'Argo هنوز مستقر نشده است.' ;;
         zh-tw:argo_not_deployed) echo '尚未部署 Argo。' ;;
-        ja:argo_not_deployed) echo 'Argo はまだ展開されていません。' ;;
+        ja:argo_not_deployed) echo 'Argo はまだデプロイされていません。' ;;
         zh:argo_confirm_uninstall) echo '确认卸载 Argo (删除隧道服务与 WS 入站)? [Y/N]: ' ;;
         en:argo_confirm_uninstall) echo 'Uninstall Argo (remove tunnel services and WS inbounds)? [Y/N]: ' ;;
         ru:argo_confirm_uninstall) echo 'Удалить Argo (службы туннеля и WS inbounds)? [Y/N]: ' ;;
@@ -7477,9 +7477,9 @@ tr_msg() {
         zh:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
         en:socks5_done) echo 'SOCKS5 landing proxy deployed.' ;;
         ru:socks5_done) echo 'SOCKS5 прокси развёрнут.' ;;
-        fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
+        fa:socks5_done) echo 'پروکسی خروجی SOCKS5 راه‌اندازی شد.' ;;
         zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
-        ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
+        ja:socks5_done) echo 'SOCKS5 ランディングプロキシをデプロイしました。' ;;
         zh:sl_node_port) echo '%s · 端口 %s' ;;
         en:sl_node_port) echo '%s · Port %s' ;;
         ru:sl_node_port) echo '%s · Порт %s' ;;
@@ -7509,12 +7509,12 @@ tr_msg() {
         ru:warp_deploying) echo 'Развёртывание WARP...' ;;
         fa:warp_deploying) echo 'در حال استقرار خروجی WARP...' ;;
         zh-tw:warp_deploying) echo '正在部署 WARP 出口...' ;;
-        ja:warp_deploying) echo 'WARP 出口を展開中...' ;;
+        ja:warp_deploying) echo 'WARP 出口をデプロイ中...' ;;
         zh:warp_register_fail) echo 'WARP 账号注册失败。' ;;
         en:warp_register_fail) echo 'WARP account registration failed.' ;;
         ru:warp_register_fail) echo 'Не удалось зарегистрировать WARP.' ;;
         fa:warp_register_fail) echo 'ثبت حساب WARP ناموفق بود.' ;;
-        zh-tw:warp_register_fail) echo 'WARP 賬號註冊失敗。' ;;
+        zh-tw:warp_register_fail) echo 'WARP 帳號註冊失敗。' ;;
         ja:warp_register_fail) echo 'WARP アカウントの登録に失敗しました。' ;;
         zh:warp_profile_fail) echo 'WARP 配置解析失败。' ;;
         en:warp_profile_fail) echo 'Failed to parse WARP profile.' ;;
@@ -7545,7 +7545,7 @@ tr_msg() {
         ru:warp_done) echo 'WARP-выход развёрнут.' ;;
         fa:warp_done) echo 'خروجی WARP مستقر شد.' ;;
         zh-tw:warp_done) echo 'WARP 出口部署完成。' ;;
-        ja:warp_done) echo 'WARP 出口を展開しました。' ;;
+        ja:warp_done) echo 'WARP 出口をデプロイしました。' ;;
         zh:warp_removed) echo 'WARP 已卸载。' ;;
         en:warp_removed) echo 'WARP removed.' ;;
         ru:warp_removed) echo 'WARP удалён.' ;;
@@ -7587,19 +7587,19 @@ tr_msg() {
         ru:warp_status_on) echo 'Статус WARP: развёрнут' ;;
         fa:warp_status_on) echo 'وضعیت WARP: مستقر شده' ;;
         zh-tw:warp_status_on) echo 'WARP 狀態：已部署' ;;
-        ja:warp_status_on) echo 'WARP 状態：展開済み' ;;
+        ja:warp_status_on) echo 'WARP 状態：デプロイ済み' ;;
         zh:warp_status_off) echo 'WARP 状态：未部署' ;;
         en:warp_status_off) echo 'WARP status: not deployed' ;;
         ru:warp_status_off) echo 'Статус WARP: не развёрнут' ;;
         fa:warp_status_off) echo 'وضعیت WARP: مستقر نشده' ;;
         zh-tw:warp_status_off) echo 'WARP 狀態：未部署' ;;
-        ja:warp_status_off) echo 'WARP 状態：未展開' ;;
+        ja:warp_status_off) echo 'WARP 状態：未デプロイ' ;;
         zh:warp_status_stale) echo 'WARP 状态：已部署（未生效）——运行配置中无此出口，请在分流菜单中卸载清理。' ;;
         en:warp_status_stale) echo 'WARP status: deployed (not in effect) — the live config has no such outbound; remove it from the split-routing menu.' ;;
         ru:warp_status_stale) echo 'Статус WARP: развёрнут (не действует) — в действующей конфигурации такого выхода нет; удалите его в меню разделения трафика.' ;;
         fa:warp_status_stale) echo 'وضعیت WARP: مستقر شده (اعمال نشده) — پیکربندی فعال چنین خروجی‌ای ندارد؛ آن را از منوی تفکیک ترافیک حذف کنید.' ;;
         zh-tw:warp_status_stale) echo 'WARP 狀態：已部署（未生效）——運行設定中無此出口，請在分流選單中解除安裝清理。' ;;
-        ja:warp_status_stale) echo 'WARP 状態：展開済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
+        ja:warp_status_stale) echo 'WARP 状態：デプロイ済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
         zh:warp_rules_count) echo '分流规则数：%s' ;;
         en:warp_rules_count) echo 'Routing rules: %s' ;;
         ru:warp_rules_count) echo 'Правил маршрутизации: %s' ;;
@@ -7611,7 +7611,7 @@ tr_msg() {
         ru:warp_need_deploy) echo 'Сначала разверните WARP.' ;;
         fa:warp_need_deploy) echo 'ابتدا خروجی WARP را مستقر کنید.' ;;
         zh-tw:warp_need_deploy) echo '請先部署 WARP 出口。' ;;
-        ja:warp_need_deploy) echo '先に WARP 出口を展開してください。' ;;
+        ja:warp_need_deploy) echo '先に WARP 出口をデプロイしてください。' ;;
         zh:warp_preset_done) echo '分流预设已应用。' ;;
         en:warp_preset_done) echo 'Split preset applied.' ;;
         ru:warp_preset_done) echo 'Пресет разделения применён.' ;;
@@ -7623,7 +7623,7 @@ tr_msg() {
         ru:warp_deploy_item) echo 'Развернуть WARP в один клик' ;;
         fa:warp_deploy_item) echo 'استقرار تک‌کلیکی خروجی WARP' ;;
         zh-tw:warp_deploy_item) echo '一鍵部署 WARP 出口' ;;
-        ja:warp_deploy_item) echo 'ワンクリックで WARP 出口を展開' ;;
+        ja:warp_deploy_item) echo 'ワンクリックで WARP 出口をデプロイ' ;;
         zh:warp_preset_item) echo 'WARP 分流预设' ;;
         en:warp_preset_item) echo 'WARP split presets' ;;
         ru:warp_preset_item) echo 'Пресеты разделения WARP' ;;
@@ -7694,7 +7694,7 @@ tr_msg() {
         en:split_port_prompt) echo 'Enter port (default %s)' ;;
         ru:split_port_prompt) echo 'Введите порт (по умолчанию %s)' ;;
         fa:split_port_prompt) echo 'درگاه را وارد کنید (پیش‌فرض %s)' ;;
-        zh-tw:split_port_prompt) echo '請輸入端口（默認 %s）' ;;
+        zh-tw:split_port_prompt) echo '請輸入連接埠（默認 %s）' ;;
         ja:split_port_prompt) echo 'ポートを入力（デフォルト %s）' ;;
         zh:split_user_prompt) echo '请输入用户名（可空，回车跳过）' ;;
         en:split_user_prompt) echo 'Enter username (optional)' ;;
@@ -7811,23 +7811,23 @@ tr_msg() {
         zh-tw:mi_cores) echo '核' ;;
         ja:mi_cores) echo 'コア' ;;
         zh:mi_uptime) echo '运行%s天' ;;
-        en:mi_uptime) echo 'uptime %sd' ;;
-        ru:mi_uptime) echo 'аптайм %sд' ;;
-        fa:mi_uptime) echo '%s روز روشن' ;;
+        en:mi_uptime) echo 'Uptime: %sd' ;;
+        ru:mi_uptime) echo 'Время работы: %s дн.' ;;
+        fa:mi_uptime) echo 'مدت کارکرد: %s روز' ;;
         zh-tw:mi_uptime) echo '運行%s天' ;;
         ja:mi_uptime) echo '稼働%s日' ;;
         zh:mi_nodes) echo '节点' ;;
         en:mi_nodes) echo 'Nodes' ;;
         ru:mi_nodes) echo 'Ноды' ;;
-        fa:mi_nodes) echo 'نودها' ;;
+        fa:mi_nodes) echo 'گره‌ها' ;;
         zh-tw:mi_nodes) echo '節點' ;;
         ja:mi_nodes) echo 'ノード' ;;
         zh:mi_no_nodes) echo '未部署节点' ;;
         en:mi_no_nodes) echo 'No nodes deployed' ;;
         ru:mi_no_nodes) echo 'Ноды не развёрнуты' ;;
-        fa:mi_no_nodes) echo 'نودی مستقر نشده' ;;
+        fa:mi_no_nodes) echo 'گرهی مستقر نشده' ;;
         zh-tw:mi_no_nodes) echo '未部署節點' ;;
-        ja:mi_no_nodes) echo 'ノード未展開' ;;
+        ja:mi_no_nodes) echo 'ノード未デプロイ' ;;
         zh:mi_split) echo '分流' ;;
         en:mi_split) echo 'Split' ;;
         ru:mi_split) echo 'Разделение' ;;
@@ -7930,138 +7930,138 @@ tr_msg() {
         ru:dp_sb_bin) echo 'После безопасной распаковки не найден бинарный файл sing-box.' ;;
         fa:dp_sb_bin) echo 'پس از استخراج امن، برنامه اصلی sing-box یافت نشد.' ;;
         ja:dp_sb_bin) echo '安全な展開後に sing-box 本体が見つかりませんでした。' ;;
-        zh:dp_sb_cfg) echo 'Sing-box config 原子写入失败。' ;;
-        zh-tw:dp_sb_cfg) echo 'Sing-box config 原子寫入失敗。' ;;
-        en:dp_sb_cfg) echo 'Failed to atomically write the Sing-box config.' ;;
-        ru:dp_sb_cfg) echo 'Не удалось атомарно записать конфигурацию Sing-box.' ;;
-        fa:dp_sb_cfg) echo 'نوشتن اتمی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:dp_sb_cfg) echo 'Sing-box 設定のアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_check) echo 'Sing-box 配置校验失败。' ;;
-        zh-tw:dp_sb_check) echo 'Sing-box 設定校驗失敗。' ;;
-        en:dp_sb_check) echo 'The Sing-box configuration check failed.' ;;
-        ru:dp_sb_check) echo 'Проверка конфигурации Sing-box не пройдена.' ;;
-        fa:dp_sb_check) echo 'بررسی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:dp_sb_check) echo 'Sing-box の設定チェックに失敗しました。' ;;
-        zh:dp_sb_chmod) echo 'Sing-box OpenRC 服务权限设置失败。' ;;
-        zh-tw:dp_sb_chmod) echo 'Sing-box OpenRC 服務權限設定失敗。' ;;
-        en:dp_sb_chmod) echo 'Failed to set permissions on the Sing-box OpenRC service.' ;;
-        ru:dp_sb_chmod) echo 'Не удалось задать права службы OpenRC для Sing-box.' ;;
-        fa:dp_sb_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_chmod) echo 'Sing-box の OpenRC サービスの権限設定に失敗しました。' ;;
-        zh:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子写入失败。' ;;
-        zh-tw:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子寫入失敗。' ;;
-        en:dp_sb_confd) echo 'Failed to atomically write the Sing-box OpenRC conf.d file.' ;;
-        ru:dp_sb_confd) echo 'Не удалось атомарно записать OpenRC conf.d для Sing-box.' ;;
-        fa:dp_sb_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_confd) echo 'Sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_cfg) echo 'sing-box config 原子写入失败。' ;;
+        zh-tw:dp_sb_cfg) echo 'sing-box config 原子寫入失敗。' ;;
+        en:dp_sb_cfg) echo 'Failed to atomically write the sing-box config.' ;;
+        ru:dp_sb_cfg) echo 'Не удалось атомарно записать конфигурацию sing-box.' ;;
+        fa:dp_sb_cfg) echo 'نوشتن اتمی پیکربندی sing-box ناموفق بود.' ;;
+        ja:dp_sb_cfg) echo 'sing-box 設定のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_check) echo 'sing-box 配置校验失败。' ;;
+        zh-tw:dp_sb_check) echo 'sing-box 設定校驗失敗。' ;;
+        en:dp_sb_check) echo 'The sing-box configuration check failed.' ;;
+        ru:dp_sb_check) echo 'Проверка конфигурации sing-box не пройдена.' ;;
+        fa:dp_sb_check) echo 'بررسی پیکربندی sing-box ناموفق بود.' ;;
+        ja:dp_sb_check) echo 'sing-box の設定チェックに失敗しました。' ;;
+        zh:dp_sb_chmod) echo 'sing-box OpenRC 服务权限设置失败。' ;;
+        zh-tw:dp_sb_chmod) echo 'sing-box OpenRC 服務權限設定失敗。' ;;
+        en:dp_sb_chmod) echo 'Failed to set permissions on the sing-box OpenRC service.' ;;
+        ru:dp_sb_chmod) echo 'Не удалось задать права службы OpenRC для sing-box.' ;;
+        fa:dp_sb_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_chmod) echo 'sing-box の OpenRC サービスの権限設定に失敗しました。' ;;
+        zh:dp_sb_confd) echo 'sing-box OpenRC conf.d 原子写入失败。' ;;
+        zh-tw:dp_sb_confd) echo 'sing-box OpenRC conf.d 原子寫入失敗。' ;;
+        en:dp_sb_confd) echo 'Failed to atomically write the sing-box OpenRC conf.d file.' ;;
+        ru:dp_sb_confd) echo 'Не удалось атомарно записать OpenRC conf.d для sing-box.' ;;
+        fa:dp_sb_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_confd) echo 'sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
         zh:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子写入失败。' ;;
         zh-tw:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子寫入失敗。' ;;
         en:dp_sb_confd_lc) echo 'Failed to atomically write the sing-box OpenRC conf.d file.' ;;
         ru:dp_sb_confd_lc) echo 'Не удалось атомарно записать OpenRC conf.d для sing-box.' ;;
         fa:dp_sb_confd_lc) echo 'نوشتن اتمی فایل OpenRC conf.d ‏sing-box ناموفق بود.' ;;
         ja:dp_sb_confd_lc) echo 'sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_exec) echo 'Sing-box 执行校验失败。' ;;
-        zh-tw:dp_sb_exec) echo 'Sing-box 執行校驗失敗。' ;;
-        en:dp_sb_exec) echo 'The Sing-box execution check failed.' ;;
-        ru:dp_sb_exec) echo 'Проверка запуска Sing-box не пройдена.' ;;
-        fa:dp_sb_exec) echo 'بررسی اجرای Sing-box ناموفق بود.' ;;
-        ja:dp_sb_exec) echo 'Sing-box の実行チェックに失敗しました。' ;;
-        zh:dp_sb_extdir) echo 'Sing-box 提取目录创建失败。' ;;
-        zh-tw:dp_sb_extdir) echo 'Sing-box 提取目錄建立失敗。' ;;
-        en:dp_sb_extdir) echo 'Failed to create the Sing-box extraction directory.' ;;
-        ru:dp_sb_extdir) echo 'Не удалось создать каталог распаковки Sing-box.' ;;
-        fa:dp_sb_extdir) echo 'ایجاد پوشه استخراج Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extdir) echo 'Sing-box の展開ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_extdir_tmp) echo 'Sing-box 临时提取目录创建失败。' ;;
-        zh-tw:dp_sb_extdir_tmp) echo 'Sing-box 臨時提取目錄建立失敗。' ;;
-        en:dp_sb_extdir_tmp) echo 'Failed to create the Sing-box temporary extraction directory.' ;;
-        ru:dp_sb_extdir_tmp) echo 'Не удалось создать временный каталог распаковки Sing-box.' ;;
-        fa:dp_sb_extdir_tmp) echo 'ایجاد پوشه استخراج موقت Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extdir_tmp) echo 'Sing-box の一時展開ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_extract) echo 'Sing-box 压缩包安全提取失败。' ;;
-        zh-tw:dp_sb_extract) echo 'Sing-box 壓縮包安全提取失敗。' ;;
-        en:dp_sb_extract) echo 'Failed to safely extract the Sing-box archive.' ;;
-        ru:dp_sb_extract) echo 'Не удалось безопасно распаковать архив Sing-box.' ;;
-        fa:dp_sb_extract) echo 'استخراج امن آرشیو Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extract) echo 'Sing-box アーカイブの安全な展開に失敗しました。' ;;
+        zh:dp_sb_exec) echo 'sing-box 执行校验失败。' ;;
+        zh-tw:dp_sb_exec) echo 'sing-box 執行校驗失敗。' ;;
+        en:dp_sb_exec) echo 'The sing-box execution check failed.' ;;
+        ru:dp_sb_exec) echo 'Проверка запуска sing-box не пройдена.' ;;
+        fa:dp_sb_exec) echo 'بررسی اجرای sing-box ناموفق بود.' ;;
+        ja:dp_sb_exec) echo 'sing-box の実行チェックに失敗しました。' ;;
+        zh:dp_sb_extdir) echo 'sing-box 提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir) echo 'sing-box 提取目錄建立失敗。' ;;
+        en:dp_sb_extdir) echo 'Failed to create the sing-box extraction directory.' ;;
+        ru:dp_sb_extdir) echo 'Не удалось создать каталог распаковки sing-box.' ;;
+        fa:dp_sb_extdir) echo 'ایجاد پوشه استخراج sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir) echo 'sing-box の展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extdir_tmp) echo 'sing-box 临时提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir_tmp) echo 'sing-box 臨時提取目錄建立失敗。' ;;
+        en:dp_sb_extdir_tmp) echo 'Failed to create the sing-box temporary extraction directory.' ;;
+        ru:dp_sb_extdir_tmp) echo 'Не удалось создать временный каталог распаковки sing-box.' ;;
+        fa:dp_sb_extdir_tmp) echo 'ایجاد پوشه استخراج موقت sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir_tmp) echo 'sing-box の一時展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extract) echo 'sing-box 压缩包安全提取失败。' ;;
+        zh-tw:dp_sb_extract) echo 'sing-box 壓縮包安全提取失敗。' ;;
+        en:dp_sb_extract) echo 'Failed to safely extract the sing-box archive.' ;;
+        ru:dp_sb_extract) echo 'Не удалось безопасно распаковать архив sing-box.' ;;
+        fa:dp_sb_extract) echo 'استخراج امن آرشیو sing-box ناموفق بود.' ;;
+        ja:dp_sb_extract) echo 'sing-box アーカイブの安全な展開に失敗しました。' ;;
         zh:dp_sb_hy2_cert) echo 'sing-box HY2 自签证书生成或密钥配对验证失败。' ;;
         zh-tw:dp_sb_hy2_cert) echo 'sing-box HY2 自簽憑證產生或金鑰配對驗證失敗。' ;;
         en:dp_sb_hy2_cert) echo 'Failed to generate the sing-box HY2 self-signed certificate or verify its key pair.' ;;
         ru:dp_sb_hy2_cert) echo 'Не удалось сгенерировать самоподписанный сертификат HY2 sing-box или проверить пару ключей.' ;;
         fa:dp_sb_hy2_cert) echo 'ساخت گواهی خودامضا HY2 ‏sing-box یا بررسی جفت کلید آن ناموفق بود.' ;;
         ja:dp_sb_hy2_cert) echo 'sing-box HY2 の自己署名証明書の生成または鍵ペアの検証に失敗しました。' ;;
-        zh:dp_sb_initd) echo 'Sing-box OpenRC unit 原子写入失败。' ;;
-        zh-tw:dp_sb_initd) echo 'Sing-box OpenRC unit 原子寫入失敗。' ;;
-        en:dp_sb_initd) echo 'Failed to atomically write the Sing-box OpenRC unit.' ;;
-        ru:dp_sb_initd) echo 'Не удалось атомарно записать OpenRC-юнит Sing-box.' ;;
-        fa:dp_sb_initd) echo 'نوشتن اتمی یونیت OpenRC ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_initd) echo 'Sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_initd) echo 'sing-box OpenRC unit 原子写入失败。' ;;
+        zh-tw:dp_sb_initd) echo 'sing-box OpenRC unit 原子寫入失敗。' ;;
+        en:dp_sb_initd) echo 'Failed to atomically write the sing-box OpenRC unit.' ;;
+        ru:dp_sb_initd) echo 'Не удалось атомарно записать OpenRC-юнит sing-box.' ;;
+        fa:dp_sb_initd) echo 'نوشتن اتمی یونیت OpenRC ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_initd) echo 'sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
         zh:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子写入失败。' ;;
         zh-tw:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子寫入失敗。' ;;
         en:dp_sb_initd_lc) echo 'Failed to atomically write the sing-box OpenRC unit.' ;;
         ru:dp_sb_initd_lc) echo 'Не удалось атомарно записать OpenRC-юнит sing-box.' ;;
         fa:dp_sb_initd_lc) echo 'نوشتن اتمی یونیت OpenRC ‏sing-box ناموفق بود.' ;;
         ja:dp_sb_initd_lc) echo 'sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_json) echo 'Sing-box JSON 格式非法。' ;;
-        zh-tw:dp_sb_json) echo 'Sing-box JSON 格式不合法。' ;;
-        en:dp_sb_json) echo 'The Sing-box JSON is invalid.' ;;
-        ru:dp_sb_json) echo 'Недопустимый формат JSON Sing-box.' ;;
-        fa:dp_sb_json) echo 'قالب JSON ‏Sing-box نامعتبر است.' ;;
-        ja:dp_sb_json) echo 'Sing-box の JSON 形式が不正です。' ;;
-        zh:dp_sb_keyempty) echo 'Sing-box REALITY 密钥为空。' ;;
-        zh-tw:dp_sb_keyempty) echo 'Sing-box REALITY 金鑰為空。' ;;
-        en:dp_sb_keyempty) echo 'The Sing-box REALITY key is empty.' ;;
-        ru:dp_sb_keyempty) echo 'Ключ REALITY Sing-box пуст.' ;;
-        fa:dp_sb_keyempty) echo 'کلید REALITY ‏Sing-box خالی است.' ;;
-        ja:dp_sb_keyempty) echo 'Sing-box REALITY の鍵が空です。' ;;
-        zh:dp_sb_keypair) echo 'Sing-box REALITY 密钥对生成失败。' ;;
-        zh-tw:dp_sb_keypair) echo 'Sing-box REALITY 金鑰對產生失敗。' ;;
-        en:dp_sb_keypair) echo 'Failed to generate the Sing-box REALITY key pair.' ;;
-        ru:dp_sb_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для Sing-box.' ;;
-        fa:dp_sb_keypair) echo 'ساخت جفت کلید REALITY ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_keypair) echo 'Sing-box REALITY の鍵ペアを生成できませんでした。' ;;
-        zh:dp_sb_keyparse) echo 'Sing-box REALITY 密钥解析失败。' ;;
-        zh-tw:dp_sb_keyparse) echo 'Sing-box REALITY 金鑰解析失敗。' ;;
-        en:dp_sb_keyparse) echo 'Failed to parse the Sing-box REALITY key.' ;;
-        ru:dp_sb_keyparse) echo 'Не удалось разобрать ключ REALITY Sing-box.' ;;
-        fa:dp_sb_keyparse) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_keyparse) echo 'Sing-box REALITY の鍵を解析できませんでした。' ;;
-        zh:dp_sb_keyparse_empty) echo 'Sing-box REALITY 密钥解析失败：密钥为空。' ;;
-        zh-tw:dp_sb_keyparse_empty) echo 'Sing-box REALITY 金鑰解析失敗：金鑰為空。' ;;
-        en:dp_sb_keyparse_empty) echo 'Failed to parse the Sing-box REALITY key: the key is empty.' ;;
-        ru:dp_sb_keyparse_empty) echo 'Не удалось разобрать ключ REALITY Sing-box: ключ пуст.' ;;
-        fa:dp_sb_keyparse_empty) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود: کلید خالی است.' ;;
-        ja:dp_sb_keyparse_empty) echo 'Sing-box REALITY の鍵を解析できませんでした：鍵が空です。' ;;
-        zh:dp_sb_restart) echo 'Sing-box 服务重启失败。' ;;
-        zh-tw:dp_sb_restart) echo 'Sing-box 服務重啟失敗。' ;;
-        en:dp_sb_restart) echo 'Failed to restart the Sing-box service.' ;;
-        ru:dp_sb_restart) echo 'Не удалось перезапустить службу Sing-box.' ;;
-        fa:dp_sb_restart) echo 'راه‌اندازی مجدد سرویس Sing-box ناموفق بود.' ;;
-        ja:dp_sb_restart) echo 'Sing-box サービスの再起動に失敗しました。' ;;
-        zh:dp_sb_runtime) echo 'Sing-box 运行时用户/文件权限准备失败。' ;;
-        zh-tw:dp_sb_runtime) echo 'Sing-box 執行階段使用者/檔案權限準備失敗。' ;;
-        en:dp_sb_runtime) echo 'Failed to prepare the Sing-box runtime user/file permissions.' ;;
-        ru:dp_sb_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов Sing-box.' ;;
-        fa:dp_sb_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای Sing-box ناموفق بود.' ;;
-        ja:dp_sb_runtime) echo 'Sing-box のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
-        zh:dp_sb_seed) echo 'Sing-box 初始配置生成失败。' ;;
-        zh-tw:dp_sb_seed) echo 'Sing-box 初始設定產生失敗。' ;;
-        en:dp_sb_seed) echo 'Failed to generate the initial Sing-box configuration.' ;;
-        ru:dp_sb_seed) echo 'Не удалось сгенерировать начальную конфигурацию Sing-box.' ;;
-        fa:dp_sb_seed) echo 'ساخت پیکربندی اولیه Sing-box ناموفق بود.' ;;
-        ja:dp_sb_seed) echo 'Sing-box の初期設定を生成できませんでした。' ;;
-        zh:dp_sb_tmpdir) echo 'Sing-box 临时目录创建失败。' ;;
-        zh-tw:dp_sb_tmpdir) echo 'Sing-box 臨時目錄建立失敗。' ;;
-        en:dp_sb_tmpdir) echo 'Failed to create the Sing-box temporary directory.' ;;
-        ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог Sing-box.' ;;
-        fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت Sing-box ناموفق بود.' ;;
-        ja:dp_sb_tmpdir) echo 'Sing-box の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_unit) echo 'Sing-box 服务单元准备失败。' ;;
-        zh-tw:dp_sb_unit) echo 'Sing-box 服務單元準備失敗。' ;;
-        en:dp_sb_unit) echo 'Failed to prepare the Sing-box service unit.' ;;
-        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит Sing-box.' ;;
-        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットの準備に失敗しました。' ;;
+        zh:dp_sb_json) echo 'sing-box JSON 格式非法。' ;;
+        zh-tw:dp_sb_json) echo 'sing-box JSON 格式不合法。' ;;
+        en:dp_sb_json) echo 'The sing-box JSON is invalid.' ;;
+        ru:dp_sb_json) echo 'Недопустимый формат JSON sing-box.' ;;
+        fa:dp_sb_json) echo 'قالب JSON ‏sing-box نامعتبر است.' ;;
+        ja:dp_sb_json) echo 'sing-box の JSON 形式が不正です。' ;;
+        zh:dp_sb_keyempty) echo 'sing-box REALITY 密钥为空。' ;;
+        zh-tw:dp_sb_keyempty) echo 'sing-box REALITY 金鑰為空。' ;;
+        en:dp_sb_keyempty) echo 'The sing-box REALITY key is empty.' ;;
+        ru:dp_sb_keyempty) echo 'Ключ REALITY sing-box пуст.' ;;
+        fa:dp_sb_keyempty) echo 'کلید REALITY ‏sing-box خالی است.' ;;
+        ja:dp_sb_keyempty) echo 'sing-box REALITY の鍵が空です。' ;;
+        zh:dp_sb_keypair) echo 'sing-box REALITY 密钥对生成失败。' ;;
+        zh-tw:dp_sb_keypair) echo 'sing-box REALITY 金鑰對產生失敗。' ;;
+        en:dp_sb_keypair) echo 'Failed to generate the sing-box REALITY key pair.' ;;
+        ru:dp_sb_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для sing-box.' ;;
+        fa:dp_sb_keypair) echo 'ساخت جفت کلید REALITY ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_keypair) echo 'sing-box REALITY の鍵ペアを生成できませんでした。' ;;
+        zh:dp_sb_keyparse) echo 'sing-box REALITY 密钥解析失败。' ;;
+        zh-tw:dp_sb_keyparse) echo 'sing-box REALITY 金鑰解析失敗。' ;;
+        en:dp_sb_keyparse) echo 'Failed to parse the sing-box REALITY key.' ;;
+        ru:dp_sb_keyparse) echo 'Не удалось разобрать ключ REALITY sing-box.' ;;
+        fa:dp_sb_keyparse) echo 'تجزیه کلید REALITY ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_keyparse) echo 'sing-box REALITY の鍵を解析できませんでした。' ;;
+        zh:dp_sb_keyparse_empty) echo 'sing-box REALITY 密钥解析失败：密钥为空。' ;;
+        zh-tw:dp_sb_keyparse_empty) echo 'sing-box REALITY 金鑰解析失敗：金鑰為空。' ;;
+        en:dp_sb_keyparse_empty) echo 'Failed to parse the sing-box REALITY key: the key is empty.' ;;
+        ru:dp_sb_keyparse_empty) echo 'Не удалось разобрать ключ REALITY sing-box: ключ пуст.' ;;
+        fa:dp_sb_keyparse_empty) echo 'تجزیه کلید REALITY ‏sing-box ناموفق بود: کلید خالی است.' ;;
+        ja:dp_sb_keyparse_empty) echo 'sing-box REALITY の鍵を解析できませんでした：鍵が空です。' ;;
+        zh:dp_sb_restart) echo 'sing-box 服务重启失败。' ;;
+        zh-tw:dp_sb_restart) echo 'sing-box 服務重啟失敗。' ;;
+        en:dp_sb_restart) echo 'Failed to restart the sing-box service.' ;;
+        ru:dp_sb_restart) echo 'Не удалось перезапустить службу sing-box.' ;;
+        fa:dp_sb_restart) echo 'راه‌اندازی مجدد سرویس sing-box ناموفق بود.' ;;
+        ja:dp_sb_restart) echo 'sing-box サービスの再起動に失敗しました。' ;;
+        zh:dp_sb_runtime) echo 'sing-box 运行时用户/文件权限准备失败。' ;;
+        zh-tw:dp_sb_runtime) echo 'sing-box 執行階段使用者/檔案權限準備失敗。' ;;
+        en:dp_sb_runtime) echo 'Failed to prepare the sing-box runtime user/file permissions.' ;;
+        ru:dp_sb_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов sing-box.' ;;
+        fa:dp_sb_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای sing-box ناموفق بود.' ;;
+        ja:dp_sb_runtime) echo 'sing-box のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
+        zh:dp_sb_seed) echo 'sing-box 初始配置生成失败。' ;;
+        zh-tw:dp_sb_seed) echo 'sing-box 初始設定產生失敗。' ;;
+        en:dp_sb_seed) echo 'Failed to generate the initial sing-box configuration.' ;;
+        ru:dp_sb_seed) echo 'Не удалось сгенерировать начальную конфигурацию sing-box.' ;;
+        fa:dp_sb_seed) echo 'ساخت پیکربندی اولیه sing-box ناموفق بود.' ;;
+        ja:dp_sb_seed) echo 'sing-box の初期設定を生成できませんでした。' ;;
+        zh:dp_sb_tmpdir) echo 'sing-box 临时目录创建失败。' ;;
+        zh-tw:dp_sb_tmpdir) echo 'sing-box 臨時目錄建立失敗。' ;;
+        en:dp_sb_tmpdir) echo 'Failed to create the sing-box temporary directory.' ;;
+        ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог sing-box.' ;;
+        fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت sing-box ناموفق بود.' ;;
+        ja:dp_sb_tmpdir) echo 'sing-box の一時ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_unit) echo 'sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit) echo 'sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit) echo 'Failed to prepare the sing-box service unit.' ;;
+        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит sing-box.' ;;
+        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit) echo 'sing-box の systemd ユニットの準備に失敗しました。' ;;
         zh:dp_sb_unit_lc) echo 'sing-box 服务单元准备失败。' ;;
         zh-tw:dp_sb_unit_lc) echo 'sing-box 服務單元準備失敗。' ;;
         en:dp_sb_unit_lc) echo 'Failed to prepare the sing-box service unit.' ;;
@@ -8401,7 +8401,7 @@ tr_msg() {
         zh:rs_takeover_prompt) echo '确认接管上述残留并继续？[Y/N]: ' ;;
         en:rs_takeover_prompt) echo 'Confirm takeover of the residue above and continue? [Y/N]: ' ;;
         ru:rs_takeover_prompt) echo 'Подтвердить принятие указанных выше остатков и продолжить? [Y/N]: ' ;;
-        fa:rs_takeover_prompt) echo 'تصاحب باقیمانده‌های بالا تأیید و ادامه داده شود؟ [Y/N]: ' ;;
+        fa:rs_takeover_prompt) echo 'آیا مدیریت موارد باقی‌ماندهٔ بالا به این اسکریپت سپرده شود و عملیات ادامه یابد؟ [Y/N]: ' ;;
         zh-tw:rs_takeover_prompt) echo '確認接管上述殘留並繼續？[Y/N]: ' ;;
         ja:rs_takeover_prompt) echo '上記の残留を引き継いで続行しますか？[Y/N]: ' ;;
         zh:do_chmod) echo '无法设置 A-Box 目录权限： %s' ;;
@@ -8829,7 +8829,7 @@ tr_msg() {
         en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;
         ru:inst_retired_xl) echo 'xray-latest больше не поддерживается; развёртывание экземпляров этого типа недоступно.' ;;
         fa:inst_retired_xl) echo 'xray-latest کنار گذاشته شده است؛ استقرار این نوع نمونه دیگر پشتیبانی نمی‌شود.' ;;
-        ja:inst_retired_xl) echo 'xray-latest は廃止されました。この種類のインスタンスの導入には対応していません。' ;;
+        ja:inst_retired_xl) echo 'xray-latest は廃止されました。この種類のインスタンスのデプロイには対応していません。' ;;
         zh:sc_state_reset_prompt) echo '是否重置为默认快捷键（ab abox）？[y/N]：' ;;
         en:sc_state_reset_prompt) echo 'Reset to the default shortcuts (ab abox)? [y/N]: ' ;;
         ru:sc_state_reset_prompt) echo 'Сбросить к ярлыкам по умолчанию (ab abox)? [y/N]: ' ;;
@@ -9232,12 +9232,12 @@ tr_msg() {
         ru:va_hy2_elf) echo 'Загруженный Hysteria не является исполняемым файлом ELF.' ;;
         fa:va_hy2_elf) echo 'دانلود Hysteria یک فایل اجرایی ELF نیست.' ;;
         ja:va_hy2_elf) echo 'Hysteria のダウンロード結果が ELF 実行ファイルではありません。' ;;
-        zh:va_sb_tar) echo 'Sing-box 压缩包校验失败。' ;;
-        zh-tw:va_sb_tar) echo 'Sing-box 壓縮包校驗失敗。' ;;
-        en:va_sb_tar) echo 'The Sing-box archive check failed.' ;;
-        ru:va_sb_tar) echo 'Проверка архива Sing-box не пройдена.' ;;
-        fa:va_sb_tar) echo 'بررسی آرشیو Sing-box ناموفق بود.' ;;
-        ja:va_sb_tar) echo 'Sing-box アーカイブのチェックに失敗しました。' ;;
+        zh:va_sb_tar) echo 'sing-box 压缩包校验失败。' ;;
+        zh-tw:va_sb_tar) echo 'sing-box 壓縮包校驗失敗。' ;;
+        en:va_sb_tar) echo 'The sing-box archive check failed.' ;;
+        ru:va_sb_tar) echo 'Проверка архива sing-box не пройдена.' ;;
+        fa:va_sb_tar) echo 'بررسی آرشیو sing-box ناموفق بود.' ;;
+        ja:va_sb_tar) echo 'sing-box アーカイブのチェックに失敗しました。' ;;
         zh:va_undefined) echo '未定义的下载校验规则： %s' ;;
         zh-tw:va_undefined) echo '未定義的下載校驗規則： %s' ;;
         en:va_undefined) echo 'Undefined download validation rule: %s' ;;
@@ -9368,7 +9368,7 @@ tr_msg() {
         zh-tw:fw2_fwd_perm_q) echo 'firewalld permanent 查詢失敗。' ;;
         en:fw2_fwd_perm_q) echo 'The firewalld permanent query failed.' ;;
         ru:fw2_fwd_perm_q) echo 'Запрос permanent firewalld не удался.' ;;
-        fa:fw2_fwd_perm_q) echo 'پرس‌وجوی permanent ‏firewalld ناموفق بود.' ;;
+        fa:fw2_fwd_perm_q) echo 'پرس‌وجوی تنظیمات دائمی (permanent) در firewalld ناموفق بود.' ;;
         ja:fw2_fwd_perm_q) echo 'firewalld の permanent クエリに失敗しました。' ;;
         zh:fw2_fwd_perm_record) echo 'firewalld permanent 规则归属记录失败。' ;;
         zh-tw:fw2_fwd_perm_record) echo 'firewalld permanent 規則歸屬記錄失敗。' ;;
@@ -9398,7 +9398,7 @@ tr_msg() {
         zh-tw:fw2_fwd_runtime_q) echo 'firewalld runtime 查詢失敗。' ;;
         en:fw2_fwd_runtime_q) echo 'The firewalld runtime query failed.' ;;
         ru:fw2_fwd_runtime_q) echo 'Запрос runtime firewalld не удался.' ;;
-        fa:fw2_fwd_runtime_q) echo 'پرس‌وجوی runtime ‏firewalld ناموفق بود.' ;;
+        fa:fw2_fwd_runtime_q) echo 'پرس‌وجوی تنظیمات جاری (runtime) در firewalld ناموفق بود.' ;;
         ja:fw2_fwd_runtime_q) echo 'firewalld の runtime クエリに失敗しました。' ;;
         zh:fw2_fwd_runtime_record) echo 'firewalld runtime 规则归属记录失败。' ;;
         zh-tw:fw2_fwd_runtime_record) echo 'firewalld runtime 規則歸屬記錄失敗。' ;;
@@ -10234,60 +10234,60 @@ tr_msg() {
         ru:ag_ws_update) echo 'Не удалось обновить конфигурацию входящего Argo WS.' ;;
         fa:ag_ws_update) echo 'به‌روزرسانی پیکربندی ورودی Argo WS ناموفق بود.' ;;
         ja:ag_ws_update) echo 'Argo WS インバウンド設定の更新に失敗しました。' ;;
-        zh:bs2_cfgdir) echo 'Sing-box 配置目录权限准备失败。' ;;
-        zh-tw:bs2_cfgdir) echo 'Sing-box 設定目錄權限準備失敗。' ;;
-        en:bs2_cfgdir) echo 'Failed to prepare the Sing-box configuration directory permissions.' ;;
-        ru:bs2_cfgdir) echo 'Не удалось подготовить права каталога конфигурации Sing-box.' ;;
-        fa:bs2_cfgdir) echo 'آماده‌سازی مجوزهای پوشه پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_cfgdir) echo 'Sing-box 設定ディレクトリの権限の準備に失敗しました。' ;;
-        zh:bs2_chmod) echo 'Sing-box 配置权限设置失败。' ;;
-        zh-tw:bs2_chmod) echo 'Sing-box 設定權限設定失敗。' ;;
-        en:bs2_chmod) echo 'Failed to set the Sing-box configuration permissions.' ;;
-        ru:bs2_chmod) echo 'Не удалось задать права конфигурации Sing-box.' ;;
-        fa:bs2_chmod) echo 'تنظیم مجوزهای پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_chmod) echo 'Sing-box 設定の権限設定に失敗しました。' ;;
-        zh:bs2_commit) echo 'Sing-box 配置原子提交失败。' ;;
-        zh-tw:bs2_commit) echo 'Sing-box 設定原子提交失敗。' ;;
-        en:bs2_commit) echo 'Failed to atomically commit the Sing-box configuration.' ;;
-        ru:bs2_commit) echo 'Не удалось атомарно зафиксировать конфигурацию Sing-box.' ;;
-        fa:bs2_commit) echo 'ثبت اتمی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_commit) echo 'Sing-box 設定のアトミックコミットに失敗しました。' ;;
-        zh:bs2_dir) echo 'Sing-box 配置目录创建失败。' ;;
-        zh-tw:bs2_dir) echo 'Sing-box 設定目錄建立失敗。' ;;
-        en:bs2_dir) echo 'Failed to create the Sing-box configuration directory.' ;;
-        ru:bs2_dir) echo 'Не удалось создать каталог конфигурации Sing-box.' ;;
-        fa:bs2_dir) echo 'ایجاد پوشه پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_dir) echo 'Sing-box 設定ディレクトリを作成できませんでした。' ;;
-        zh:bs2_inbounds) echo 'Sing-box inbounds JSON 构造失败。' ;;
-        zh-tw:bs2_inbounds) echo 'Sing-box inbounds JSON 構造失敗。' ;;
-        en:bs2_inbounds) echo 'Failed to construct the Sing-box inbounds JSON.' ;;
-        ru:bs2_inbounds) echo 'Не удалось построить JSON входящих подключений Sing-box.' ;;
-        fa:bs2_inbounds) echo 'ساخت JSON ورودی‌های Sing-box ناموفق بود.' ;;
-        ja:bs2_inbounds) echo 'Sing-box インバウンド JSON の構築に失敗しました。' ;;
-        zh:bs2_json) echo 'Sing-box JSON 生成失败。' ;;
-        zh-tw:bs2_json) echo 'Sing-box JSON 產生失敗。' ;;
-        en:bs2_json) echo 'Failed to generate the Sing-box JSON.' ;;
-        ru:bs2_json) echo 'Не удалось сгенерировать JSON Sing-box.' ;;
-        fa:bs2_json) echo 'ساخت JSON ‏Sing-box ناموفق بود.' ;;
-        ja:bs2_json) echo 'Sing-box JSON の生成に失敗しました。' ;;
-        zh:bs2_parent) echo 'Sing-box 配置父路径不是目录，拒绝写入。' ;;
-        zh-tw:bs2_parent) echo 'Sing-box 設定父路徑不是目錄，拒絕寫入。' ;;
-        en:bs2_parent) echo 'The Sing-box configuration parent path is not a directory; refusing to write.' ;;
-        ru:bs2_parent) echo 'Родительский путь конфигурации Sing-box не является каталогом; запись отклонена.' ;;
-        fa:bs2_parent) echo 'مسیر والد پیکربندی Sing-box یک پوشه نیست؛ نوشتن رد شد.' ;;
-        ja:bs2_parent) echo 'Sing-box 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
-        zh:bs2_symlink) echo 'Sing-box 配置路径存在符号链接，拒绝写入。' ;;
-        zh-tw:bs2_symlink) echo 'Sing-box 設定路徑存在符號連結，拒絕寫入。' ;;
-        en:bs2_symlink) echo 'A symlink exists in the Sing-box configuration path; refusing to write.' ;;
-        ru:bs2_symlink) echo 'В пути конфигурации Sing-box есть символьная ссылка; запись отклонена.' ;;
-        fa:bs2_symlink) echo 'در مسیر پیکربندی Sing-box پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
-        ja:bs2_symlink) echo 'Sing-box 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
-        zh:bs2_tmp) echo 'Sing-box 配置临时文件创建失败。' ;;
-        zh-tw:bs2_tmp) echo 'Sing-box 設定臨時檔案建立失敗。' ;;
-        en:bs2_tmp) echo 'Failed to create the Sing-box configuration temp file.' ;;
-        ru:bs2_tmp) echo 'Не удалось создать временный файл конфигурации Sing-box.' ;;
-        fa:bs2_tmp) echo 'ایجاد فایل موقت پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_tmp) echo 'Sing-box 設定の一時ファイルを作成できませんでした。' ;;
+        zh:bs2_cfgdir) echo 'sing-box 配置目录权限准备失败。' ;;
+        zh-tw:bs2_cfgdir) echo 'sing-box 設定目錄權限準備失敗。' ;;
+        en:bs2_cfgdir) echo 'Failed to prepare the sing-box configuration directory permissions.' ;;
+        ru:bs2_cfgdir) echo 'Не удалось подготовить права каталога конфигурации sing-box.' ;;
+        fa:bs2_cfgdir) echo 'آماده‌سازی مجوزهای پوشه پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_cfgdir) echo 'sing-box 設定ディレクトリの権限の準備に失敗しました。' ;;
+        zh:bs2_chmod) echo 'sing-box 配置权限设置失败。' ;;
+        zh-tw:bs2_chmod) echo 'sing-box 設定權限設定失敗。' ;;
+        en:bs2_chmod) echo 'Failed to set the sing-box configuration permissions.' ;;
+        ru:bs2_chmod) echo 'Не удалось задать права конфигурации sing-box.' ;;
+        fa:bs2_chmod) echo 'تنظیم مجوزهای پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_chmod) echo 'sing-box 設定の権限設定に失敗しました。' ;;
+        zh:bs2_commit) echo 'sing-box 配置原子提交失败。' ;;
+        zh-tw:bs2_commit) echo 'sing-box 設定原子提交失敗。' ;;
+        en:bs2_commit) echo 'Failed to atomically commit the sing-box configuration.' ;;
+        ru:bs2_commit) echo 'Не удалось атомарно зафиксировать конфигурацию sing-box.' ;;
+        fa:bs2_commit) echo 'ثبت اتمی پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_commit) echo 'sing-box 設定のアトミックコミットに失敗しました。' ;;
+        zh:bs2_dir) echo 'sing-box 配置目录创建失败。' ;;
+        zh-tw:bs2_dir) echo 'sing-box 設定目錄建立失敗。' ;;
+        en:bs2_dir) echo 'Failed to create the sing-box configuration directory.' ;;
+        ru:bs2_dir) echo 'Не удалось создать каталог конфигурации sing-box.' ;;
+        fa:bs2_dir) echo 'ایجاد پوشه پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_dir) echo 'sing-box 設定ディレクトリを作成できませんでした。' ;;
+        zh:bs2_inbounds) echo 'sing-box inbounds JSON 构造失败。' ;;
+        zh-tw:bs2_inbounds) echo 'sing-box inbounds JSON 構造失敗。' ;;
+        en:bs2_inbounds) echo 'Failed to construct the sing-box inbounds JSON.' ;;
+        ru:bs2_inbounds) echo 'Не удалось построить JSON входящих подключений sing-box.' ;;
+        fa:bs2_inbounds) echo 'ساخت JSON ورودی‌های sing-box ناموفق بود.' ;;
+        ja:bs2_inbounds) echo 'sing-box インバウンド JSON の構築に失敗しました。' ;;
+        zh:bs2_json) echo 'sing-box JSON 生成失败。' ;;
+        zh-tw:bs2_json) echo 'sing-box JSON 產生失敗。' ;;
+        en:bs2_json) echo 'Failed to generate the sing-box JSON.' ;;
+        ru:bs2_json) echo 'Не удалось сгенерировать JSON sing-box.' ;;
+        fa:bs2_json) echo 'ساخت JSON ‏sing-box ناموفق بود.' ;;
+        ja:bs2_json) echo 'sing-box JSON の生成に失敗しました。' ;;
+        zh:bs2_parent) echo 'sing-box 配置父路径不是目录，拒绝写入。' ;;
+        zh-tw:bs2_parent) echo 'sing-box 設定父路徑不是目錄，拒絕寫入。' ;;
+        en:bs2_parent) echo 'The sing-box configuration parent path is not a directory; refusing to write.' ;;
+        ru:bs2_parent) echo 'Родительский путь конфигурации sing-box не является каталогом; запись отклонена.' ;;
+        fa:bs2_parent) echo 'مسیر والد پیکربندی sing-box یک پوشه نیست؛ نوشتن رد شد.' ;;
+        ja:bs2_parent) echo 'sing-box 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
+        zh:bs2_symlink) echo 'sing-box 配置路径存在符号链接，拒绝写入。' ;;
+        zh-tw:bs2_symlink) echo 'sing-box 設定路徑存在符號連結，拒絕寫入。' ;;
+        en:bs2_symlink) echo 'A symlink exists in the sing-box configuration path; refusing to write.' ;;
+        ru:bs2_symlink) echo 'В пути конфигурации sing-box есть символьная ссылка; запись отклонена.' ;;
+        fa:bs2_symlink) echo 'در مسیر پیکربندی sing-box پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
+        ja:bs2_symlink) echo 'sing-box 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
+        zh:bs2_tmp) echo 'sing-box 配置临时文件创建失败。' ;;
+        zh-tw:bs2_tmp) echo 'sing-box 設定臨時檔案建立失敗。' ;;
+        en:bs2_tmp) echo 'Failed to create the sing-box configuration temp file.' ;;
+        ru:bs2_tmp) echo 'Не удалось создать временный файл конфигурации sing-box.' ;;
+        fa:bs2_tmp) echo 'ایجاد فایل موقت پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_tmp) echo 'sing-box 設定の一時ファイルを作成できませんでした。' ;;
         zh:bx_chmod) echo 'Xray 配置权限设置失败。' ;;
         zh-tw:bx_chmod) echo 'Xray 設定權限設定失敗。' ;;
         en:bx_chmod) echo 'Failed to set the Xray configuration permissions.' ;;
@@ -10796,13 +10796,13 @@ tr_msg() {
         en:apply_host_dns_verify_link_domain) echo 'The global DNS set matched, but a link still carries domains (%s), so matching queries can still go via that link; rolled back.' ;;
         ru:apply_host_dns_verify_link_domain) echo 'Глобальный набор DNS совпал, но на канале остались домены (%s), поэтому совпадающие запросы могут идти через этот канал; выполнен откат.' ;;
         fa:apply_host_dns_verify_link_domain) echo 'مجموعه DNS سراسری مطابقت داشت، اما پیوند هنوز دامنه دارد (%s) و درخواست‌های مطابق ممکن است از آن پیوند عبور کنند؛ تغییرات بازگردانده شد.' ;;
-        zh-tw:apply_host_dns_verify_link_domain) echo '全域 DNS 集合與預期一致，但鏈路仍帶域名（%s），相符的查詢仍可能走該鏈路，已回復。' ;;
+        zh-tw:apply_host_dns_verify_link_domain) echo '全域 DNS 集合與預期一致，但鏈路仍帶域名（%s），相符的查詢仍可能走該鏈路，已回滾。' ;;
         ja:apply_host_dns_verify_link_domain) echo 'システム全体の DNS セットは一致しましたが、リンクにドメインが残っています（%s）。一致するクエリはそのリンクを経由する可能性があるため、ロールバックしました。' ;;
         zh:apply_host_dns_verify_mismatch) echo '应用后全局 DNS 集合与预期不符，已回滚。' ;;
         en:apply_host_dns_verify_mismatch) echo 'The global DNS set did not match the expected set after applying the changes; rolled back.' ;;
         ru:apply_host_dns_verify_mismatch) echo 'После применения общесистемный набор DNS не совпал с ожидаемым; выполнен откат.' ;;
         fa:apply_host_dns_verify_mismatch) echo 'پس از اعمال تغییرات، مجموعه DNS سراسری با مقدار مورد انتظار مطابقت نداشت؛ تغییرات بازگردانده شد.' ;;
-        zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回復。' ;;
+        zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回滾。' ;;
         ja:apply_host_dns_verify_mismatch) echo '適用後のシステム全体の DNS セットが期待値と一致しなかったため、ロールバックしました。' ;;
         zh:dns_rollback_failed_staging_removed) echo 'DNS 回滚失败；本次快照暂存目录已删除。基线快照仍保留，可用 DNS 菜单回滚。' ;;
         en:dns_rollback_failed_staging_removed) echo 'DNS rollback failed; the per-attempt snapshot staging directory was removed. The baseline snapshot is preserved; use the DNS menu to roll back.' ;;
@@ -10978,7 +10978,7 @@ tr_msg() {
         fa:deploy_official_hy2_title) echo 'استقرار نسخه رسمی Hysteria 2' ;;
         zh-tw:deploy_official_hy2_title) echo '官方 Hysteria 2 部署' ;;
         ja:deploy_official_hy2_title) echo '公式 Hysteria 2 のデプロイ' ;;
-        zh:deploy_singbox_title) echo '部署 Sing-box 核心 [%s]' ;;
+        zh:deploy_singbox_title) echo '部署 sing-box 核心 [%s]' ;;
         en:deploy_singbox_title) echo 'sing-box core deployment [%s]' ;;
         ru:deploy_singbox_title) echo 'Развёртывание ядра sing-box [%s]' ;;
         fa:deploy_singbox_title) echo 'استقرار هسته sing-box [%s]' ;;
@@ -11265,7 +11265,7 @@ tr_msg() {
         ru:release_ports_other_stopped) echo 'Это развёртывание остановило следующие работающие службы других ядер: %s. После развёртывания будет перезапущено только вновь установленное ядро; остальные службы автоматически не восстанавливаются. Чтобы продолжить использование, перезапустите службу вручную, а если её конфигурация была удалена этой перезаписью, разверните её заново.' ;;
         fa:release_ports_other_stopped) echo 'این استقرار سرویس‌های در حال اجرای هسته‌های دیگر را متوقف کرد: %s. پس از استقرار، فقط هستهٔ تازه مستقرشده دوباره راه‌اندازی می‌شود؛ سرویس‌های دیگر به‌طور خودکار بازنمی‌گردند. برای ادامهٔ استفاده، آن را به‌صورت دستی راه‌اندازی مجدد کنید و اگر پیکربندی آن با این استقرارِ جایگزین پاک شده است، آن هسته را دوباره مستقر کنید.' ;;
         zh-tw:release_ports_other_stopped) echo '本次部署已停止以下正在執行的其他核心服務：%s。部署完成後僅重新啟動新部署的核心，其他服務不會自動恢復；如需繼續使用請手動重新啟動，若其設定已被本次覆蓋部署清除則需重新部署該核心。' ;;
-        ja:release_ports_other_stopped) echo '今回の導入では、他のコアの次の実行中サービスを停止しました：%s。導入完了後に再起動されるのは新しく導入したコアのみで、他のサービスは自動で復旧しません。引き続き使う場合は手動で再起動してください。今回の上書き導入で設定が削除された場合は、そのコアを再導入してください。' ;;
+        ja:release_ports_other_stopped) echo '今回のデプロイでは、他のコアの次の実行中サービスを停止しました：%s。デプロイ完了後に再起動されるのは新しくデプロイしたコアのみで、他のサービスは自動で復旧しません。引き続き使う場合は手動で再起動してください。今回の上書きデプロイで設定が削除された場合は、そのコアを再デプロイしてください。' ;;
         zh:release_ports_stopping_services) echo '正在停止 A-Box 托管服务...' ;;
         en:release_ports_stopping_services) echo 'Stopping A-Box-managed services...' ;;
         ru:release_ports_stopping_services) echo 'Останавливаются службы под управлением A-Box...' ;;
@@ -11390,7 +11390,7 @@ tr_msg() {
         en:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap rollback cannot restore /etc/fstab; leaving the current state unchanged to avoid a worse inconsistency.' ;;
         ru:rollback_abox_new_swap_fstab_unrecoverable) echo 'При откате Swap не удалось восстановить /etc/fstab; текущее состояние сохранено, чтобы избежать более серьёзных несоответствий.' ;;
         fa:rollback_abox_new_swap_fstab_unrecoverable) echo 'بازگردانی Swap نمی‌تواند /etc/fstab را بازیابی کند؛ وضعیت فعلی حفظ می‌شود تا ناسازگاری شدیدتری ایجاد نشود.' ;;
-        zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回復無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
+        zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回滾無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
         ja:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap のロールバックで /etc/fstab を復元できません。より深刻な不整合を避けるため、現状を維持します。' ;;
         zh:run_local_sni_benchmark_title) echo '本地 SNI 优选' ;;
         en:run_local_sni_benchmark_title) echo 'Local SNI selection' ;;
@@ -11408,19 +11408,19 @@ tr_msg() {
         en:run_remote_bash_script_download_failed) echo 'Remote script download failed: %s' ;;
         ru:run_remote_bash_script_download_failed) echo 'Не удалось загрузить удалённый скрипт: %s' ;;
         fa:run_remote_bash_script_download_failed) echo 'دانلود اسکریپت راه دور ناموفق بود: %s' ;;
-        zh-tw:run_remote_bash_script_download_failed) echo '遠端指令碼下載失敗: %s' ;;
+        zh-tw:run_remote_bash_script_download_failed) echo '遠端腳本下載失敗: %s' ;;
         ja:run_remote_bash_script_download_failed) echo 'リモートスクリプトのダウンロードに失敗しました: %s' ;;
         zh:run_remote_bash_script_syntax_failed) echo '远程脚本语法校验失败: %s' ;;
         en:run_remote_bash_script_syntax_failed) echo 'Remote script syntax check failed: %s' ;;
         ru:run_remote_bash_script_syntax_failed) echo 'Проверка синтаксиса удалённого скрипта не пройдена: %s' ;;
         fa:run_remote_bash_script_syntax_failed) echo 'بررسی نحو اسکریپت راه دور ناموفق بود: %s' ;;
-        zh-tw:run_remote_bash_script_syntax_failed) echo '遠端指令碼語法檢查失敗: %s' ;;
+        zh-tw:run_remote_bash_script_syntax_failed) echo '遠端腳本語法檢查失敗: %s' ;;
         ja:run_remote_bash_script_syntax_failed) echo 'リモートスクリプトの構文チェックに失敗しました: %s' ;;
         zh:run_remote_bash_script_tmpfile_failed) echo '远程脚本临时文件创建失败。' ;;
         en:run_remote_bash_script_tmpfile_failed) echo 'Failed to create a temporary file for the remote script.' ;;
         ru:run_remote_bash_script_tmpfile_failed) echo 'Не удалось создать временный файл для удалённого скрипта.' ;;
         fa:run_remote_bash_script_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت راه دور ناموفق بود.' ;;
-        zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端指令碼的暫存檔建立失敗。' ;;
+        zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端腳本的暫存檔建立失敗。' ;;
         ja:run_remote_bash_script_tmpfile_failed) echo 'リモートスクリプト用の一時ファイルの作成に失敗しました。' ;;
         zh:save_mirror_prefer_fixed_order) echo '核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。' ;;
         en:save_mirror_prefer_fixed_order) echo 'The core download order is fixed: official upstream stable release → pinned A-Box fallback release.' ;;
@@ -11432,13 +11432,13 @@ tr_msg() {
         en:setup_geo_cron_flock_missing) echo 'flock is unavailable: the Geo update script requires a flock lock and will exit silently without it. Installation refused.' ;;
         ru:setup_geo_cron_flock_missing) echo 'Команда flock недоступна: скрипт обновления Geo требует блокировки flock и без неё завершится без сообщений. Установка отклонена.' ;;
         fa:setup_geo_cron_flock_missing) echo 'فرمان flock در دسترس نیست: اسکریپت به‌روزرسانی Geo به قفل flock نیاز دارد و بدون آن بی‌پیام خارج می‌شود. نصب رد شد.' ;;
-        zh-tw:setup_geo_cron_flock_missing) echo 'flock 指令無法使用：Geo 更新指令碼需要 flock 鎖，缺少時會無聲結束，拒絕安裝。' ;;
+        zh-tw:setup_geo_cron_flock_missing) echo 'flock 指令無法使用：Geo 更新腳本需要 flock 鎖，缺少時會無聲結束，拒絕安裝。' ;;
         ja:setup_geo_cron_flock_missing) echo 'flock コマンドを利用できません。Geo 更新スクリプトには flock ロックが必要で、ない場合はメッセージなしで終了します。インストールを拒否します。' ;;
         zh:setup_geo_cron_script_write_failed) echo 'Geo 更新脚本原子写入失败。' ;;
         en:setup_geo_cron_script_write_failed) echo 'Atomic write of the Geo update script failed.' ;;
         ru:setup_geo_cron_script_write_failed) echo 'Атомарная запись скрипта обновления Geo не удалась.' ;;
         fa:setup_geo_cron_script_write_failed) echo 'نوشتن اتمی اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
-        zh-tw:setup_geo_cron_script_write_failed) echo 'Geo 更新指令碼原子寫入失敗。' ;;
+        zh-tw:setup_geo_cron_script_write_failed) echo 'Geo 更新腳本原子寫入失敗。' ;;
         ja:setup_geo_cron_script_write_failed) echo 'Geo 更新スクリプトのアトミック書き込みに失敗しました。' ;;
         zh:setup_health_monitor_flock_missing) echo 'flock 命令不可用：健康探针依赖 flock 锁，缺失时探针会静默退出、监控形同关闭，拒绝安装。' ;;
         en:setup_health_monitor_flock_missing) echo 'flock is unavailable: the health probe requires a flock lock. Without it, the probe exits silently and monitoring is effectively disabled. Installation refused.' ;;
@@ -11468,7 +11468,7 @@ tr_msg() {
         en:setup_traffic_monitor_flock_missing) echo 'flock is unavailable: traffic monitoring requires a flock lock and the script will exit silently without it. Installation refused.' ;;
         ru:setup_traffic_monitor_flock_missing) echo 'Команда flock недоступна: мониторинг трафика требует блокировки flock, без которой скрипт завершится без сообщений. Установка отклонена.' ;;
         fa:setup_traffic_monitor_flock_missing) echo 'فرمان flock در دسترس نیست: پایش ترافیک به قفل flock نیاز دارد و بدون آن اسکریپت بی‌پیام خارج می‌شود. نصب رد شد.' ;;
-        zh-tw:setup_traffic_monitor_flock_missing) echo 'flock 指令無法使用：流量監控需要 flock 鎖，缺少時指令碼會無聲結束，拒絕安裝。' ;;
+        zh-tw:setup_traffic_monitor_flock_missing) echo 'flock 指令無法使用：流量監控需要 flock 鎖，缺少時腳本會無聲結束，拒絕安裝。' ;;
         ja:setup_traffic_monitor_flock_missing) echo 'flock コマンドを利用できません。トラフィック監視には flock ロックが必要で、ない場合はスクリプトがメッセージなしで終了します。インストールを拒否します。' ;;
         zh:setup_traffic_monitor_mkdir_failed) echo '无法创建流量监控目录。' ;;
         en:setup_traffic_monitor_mkdir_failed) echo 'Cannot create the traffic monitoring directory.' ;;
@@ -11486,16 +11486,16 @@ tr_msg() {
         en:setup_traffic_monitor_tmp_write_failed) echo 'Failed to write the traffic monitoring script to the temporary file.' ;;
         ru:setup_traffic_monitor_tmp_write_failed) echo 'Не удалось записать скрипт мониторинга трафика во временный файл.' ;;
         fa:setup_traffic_monitor_tmp_write_failed) echo 'نوشتن اسکریپت پایش ترافیک در فایل موقت ناموفق بود.' ;;
-        zh-tw:setup_traffic_monitor_tmp_write_failed) echo '流量監控指令碼寫入暫存檔失敗。' ;;
+        zh-tw:setup_traffic_monitor_tmp_write_failed) echo '流量監控腳本寫入暫存檔失敗。' ;;
         ja:setup_traffic_monitor_tmp_write_failed) echo 'トラフィック監視スクリプトの一時ファイルへの書き込みに失敗しました。' ;;
         zh:setup_traffic_monitor_tmpfile_failed) echo '流量监控脚本临时文件创建失败。' ;;
         en:setup_traffic_monitor_tmpfile_failed) echo 'Failed to create a temporary file for the traffic monitoring script.' ;;
         ru:setup_traffic_monitor_tmpfile_failed) echo 'Не удалось создать временный файл для скрипта мониторинга трафика.' ;;
         fa:setup_traffic_monitor_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:setup_traffic_monitor_tmpfile_failed) echo '流量監控指令碼的暫存檔建立失敗。' ;;
+        zh-tw:setup_traffic_monitor_tmpfile_failed) echo '流量監控腳本的暫存檔建立失敗。' ;;
         ja:setup_traffic_monitor_tmpfile_failed) echo 'トラフィック監視スクリプトの一時ファイルの作成に失敗しました。' ;;
         zh:show_core_pin_docs_title) echo '核心版本选择与容灾说明' ;;
-        en:show_core_pin_docs_title) echo 'Core release policy' ;;
+        en:show_core_pin_docs_title) echo 'Core version selection and fallback guide' ;;
         ru:show_core_pin_docs_title) echo 'Выбор версии ядра и правила резервирования' ;;
         fa:show_core_pin_docs_title) echo 'انتخاب نسخه هسته و سیاست استفاده از نسخه پشتیبان' ;;
         zh-tw:show_core_pin_docs_title) echo '核心版本選擇與備援說明' ;;
@@ -11540,7 +11540,7 @@ tr_msg() {
         en:sni_load_candidate_seed_use_bundled) echo 'Online SNI data is unavailable; using the local candidate file bundled with the script.' ;;
         ru:sni_load_candidate_seed_use_bundled) echo 'Онлайн-данные SNI недоступны; используется локальный файл кандидатов, поставляемый со скриптом.' ;;
         fa:sni_load_candidate_seed_use_bundled) echo 'داده‌های آنلاین SNI در دسترس نیستند؛ از فایل نامزدهای محلی همراه اسکریپت استفاده می‌شود.' ;;
-        zh-tw:sni_load_candidate_seed_use_bundled) echo 'SNI 線上資料無法使用；使用隨指令碼提供的本機候選檔案。' ;;
+        zh-tw:sni_load_candidate_seed_use_bundled) echo 'SNI 線上資料無法使用；使用隨腳本提供的本機候選檔案。' ;;
         ja:sni_load_candidate_seed_use_bundled) echo 'SNI のオンラインデータは利用できません。スクリプトに同梱されたローカル候補ファイルを使用します。' ;;
         zh:sni_load_candidate_seed_use_cached) echo 'SNI 数据下载失败或未通过校验；使用上次通过校验的本地缓存。' ;;
         en:sni_load_candidate_seed_use_cached) echo 'SNI data download failed or validation did not pass; using the last validated local cache.' ;;
@@ -11595,9 +11595,9 @@ tr_msg() {
         ru:traffic_management_menu_back) echo 'Возврат в главное меню' ;;
         fa:traffic_management_menu_back) echo 'بازگشت به منوی اصلی' ;;
         zh-tw:traffic_management_menu_back) echo '返回主選單' ;;
-        ja:traffic_management_menu_back) echo 'メインメニューへの復帰' ;;
+        ja:traffic_management_menu_back) echo 'メインメニューに戻る' ;;
         zh:traffic_management_menu_limit_range) echo '流量上限必须是 1-8589934591 GB 的整数。' ;;
-        en:traffic_management_menu_limit_range) echo 'The traffic limit must be an integer between 1-8589934591 GB.' ;;
+        en:traffic_management_menu_limit_range) echo 'The traffic limit must be an integer between 1 and 8589934591 GB.' ;;
         ru:traffic_management_menu_limit_range) echo 'Лимит трафика должен быть целым числом в диапазоне 1-8589934591 GB.' ;;
         fa:traffic_management_menu_limit_range) echo 'سقف ترافیک باید عددی صحیح در بازهٔ 1-8589934591 GB باشد.' ;;
         zh-tw:traffic_management_menu_limit_range) echo '流量上限必須是 1-8589934591 GB 範圍內的整數。' ;;
@@ -11660,7 +11660,7 @@ tr_msg() {
         en:users_normalize_default_name_migrate_failed) echo 'User migration synchronisation failed, and writing the registry rollback also failed: %s/%s is still in the migrated state (main), while the core is still abox. The next retry will be skipped; check the registry manually.' ;;
         ru:users_normalize_default_name_migrate_failed) echo 'Синхронизация миграции пользователей и запись отката реестра не удались: %s/%s остаётся в состоянии после миграции (main), а ядро по-прежнему abox. Следующая повторная попытка будет пропущена; проверьте реестр вручную.' ;;
         fa:users_normalize_default_name_migrate_failed) echo 'همگام‌سازی مهاجرت کاربران و نوشتن بازگردانی رجیستری ناموفق بود: %s/%s همچنان در وضعیت پس از مهاجرت (main) است و هسته همچنان abox است. تلاش مجدد بعدی رد خواهد شد؛ رجیستری را دستی بررسی کنید.' ;;
-        zh-tw:users_normalize_default_name_migrate_failed) echo '使用者移轉同步失敗，且登錄表回復寫入失敗：%s/%s 仍為移轉後狀態（main），核心仍為 abox，下次重試將略過，請手動檢查登錄表。' ;;
+        zh-tw:users_normalize_default_name_migrate_failed) echo '使用者移轉同步失敗，且登錄表回滾寫入失敗：%s/%s 仍為移轉後狀態（main），核心仍為 abox，下次重試將略過，請手動檢查登錄表。' ;;
         ja:users_normalize_default_name_migrate_failed) echo 'ユーザー移行の同期に失敗し、レジストリのロールバック書き込みにも失敗しました：%s/%s は移行後の状態（main）のままですが、コアは abox のままです。次回の再試行はスキップされます。レジストリを手動で確認してください。' ;;
         zh:users_reg_write_identity_unreadable) echo '注册表拒绝写入：%s 身份无法读取（非注册表文件或已损坏），请手工处理。' ;;
         en:users_reg_write_identity_unreadable) echo 'Registry write refused: cannot read the identity of %s (not a registry file or corrupted). Handle this manually.' ;;
@@ -11696,7 +11696,7 @@ tr_msg() {
         en:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Failed to set permissions for the traffic monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Не удалось установить права доступа для скрипта мониторинга трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_chmod_failed) echo 'تنظیم مجوزهای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量監控指令碼的權限設定失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量監控腳本的權限設定失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_chmod_failed) echo '通信量監視スクリプトの権限設定に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo '流量限制 cron 事务快照失败。' ;;
         en:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit cron entry.' ;;
@@ -11714,25 +11714,25 @@ tr_msg() {
         en:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Post-verification of the traffic monitoring script'\''s runtime environment marker failed.' ;;
         ru:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Последующая проверка метки среды выполнения скрипта мониторинга трафика не удалась.' ;;
         fa:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'بررسی نهایی نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量監控指令碼執行環境標記的後置驗證失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量監控腳本執行環境標記的後置驗證失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '通信量監視スクリプトの実行環境マーカーの事後検証に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量监控脚本运行环境标记写入失败。' ;;
         en:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Failed to write the runtime environment marker for the traffic monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Не удалось записать маркер среды выполнения скрипта мониторинга трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'نوشتن نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量監控指令碼執行環境標記寫入失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量監控腳本執行環境標記寫入失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'トラフィック監視スクリプトの実行環境マーカーの書き込みに失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制监控脚本事务快照失败。' ;;
         en:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Не удалось создать транзакционный снимок скрипта мониторинга лимита трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'ایجاد تصویر لحظه‌ای تراکنش برای اسکریپت پایش محدودیت ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制監控指令碼的交易快照建立失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制監控腳本的交易快照建立失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '通信量制限監視スクリプトのトランザクションスナップショット作成に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量监控脚本原子写入失败。' ;;
         en:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Atomic write of the traffic monitoring script failed.' ;;
         ru:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Атомарная запись скрипта мониторинга трафика не удалась.' ;;
         fa:valid_hy2_bandwidth_mbps_script_write_failed) echo 'نوشتن اتمی اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量監控指令碼原子寫入失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量監控腳本原子寫入失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_script_write_failed) echo 'トラフィック監視スクリプトのアトミック書き込みに失敗しました。' ;;
         zh:validate_fail2ban_config_dump_failed) echo 'Fail2Ban 全局配置 dump 失败；可能由系统其它 jail 引起。' ;;
         en:validate_fail2ban_config_dump_failed) echo 'Fail2Ban global configuration dump failed; other system jails may be responsible.' ;;
@@ -11756,7 +11756,7 @@ tr_msg() {
         en:validate_ota_version_direction_bad_metadata) echo 'Invalid OTA script metadata (build/epoch); rejected.' ;;
         ru:validate_ota_version_direction_bad_metadata) echo 'Некорректные метаданные скрипта OTA (build/epoch); скрипт отклонён.' ;;
         fa:validate_ota_version_direction_bad_metadata) echo 'فرادادهٔ اسکریپت OTA نامعتبر است (build/epoch)؛ اسکریپت رد شد.' ;;
-        zh-tw:validate_ota_version_direction_bad_metadata) echo 'OTA 指令碼中繼資料無效（build/epoch），已拒絕。' ;;
+        zh-tw:validate_ota_version_direction_bad_metadata) echo 'OTA 腳本中繼資料無效（build/epoch），已拒絕。' ;;
         ja:validate_ota_version_direction_bad_metadata) echo 'OTA スクリプトのメタデータ（build/epoch）が不正なため、拒否しました。' ;;
         zh:validate_ota_version_direction_downgrade_refused) echo '拒绝 OTA 降级: local=%s(%s) remote=%s(%s)。如确需降级，显式设置 ABOX_ALLOW_DOWNGRADE=1 并配置 SHA256 allowlist。' ;;
         en:validate_ota_version_direction_downgrade_refused) echo 'OTA downgrade refused: local=%s(%s) remote=%s(%s). If a downgrade is required, explicitly set ABOX_ALLOW_DOWNGRADE=1 and configure the SHA256 allowlist.' ;;
@@ -11768,7 +11768,7 @@ tr_msg() {
         en:validate_ota_version_direction_missing_metadata) echo 'The OTA script lacks trusted ABOX_BUILD/ABOX_BUILD_EPOCH metadata.' ;;
         ru:validate_ota_version_direction_missing_metadata) echo 'В скрипте OTA отсутствуют доверенные метаданные ABOX_BUILD/ABOX_BUILD_EPOCH.' ;;
         fa:validate_ota_version_direction_missing_metadata) echo 'اسکریپت OTA فاقد فرادادهٔ قابل اعتماد ABOX_BUILD/ABOX_BUILD_EPOCH است.' ;;
-        zh-tw:validate_ota_version_direction_missing_metadata) echo 'OTA 指令碼缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 中繼資料。' ;;
+        zh-tw:validate_ota_version_direction_missing_metadata) echo 'OTA 腳本缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 中繼資料。' ;;
         ja:validate_ota_version_direction_missing_metadata) echo 'OTA スクリプトに信頼できる ABOX_BUILD/ABOX_BUILD_EPOCH メタデータがありません。' ;;
         zh:verify_domain_points_to_self_not_pointing_here) echo '域名已解析，但未发现解析到当前公网 IP: %s' ;;
         en:verify_domain_points_to_self_not_pointing_here) echo 'The domain resolves, but does not appear to point to the current public IP: %s' ;;
@@ -11957,14 +11957,14 @@ tr_msg() {
         zh-tw:mi_none) echo '無' ;;
         ja:mi_none) echo 'なし' ;;
         zh:mi_kernel) echo '内核' ;;
-        en:mi_kernel) echo 'kernel' ;;
+        en:mi_kernel) echo 'Kernel' ;;
         ru:mi_kernel) echo 'ядро' ;;
         fa:mi_kernel) echo 'هسته' ;;
         zh-tw:mi_kernel) echo '內核' ;;
         ja:mi_kernel) echo 'カーネル' ;;
         zh:mi_hw) echo '硬件' ;;
         en:mi_hw) echo 'HW' ;;
-        ru:mi_hw) echo 'Железо' ;;
+        ru:mi_hw) echo 'Оборудование' ;;
         fa:mi_hw) echo 'سخت‌افزار' ;;
         zh-tw:mi_hw) echo '硬體' ;;
         ja:mi_hw) echo 'HW' ;;
@@ -11985,9 +11985,9 @@ tr_msg() {
         en:mi_net) echo 'Network' ;;
         en:mi_dns_plain) echo 'Plain' ;;
         ru:mi_net) echo 'Сеть' ;;
-        ru:mi_dns_plain) echo 'Обычный' ;;
+        ru:mi_dns_plain) echo 'Без шифрования' ;;
         fa:mi_net) echo 'شبکه' ;;
-        fa:mi_dns_plain) echo 'ساده' ;;
+        fa:mi_dns_plain) echo 'بدون رمزنگاری' ;;
         zh-tw:mi_net) echo '網絡' ;;
         zh-tw:mi_dns_plain) echo '明文' ;;
         ja:mi_net) echo 'ネットワーク' ;;
@@ -12023,11 +12023,11 @@ tr_msg() {
         zh-tw:mi_quick_r) echo '一鍵 Reality（按 R 執行）' ;;
         ja:mi_quick_r) echo 'ワンクリック Reality（Rキーで実行）' ;;
         zh:mi_land) echo '落地' ;;
-        en:mi_land) echo 'Exit' ;;
-        ru:mi_land) echo 'Exit' ;;
-        fa:mi_land) echo 'Exit' ;;
+        en:mi_land) echo 'Egress' ;;
+        ru:mi_land) echo 'Выход' ;;
+        fa:mi_land) echo 'خروجی' ;;
         zh-tw:mi_land) echo '落地' ;;
-        ja:mi_land) echo 'Exit' ;;
+        ja:mi_land) echo '出口' ;;
         zh:mi_dc) echo '机房' ;;
         en:mi_dc) echo 'Datacenter' ;;
         ru:mi_dc) echo 'Дата-центр' ;;
@@ -27963,7 +27963,7 @@ pre_install_setup() {
     [[ "$MODE_IN" == *'SS'* || "$MODE_IN" == *'ALL'* || "$MODE_IN" == 'VLESS_SS' ]] && HAS_SS=true
 
     # Xray ALL: Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053.
-    # Sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
+    # sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
 
     INGRESS_IF=$(get_active_interface)
     [[ -z "$INGRESS_IF" ]] && die "$(tr_msg pi_no_iface)"
@@ -30374,7 +30374,7 @@ EOF_SVC
 _recycle_port_rules_if_unused() {
     local port="$1" sb_cfg="${2:-/etc/sing-box/config.json}"
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
-    # Sing-box config must parse and explicitly show the port free.
+    # sing-box config must parse and explicitly show the port free.
     jq -e . "$sb_cfg" >/dev/null 2>&1 || return 0
     jq -e --argjson p "$port" '
         if type != "object" then false
@@ -30451,7 +30451,7 @@ deploy_singbox_socks5_landing() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box socks5-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-socks5) || die "$(tr_msg dp_sb_tmpdir)"
@@ -30464,11 +30464,11 @@ deploy_singbox_socks5_landing() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
@@ -30597,7 +30597,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -30974,7 +30974,7 @@ deploy_singbox_trojan_landing() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box trojan-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-trojan) || die "$(tr_msg dp_sb_tmpdir)"
@@ -30987,11 +30987,11 @@ deploy_singbox_trojan_landing() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31129,7 +31129,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31200,7 +31200,7 @@ deploy_singbox_tuic() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box tuic"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-tuic) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31213,11 +31213,11 @@ deploy_singbox_tuic() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31374,7 +31374,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
@@ -31433,7 +31433,7 @@ deploy_singbox_anytls() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box anytls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-anytls) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31446,11 +31446,11 @@ deploy_singbox_anytls() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31587,7 +31587,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31647,7 +31647,7 @@ deploy_singbox_shadowtls() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box shadowtls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-shadowtls) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31660,11 +31660,11 @@ deploy_singbox_shadowtls() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31807,7 +31807,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
@@ -31998,7 +31998,7 @@ argo_deploy_ws() {
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     # R8C9-01: back up the live config before replacing it; without
@@ -32566,7 +32566,7 @@ deploy_argo_temp() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
@@ -32578,11 +32578,11 @@ deploy_argo_temp() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -32651,7 +32651,7 @@ EOF_SVC
     # missing config. An existing config (even jq-invalid JSONC,
     # per R6C9-02) is never overwritten.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
@@ -32823,7 +32823,7 @@ deploy_argo_fixed() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
@@ -32835,11 +32835,11 @@ deploy_argo_fixed() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -32908,7 +32908,7 @@ EOF_SVC
     # missing config. An existing config (even jq-invalid JSONC,
     # per R6C9-02) is never overwritten.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
@@ -33076,7 +33076,7 @@ argo_uninstall() {
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         # R31-M1: read through jsonc_strip_comments, like every other
-        # Argo reader (_argo_ws_inbound_present). Sing-box accepts
+        # Argo reader (_argo_ws_inbound_present). sing-box accepts
         # JSONC comments that jq rejects (R6C9-02); a bare jq read
         # fails the uninstall on a legal commented config. Under
         # pipefail a strip failure also fails the pipeline, so a
@@ -36607,15 +36607,15 @@ deploy_singbox() {
     SB_PATH="$sb_ext/sing-box"
     extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
     [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-    chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-    "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-    install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+    chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+    "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+    install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
     rm -rf -- "$sb_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
     abox_fetch_guard_stop
 
-    prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+    prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
     IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_sb_keyparse)"
     [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die "$(tr_msg dp_sb_keyparse_empty)"
@@ -36634,7 +36634,7 @@ deploy_singbox() {
     fi
 
     build_singbox_config "$MODE_IN"
-    chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
+    chmod 600 /etc/sing-box/config.json || die 'sing-box config permission hardening failed.'
     jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
     standalone_preserve_restore sing-box /etc/sing-box/config.json || { deployment_transaction_rollback; return 1; }
@@ -42159,21 +42159,21 @@ ux_mode_menu() {
             msg "${BOLD}${GREEN}Runtime mode and core version policy${NC}"
             msg "Current mode: ${YELLOW}$(read_fast_mode_label)${NC} | Core order: official stable → fixed recovery mirror"
             msg "${CYAN}1.${NC} Strict mode"
-            msg "${CYAN}2.${NC} Fast mode (non-critical confirmations only)"
+            msg "${CYAN}2.${NC} Fast mode (skips only non-critical confirmations)"
             msg "${CYAN}3.${NC} Show stable version policy and recovery pins"
             msg "${CYAN}0.${NC} Back" ;;
         ru)
             msg "${BOLD}${GREEN}Режим работы и политика версий ядер${NC}"
-            msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → резервная копия"
+            msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → фиксированное резервное зеркало"
             msg "${CYAN}1.${NC} Строгий режим"
-            msg "${CYAN}2.${NC} Быстрый режим"
-            msg "${CYAN}3.${NC} Политика стабильных версий и резервные pins"
+            msg "${CYAN}2.${NC} Быстрый режим (пропускаются только некритичные подтверждения)"
+            msg "${CYAN}3.${NC} Политика стабильных версий и закреплённые резервные версии"
             msg "${CYAN}0.${NC} Назад" ;;
         fa)
             msg "${BOLD}${GREEN}حالت اجرا و سیاست نسخه هسته‌ها${NC}"
             msg "حالت: ${YELLOW}$(read_fast_mode_label)${NC} | منبع: نسخه پایدار upstream سپس نسخه بازیابی"
             msg "${CYAN}1.${NC} حالت سخت‌گیرانه"
-            msg "${CYAN}2.${NC} حالت سریع"
+            msg "${CYAN}2.${NC} حالت سریع (فقط از تأییدهای غیرحیاتی صرف‌نظر می‌شود)"
             msg "${CYAN}3.${NC} سیاست نسخه پایدار و نسخه‌های بازیابی"
             msg "${CYAN}0.${NC} بازگشت" ;;
         zh-tw)
@@ -46316,7 +46316,7 @@ host_network_menu() {
         ru)
             msg "${BOLD}${GREEN}Сеть и региональные настройки${NC}"
             msg "${CYAN}1.${NC} Предпочтение IP"
-            msg "${CYAN}2.${NC} DNS, тест задержки, DoT и DoH"
+            msg "${CYAN}2.${NC} DNS, автоматическое тестирование производительности, DoT и DoH"
             msg "${CYAN}3.${NC} Часовой пояс, локаль и NTP"
             msg "${CYAN}4.${NC} Режим и источник загрузки"
             msg "${CYAN}0.${NC} Назад"
@@ -46324,7 +46324,7 @@ host_network_menu() {
         fa)
             msg "${BOLD}${GREEN}تنظیمات شبکه و منطقه‌ای${NC}"
             msg "${CYAN}1.${NC} ترجیح IP"
-            msg "${CYAN}2.${NC} DNS، آزمون تأخیر، DoT و DoH"
+            msg "${CYAN}2.${NC} DNS، سنجش خودکار عملکرد، DoT و DoH"
             msg "${CYAN}3.${NC} منطقه زمانی، locale و NTP"
             msg "${CYAN}4.${NC} حالت و منبع دانلود"
             msg "${CYAN}0.${NC} بازگشت"
@@ -50349,20 +50349,20 @@ dns_menu() {
             msg "${CYAN}4.${NC} Custom plain DNS"
             msg "${CYAN}5.${NC} DNS over TLS (presets / custom)"
             msg "${CYAN}6.${NC} DNS over HTTPS via dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (plain)"
-            msg "${CYAN}8.${NC} Quad9 DNS (plain)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (unencrypted preset)"
+            msg "${CYAN}8.${NC} Quad9 DNS (unencrypted preset)"
             msg "${CYAN}9.${NC} Restore the previous DNS snapshot"
             msg "${CYAN}10.${NC} DNS tri-mode setup (v4/v6/dual)"
             ;;
         ru)
-            msg "${CYAN}1.${NC} Автоподбор DNS (обычный)"
+            msg "${CYAN}1.${NC} Автоподбор DNS (без шифрования)"
             msg "${CYAN}2.${NC} Автоподбор DNS over TLS (DoT)"
             msg "${CYAN}3.${NC} Автоподбор DNS over HTTPS (DoH)"
-            msg "${CYAN}4.${NC} Пользовательский открытый DNS"
+            msg "${CYAN}4.${NC} Пользовательский DNS без шифрования"
             msg "${CYAN}5.${NC} DNS over TLS (пресеты / свой)"
             msg "${CYAN}6.${NC} DNS over HTTPS через dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (обычный)"
-            msg "${CYAN}8.${NC} Quad9 DNS (обычный)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (предустановленный, без шифрования)"
+            msg "${CYAN}8.${NC} Quad9 DNS (предустановленный, без шифрования)"
             msg "${CYAN}9.${NC} Восстановить предыдущую конфигурацию"
             msg "${CYAN}10.${NC} Настройка DNS (v4/v6/dual)"
             ;;
@@ -50373,10 +50373,10 @@ dns_menu() {
             msg "${CYAN}4.${NC} DNS ساده سفارشی"
             msg "${CYAN}5.${NC} DNS روی TLS (پیش‌فرض / سفارشی)"
             msg "${CYAN}6.${NC} DNS روی HTTPS با dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (ساده)"
-            msg "${CYAN}8.${NC} Quad9 DNS (ساده)"
+            msg "${CYAN}7.${NC} DNS Cloudflare (پیش‌تنظیم، بدون رمزنگاری)"
+            msg "${CYAN}8.${NC} DNS Quad9 (پیش‌تنظیم، بدون رمزنگاری)"
             msg "${CYAN}9.${NC} بازگردانی تنظیمات قبلی DNS"
-            msg "${CYAN}10.${NC} تنظیم DNS سه‌حالته"
+            msg "${CYAN}10.${NC} تنظیم DNS سه‌حالته (v4/v6/dual)"
             ;;
         zh-tw)
             msg "${CYAN}1.${NC} 自動實測優選 DNS（明文）"
@@ -50385,8 +50385,8 @@ dns_menu() {
             msg "${CYAN}4.${NC} 自定義明文 DNS（可選 IPv6）"
             msg "${CYAN}5.${NC} 隱私 DNS DoT（預置 / 自定義）"
             msg "${CYAN}6.${NC} 隱私 DNS DoH（dnscrypt-proxy 本地轉發，Cloudflare）"
-            msg "${CYAN}7.${NC} Cloudflare DNS（明文）"
-            msg "${CYAN}8.${NC} Quad9 DNS（明文）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（明文、預設組態）"
+            msg "${CYAN}8.${NC} Quad9 DNS（明文、預設組態）"
             msg "${CYAN}9.${NC} 回滾到上次 DNS 修改前快照"
             msg "${CYAN}10.${NC} DNS 三模式設定（v4/v6/雙棧）"
             ;;
@@ -50397,8 +50397,8 @@ dns_menu() {
             msg "${CYAN}4.${NC} カスタム平文 DNS（IPv6 は任意）"
             msg "${CYAN}5.${NC} プライバシー保護 DNS over TLS（DoT、プリセット / カスタム）"
             msg "${CYAN}6.${NC} プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy ローカル転送、Cloudflare）"
-            msg "${CYAN}7.${NC} Cloudflare DNS（平文）"
-            msg "${CYAN}8.${NC} Quad9 DNS（平文）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（プリセット・暗号化なし）"
+            msg "${CYAN}8.${NC} Quad9 DNS（プリセット・暗号化なし）"
             msg "${CYAN}9.${NC} 前回の DNS 変更前のスナップショットにロールバック"
             msg "${CYAN}10.${NC} DNS 三モード設定 (v4/v6/デュアル)"
             ;;
@@ -54737,7 +54737,7 @@ for m in tf:
             elif m.gid != xray_gid: raise SystemExit(1)
         if n == XRAY_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o022) == 0)): raise SystemExit(1)
     elif in_sb:
-        # Sing-box config data may be group-readable by its dedicated runtime
+        # sing-box config data may be group-readable by its dedicated runtime
         # service account. Preserve root:root compatibility, but when a non-root
         # group is present it must be internally consistent within this archive.
         if m.uid != 0: raise SystemExit(1)
@@ -63205,7 +63205,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
             msg " ${CYAN}9.${NC}  بهینه‌سازی SNI محلی                  ${CYAN}13.${NC}  پشتیبان‌گیری / بازیابی"
             msg "${CYAN}10.${NC}  بهینه‌سازی SNI مینی‌هاست             ${CYAN}14.${NC}  کاربران / خروجی لینک اشتراک"
-            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی / پشتیبان Wallos"
+            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی / پشتیبان‌گیری Wallos"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                        ${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
             msg ""
             msg " ${CYAN}0.${NC}  بازگشت                               ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
@@ -68923,9 +68923,9 @@ PY_SELFTEST_TAR
     grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
     # 11 real sites (U35 fix; C2: was 13, the retired xray-latest block
     # held 2); source_body excludes this assertion line itself.
-    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 11 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
-    grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 11 ]] || { echo 'FAIL: Xray/sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
@@ -69446,7 +69446,7 @@ N11EOF
     HY2_DOMAIN=example.com HY2_ACME_TYPE=http CORE_IN=hysteria MODE_IN=HY2 VLESS_PORT=8443 XHTTP_PORT=9443 SS_PORT=2053 HY2_BASE_PORT=443 HY2_HOP=false HY2_HOP_IMPL=none
     [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" == 'tcp/80' ]] || { echo 'FAIL: Hysteria HTTP-01 must reserve TCP/80'; failures=$((failures + 1)); }
     CORE_IN=singbox MODE_IN=HY2
-    [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" != 'tcp/80' ]] || { echo 'FAIL: Sing-box HY2 must not reserve TCP/80'; failures=$((failures + 1)); }
+    [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" != 'tcp/80' ]] || { echo 'FAIL: sing-box HY2 must not reserve TCP/80'; failures=$((failures + 1)); }
     CORE_IN=xray MODE_IN=ALL HY2_ACME_TYPE=http
     [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" == 'tcp/80' ]] || { echo 'FAIL: Xray ALL HTTP-01 must reserve TCP/80'; failures=$((failures + 1)); }
     HY2_ACME_TYPE=dns
@@ -70112,16 +70112,16 @@ EOF_SELFTEST_IPT
     printf '%s\n' 'sentinel' > "$tmp/sing-box/sentinel.txt"
     ln -s "$tmp/sing-box/sentinel.txt" "$tmp/sing-box/config.json.tmp.$$"
     ( build_singbox_config ALL "$tmp/sing-box/config.json" ) || { echo 'FAIL: build_singbox_config ALL'; failures=$((failures + 1)); }
-    [[ "$(cat "$tmp/sing-box/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: Sing-box config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
-    [[ -L "$tmp/sing-box/config.json.tmp.$$" ]] || { echo 'FAIL: Sing-box config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
+    [[ "$(cat "$tmp/sing-box/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: sing-box config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
+    [[ -L "$tmp/sing-box/config.json.tmp.$$" ]] || { echo 'FAIL: sing-box config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
     rm -f "$tmp/sing-box/config.json.tmp.$$"
     jq empty "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: build_singbox_config JSON'; failures=$((failures + 1)); }
-    [[ "$(stat -c %a "$tmp/sing-box/config.json" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Sing-box config permissions must be 0600'; failures=$((failures + 1)); }
-    jq -e '.inbounds[] | select(.type=="shadowsocks" and .listen_port==2053 and (.network|not))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box SS-2022 2053 default network'; failures=$((failures + 1)); }
-    jq -e 'all(.inbounds[]; .type != "xhttp")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box ALL must not include XHTTP'; failures=$((failures + 1)); }
-    jq -e '(.route.rules[] | select(.action=="sniff")) and (.route.rules[] | select(.protocol=="bittorrent" and .action=="reject"))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box sniff/reject route action'; failures=$((failures + 1)); }
-    jq -e '.route.rules[0].action=="sniff" and .route.rules[0].network==["tcp"]' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box sniff must remain TCP-only to avoid HY2 UDP sniff coupling'; failures=$((failures + 1)); }
-    jq -e 'all(.outbounds[]; .type != "block")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box legacy block outbound remains'; failures=$((failures + 1)); }
+    [[ "$(stat -c %a "$tmp/sing-box/config.json" 2>/dev/null)" == '600' ]] || { echo 'FAIL: sing-box config permissions must be 0600'; failures=$((failures + 1)); }
+    jq -e '.inbounds[] | select(.type=="shadowsocks" and .listen_port==2053 and (.network|not))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box SS-2022 2053 default network'; failures=$((failures + 1)); }
+    jq -e 'all(.inbounds[]; .type != "xhttp")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box ALL must not include XHTTP'; failures=$((failures + 1)); }
+    jq -e '(.route.rules[] | select(.action=="sniff")) and (.route.rules[] | select(.protocol=="bittorrent" and .action=="reject"))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box sniff/reject route action'; failures=$((failures + 1)); }
+    jq -e '.route.rules[0].action=="sniff" and .route.rules[0].network==["tcp"]' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box sniff must remain TCP-only to avoid HY2 UDP sniff coupling'; failures=$((failures + 1)); }
+    jq -e 'all(.outbounds[]; .type != "block")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box legacy block outbound remains'; failures=$((failures + 1)); }
     fi
     # Parent-directory traversal regression for the dedicated runtime user.
     # R15C17-01: local init so an inherited environment value can never
@@ -70142,11 +70142,11 @@ EOF_SELFTEST_IPT
         chmod 700 "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         chown root:nogroup "$runtime_traverse/sing-box/config.json" "$runtime_traverse/hysteria/config.yaml"
         chmod 640 "$runtime_traverse/sing-box/config.json" "$runtime_traverse/hysteria/config.yaml"
-        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 && { echo 'FAIL: 0700 Sing-box parent directory was readable by runtime user'; failures=$((failures + 1)); }
+        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 && { echo 'FAIL: 0700 sing-box parent directory was readable by runtime user'; failures=$((failures + 1)); }
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 && { echo 'FAIL: 0700 Hysteria parent directory was readable by runtime user'; failures=$((failures + 1)); }
         chown root:nogroup "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         chmod 750 "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
-        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: 0750 Sing-box parent directory blocked runtime user'; failures=$((failures + 1)); }
+        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: 0750 sing-box parent directory blocked runtime user'; failures=$((failures + 1)); }
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 || { echo 'FAIL: 0750 Hysteria parent directory blocked runtime user'; failures=$((failures + 1)); }
         fi
     fi
@@ -70220,8 +70220,8 @@ PY_SELFTEST_YAML
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
     fi
-    CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: Sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
-    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
+    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
     # N-18: invalid fingerprint must be rejected.
     CORE=singbox HY2_CERT_PUBKEY_SHA256_B64='abcdef"; evil' singbox_hy2_tls_json >/dev/null 2>&1 && { echo 'FAIL: singbox_hy2_tls_json accepted invalid fingerprint'; failures=$((failures + 1)); }
     local _saved_release="${release:-}" _saved_sb_arch="${SB_ARCH:-}" _regex
@@ -71018,12 +71018,12 @@ main_loop() {
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
+                msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ sing-box Deployment ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (Official)               ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  All-in-one (Xray+Hy2)               ${CYAN}10.${NC} All-in-one (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (Official)               ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  All protocols: 4-in-1 (Xray+Hy2)    ${CYAN}10.${NC} All protocols: 3-in-1 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${CYAN}11.${NC}  Toolbox                            ${CYAN}16.${NC}  Wipe Nodes & Reset Env"
@@ -71041,14 +71041,14 @@ main_loop() {
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2 (официальный)            ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${CYAN}5.${NC}  Комплексная установка               ${CYAN}10.${NC} Комплексная установка"
+                msg "${CYAN}5.${NC}  Все протоколы: 4 в 1 (Xray+Hy2)      ${CYAN}10.${NC} Все протоколы: 3 в 1 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
                 msg "${CYAN}11.${NC}  Панель инструментов                ${CYAN}16.${NC}  Сброс узлов и окружения"
                 msg "${CYAN}12.${NC}  Просмотр параметров узлов          ${CYAN}17.${NC}  Лимит месячного трафика"
                 msg "${CYAN}13.${NC}  Справка и руководство              ${CYAN}18.${NC}  Ещё протоколы"
                 msg "${CYAN}14.${NC}  Обновление ядра и скрипта          ${CYAN}19.${NC}  Язык / Language"
-                msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.${NC}  Полное удаление скрипта${NC}"
+                msg "${CYAN}15.${NC}  Оптимизация VPS             ${CYAN}20.${NC}  Полное удаление скрипта и ядер${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}0.${NC}  Выход"
                 ;;
@@ -71059,7 +71059,7 @@ main_loop() {
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2 (رسمی)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${CYAN}5.${NC}  نصب ترکیبی                          ${CYAN}10.${NC} نصب ترکیبی"
+                msg "${CYAN}5.${NC}  همهٔ پروتکل‌ها، ۴ در ۱ (Xray+Hy2)   ${CYAN}10.${NC} همهٔ پروتکل‌ها، ۳ در ۱ (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${CYAN}11.${NC}  جعبه ابزار                         ${CYAN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
@@ -71072,12 +71072,12 @@ main_loop() {
                 ;;
             zh-tw)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ sing-box 部署 ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  全協議四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全協議三合一 (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  全協議四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全協議三合一 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${CYAN}11.${NC}  綜合工具箱                         ${CYAN}16.${NC}  清空節點與重置環境"
@@ -71090,12 +71090,12 @@ main_loop() {
                 ;;
             ja)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 導入 ]${NC}                ${CYAN}[ Sing-box 導入 ]${NC}"
+                msg "${CYAN}[ Xray-core デプロイ ]${NC}                ${CYAN}[ sing-box デプロイ ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2（公式）                  ${CYAN}9.${NC}  Hysteria 2（sing-box）"
-                msg "${CYAN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${CYAN}10.${NC} 全プロトコル統合（Sing-box）"
+                msg "${CYAN}5.${NC}  全プロトコル・4-in-1（Xray+Hy2）  ${CYAN}10.${NC} 全プロトコル・3-in-1（sing-box）"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${CYAN}11.${NC}  総合ツールボックス                 ${CYAN}16.${NC}  全ノード削除と環境初期化"
@@ -71108,12 +71108,12 @@ main_loop() {
                 ;;
             *)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ sing-box 部署 ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  全协议四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全协议三合一 (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  全协议四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全协议三合一 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${CYAN}11.${NC}  综合工具箱                         ${CYAN}16.${NC}  清空节点与重置环境"

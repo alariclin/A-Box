@@ -67918,17 +67918,32 @@ PY_SELFTEST_TAR
     failures=$((failures + _i18n_rc))
     _i18n_syn=$(mktemp -d /tmp/A-Box-i18n-neg.XXXXXX) || { echo 'FAIL: i18n negative sample setup'; failures=$((failures + 1)); }
     if [[ -n "$_i18n_syn" && -d "$_i18n_syn" ]]; then
-        : > "$_i18n_syn/empty.txt"
-        printf '%s\n' '        zh:synkey) echo x ;;' '        en:synkey) echo x ;;' '        ru:synkey) echo x ;;' '        fa:synkey) echo x ;;' '        zh-tw:synkey) echo x ;;' > "$_i18n_syn/missing.txt"
-        { for _l in zh en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/dup.txt"
-        { for _l in en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey echo x ;;\n'; } > "$_i18n_syn/badpat.txt"
+        # R64-01: a failed sample write must not pass vacuously (the
+        # loop below only counts a failure when the checker returns 0,
+        # so an empty/missing file -- checker returns 1 -- would be
+        # misread as "correctly caught"). Track write failures and
+        # verify the files afterwards: a mid-stream printf failure
+        # inside a { for ...; } group can be masked by the last
+        # printf, so the rc alone is not sufficient evidence.
+        local _i18n_gen_failed=0
+        : > "$_i18n_syn/empty.txt" || _i18n_gen_failed=1
+        printf '%s\n' '        zh:synkey) echo x ;;' '        en:synkey) echo x ;;' '        ru:synkey) echo x ;;' '        fa:synkey) echo x ;;' '        zh-tw:synkey) echo x ;;' > "$_i18n_syn/missing.txt" || _i18n_gen_failed=1
+        { for _l in zh en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/dup.txt" || _i18n_gen_failed=1
+        { for _l in en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey echo x ;;\n'; } > "$_i18n_syn/badpat.txt" || _i18n_gen_failed=1
         # S167: cancellation sample: zh twice, ja missing, total still
         # 6 -- the old total-count guard passed this; per-language
         # counting must fail it (on ja with 0 arms and zh with 2).
-        { for _l in zh en ru fa zh-tw; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/cancel.txt"
-        for _s in empty missing dup badpat cancel; do
-            check_i18n_parity_file "$_i18n_syn/$_s.txt" >/dev/null 2>&1 && { echo "FAIL: i18n negative sample $_s not caught"; failures=$((failures + 1)); }
-        done
+        { for _l in zh en ru fa zh-tw; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/cancel.txt" || _i18n_gen_failed=1
+        for _s in missing dup badpat cancel; do [[ -s "$_i18n_syn/$_s.txt" ]] || _i18n_gen_failed=1; done
+        [[ -e "$_i18n_syn/empty.txt" ]] || _i18n_gen_failed=1
+        if (( _i18n_gen_failed == 1 )); then
+            echo 'FAIL: i18n negative sample generation failed'
+            failures=$((failures + 1))
+        else
+            for _s in empty missing dup badpat cancel; do
+                check_i18n_parity_file "$_i18n_syn/$_s.txt" >/dev/null 2>&1 && { echo "FAIL: i18n negative sample $_s not caught"; failures=$((failures + 1)); }
+            done
+        fi
         check_i18n_parity_file "$_i18n_syn/nofile.txt" >/dev/null 2>&1 && { echo 'FAIL: i18n negative sample nofile not caught'; failures=$((failures + 1)); }
         rm -rf -- "$_i18n_syn"
     fi

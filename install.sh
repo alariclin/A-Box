@@ -58046,6 +58046,10 @@ _wallos_recover_interrupted_upgrade_impl() {
     backup=$(wallos_txn_value "$journal" backup) || return 1
     was_running=$(wallos_txn_value "$journal" was_running) || return 1
     if [[ "$phase" == committed ]]; then
+        # R55a-M1: drop the old-tunnel-token sidecar too; the journal
+        # is the only record that could ever trigger its cleanup, and
+        # a failure here must keep the journal so a retry can remove it.
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" || return 1
         rm -f -- "$journal" || return 1
         rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
         msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
@@ -58259,8 +58263,9 @@ EOF_B15_SIDECAR
                 msg "${RED}Recovery restored Wallos but its state has an invalid container port; refusing to report success, journal kept.${NC}"
                 return 1
             fi
+            local _rb_bind_orig="$_rb_bind"
             _rb_bind=127.0.0.1
-            if [[ "$old_bind" != 127.0.0.1 || "$old_port" != "$_rb_port" ]]; then
+            if [[ "$old_bind" != 127.0.0.1 || "$old_port" != "$_rb_port" || "$_rb_bind_orig" != 127.0.0.1 ]]; then
                 _rb_layout_changed=1
             fi
             if (( 10#$_rb_port == 10#$_fs_pubport )); then
@@ -58276,6 +58281,17 @@ EOF_B15_SIDECAR
                     return 1
                 fi
                 _rb_port="$_rb_cand"
+                _rb_layout_changed=1
+            fi
+        elif [[ "$_fs_mode" == cftunnel ]]; then
+            # R55a-H1: a cftunnel target binds loopback (the tunnel
+            # daemon reaches the container through loopback; S149/F05).
+            # The journal's old_bind may be 0.0.0.0 (pre-switch http
+            # mode); re-applying it would publish plaintext HTTP on
+            # the public interface. Force loopback and persist it.
+            local _rb_bind_orig="$_rb_bind"
+            _rb_bind=127.0.0.1
+            if [[ "$_rb_bind_orig" != 127.0.0.1 ]]; then
                 _rb_layout_changed=1
             fi
         fi
@@ -58297,6 +58313,11 @@ EOF_B15_SIDECAR
     # required, so sync the journal values now.
     if [[ "$_fs_mode" == https ]]; then
         old_port="$_rb_port"
+        old_bind="$_rb_bind"
+    elif [[ "$_fs_mode" == cftunnel ]]; then
+        # R55a-H1: the cftunnel target binds loopback; the journal's
+        # old_bind may be 0.0.0.0. old_port stays the journal's
+        # validated value (no Caddy collision to avoid here).
         old_bind="$_rb_bind"
     fi
     # FIX: When old_bind is empty (legacy containers had no IP binding),

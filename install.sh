@@ -58239,11 +58239,125 @@ wallos_wait_healthy() {
     return 1
 }
 
+# H7-STATE: rebuild a missing .abox-state from the live container.
+# Installs before this fix never wrote state on the fresh-install /
+# upgrade success path (only the HTTPS->HTTP fallback branch did), so
+# deployed instances have db + logos but no state, and every backup
+# fails at wallos_create_backup's pre-check. The rebuild recovers
+# IMAGE / PORT / TZ / BIND from `docker inspect` and MODE from the
+# bind address plus the live frontends; VERSION comes only from a
+# version tag attached to the very image the container runs
+# (Config.Image tag, else the image ID's RepoTags) -- a digest with
+# no resolvable tag leaves VERSION absent, never invented, so the
+# U112 rollback gate still skips such backups instead of trusting a
+# fabricated version. Provenance is recorded in the rebuilt file
+# (STATE_SOURCE, VERSION_SOURCE) so a reconstructed state is never
+# mistaken for an install-written one. Returns 1 on anything
+# unrecoverable (foreign container, no port binding, invalid values):
+# the caller then fails exactly as before (fail-closed).
+# NOTE: this writes no stdout -- wallos_create_backup's output is
+# captured as the backup path, so diagnostics go to stderr.
+wallos_rebuild_state_from_live() {
+    local image='' image_id='' port='' tz='' bind='' mode='' pubport='' cfhost='' version='' ver_src=''
+    local _label='' _env='' _tags='' _tag=''
+    # R14-07 idiom: only a container carrying the A-Box managed label
+    # may donate its metadata; a foreign same-name holder refuses.
+    _label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+    [[ "$_label" == 'true' ]] || return 1
+    image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    image="${image#docker.io/}"
+    [[ -n "$image" ]] || return 1
+    image_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
+    [[ "$image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+    port=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostPort}}' wallos 2>/dev/null || true)
+    # U217: an unpublished container has no recoverable port; refuse
+    # rather than inventing one (an empty PORT would break the upgrade
+    # C-03 gate on the next run).
+    valid_canonical_port "$port" || return 1
+    bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+    # F-08: preserve a legitimate HostIp verbatim; an empty HostIp
+    # with a port is not expected -- refuse instead of guessing.
+    [[ -n "$bind" ]] || return 1
+    valid_ip_address "$bind" || return 1
+    _env=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' wallos 2>/dev/null || true)
+    tz=$(printf '%s\n' "$_env" | awk -F= '$1=="TZ" {print $2; exit}')
+    [[ -n "$tz" ]] || tz='UTC'
+    valid_timezone_name "$tz" || return 1
+    # VERSION: the container's own image tag first (tag-created
+    # containers); digest-created containers fall back to a tag
+    # attached to the same image ID in the local image store (the
+    # install path tags the pulled digest, so this is normally the
+    # version that was installed). Neither source may invent a
+    # version: no tag, no VERSION line.
+    if [[ "$image" =~ ^bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        version="${BASH_REMATCH[1]}"
+        ver_src='container-image-tag'
+    else
+        _tags=$(docker image inspect -f '{{join .RepoTags "\n"}}' "$image_id" 2>/dev/null || true)
+        while IFS= read -r _tag; do
+            _tag="${_tag#docker.io/}"
+            if [[ "$_tag" =~ ^bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+                version="${BASH_REMATCH[1]}"
+                ver_src='image-repo-tag'
+                break
+            fi
+        done <<< "$_tags"
+    fi
+    # MODE: a live frontend wins over the bind address; otherwise the
+    # bind decides (loopback -> local, public -> http). CFHOST is not
+    # persisted anywhere outside state (the tunnel unit carries no
+    # hostname), so a rebuilt cftunnel state omits it; PUBPORT for
+    # https comes from the Caddy JSON the setup wrote atomically.
+    if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+        mode='cftunnel'
+    elif is_service_running abox-wallos-caddy 2>/dev/null && [[ -f /etc/ddr/wallos-caddy.json && ! -L /etc/ddr/wallos-caddy.json ]]; then
+        mode='https'
+        pubport=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' /etc/ddr/wallos-caddy.json 2>/dev/null || true)
+        pubport="${pubport#:}"
+        [[ "$pubport" =~ ^[0-9]+$ ]] || pubport=''
+    elif [[ "$bind" == 0.0.0.0 ]]; then
+        mode='http'
+    else
+        mode='local'
+    fi
+    wallos_write_state "$image" "$port" "$tz" "$bind" "$mode" "$pubport" "$cfhost" "$version" || return 1
+    # Provenance: a reconstructed state must say so. Appended after
+    # the atomic write; a failed append only warns (the state itself
+    # is already valid and complete).
+    if [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+        {
+            printf 'STATE_SOURCE=live-container\n'
+            [[ -n "$ver_src" ]] && printf 'VERSION_SOURCE=%s\n' "$ver_src"
+        } >> "$WALLOS_DIR/.abox-state" 2>/dev/null || true
+        grep -Fxq 'STATE_SOURCE=live-container' "$WALLOS_DIR/.abox-state" 2>/dev/null || \
+            msg "${YELLOW}[!] Wallos state was rebuilt from the live container but the provenance marker could not be recorded.${NC}" >&2
+    fi
+    return 0
+}
+
 wallos_create_backup() {
     local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
-    [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
+    if ! [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
        -d "$WALLOS_DIR/logos" && ! -L "$WALLOS_DIR/logos" &&
-       -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+       -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+        # H7-STATE: db + logos present but state absent means an
+        # instance installed before the install path wrote state on
+        # every success path. Rebuild the state from the live
+        # container and re-check; anything unrecoverable (or a
+        # missing db/logos, or a state symlink/directory) still
+        # fails exactly as before. One successful backup rebuilds
+        # the state, which then also unblocks the upgrade C-03
+        # gate and the rollback version check.
+        if [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
+              -d "$WALLOS_DIR/logos" && ! -L "$WALLOS_DIR/logos" &&
+              ! -e "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] &&
+           wallos_rebuild_state_from_live &&
+           [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+            :
+        else
+            return 1
+        fi
+    fi
     # R6C15-02: only create (at 700) when missing; an existing
     # backups dir keeps its mode, a symlink target is refused.
     mkdir_private "$WALLOS_DIR/backups" || return 1
@@ -62299,6 +62413,24 @@ wallos_install_or_update() {
             fi
             return 1
         fi
+    fi
+    # H7-STATE: persist the install state on EVERY successful path
+    # (local / http / https / cftunnel, fresh install and upgrade) at
+    # this single commit point, before the S143 journal commit below:
+    # the M-28 reclaim below and the backup pre-check both assume
+    # this file already holds the NEW port/pubport, and no success
+    # path wrote it before (only the HTTPS->HTTP fallback branch
+    # did). A failed save fails the install like the 07h2-H1
+    # fallback branch above: roll the firewall increments back and
+    # recover the old container, so the journal stays active for the
+    # next run.
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost" "$image_version"; then
+        msg "${RED}$(tr_msg wl_iu_state_save_fail)${NC}"
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
+        if (( running == 1 )); then
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+        fi
+        return 1
     fi
     # S143: the upgrade journal is the rollback material. It must not be
     # committed (phase=committed, which recover treats as "already done"

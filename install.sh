@@ -4751,12 +4751,12 @@ tr_msg() {
         fa:swap_select_0_5) echo 'انتخاب [۰ تا ۵]: ' ;;
         zh-tw:swap_select_0_5) echo '請選擇 [0-5]：' ;;
         ja:swap_select_0_5) echo '選択してください [0-5]: ' ;;
-        zh:bk_select_0_4) echo '请选择 [0-4]：' ;;
-        en:bk_select_0_4) echo 'Select [0-4]: ' ;;
-        ru:bk_select_0_4) echo 'Выберите [0–4]: ' ;;
-        fa:bk_select_0_4) echo 'انتخاب [۰ تا ۴]: ' ;;
-        zh-tw:bk_select_0_4) echo '請選擇 [0-4]：' ;;
-        ja:bk_select_0_4) echo '選択してください [0-4]: ' ;;
+        zh:bk_select_0_5) echo '请选择 [0-5]：' ;;
+        en:bk_select_0_5) echo 'Select [0-5]: ' ;;
+        ru:bk_select_0_5) echo 'Выберите [0–5]: ' ;;
+        fa:bk_select_0_5) echo 'انتخاب [۰ تا ۵]: ' ;;
+        zh-tw:bk_select_0_5) echo '請選擇 [0-5]：' ;;
+        ja:bk_select_0_5) echo '選択してください [0-5]: ' ;;
         zh:bk_key_dest) echo '独立介质上的绝对路径：' ;;
         en:bk_key_dest) echo 'Absolute path on a separate trusted medium: ' ;;
         ru:bk_key_dest) echo 'Абсолютный путь на отдельном доверенном носителе: ' ;;
@@ -14335,11 +14335,19 @@ hysteria_acme_owner_marker_valid() {
 }
 
 mark_hysteria_acme_dir_managed() {
-    local dir="${1:-/etc/hysteria/acme}" marker="${2:-$HY2_ACME_OWNER_MARKER}" tmp
+    local dir="${1:-/etc/hysteria/acme}" marker="${2:-$HY2_ACME_OWNER_MARKER}" tmp _mode
     [[ "$dir" == /etc/hysteria/acme ]] || return 1
     [[ "$marker" == "$dir/.A-Box-managed" ]] || return 1
     [[ -d "$dir" && ! -L "$dir" ]] || return 1
     hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
+    # H1 (R14-01 residual, hardening): the shared validator above also
+    # accepts 770, so require 1770 HERE instead of relying on the
+    # caller's pre-step: without the sticky bit a group member can
+    # delete/replace root's tmp files. The validator itself is shared
+    # (manifest checks accept a 770 top dir) and is deliberately NOT
+    # tightened here.
+    _mode=$(stat -c %a "$dir" 2>/dev/null) || return 1
+    [[ "$_mode" == 1770 ]] || return 1
     if [[ -e "$marker" || -L "$marker" ]]; then
         hysteria_acme_owner_marker_valid "$marker"
         return
@@ -15561,7 +15569,12 @@ users_registries_remove_core() {
     # follow it into the link target. The leaf ! -L guard only covers
     # the last component; a linked ancestor would delete ordinary
     # files outside the registry. A missing dir stays a no-op success.
+    # H2 (R15b residual, hardening): also check the ancestor chain
+    # (path_parent_chain_safe) -- the leaf guard alone misses a
+    # symlinked ancestor, which the glob then follows out of the
+    # registry. Same guard added to users_registries_wipe below.
     [[ ! -L "$_dir" ]] || return 1
+    path_parent_chain_safe "$_dir" || return 1
     [[ -d "$_dir" ]] || return 0
     for _prefix in $_prefixes; do
         for _f in "$_dir"/${_prefix}__*.json; do
@@ -16912,6 +16925,30 @@ shortcut_check_candidate() {
 # expectation from the age branch.
 _shortcut_lock_remove_if_pid_still() {
     local _lock="$1" _expect="$2" _cur
+    if command -v flock >/dev/null 2>&1; then
+        # H3 (R17-M1 = L2, hardening): serialise the re-read + delete
+        # under a guard-file flock (flock -n, same idiom as
+        # acquire_abox_runtime_guard), so two concurrent reclaimers
+        # cannot both pass the re-read and the second delete the
+        # first's fresh lock. The guard file lives next to the lock
+        # dir and is never deleted (it is the lock inode, like
+        # RUNTIME_LOCK). A dynamically allocated fd avoids colliding
+        # with the runtime lock's fd 9/10. If the guard cannot be
+        # taken (busy or uncreatable) return 1: the caller retries
+        # later instead of deleting blind. No flock binary at all
+        # falls back to the old unguarded behaviour below.
+        local _guard="${_lock}.guard" _gfd=''
+        ( exec {_gfd}>>"$_guard" 2>/dev/null || exit 1
+          flock -n "$_gfd" 2>/dev/null || exit 1
+          _cur=$(cat "$_lock/pid" 2>/dev/null || true)
+          [[ "$_cur" == "$_expect" ]] || exit 1
+          if [[ "$_expect" =~ ^[0-9]+$ ]]; then
+              kill -0 "$_expect" 2>/dev/null && exit 1
+          fi
+          rm -rf -- "$_lock" 2>/dev/null || true
+          exit 0 )
+        return $?
+    fi
     _cur=$(cat "$_lock/pid" 2>/dev/null || true)
     [[ "$_cur" == "$_expect" ]] || return 1
     if [[ "$_expect" =~ ^[0-9]+$ ]]; then
@@ -18380,9 +18417,6 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
-        # Final-round follow-up §2 (worker A): sync preserved
-        # standalone ports into the shell vars write_env() persists.
-        _preserve_sync_env_ports "$1" "$cfg" || true
         # Carbon H-11(1): the deploy wiped the firewall rules before
         # this restore and pre_install_setup only re-opens the main
         # protocol ports. Re-open the ports of the inbounds this
@@ -18450,6 +18484,14 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                 fi
             fi
         fi
+        # H4 (R18a-X1 residual, hardening): sync preserved standalone
+        # ports into the shell vars write_env() persists ONLY after
+        # the firewall stage succeeded -- the sync has no data
+        # dependency on the firewall stage, so the success path is
+        # unchanged, and a firewall failure now leaves no residue in
+        # TROJAN_PORT/SOCKS_PORT (both failure exits above return
+        # before reaching this line).
+        _preserve_sync_env_ports "$1" "$cfg" || true
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
@@ -39749,7 +39791,10 @@ users_registries_wipe() {
     # users_registries_remove_core, R8-F04-2). The leaf ! -L guard only
     # covers the last component; a linked dir would delete ordinary
     # files outside the registry. A missing dir stays a no-op success.
+    # H2 (R15b residual, hardening): ancestor chain too, like
+    # users_registries_remove_core above.
     [[ ! -L "$_dir" ]] || return 1
+    path_parent_chain_safe "$_dir" || return 1
     [[ -d "$_dir" ]] || return 0
     for _f in "$_dir"/*.json; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
@@ -47500,6 +47545,69 @@ _nm_dns_resolv_managed() {
     return 0
 }
 
+# H5 (R45-M1 residual, hardening): complete effective-upstream check
+# (resolvectl). nm_dns_verify_applied below proves the connection
+# profile carries the requested servers and that resolv.conf's first
+# nameserver is one of them (or a provably NM-fed loopback stub) -- but
+# neither proves the requested servers are the ones actually serving
+# queries on the effective link: a stale DHCP upstream or a
+# higher-priority link can still win while the profile looks right.
+# Ask the running resolver directly, on the effective device
+# (nm_effective_device, the same device apply_host_dns modified):
+#   1. `resolvectl dns <dev>` must list exactly the requested server
+#      set (normalised, order-insensitive); a link reporting no
+#      servers at all is a definite mismatch, not an inconclusive
+#      query.
+#   2. `resolvectl status <dev>` "Current DNS Server", when resolved
+#      reports one, must be one of the requested servers -- the
+#      configured list alone does not prove which server answers.
+#      Absent (no query yet) is inconclusive and is skipped.
+# Fail-open only when the evidence itself is unavailable: no
+# resolvectl binary, no determinable effective device, or resolvectl
+# answering nothing at all for the device (resolved not managing it).
+# A present-but-different server set is positive evidence of a wrong
+# upstream and fails closed. One retry after 1s on mismatch: resolved
+# updates asynchronously after `nmcli device reapply`.
+_nm_dns_effective_upstream_matches() {
+    local dev="$1" v4="$2" v6="${3:-}" _out='' _line='' _servers='' _cur='' _found=0 _tok=''
+    local -a _req_toks=()
+    IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
+    _out=$(resolvectl dns "$dev" 2>/dev/null || true)
+    [[ -n "$_out" ]] || return 0
+    _servers=''
+    while IFS= read -r _line; do
+        case "$_line" in
+            *"(${dev}):"*) _servers="${_line#*:}"; _found=1 ;;
+        esac
+    done <<< "$_out"
+    (( _found == 1 )) || return 0
+    [[ -n "${_servers//[[:space:]]/}" ]] || return 1
+    [[ "$(_nm_dns_norm_set "$_servers")" == "$(_nm_dns_norm_set "$v4${v6:+ $v6}")" ]] || return 1
+    _out=$(resolvectl status "$dev" 2>/dev/null || true)
+    _cur=$(printf '%s\n' "$_out" | awk '/^Current DNS Server:/ {print $NF; exit}' || true)
+    if [[ -n "$_cur" ]]; then
+        _cur=$(normalize_ip_literal "$_cur")
+        for _tok in "${_req_toks[@]}"; do
+            [[ "$(normalize_ip_literal "$_tok")" == "$_cur" ]] && return 0
+        done
+        return 1
+    fi
+    return 0
+}
+
+_nm_dns_verify_effective_upstream() {
+    local v4="$1" v6="${2:-}" dev='' _try=0
+    command -v resolvectl >/dev/null 2>&1 || return 0
+    dev=$(nm_effective_device 2>/dev/null || true)
+    [[ -n "$dev" ]] || return 0
+    while (( _try < 2 )); do
+        if _nm_dns_effective_upstream_matches "$dev" "$v4" "$v6"; then return 0; fi
+        _try=$(( _try + 1 ))
+        (( _try < 2 )) && sleep 1
+    done
+    return 1
+}
+
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
     v=$(nmcli --escape no -g ipv4.dns connection show "$connection" 2>/dev/null || true)
@@ -47520,7 +47628,12 @@ nm_dns_verify_applied() {
     _first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' "$rc" 2>/dev/null || true)
     [[ -n "$_first_ns" ]] || return 1
     if [[ "$_first_ns" =~ ^127\.0\.0\.(1|53)$ ]]; then
-        _nm_dns_loopback_trusted "$_first_ns" && return 0
+        if _nm_dns_loopback_trusted "$_first_ns"; then
+            # H5: a trusted stub only proves the backend provenance; the
+            # requested upstreams behind it still have to win.
+            _nm_dns_verify_effective_upstream "$v4" "$v6"
+            return $?
+        fi
     fi
     local -a _req_toks=()
     IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
@@ -47530,7 +47643,12 @@ nm_dns_verify_applied() {
     local _first_ns_norm=''
     _first_ns_norm=$(normalize_ip_literal "$_first_ns")
     for _req_tok in "${_req_toks[@]}"; do
-        [[ "$(normalize_ip_literal "$_req_tok")" == "$_first_ns_norm" ]] && return 0
+        if [[ "$(normalize_ip_literal "$_req_tok")" == "$_first_ns_norm" ]]; then
+            # H5: first-nameserver match is necessary, not sufficient;
+            # confirm the requested servers are the effective upstream.
+            _nm_dns_verify_effective_upstream "$v4" "$v6"
+            return $?
+        fi
     done
     return 1
 }
@@ -55389,6 +55507,12 @@ backup_current_config() {
         fi
         # A-05a: Do NOT write ${tarball}.key next to archive (co-location defeats HMAC trust model).
         # Key lives ONLY in /root/A-Box-backup-keys/ (mode 700, root-only).
+        # H6 (R52-02 = L12): the separated key is PERMANENTLY retained.
+        # It is the only copy of the HMAC key for its archive, and the
+        # archive may have been copied to external media; retention
+        # below therefore never deletes separated keys. The only
+        # deletion path is cleanup_separated_backup_keys (explicit
+        # name + typed DELETE-KEY confirmation, via backup menu 5).
         msg "${GREEN}[*] $(tr_msg bk_recovery_key)${NC} $separated_key"
         msg "${YELLOW}[!] $(tr_msg bk_keep_key)${NC}"
     fi
@@ -55399,6 +55523,10 @@ backup_current_config() {
     fi
     # R9C14-01: retention deletion lives inside the Python program below
     # (exact Path objects, no name round-trip through bash).
+    # H6 (R52-02 = L12): retention deletes archives and their
+    # archive-adjacent sidecars (.sha256/.hmac/.key) ONLY -- the
+    # separated keys in /root/A-Box-backup-keys/ are never touched
+    # (see cleanup_separated_backup_keys for the lifecycle policy).
     if python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" "$tarball" <<'PY_BACKUP_RETENTION'
 from pathlib import Path
 import sys
@@ -55437,6 +55565,62 @@ PY_BACKUP_RETENTION
         msg "${YELLOW}[!] $(tr_msg bk_retention_fail)${NC}"
     fi
     msg "${GREEN}[*] $(tr_msg bk_created)${NC} $tarball"
+}
+
+# H6 (R52-02 = L12, hardening): separated recovery-key lifecycle.
+# POLICY -- explicit permanent retention + operator-named manual
+# cleanup. The key in /root/A-Box-backup-keys/ is the ONLY copy of
+# the HMAC key for its archive, and the archive itself may have been
+# copied to external media long ago. Local archive absence therefore
+# proves nothing about whether the key is still needed: deleting a
+# key because no same-named archive survives locally could destroy
+# the recovery of an externally stored archive. So:
+#   * retention (backup_current_config) NEVER deletes separated keys
+#     -- it removes archives and their archive-adjacent sidecars only;
+#   * this function is the ONLY deletion path, and it deletes only a
+#     key the operator names explicitly (exact basename, no bulk or
+#     "orphan" mode), after a typed DELETE-KEY confirmation and a
+#     printed warning that the archive may live on external media.
+# No argument lists the keys (with advisory local-archive presence)
+# and deletes nothing; interactively it then offers one named
+# deletion, non-interactively it stops at the list.
+# ABOX_BACKUP_KEYS_DIR is a test seam; production is always
+# /root/A-Box-backup-keys.
+cleanup_separated_backup_keys() {
+    local keys_dir="${ABOX_BACKUP_KEYS_DIR:-/root/A-Box-backup-keys}" _name="${1:-}" _f='' _archive='' _present='' _answer='' _target='' _any=0
+    (( EUID == 0 )) || return 1
+    [[ -d "$keys_dir" && ! -L "$keys_dir" ]] || return 1
+    path_parent_chain_safe "$keys_dir" || return 1
+    if [[ -z "$_name" ]]; then
+        for _f in "$keys_dir"/A-Box-backup-*.tar.gz.key; do
+            [[ -f "$_f" && ! -L "$_f" ]] || continue
+            _any=1
+            _archive="$(basename -- "${_f%.key}")"
+            _present='no'
+            if [[ -f "${ABOX_DIR:-/etc/ddr}/backups/$_archive" || -f "/root/A-Box-backups/$_archive" ]]; then _present='yes'; fi
+            msg "[*] $_f (same-named archive present locally: $_present)"
+        done
+        (( _any == 0 )) && msg '[*] No separated recovery keys.'
+        msg '[!] A separated key is the only copy for its archive, which may live on external media; local archive absence does not mean the key is unneeded. Deletion is by explicit name only.'
+        if [[ -t 0 ]]; then
+            read -r -p 'Key basename to delete (empty = none): ' _name || return 0
+            [[ -n "$_name" ]] || return 0
+        else
+            return 0
+        fi
+    fi
+    case "$_name" in */*|*..*) return 1 ;; esac
+    [[ "$_name" == A-Box-backup-*.tar.gz.key ]] || return 1
+    _target="$keys_dir/$_name"
+    [[ -f "$_target" && ! -L "$_target" ]] || return 1
+    path_parent_chain_safe "$_target" || return 1
+    msg "[!] Deleting $_target destroys recovery of its archive, which may be stored on external media. This cannot be undone."
+    read -r -p 'Type DELETE-KEY to confirm permanent deletion: ' _answer || return 1
+    [[ "$_answer" == 'DELETE-KEY' ]] || return 1
+    rm -f -- "$_target" || return 1
+    [[ ! -e "$_target" && ! -L "$_target" ]] || return 1
+    msg "[*] Deleted separated recovery key: $_target"
+    return 0
 }
 
 auto_backup_prompt() {
@@ -55972,6 +56156,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} Restore from backup"
         msg "${CYAN}3.${NC} Export recovery key to a separate medium"
         msg "${CYAN}4.${NC} Convert a legacy backup to manifest v3"
+        msg "${CYAN}5.${NC} Clean up separated recovery keys"
         msg "${CYAN}0.${NC} Back"
             ;;
         ru)
@@ -55979,6 +56164,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} Восстановление из резервной копии"
         msg "${CYAN}3.${NC} Экспорт ключа восстановления на отдельный носитель"
         msg "${CYAN}4.${NC} Конвертация старой резервной копии в manifest v3"
+        msg "${CYAN}5.${NC} Очистка отделённых ключей восстановления"
         msg "${CYAN}0.${NC} Назад"
             ;;
         fa)
@@ -55986,6 +56172,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} بازیابی از پشتیبان"
         msg "${CYAN}3.${NC} صدور کلید بازیابی به رسانه جداگانه"
         msg "${CYAN}4.${NC} تبدیل پشتیبان قدیمی به manifest v3"
+        msg "${CYAN}5.${NC} پاک‌سازی کلیدهای بازیابی جداگانه"
         msg "${CYAN}0.${NC} بازگشت"
             ;;
         ja)
@@ -55993,6 +56180,7 @@ backup_restore_menu() {
             msg "${CYAN}2.${NC} バックアップから復元"
             msg "${CYAN}3.${NC} 復旧キーを別の媒体にエクスポート"
             msg "${CYAN}4.${NC} 旧バージョンのバックアップを manifest v3 に安全に変換"
+            msg "${CYAN}5.${NC} 分離された復旧キーをクリーンアップ"
             msg "${CYAN}0.${NC} 戻る"
             ;;
         zh-tw)
@@ -56000,6 +56188,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} 從備份恢復"
         msg "${CYAN}3.${NC} 將恢復金鑰匯出到獨立介質"
         msg "${CYAN}4.${NC} 將舊版備份安全轉換為 manifest v3"
+        msg "${CYAN}5.${NC} 清理分離的復原金鑰"
         msg "${CYAN}0.${NC} 返回"
             ;;
         *)
@@ -56007,11 +56196,12 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} 从备份恢复"
         msg "${CYAN}3.${NC} 将恢复密钥导出到独立介质"
         msg "${CYAN}4.${NC} 将旧版备份安全转换为 manifest v3"
+        msg "${CYAN}5.${NC} 清理分离的恢复密钥"
         msg "${CYAN}0.${NC} 返回"
             ;;
     esac
     local c
-    read -r -p "$(tr_msg bk_select_0_4)" c || return 0
+    read -r -p "$(tr_msg bk_select_0_5)" c || return 0
     c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) backup_current_config; pause_return ;;
@@ -56026,6 +56216,10 @@ backup_restore_menu() {
             read -r -p "$(tr_msg bk_legacy_path)" legacy_path || return 0
             read -r -p "$(tr_msg bk_legacy_out)" legacy_out || return 0
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
+            ;;
+        5)
+            # H6 (R52-02 = L12): the only separated-key deletion entry.
+            cleanup_separated_backup_keys; pause_return
             ;;
         0|'') return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
@@ -59537,6 +59731,27 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # /opt/wallos ownership state file exists; anything else is left
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
+# H7 (R58b-M1, hardening): pin a Wallos container by ID, not by name.
+# The ownership label proves the container found by name is managed
+# at check time, but a later stop/start/rm by name re-resolves the
+# name and can touch a different container if the name was retaken
+# in between (docker run --name wallos fails while the managed
+# container exists, so the swap needs a privileged actor in the
+# window -- hence hardening, not a confirmed vulnerability). Capture
+# the ID once (docker inspect -f '{{.Id}}', validated as a sha256
+# digest) and address the ID: docker resolves an ID unambiguously,
+# so stop/start/rm by ID can only ever touch that exact container.
+_wallos_container_id() {
+    local _id=''
+    _id=$(docker inspect -f '{{.Id}}' wallos 2>/dev/null || true)
+    [[ "$_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+    printf '%s\n' "$_id"
+}
+_wallos_valid_container_id() { [[ "${1:-}" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; }
+_wallos_stop_id() { _wallos_valid_container_id "${1:-}" || return 1; docker stop "$1" >/dev/null 2>&1; }
+_wallos_start_id() { _wallos_valid_container_id "${1:-}" || return 1; docker start "$1" >/dev/null 2>&1; }
+_wallos_rm_id() { _wallos_valid_container_id "${1:-}" || return 1; docker rm -f "$1" >/dev/null 2>&1; }
+
 # R21-WALLOS: classify a failed `docker inspect wallos` as "container gone"
 # only when Docker's own "no such container/object" wording is present
 # (matched case-insensitively: Docker 29 reports it lowercase) AND a
@@ -59600,12 +59815,17 @@ wallos_stack_teardown() {
         # case-insensitively by _wallos_container_gone (Docker 29
         # reports it lowercase) and confirmed by `docker ps -a`.
         if _inspect_err=$(docker inspect wallos 2>&1 >/dev/null); then
-            local _lbl=''
+            local _lbl='' _tid=''
             _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
             # R16C15-01: only the managed label authorizes removal;
             # a leftover state file alone is not proof of ownership.
-            if [[ "$_lbl" == 'true' ]]; then
-                if docker rm -f wallos >/dev/null 2>&1; then
+            # H7 (R58b-M1): pin the ID next to the label check; the rm
+            # below addresses the ID, and the recheck must also prove
+            # that ID gone (a same-name recreation must not pass as
+            # the removal of the pinned container).
+            _tid=$(_wallos_container_id) || _tid=''
+            if [[ "$_lbl" == 'true' && -n "$_tid" ]]; then
+                if _wallos_rm_id "$_tid"; then
                     # Same three-state classification for the post-rm
                     # recheck: _wallos_container_gone (case-insensitive
                     # "no such container/object" + `docker ps -a`
@@ -59622,7 +59842,14 @@ wallos_stack_teardown() {
                         # _gone == 0).
                         _unknown=1
                     elif _wallos_container_gone "$_recheck_err"; then
-                        _gone=1
+                        # H7: the name is gone, but the pinned container
+                        # may have been renamed instead of removed; only
+                        # the ID being gone proves the removal.
+                        if docker container inspect "$_tid" >/dev/null 2>&1; then
+                            _unknown=1
+                        else
+                            _gone=1
+                        fi
                     else
                         _unknown=1
                     fi
@@ -60958,7 +61185,7 @@ wallos_choose_access_mode() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_container_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     command -v jq >/dev/null 2>&1 || { msg "${RED}$(tr_msg wl_iu_need_jq)${NC}"; return 1; }
     wallos_print_host_info
@@ -61005,6 +61232,12 @@ wallos_install_or_update() {
         # .Config.Image can be retagged before recovery runs.
         old_image_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
         [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
+            msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
+        }
+        # H7 (R58b-M1): pin the container ID at capture time, next to
+        # the S135 image-ID pin; the stop/rm/start below address the
+        # ID, never the re-resolved name.
+        old_container_id=$(_wallos_container_id) || {
             msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
         }
         old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
@@ -61227,15 +61460,15 @@ wallos_install_or_update() {
         chmod 600 "$WALLOS_DIR/.A-Box-managed" || return 1
     fi
     if (( running == 1 )); then
-        if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
+        if (( was_running == 1 )); then _wallos_stop_id "$old_container_id" || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
+        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || _wallos_start_id "$old_container_id" || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
         wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" || {
-            (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+            (( was_running == 0 )) || _wallos_start_id "$old_container_id" || true
             msg "${RED}$(tr_msg wl_iu_journal_fail)${NC}"
             return 1
         }
-        docker rm wallos >/dev/null 2>&1 || {
+        docker rm "$old_container_id" >/dev/null 2>&1 || {
             wallos_recover_interrupted_upgrade || msg "${RED}$(tr_msg wl_iu_start_fail)${NC}"
             return 1
         }
@@ -61894,16 +62127,23 @@ wallos_status() {
 }
 
 wallos_resume_after_backup() {
-    local was_running="${1:-0}" backup_path="${2:-}"
+    local was_running="${1:-0}" backup_path="${2:-}" _cid="${3:-}"
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 2
     [[ "$was_running" == 1 ]] || return 0
-    if docker start wallos >/dev/null 2>&1; then return 0; fi
+    # H7 (R58b-M1): when the caller pinned the container ID, restart
+    # that ID, never the re-resolved name. No ID (old callers and the
+    # self-test) keeps the previous by-name behaviour.
+    if [[ -n "$_cid" ]]; then
+        if _wallos_start_id "$_cid"; then return 0; fi
+    elif docker start wallos >/dev/null 2>&1; then
+        return 0
+    fi
     msg "${RED}$(tprintf wl_bn_restart_fail "${backup_path:-not-created}")${NC}" >&2
     return 1
 }
 
 wallos_backup_now() {
-    local stamp backup was_running=0 _inspect_err _running _managed
+    local stamp backup was_running=0 _inspect_err _running _managed _cid=''
     [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
     # R6C15-03: an inspect failure is NOT "stopped". Only a daemon-confirmed
     # absence ("No such container/object", matched case-insensitively by
@@ -61920,9 +62160,13 @@ wallos_backup_now() {
             msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}" >&2
             return 1
         fi
+        # H7 (R58b-M1): pin the container ID next to the label check;
+        # the stop below and the resume after the backup address the
+        # ID, never the re-resolved name.
+        _cid=$(_wallos_container_id) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
         _running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
         if [[ "$_running" == true ]]; then
-            docker stop wallos >/dev/null 2>&1 || return 1
+            _wallos_stop_id "$_cid" || return 1
             was_running=1
         elif [[ "$_running" != false ]]; then
             msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
@@ -61937,11 +62181,11 @@ wallos_backup_now() {
     fi
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     if ! backup=$(wallos_create_backup "$stamp"); then
-        wallos_resume_after_backup "$was_running" '' || true
+        wallos_resume_after_backup "$was_running" '' "$_cid" || true
         msg "${RED}$(tr_msg wl_bn_fail)${NC}"
         return 1
     fi
-    if ! wallos_resume_after_backup "$was_running" "$backup"; then
+    if ! wallos_resume_after_backup "$was_running" "$backup" "$_cid"; then
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
@@ -62186,10 +62430,10 @@ wallos_menu() {
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
                 # absent container keeps the existing failure outcome.
-                local _wl_label='' _wl_names=''
+                local _wl_label='' _wl_names='' _wl_id=''
                 if ! docker container inspect wallos >/dev/null 2>&1; then
                     msg "${RED}$(tr_msg wl_remove_fail)${NC}"
-                elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]]; then
+                elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]] || ! _wl_id=$(_wallos_container_id); then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
                 # R15-F15-07: verify the container is gone without a pipe.
@@ -62201,7 +62445,10 @@ wallos_menu() {
                 # truly absent. _wl_names is assigned separately from its
                 # `local` declaration: `local x=$(...)` would mask the
                 # command's exit status.
-                elif docker rm -f wallos >/dev/null 2>&1 && _wl_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) && [[ $'\n'"$_wl_names"$'\n' != *$'\n'wallos$'\n'* ]]; then
+                # H7 (R58b-M1): remove by the pinned ID and verify the
+                # ID is gone too, not just the name -- a same-name
+                # recreation must not pass as the removal.
+                elif _wallos_rm_id "$_wl_id" && _wl_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) && [[ $'\n'"$_wl_names"$'\n' != *$'\n'wallos$'\n'* ]] && ! docker container inspect "$_wl_id" >/dev/null 2>&1; then
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
@@ -68411,6 +68658,17 @@ PY_SELFTEST_TAR
     fi
     assert_bad wallos_resume_after_backup invalid ''
     assert_ok wallos_resume_after_backup 0 ''
+    # H7 (R58b-M1): resume by pinned container ID, not by name. The
+    # recording stub proves the restart addresses the ID; the
+    # failing-stub case proves an unstartable pinned container is
+    # reported, not silently replaced by whatever holds the name.
+    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-id-calls"; return 0; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'start sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-id-calls" ); then
+        echo 'FAIL: Wallos backup restart did not address the pinned container ID'; failures=$((failures + 1))
+    fi
+    if ( docker() { return 1; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos backup restart by ID must report an unstartable pinned container'; failures=$((failures + 1))
+    fi
+    assert_bad wallos_resume_after_backup 1 '' 'not-a-container-id'
     # N-11: versioned history — SHA256SUMS append/sort/prune logic.
     {
         local n11_tmp n11_versions

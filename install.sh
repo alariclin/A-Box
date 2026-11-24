@@ -55487,9 +55487,23 @@ auto_backup_silent() {
 # when the live config cannot be parsed strictly or a prior-allow
 # query fails (unknown state must fail, never silently skip).
 preserved_latest_firewall_preflight() {
-    local plan="$1" cfg _backend _pairs _port _proto _rc _has _zone
+    local plan="$1" cfg _backend _pairs _port _proto _rc _has _zone _orc
     [[ -n "$plan" ]] || return 1
-    abox_owns_service xray-latest || return 0
+    # R52-01: abox_owns_service is a trichotomy (0 owned / 1 not
+    # owned / anything else a query error, mirroring the
+    # 54873 merge-loop handling). A query error must fail the
+    # preflight, never pass as "no instance" with no plan:
+    # the caller then cleans the firewall rules and the
+    # replay treats a missing plan as success, silently
+    # losing the retained instance's ports.
+    abox_owns_service xray-latest; _orc=$?
+    if [[ "$_orc" == 0 ]]; then
+        :
+    elif [[ "$_orc" == 1 ]]; then
+        return 0
+    else
+        return 1
+    fi
     cfg="$ABOX_DIR/xray-latest/config.json"
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     _backend=$(firewall_backend 2>/dev/null) || return 1

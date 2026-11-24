@@ -7067,7 +7067,7 @@ tr_msg() {
         fa:reality_mlkem_notice_title) echo '[!] اطلاعیهٔ سازگاری REALITY: برخی کلاینت‌ها نمی‌توانند مستقیم به این گره وصل شوند' ;;
         zh-tw:reality_mlkem_notice_title) echo '[!] REALITY 相容性提示：部分用戶端無法直連本節點' ;;
         ja:reality_mlkem_notice_title) echo '[!] REALITY 互換性に関する注意：一部のクライアントはこのノードに直接接続できません' ;;
-        zh:reality_mlkem_notice_cannot) echo '无法连接：基于上游 sing-box 的客户端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。' ;;
+        zh:reality_mlkem_notice_cannot) echo '无法连接：基于上游 sing-box 的客户端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。mihomo 使用 ios 或 edge 指纹时无法连接本节点，即使设置 reality-opts.support-x25519mlkem768: true 也无效。' ;;
         en:reality_mlkem_notice_cannot) echo 'Cannot connect: clients based on upstream sing-box (official SFA, GUI.for.SingBox, NekoBox, original NekoRay), as well as Shadowrocket 2.2.92 and earlier versions.' ;;
         ru:reality_mlkem_notice_cannot) echo 'Не могут подключиться: клиенты на базе upstream-версии sing-box (официальный SFA, GUI.for.SingBox, NekoBox, оригинальный NekoRay), а также Shadowrocket версии 2.2.92 и более ранних версий.' ;;
         fa:reality_mlkem_notice_cannot) echo 'وصل نمی‌شوند: کلاینت‌های مبتنی بر sing-box بالادستی (SFA رسمی، GUI.for.SingBox، NekoBox، NekoRay اصلی) و Shadowrocket نسخه 2.2.92 و نسخه‌های قدیمی‌تر.' ;;

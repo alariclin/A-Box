@@ -61555,7 +61555,14 @@ wallos_install_or_update() {
                 return 1
             fi
         fi
-            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}$(tr_msg wallos_install_or_update_token_save_failed)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || {
+                msg "${RED}$(tr_msg wallos_install_or_update_token_save_failed)${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
+                if (( running == 1 )); then
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                fi
+                return 1
+            }
             cftoken=''
         fi
         if ! wallos_cftunnel_setup "$cfhost"; then
@@ -61628,7 +61635,14 @@ wallos_install_or_update() {
         # open succeeded: reclaim only removes A-Box-owned rules
         # (comment/ledger-gated), so registering an already-open foreign
         # port is a harmless no-op.
-        wallos_fw_register_opened "$pubport" tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening ${pubport}/tcp; a later uninstall may leave the port open.${NC}"
+        if ! wallos_fw_register_opened "$pubport" tcp; then
+            msg "${RED}[!] Failed to record the Wallos firewall opening ${pubport}/tcp; refusing to commit an untracked opening.${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
         _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         if (( _fw_open_rc != 0 )); then
@@ -61641,7 +61655,14 @@ wallos_install_or_update() {
         # R3-NEW-03: same ledger gap as the public port above (and 80/tcp
         # may already be open from wallos_https_setup's own allowPort,
         # which also leaves no ledger entry). Register directly.
-        wallos_fw_register_opened 80 tcp || msg "${YELLOW}[!] Failed to record the Wallos firewall opening 80/tcp; a later uninstall may leave the port open.${NC}"
+        if ! wallos_fw_register_opened 80 tcp; then
+            msg "${RED}[!] Failed to record the Wallos firewall opening 80/tcp; refusing to commit an untracked opening.${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            if (( running == 1 )); then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            fi
+            return 1
+        fi
         if ! save_firewall_rules; then
             msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true

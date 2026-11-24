@@ -58723,6 +58723,17 @@ EOF_WF2B_FILTER
         _f2b_matched=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$_f2b_summary")
         if [[ ! "$_f2b_matched" =~ ^[0-9]+$ ]] || (( _f2b_matched < _f2b_need )); then
             rm -f -- "$_sample" "$jail" "$filter"
+            # R55b-M2: deleting the config does not unload a jail
+            # the daemon already runs; stop it explicitly so the
+            # runtime matches the "protection OFF" message.
+            # `stop <JAIL>` is surgical (unlike a server restart)
+            # and works even when the on-disk config is invalid.
+            if command -v fail2ban-client >/dev/null 2>&1; then
+                fail2ban-client stop A-Box-wallos >/dev/null 2>&1 || true
+                if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+                    msg "${YELLOW}[!] Wallos fail2ban jail could not be stopped; it may still be monitoring the old log path.${NC}"
+                fi
+            fi
             msg "${YELLOW}[!] Wallos fail2ban jail NOT created: the login filter matches no failed-login line. Login brute-force protection is OFF.${NC}"
             return 1
         fi
@@ -58758,16 +58769,29 @@ EOF_WF2B_FILTER
         # removes precisely what ban added. actioncheck only
         # verifies the chain exists; DOCKER-USER is owned by
         # Docker and must never be created or flushed here.
-        # Quoted heredoc: <port>/<ip> stay literal for
-        # fail2ban to substitute from the jail action line.
-        write_file_atomically_from_stdin "$dockeruser_action" 644 <<'EOF_WF2B_ACTION' || return 0
+        # Unquoted heredoc: <port>/<ip> stay literal for fail2ban
+        # to substitute from the jail action line; only the two
+        # R55b-M1 destination fragments are interpolated.
+        # R55b-M1: also match the original destination address.
+        # Without --ctorigdst, another container published on the
+        # same port at a different address is also blocked for a
+        # banned IP. Only a specific (non-wildcard) bind can be
+        # scoped: with 0.0.0.0/:: every address maps to Wallos, so
+        # no other container can share the port at all.
+        local _dst4='' _dst6=''
+        if [[ "$bind_address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$bind_address" != 0.0.0.0 ]]; then
+            _dst4=" --ctorigdst $bind_address"
+        elif [[ "$bind_address" == *:* && "$bind_address" != "::" ]]; then
+            _dst6=" --ctorigdst $bind_address"
+        fi
+        write_file_atomically_from_stdin "$dockeruser_action" 644 <<EOF_WF2B_ACTION || return 0
 # Managed by A-Box
 [Definition]
 actionstart =
 actionstop =
 actioncheck = iptables -n -L DOCKER-USER >/dev/null 2>&1
-actionban = case "<ip>" in *:*) ip6tables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
-actionunban = case "<ip>" in *:*) ip6tables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
+actionban = case "<ip>" in *:*) ip6tables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port>$_dst6 --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port>$_dst4 --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
+actionunban = case "<ip>" in *:*) ip6tables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port>$_dst6 --dport 80 -s <ip> -j REJECT --reject-with icmp6-port-unreachable;; *) iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port>$_dst4 --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable;; esac
 
 [Init]
 port = 80
@@ -58790,6 +58814,17 @@ EOF_WF2B_JAIL
     if ! validate_fail2ban_config >/dev/null 2>&1; then
         msg "${RED}Wallos fail2ban jail NOT created: fail2ban configuration validation failed. Login brute-force protection is OFF.${NC}" >&2
         rm -f -- "$jail"
+        # R55b-M2: deleting the config does not unload a jail
+        # the daemon already runs; stop it explicitly so the
+        # runtime matches the "protection OFF" message.
+        # `stop <JAIL>` is surgical (unlike a server restart)
+        # and works even when the on-disk config is invalid.
+        if command -v fail2ban-client >/dev/null 2>&1; then
+            fail2ban-client stop A-Box-wallos >/dev/null 2>&1 || true
+            if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+                msg "${YELLOW}[!] Wallos fail2ban jail could not be stopped; it may still be monitoring the old log path.${NC}"
+            fi
+        fi
         return 1
     fi
     # 07f-M03: a failed restart used to be swallowed by `|| true`
@@ -58897,7 +58932,11 @@ wallos_public_urls() {
 
 
 install_wallos_caddy() {
-    if [[ -x /usr/local/bin/caddy ]] && /usr/local/bin/caddy version 2>/dev/null | grep -q "v${WALLOS_CADDY_VERSION}"; then
+    # R55b-M3: exact version comparison: a substring grep accepts
+    # v2.11.70 as pinned v2.11.7, and `.` in the pattern is a regex
+    # wildcard. Compare the first field of `caddy version` as a
+    # plain string.
+    if [[ -x /usr/local/bin/caddy ]] && [[ "$(/usr/local/bin/caddy version 2>/dev/null | awk '{print $1}')" == "v${WALLOS_CADDY_VERSION}" ]]; then
         return 0
     fi
     # R7-F15-5: refuse to overwrite a foreign caddy binary. The early

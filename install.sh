@@ -53728,14 +53728,14 @@ capture_abox_iptables_snapshot() {
     [[ "$family" == 6 ]] && cmd=ip6tables-save || cmd=iptables-save
     if ! command -v "$cmd" >/dev/null 2>&1; then
         [[ "$family" == 6 ]] && ! host_has_usable_ipv6 || return 1
-        : > "$out"
+        : > "$out" || return 1
         return 0
     fi
     all=$(mktemp) || return 1
     if ! "$cmd" > "$all" 2>/dev/null; then
         rm -f "$all"
         if [[ "$family" == 6 ]] && ! host_has_usable_ipv6; then
-            : > "$out"
+            : > "$out" || return 1
             return 0
         fi
         return 1
@@ -53972,6 +53972,23 @@ validate_legacy_backup_archive() {
     [[ -s "$archive" ]] || return 1
     python3 -I - "$archive" <<'PY_LEGACY_VALIDATE'
 import posixpath, stat, sys, tarfile
+import resource
+# R51-M1: bound this process's address space. tarfile reads PAX/GNU
+# longname extension headers whole into memory before yielding the
+# next member, so the member/size/total caps cannot bound them (a
+# 100 MB header peaked at 612 MB RSS in trial; the extractor peaked
+# at 912 MB). A 512 MiB cap fails closed (MemoryError -> non-zero
+# exit) on a crafted giant header while leaving ~30x headroom over
+# legitimate archives (baseline VSZ ~17 MB, legit RSS ~12 MB).
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    raise SystemExit(1)
 fn=sys.argv[1]; max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024
 allowed_prefixes=(
  'root/etc/ddr','root/usr/local/bin/sb','root/usr/local/bin/xray','root/usr/local/bin/sing-box','root/usr/local/bin/hysteria',
@@ -54088,6 +54105,23 @@ PY_LEGACY_COPY
     validate_legacy_backup_archive "$_c_input" || { rm -rf "$work"; die 'Legacy backup archive safety validation failed.'; }
     python3 -I - "$_c_input" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
 import os, pathlib, tarfile, sys
+import resource
+# R51-M1: bound this process's address space. tarfile reads PAX/GNU
+# longname extension headers whole into memory before yielding the
+# next member, so the member/size/total caps cannot bound them (a
+# 100 MB header peaked at 612 MB RSS in trial; the extractor peaked
+# at 912 MB). A 512 MiB cap fails closed (MemoryError -> non-zero
+# exit) on a crafted giant header while leaving ~30x headroom over
+# legitimate archives (baseline VSZ ~17 MB, legit RSS ~12 MB).
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    raise SystemExit(1)
 src,dst=sys.argv[1:]; base=pathlib.Path(dst).resolve()
 max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024
 _count=0; total=0
@@ -54235,6 +54269,23 @@ validate_backup_archive() {
     # target host's dedicated runtime accounts before any service starts.
     python3 -I - "$archive" "$_cfg_dir" <<'PY_VALIDATE'
 import posixpath,stat,sys,tarfile
+import resource
+# R51-M1: bound this process's address space. tarfile reads PAX/GNU
+# longname extension headers whole into memory before yielding the
+# next member, so the member/size/total caps cannot bound them (a
+# 100 MB header peaked at 612 MB RSS in trial; the extractor peaked
+# at 912 MB). A 512 MiB cap fails closed (MemoryError -> non-zero
+# exit) on a crafted giant header while leaving ~30x headroom over
+# legitimate archives (baseline VSZ ~17 MB, legit RSS ~12 MB).
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    raise SystemExit(1)
 fn=sys.argv[1]
 _cfg=sys.argv[2].rstrip('/') if len(sys.argv) > 2 else '/etc/ddr'
 REQ_ROOT='root' + _cfg if _cfg.startswith('/') else 'root/' + _cfg

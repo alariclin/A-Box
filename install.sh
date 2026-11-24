@@ -56018,13 +56018,13 @@ backup_restore_menu() {
         2) restore_from_backup ;;
         3)
             local key_dest
-            read -r -p "$(tr_msg bk_key_dest)" key_dest
+            read -r -p "$(tr_msg bk_key_dest)" key_dest || return 0
             export_backup_recovery_key "$key_dest"; pause_return
             ;;
         4)
             local legacy_path legacy_out
-            read -r -p "$(tr_msg bk_legacy_path)" legacy_path
-            read -r -p "$(tr_msg bk_legacy_out)" legacy_out
+            read -r -p "$(tr_msg bk_legacy_path)" legacy_path || return 0
+            read -r -p "$(tr_msg bk_legacy_out)" legacy_out || return 0
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
             ;;
         0|'') return 0 ;;
@@ -56707,6 +56707,20 @@ wallos_prune_local_images() {
         [[ "$img" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || continue
         all_images+=("$img")
     done < <(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep '^bellamy/wallos:' || true)
+    # R53-P1: a digest-pulled image has no tag (`<none>`), so the
+    # tag-only enumeration above never sees it. Enumerate recorded
+    # digest refs too; the delete branch below works unchanged on a
+    # digest ref (live inspect, `ref|id` record binding, delete by
+    # verified ID). A digest image already covered by a tag entry is
+    # safe: the keep-by-ID check skips it when kept, and the
+    # unidentifiable-image skip catches it when already deleted.
+    local _ref _rid
+    if [[ -f "${ABOX_DIR}/wallos-images.txt" ]]; then
+        while IFS='|' read -r _ref _rid || [[ -n "$_ref" ]]; do
+            [[ "$_ref" =~ ^bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] || continue
+            all_images+=("$_ref")
+        done < "${ABOX_DIR}/wallos-images.txt"
+    fi
     local removed=0
     for img in "${all_images[@]}"; do
         local _img_id='' _keep_by_id=0 _confirmed_id=''

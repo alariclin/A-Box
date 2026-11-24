@@ -63962,7 +63962,13 @@ EOF_CLASH
     # self-test's 'client export accepted incomplete port-hop state'
     # assertion (rc=1, no file) while the per-protocol skip still
     # applies whenever at least one other node is emitted.
-    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_nodes_tmp" ]]; then
+    # R60-M3: the emptiness test reads the groups file, not the nodes
+    # file: the renderer writes "# ..." comments into the nodes file
+    # for omitted nodes (P6 Reality-key failures, unreadable sources)
+    # and exits 0, so a comment-only nodes file is non-empty while no
+    # proxy was emitted; the groups file is written only when a real
+    # node is emitted.
+    if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_groups_tmp" ]]; then
         msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
         rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
             "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -63990,6 +63996,29 @@ EOF_CLASH
 # gate or write failure; returns 2 when the node has no VLESS leg to
 # deliver (preflight: nothing to write, no file is left behind).
 # No public subscription service is created; the file is local-only, 600.
+# R60-M2: is this UUID deliverable as an XHTTP node in the
+# single-user file? Returns 0 when it may be emitted.
+_mihomo_xhttp_uuid_deliverable() {
+    local _uuid="$1" _live='' _reg_tmp=''
+    if _live=$(list_xhttp_live_uuids 2>/dev/null); then
+        # Live inbound readable: authoritative even when empty.
+        [[ -n "$_live" ]] || return 1
+        if grep -qxF -- "$_uuid" <<< "$_live"; then return 0; else return 1; fi
+    fi
+    # Live unreadable / no inbound: merged-registry fallback.
+    _reg_tmp=$(umask 077; mktemp /tmp/A-Box-mihomo-single-uuid.XXXXXX) || return 1
+    if ! write_full_uuid_list_to_file "$_reg_tmp" 2>/dev/null; then
+        rm -f -- "$_reg_tmp"
+        return 1
+    fi
+    if grep -qxF -- "$_uuid" "$_reg_tmp"; then
+        rm -f -- "$_reg_tmp"
+        return 0
+    fi
+    rm -f -- "$_reg_tmp"
+    return 1
+}
+
 write_mihomo_user_yaml() {
     local _uuid="${1:-${UUID:-}}" out="${2:-${MIHOMO_USER_YAML_PATH:-$ABOX_DIR/A-Box-mihomo-single.yaml}}"
     local clash_mlkem=false clash_mlkem_rc tmp_out out_real base_real
@@ -64020,8 +64049,23 @@ PY_CLASH_REALPATH
     [[ ! -L "$out" ]] || return 1
     [[ ! -e "$out" || -f "$out" ]] || { msg "${RED}Refusing to write Mihomo config: output path exists and is not a regular file: $out${NC}" >&2; return 1; }
     # Nothing to deliver unless a VLESS Reality leg exists for this node.
-    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then _has_vision=1; fi
-    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then _has_xhttp=1; fi
+    # R60-M1: same per-protocol port gates as write_clash_yaml (H-24):
+    # an empty or invalid port must not keep the historical :-default
+    # (443/8443) and emit a node pointing at a port that does not exist.
+    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
+        if valid_canonical_port "${VLESS_PORT:-}"; then
+            _has_vision=1
+        else
+            msg "${YELLOW}[!] VLESS port '${VLESS_PORT:-}' is missing or invalid; skipping Vision node in Mihomo single-user YAML.${NC}" >&2
+        fi
+    fi
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        if valid_canonical_port "${XHTTP_PORT:-}"; then
+            _has_xhttp=1
+        else
+            msg "${YELLOW}[!] XHTTP port '${XHTTP_PORT:-}' is missing or invalid; skipping XHTTP node in Mihomo single-user YAML.${NC}" >&2
+        fi
+    fi
     # S1-Low-1 (final-round follow-up): a deploy with no VLESS leg (SS /
     # HY2-only / ...) must not leave a stale single-user file behind: the
     # file can only ever hold Vision / XHTTP nodes, so any content in it
@@ -64039,6 +64083,12 @@ PY_CLASH_REALPATH
     # either absent or a regular file under $ABOX_DIR.
     [[ -n "$_uuid" ]] || return 1
     [[ "$_uuid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
+    # R60-M2: the XHTTP leg follows the full export's live-list
+    # authority (E62-NEW-01 in write_clash_yaml).
+    if (( _has_xhttp == 1 )) && ! _mihomo_xhttp_uuid_deliverable "$_uuid"; then
+        msg "${YELLOW}[!] XHTTP client is not in the live XHTTP inbound; skipping XHTTP node in Mihomo single-user YAML.${NC}" >&2
+        _has_xhttp=0
+    fi
     (( _has_vision == 1 || _has_xhttp == 1 )) || return 2
     tmp_out=$(mktemp "$base_real/.A-Box-mihomo-single-new.XXXXXX") || return 1
     {

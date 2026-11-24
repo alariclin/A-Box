@@ -4751,12 +4751,12 @@ tr_msg() {
         fa:swap_select_0_5) echo 'انتخاب [۰ تا ۵]: ' ;;
         zh-tw:swap_select_0_5) echo '請選擇 [0-5]：' ;;
         ja:swap_select_0_5) echo '選択してください [0-5]: ' ;;
-        zh:bk_select_0_4) echo '请选择 [0-4]：' ;;
-        en:bk_select_0_4) echo 'Select [0-4]: ' ;;
-        ru:bk_select_0_4) echo 'Выберите [0–4]: ' ;;
-        fa:bk_select_0_4) echo 'انتخاب [۰ تا ۴]: ' ;;
-        zh-tw:bk_select_0_4) echo '請選擇 [0-4]：' ;;
-        ja:bk_select_0_4) echo '選択してください [0-4]: ' ;;
+        zh:bk_select_0_5) echo '请选择 [0-5]：' ;;
+        en:bk_select_0_5) echo 'Select [0-5]: ' ;;
+        ru:bk_select_0_5) echo 'Выберите [0–5]: ' ;;
+        fa:bk_select_0_5) echo 'انتخاب [۰ تا ۵]: ' ;;
+        zh-tw:bk_select_0_5) echo '請選擇 [0-5]：' ;;
+        ja:bk_select_0_5) echo '選択してください [0-5]: ' ;;
         zh:bk_key_dest) echo '独立介质上的绝对路径：' ;;
         en:bk_key_dest) echo 'Absolute path on a separate trusted medium: ' ;;
         ru:bk_key_dest) echo 'Абсолютный путь на отдельном доверенном носителе: ' ;;
@@ -14335,11 +14335,19 @@ hysteria_acme_owner_marker_valid() {
 }
 
 mark_hysteria_acme_dir_managed() {
-    local dir="${1:-/etc/hysteria/acme}" marker="${2:-$HY2_ACME_OWNER_MARKER}" tmp
+    local dir="${1:-/etc/hysteria/acme}" marker="${2:-$HY2_ACME_OWNER_MARKER}" tmp _mode
     [[ "$dir" == /etc/hysteria/acme ]] || return 1
     [[ "$marker" == "$dir/.A-Box-managed" ]] || return 1
     [[ -d "$dir" && ! -L "$dir" ]] || return 1
     hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
+    # H1 (R14-01 residual, hardening): the shared validator above also
+    # accepts 770, so require 1770 HERE instead of relying on the
+    # caller's pre-step: without the sticky bit a group member can
+    # delete/replace root's tmp files. The validator itself is shared
+    # (manifest checks accept a 770 top dir) and is deliberately NOT
+    # tightened here.
+    _mode=$(stat -c %a "$dir" 2>/dev/null) || return 1
+    [[ "$_mode" == 1770 ]] || return 1
     if [[ -e "$marker" || -L "$marker" ]]; then
         hysteria_acme_owner_marker_valid "$marker"
         return
@@ -14938,6 +14946,10 @@ prepare_hysteria_acme_dir_ownership() {
 
 remove_recorded_core_family() {
     local srv="$1" runtime_uid runtime_gid
+    # R15a-01: the derivation while-read loop below assigns _t/_s/_p/_h;
+    # keep them local so bash dynamic scoping cannot clobber a caller's
+    # same-named locals.
+    local _t='' _s='' _p='' _h=''
     [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || return 2
     [[ "$(stat -c %u:%g "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true)" == 0:0 ]] || return 1
     [[ "$(stat -c %a "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
@@ -15561,7 +15573,12 @@ users_registries_remove_core() {
     # follow it into the link target. The leaf ! -L guard only covers
     # the last component; a linked ancestor would delete ordinary
     # files outside the registry. A missing dir stays a no-op success.
+    # H2 (R15b residual, hardening): also check the ancestor chain
+    # (path_parent_chain_safe) -- the leaf guard alone misses a
+    # symlinked ancestor, which the glob then follows out of the
+    # registry. Same guard added to users_registries_wipe below.
     [[ ! -L "$_dir" ]] || return 1
+    path_parent_chain_safe "$_dir" || return 1
     [[ -d "$_dir" ]] || return 0
     for _prefix in $_prefixes; do
         for _f in "$_dir"/${_prefix}__*.json; do
@@ -16912,6 +16929,30 @@ shortcut_check_candidate() {
 # expectation from the age branch.
 _shortcut_lock_remove_if_pid_still() {
     local _lock="$1" _expect="$2" _cur
+    if command -v flock >/dev/null 2>&1; then
+        # H3 (R17-M1 = L2, hardening): serialise the re-read + delete
+        # under a guard-file flock (flock -n, same idiom as
+        # acquire_abox_runtime_guard), so two concurrent reclaimers
+        # cannot both pass the re-read and the second delete the
+        # first's fresh lock. The guard file lives next to the lock
+        # dir and is never deleted (it is the lock inode, like
+        # RUNTIME_LOCK). A dynamically allocated fd avoids colliding
+        # with the runtime lock's fd 9/10. If the guard cannot be
+        # taken (busy or uncreatable) return 1: the caller retries
+        # later instead of deleting blind. No flock binary at all
+        # falls back to the old unguarded behaviour below.
+        local _guard="${_lock}.guard" _gfd=''
+        ( exec {_gfd}>>"$_guard" 2>/dev/null || exit 1
+          flock -n "$_gfd" 2>/dev/null || exit 1
+          _cur=$(cat "$_lock/pid" 2>/dev/null || true)
+          [[ "$_cur" == "$_expect" ]] || exit 1
+          if [[ "$_expect" =~ ^[0-9]+$ ]]; then
+              kill -0 "$_expect" 2>/dev/null && exit 1
+          fi
+          rm -rf -- "$_lock" 2>/dev/null || true
+          exit 0 )
+        return $?
+    fi
     _cur=$(cat "$_lock/pid" 2>/dev/null || true)
     [[ "$_cur" == "$_expect" ]] || return 1
     if [[ "$_expect" =~ ^[0-9]+$ ]]; then
@@ -17967,9 +18008,23 @@ standalone_tag_set() { # $1 = core -> standalone inbound tags, one per line
     esac
 }
 
+# R18a-L1: live core configs are JSONC, so strip comments before jq:
+# raw jq on a commented config fails silently (2>/dev/null) and the
+# inbound ports vanish from this read-only report. Prints TSV rows
+# "port<TAB>proto<TAB>tag<TAB>transport" to stdout; transport is
+# tcp, udp, or tcp+udp (derived from the inbound type/protocol).
+_port_occupancy_config_rows() {
+    local cfg="$1" jq_prog="$2"
+    [[ -f "$cfg" ]] || return 0
+    jsonc_strip_comments "$cfg" 2>/dev/null | jq -r "$jq_prog" 2>/dev/null
+}
+
 print_port_occupancy() { # read-only: port -> protocol/owner map
-    local any=0 known='' seen_ext='' cfg='' port='' proto='' tag='' _netid='' _local=''
+    local any=0 known='' seen_ext='' cfg='' port='' proto='' tag='' _netid='' _local='' _transport=''
     msg "${CYAN}$(tr_msg dp_ports_title)${NC}"
+    # R18a-L2: known/seen_ext are keyed "transport:port", not bare
+    # port: a configured TCP/443 must not hide another process's
+    # UDP/443 (and vice versa).
     # Rows are consumed via mapfile + field splitting, never the read
     # builtin: a caller (or the self-test) may shadow read, and a
     # while-read loop over process substitution would then never see
@@ -17978,44 +18033,47 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
         cfg='/etc/sing-box/config.json'
         if [[ -f "$cfg" ]]; then
             local -a _rows=()
-            mapfile -t _rows < <(jq -r '.inbounds[]? | select(.listen_port != null) | [(.listen_port|tostring), (.type // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            mapfile -t _rows < <(_port_occupancy_config_rows "$cfg" '.inbounds[]? | select(.listen_port != null) | [(.listen_port|tostring), (.type // "?"), (.tag // "-"), ((.type // "?") | if . == "tuic" or . == "hysteria2" or . == "quic" then "udp" elif . == "shadowsocks" then "tcp+udp" else "tcp" end)] | @tsv')
             local _row='' _rest=''
             for _row in "${_rows[@]}"; do
-                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; tag="${_rest#*$'\t'}"
+                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; _rest="${_rest#*$'\t'}"; tag="${_rest%%$'\t'*}"; _transport="${_rest#*$'\t'}"
                 [[ -n "$port" ]] || continue
                 msg "  ${port} -> ${proto} [${tag}] (sing-box)"
-                known+=" $port"; any=1
+                case "$_transport" in tcp+udp) known+=" tcp:$port udp:$port" ;; *) known+=" $_transport:$port" ;; esac
+                any=1
             done
         fi
         cfg='/usr/local/etc/xray/config.json'
         if [[ -f "$cfg" ]]; then
             local -a _rows2=()
-            mapfile -t _rows2 < <(jq -r '.inbounds[]? | select(.port != null) | [(.port|tostring), (.protocol // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            mapfile -t _rows2 < <(_port_occupancy_config_rows "$cfg" '.inbounds[]? | select(.port != null) | [(.port|tostring), (.protocol // "?"), (.tag // "-"), ((.protocol // "?") | if . == "tuic" or . == "hysteria2" or . == "quic" then "udp" elif . == "shadowsocks" then "tcp+udp" else "tcp" end)] | @tsv')
             local _row='' _rest=''
             for _row in "${_rows2[@]}"; do
-                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; tag="${_rest#*$'\t'}"
+                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; _rest="${_rest#*$'\t'}"; tag="${_rest%%$'\t'*}"; _transport="${_rest#*$'\t'}"
                 [[ -n "$port" ]] || continue
                 msg "  ${port} -> ${proto} [${tag}] (xray)"
-                known+=" $port"; any=1
+                case "$_transport" in tcp+udp) known+=" tcp:$port udp:$port" ;; *) known+=" $_transport:$port" ;; esac
+                any=1
             done
         fi
     fi
     if [[ -n "${HY2_BASE_PORT:-}" ]]; then
         msg "  ${HY2_BASE_PORT} -> hysteria2 [hy2-official] (hysteria)"
-        known+=" ${HY2_BASE_PORT}"; any=1
+        known+=" udp:${HY2_BASE_PORT}"; any=1
     fi
     if command -v ss >/dev/null 2>&1; then
         local -a _srows=()
         mapfile -t _srows < <(ss -tulnH 2>/dev/null | awk '{print $1, $5}')
         local _srow=''
         for _srow in "${_srows[@]}"; do
+            _netid="${_srow%% *}"
             _local="${_srow#* }"
             port="${_local##*:}"
             [[ "$port" =~ ^[0-9]+$ ]] || continue
-            case " $known " in *" $port "*) continue ;; esac
-            case " $seen_ext " in *" $port "*) continue ;; esac
-            seen_ext+=" $port"
-            msg "  ${port} -> $(tr_msg dp_ports_external)"
+            case " $known " in *" ${_netid}:${port} "*) continue ;; esac
+            case " $seen_ext " in *" ${_netid}:${port} "*) continue ;; esac
+            seen_ext+=" ${_netid}:${port}"
+            msg "  ${port}/${_netid} -> $(tr_msg dp_ports_external)"
             any=1
         done
     fi
@@ -18380,9 +18438,6 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
-        # Final-round follow-up §2 (worker A): sync preserved
-        # standalone ports into the shell vars write_env() persists.
-        _preserve_sync_env_ports "$1" "$cfg" || true
         # Carbon H-11(1): the deploy wiped the firewall rules before
         # this restore and pre_install_setup only re-opens the main
         # protocol ports. Re-open the ports of the inbounds this
@@ -18450,6 +18505,14 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                 fi
             fi
         fi
+        # H4 (R18a-X1 residual, hardening): sync preserved standalone
+        # ports into the shell vars write_env() persists ONLY after
+        # the firewall stage succeeded -- the sync has no data
+        # dependency on the firewall stage, so the success path is
+        # unchanged, and a firewall failure now leaves no residue in
+        # TROJAN_PORT/SOCKS_PORT (both failure exits above return
+        # before reaching this line).
+        _preserve_sync_env_ports "$1" "$cfg" || true
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
@@ -20259,32 +20322,36 @@ record_native_firewall_rule() {
     mv -f -- "$tmp" "$ABOX_FW_STATE" || { rm -f -- "$tmp"; return 1; }
 }
 
-ufw_global_rule_numbers() {
-    local spec proto="$2" owned_only="${3:-0}" target output line number body rest expected_comment
+# R20a-L1: one shared UFW query + record parser for the three consumers
+# below (rule numbers, owned-families completeness, missing-family
+# foreign check). Emits one TSV record per rule line matching
+# <spec>/<proto>: "number<TAB>is6<TAB>owned" (owned=1 when the trailing
+# comment is exactly the A-Box ownership comment for this spec/proto).
+# Returns 2 when the UFW state cannot be determined (bad spec/proto,
+# missing ufw binary, failed query, or a first line other than
+# `Status: active`): callers must never treat that as "absent".
+_ufw_matching_rules() {
+    local spec proto target expected_comment output line number body rest is6 owned
     spec=$(normalize_port_spec "$1") || return 2
-    [[ "$proto" == tcp || "$proto" == udp ]] || return 2
+    [[ "$2" == tcp || "$2" == udp ]] || return 2
+    proto="$2"
     target="${spec}/${proto}"
     expected_comment="# A-Box-${spec}-${proto}"
     command -v ufw >/dev/null 2>&1 || return 2
     output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
-    # R3C6-06: an inactive UFW lists no rules, so an empty parse cannot
-    # prove absence; return 2 (unknown) so callers do not mutate on a
-    # blind "absent". Mirrors the R11C6-01 guard in ufw_delete_owned_rules.
-    # R20a-M1: the liveness check must be on the same snapshot that is
-    # parsed, not on a prior separate `ufw status` query: UFW can be
-    # disabled between the two calls, and the parse of an inactive
-    # snapshot then returns 0 with no numbers (a false "absent"). Only
-    # an explicit `Status: active` first line admits the parse.
+    # R3C6-06 / R20a-M1 (moved here from the three consumers): an
+    # inactive UFW lists no rules, so an empty parse cannot prove
+    # absence; and the liveness check must be on the same snapshot
+    # that is parsed, not on a prior separate `ufw status` query.
     [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 2
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
         number="${BASH_REMATCH[1]}"
         body="${BASH_REMATCH[2]}"
-        if [[ "$body" == "$target"* ]]; then
-            rest="${body#"$target"}"
-        else
-            continue
-        fi
+        [[ "$body" == "$target"* ]] || continue
+        rest="${body#"$target"}"
+        is6=0
+        [[ "$rest" == " (v6)"* ]] && is6=1
         rest="${rest# (v6)}"
         rest="${rest#"${rest%%[![:space:]]*}"}"
         case "$rest" in
@@ -20294,12 +20361,21 @@ ufw_global_rule_numbers() {
         esac
         rest="${rest#"${rest%%[![:space:]]*}"}"
         [[ "$rest" =~ ^Anywhere([[:space:]]+\(v6\))?([[:space:]]+#.*)?$ ]] || continue
-        if [[ "$owned_only" == 1 ]]; then
-            [[ "$rest" == *"$expected_comment" ]] || continue
-            [[ "${rest##*# }" == "A-Box-${spec}-${proto}" ]] || continue
-        fi
-        printf '%s\n' "$number"
+        owned=0
+        if [[ "$rest" == *"$expected_comment" && "${rest##*# }" == "A-Box-${spec}-${proto}" ]]; then owned=1; fi
+        printf '%s\t%s\t%s\n' "$number" "$is6" "$owned"
     done <<< "$output"
+}
+
+ufw_global_rule_numbers() {
+    local owned_only="${3:-0}" records rc number is6 owned
+    records=$(_ufw_matching_rules "$1" "$2"); rc=$?
+    [[ "$rc" == 0 ]] || return "$rc"
+    while IFS=$'\t' read -r number is6 owned || [[ -n "$number" ]]; do
+        [[ -n "$number" ]] || continue
+        [[ "$owned_only" == 1 && "$owned" != 1 ]] && continue
+        printf '%s\n' "$number"
+    done <<< "$records"
 }
 
 ufw_rule_state() {
@@ -20353,40 +20429,20 @@ ufw_ipv6_enabled() {
 # owned, or restore would skip replenishing the deleted
 # counterpart. Parse mirrors ufw_global_rule_numbers
 # (owned_only=1) but tracks families instead of numbers.
+# R5C6-03: true when the A-Box-owned rule exists for every
+# applicable family (v4 always; v6 only when UFW has IPv6
+# enabled). A single surviving family must not count as fully
+# owned, or restore would skip replenishing the deleted
+# counterpart. Records come from _ufw_matching_rules (R20a-L1).
 _ufw_owned_families_complete() {
-    local spec proto output line number body rest is6 has4=0 has6=0 target expected_comment
-    spec=$(normalize_port_spec "$1") || return 1
-    [[ "$2" == tcp || "$2" == udp ]] || return 1
-    proto="$2"
-    target="${spec}/${proto}"
-    expected_comment="# A-Box-${spec}-${proto}"
-    command -v ufw >/dev/null 2>&1 || return 1
-    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 1
-    # R20a-M1: same-snapshot liveness as ufw_global_rule_numbers (see
-    # there): only an explicit `Status: active` first line admits the
-    # parse; an inactive or unrecognised snapshot is "not complete".
-    [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 1
-    while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
-        number="${BASH_REMATCH[1]}"
-        body="${BASH_REMATCH[2]}"
-        [[ "$body" == "$target"* ]] || continue
-        rest="${body#"$target"}"
-        is6=0
-        [[ "$rest" == " (v6)"* ]] && is6=1
-        rest="${rest# (v6)}"
-        rest="${rest#${rest%%[![:space:]]*}}"
-        case "$rest" in
-            'ALLOW IN '*) rest="${rest#ALLOW IN }" ;;
-            'LIMIT IN '*) rest="${rest#LIMIT IN }" ;;
-            *) continue ;;
-        esac
-        rest="${rest#${rest%%[![:space:]]*}}"
-        [[ "$rest" =~ ^Anywhere([[:space:]]+\(v6\))?([[:space:]]+#.*)?$ ]] || continue
-        [[ "$rest" == *"$expected_comment" ]] || continue
-        [[ "${rest##*# }" == "A-Box-${spec}-${proto}" ]] || continue
+    local records rc number is6 owned has4=0 has6=0
+    records=$(_ufw_matching_rules "$1" "$2"); rc=$?
+    [[ "$rc" == 0 ]] || return 1
+    while IFS=$'\t' read -r number is6 owned || [[ -n "$number" ]]; do
+        [[ -n "$number" ]] || continue
+        [[ "$owned" == 1 ]] || continue
         if (( is6 )); then has6=1; else has4=1; fi
-    done <<< "$output"
+    done <<< "$records"
     (( has4 == 1 )) || return 1
     if ufw_ipv6_enabled; then (( has6 == 1 )) || return 1; fi
     return 0
@@ -20397,43 +20453,21 @@ _ufw_owned_families_complete() {
 # are empty (safe to add), 2 = the UFW state could not be determined
 # (never mutate blindly). Parse mirrors _ufw_owned_families_complete
 # but tracks any rule per family.
+# R5-13/R5-14: 0 = an applicable family that lacks an A-Box-owned rule
+# already has a foreign same-spec rule there, 1 = the missing families
+# are empty (safe to add), 2 = the UFW state could not be determined
+# (never mutate blindly). Records come from _ufw_matching_rules (R20a-L1).
 _ufw_missing_family_has_foreign() {
-    local spec proto output line number body rest is6
-    local has4_owned=0 has6_owned=0 has4_any=0 has6_any=0 target expected_comment
-    spec=$(normalize_port_spec "$1") || return 2
-    [[ "$2" == tcp || "$2" == udp ]] || return 2
-    proto="$2"
-    target="${spec}/${proto}"
-    expected_comment="# A-Box-${spec}-${proto}"
-    command -v ufw >/dev/null 2>&1 || return 2
-    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
-    # R20a-M1: same-snapshot liveness as ufw_global_rule_numbers (see
-    # there): only an explicit `Status: active` first line admits the
-    # parse; an inactive or unrecognised snapshot is unknown (2), never
-    # "safe to add" (1).
-    [[ "$(head -n 1 <<< "$output")" == 'Status: active' ]] || return 2
-    while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
-        number="${BASH_REMATCH[1]}"
-        body="${BASH_REMATCH[2]}"
-        [[ "$body" == "$target"* ]] || continue
-        rest="${body#"$target"}"
-        is6=0
-        [[ "$rest" == " (v6)"* ]] && is6=1
-        rest="${rest# (v6)}"
-        rest="${rest#${rest%%[![:space:]]*}}"
-        case "$rest" in
-            'ALLOW IN '*) rest="${rest#ALLOW IN }" ;;
-            'LIMIT IN '*) rest="${rest#LIMIT IN }" ;;
-            *) continue ;;
-        esac
-        rest="${rest#${rest%%[![:space:]]*}}"
-        [[ "$rest" =~ ^Anywhere([[:space:]]+\(v6\))?([[:space:]]+#.*)?$ ]] || continue
+    local records rc number is6 owned
+    local has4_owned=0 has6_owned=0 has4_any=0 has6_any=0
+    records=$(_ufw_matching_rules "$1" "$2"); rc=$?
+    [[ "$rc" == 0 ]] || return "$rc"
+    while IFS=$'\t' read -r number is6 owned || [[ -n "$number" ]]; do
+        [[ -n "$number" ]] || continue
         if (( is6 )); then has6_any=1; else has4_any=1; fi
-        [[ "$rest" == *"$expected_comment" ]] || continue
-        [[ "${rest##*# }" == "A-Box-${spec}-${proto}" ]] || continue
+        [[ "$owned" == 1 ]] || continue
         if (( is6 )); then has6_owned=1; else has4_owned=1; fi
-    done <<< "$output"
+    done <<< "$records"
     if (( has4_owned == 0 && has4_any == 1 )); then return 0; fi
     if ufw_ipv6_enabled; then
         if (( has6_owned == 0 && has6_any == 1 )); then return 0; fi
@@ -22879,6 +22913,23 @@ extract_tar_regular_basename_safely() {
     [[ -s "$archive" && "$basename" =~ ^[A-Za-z0-9._-]+$ && -n "$dest" ]] || return 1
     python3 -I - "$archive" "$basename" "$dest" <<'PY_TAR_EXTRACT'
 import os, posixpath, sys, tarfile
+import resource
+# S6 (R51-M1 follow-up): bound this process's address space. tarfile
+# reads PAX/GNU longname extension headers whole into memory before
+# yielding the next member, so the member/size/total caps cannot bound
+# them (a 100 MB header peaked at 612 MB RSS in trial; the extractor
+# peaked at 912 MB). A 512 MiB cap fails closed (MemoryError -> non-zero
+# exit) on a crafted giant header while leaving ~30x headroom over
+# legitimate archives (baseline VSZ ~17 MB, legit RSS ~12 MB).
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    raise SystemExit(1)
 archive, wanted, dest = sys.argv[1:]
 MAX_MEMBERS = 10000
 MAX_FILE = 512 * 1024 * 1024
@@ -24198,7 +24249,7 @@ core_fetch_upstream_release_asset() {
                 msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2
                 return 1
             fi
-            mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+            mv -fT -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
 
             # Best-effort post-commit check before updating resolved state.
             # This does not prevent a later concurrent replacement.
@@ -26620,6 +26671,38 @@ check_socket_or_fail() {
 # JSON, python3 missing) keeps the old behavior: check the socket.
 # Return 0 = inbound present (or unknown: check the socket);
 # 1 = config parsed and the inbound is gone (skip the socket check).
+# R35b-M2 follow-up: extract a flag's VALUE from /proc/<pid>/cmdline by
+# iterating NUL-delimited argv exactly. The old `tr '\0' '\n'` + awk
+# erased the boundary, so a single argv containing a newline (e.g.
+# $'xray\n-config\n<evil>\n') split into fake lines and the scan took
+# <evil> as the live config. Only argv[0] whose basename is a known core
+# is trusted; the value must be the very next argv token and absolute.
+# Unreadable cmdline / unknown exe / flag without a value / relative
+# value all fail (rc 1) so the caller falls back to the default config
+# (fail-open to the socket check, as before).
+_cmdline_config_value() {
+    local _pid="$1" _arg='' _exe='' _first=1 _want=''
+    [[ "$_pid" =~ ^[0-9]+$ && "$_pid" -gt 1 ]] || return 1
+    while IFS= read -r -d '' _arg; do
+        if (( _first == 1 )); then
+            _first=0
+            _exe="${_arg##*/}"
+            case "$_exe" in
+                xray) _want='-config' ;;
+                sing-box|hysteria) _want='-c' ;;
+                *) return 1 ;;
+            esac
+            continue
+        fi
+        if [[ "$_arg" == "$_want" || "$_arg" == '--config' && "$_exe" == 'xray' ]]; then
+            IFS= read -r -d '' _arg || return 1
+            [[ "$_arg" == /* ]] || return 1
+            printf '%s\n' "$_arg"
+            return 0
+        fi
+    done < "/proc/$_pid/cmdline" 2>/dev/null
+    return 1
+}
 config_has_inbound_port() {
     local proto="$1" port="$2" cfg='' pid="${MAIN_PID:-}" _cfg_rc=0
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
@@ -26628,10 +26711,7 @@ config_has_inbound_port() {
         # Gate the flag on argv[0]: a bare "-c" scan would misread an
         # unrelated "-c" earlier in the argv (e.g. "python3 -c ...")
         # and take the following field as the config path.
-        cfg=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | awk '
-            NR==1 { _exe=$0; sub(/.*\//, "", _exe); next }
-            _exe=="xray" && ($0=="-config" || $0=="--config") { getline _v; print _v; exit }
-            (_exe=="sing-box" || _exe=="hysteria") && $0=="-c" { getline _v; print _v; exit }')
+        cfg=$(_cmdline_config_value "$pid" 2>/dev/null || true)
     fi
     if [[ -z "$cfg" || "$cfg" != /* ]]; then
         case "${CORE:-}" in
@@ -27067,6 +27147,21 @@ set -o pipefail
 # abox_run_wait. This generated script runs standalone from cron and
 # must never source install.sh.
 msg() { printf '%s\n' "$*"; }
+# R26b-L1: self-contained download label. This generated script never
+# sources install.sh, so the main tr_msg is unavailable here; the label
+# is resolved directly (NOT via a tr_msg key: reusing the
+# fetch_one_downloading_geo key would give the i18n single-arm check a
+# second arm per language and fail the self-test).
+geo_download_label() {
+    case "${ABOX_LANG:-zh}" in
+        en) echo 'Geo data download' ;;
+        ru) echo 'Загрузка данных Geo' ;;
+        fa) echo 'دانلود داده‌های Geo' ;;
+        zh-tw) echo 'Geo 資料下載' ;;
+        ja) echo 'Geo データのダウンロード' ;;
+        *) echo '下载 Geo 数据' ;;
+    esac
+}
 abox_run_wait() {
     local _label="$1"; shift
     if [[ ! -t 2 ]]; then
@@ -27421,7 +27516,7 @@ fetch_one() {
     [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/${asset}" && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
-    abox_run_wait "$(tr_msg fetch_one_downloading_geo)" curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
+    abox_run_wait "$(geo_download_label)" curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
     actual=$(sha256sum "$out" | awk '{print $1}')
     [[ "${actual,,}" == "${expected,,}" ]] || return 1
     size=$(wc -c < "$out" 2>/dev/null | tr -d ' ')
@@ -27685,6 +27780,64 @@ EOF_GEO
 is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 
+# R27a-L01: SS whitelist firewall transaction, extracted from
+# pre_install_setup (which only does interactive input and protocol
+# setup). Failure semantics are unchanged: every failure rolls the
+# snapshot back and dies with the same message as before; the helper
+# is only ever called from pre_install_setup, so die() there exits
+# the setup exactly as the inline code did. $1 = whitelist string.
+_apply_ss_whitelist_txn() {
+    local -a ss_whitelist_ips=()
+    local ip proto check_rc
+    if [[ "$(firewall_backend)" != 'iptables' ]]; then
+        die "$(tr_msg pi_ss_backend)"
+    fi
+    ss_whitelist_ipv6_precheck || die "$(tr_msg pi_ss_v6_fw)"
+    _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
+    remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_old_accept)"; }
+    read -r -a ss_whitelist_ips <<< "$1"
+    for ip in "${ss_whitelist_ips[@]}"; do
+        for proto in tcp udp; do
+            if [[ "$ip" == *:* ]]; then
+                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+                    _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_v6_dropped "$ip" "$proto")"
+                fi
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+                    if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+                    case "$check_rc" in
+                        0) ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$ip" "$proto")"; } ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
+                    esac
+                fi
+            else
+                if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+                case "$check_rc" in
+                    0) ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$ip" "$proto")"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
+                esac
+            fi
+        done
+    done
+    for proto in tcp udp; do
+        if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
+        case "$check_rc" in
+            0) ;;
+            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_drop4_fail "$proto")"; } ;;
+            *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
+        esac
+        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+            if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
+            case "$check_rc" in
+                0) ;;
+                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "$(tprintf pi_ss_drop6_fail_rb "$proto")"; else die "$(tprintf pi_ss_drop6_fail_norb "$proto")"; fi; } ;;
+                *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
+            esac
+        fi
+    done
+    enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_order)"; }
+}
 pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
@@ -27939,55 +28092,8 @@ pre_install_setup() {
         fi
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
-        if [[ -n "${SS_WHITELIST_IP:-}" && "$(firewall_backend)" != 'iptables' ]]; then
-            die "$(tr_msg pi_ss_backend)"
-        fi
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
-            ss_whitelist_ipv6_precheck || die "$(tr_msg pi_ss_v6_fw)"
-            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
-            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_old_accept)"; }
-            read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
-            for ip in "${ss_whitelist_ips[@]}"; do
-                for proto in tcp udp; do
-                    if [[ "$ip" == *:* ]]; then
-                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
-                            _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_v6_dropped "$ip" "$proto")"
-                        fi
-                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
-                            if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
-                            case "$check_rc" in
-                                0) ;;
-                                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$ip" "$proto")"; } ;;
-                                *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
-                            esac
-                        fi
-                    else
-                        if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
-                        case "$check_rc" in
-                            0) ;;
-                            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$ip" "$proto")"; } ;;
-                            *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
-                        esac
-                    fi
-                done
-            done
-            for proto in tcp udp; do
-                if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
-                case "$check_rc" in
-                    0) ;;
-                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_drop4_fail "$proto")"; } ;;
-                    *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
-                esac
-                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
-                    if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
-                    case "$check_rc" in
-                        0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "$(tprintf pi_ss_drop6_fail_rb "$proto")"; else die "$(tprintf pi_ss_drop6_fail_norb "$proto")"; fi; } ;;
-                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
-                    esac
-                fi
-            done
-            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_order)"; }
+            _apply_ss_whitelist_txn "$SS_WHITELIST_IP"
         else
             allowPort "$SS_PORT" tcp
             allowPort "$SS_PORT" udp
@@ -34168,6 +34274,88 @@ routing_service_stable() {
 # config actually on disk (see below), so a stale .env CORE (e.g.
 # "hysteria" after an attach deploy that never wrote .env) cannot fail
 # the apply before it touches live.
+# R33-03: shared applied-record commit + restart-gate transaction for
+# routing_apply_live, used by the xray and sing-box branches (which
+# were byte-identical apart from the service name). $1 = service name
+# (xray | sing-box), $2 = live config path, $3 = live backup file,
+# $4 = applied-record path, $5 = applied-record backup file (empty when
+# no applied record existed). Commits the new .applied record, then
+# restarts only when the gate permits; on any failure the live config
+# and the applied record are rolled back, so the next apply still sees
+# the old record and re-pushes the policy.
+_routing_commit_applied_and_restart() {
+    local core="$1" cfg="$2" live_bak="$3" applied_file="$4" applied_bak="$5"
+    local atmp=''
+    if ! atmp=$(mktemp); then
+        if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions "$core" 2>/dev/null; then
+            rm -f -- "$live_bak" "$applied_bak"
+        else
+            msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+        fi
+        msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+        return 1
+    fi
+    # R16-F09-03: refuse a directory $applied_file target:
+    # `mv -f file dir/` succeeds by moving the record INTO the
+    # dir, so without this guard the code walks past the commit
+    # point with no record file and later rule deletions cannot
+    # retire the still-live rules. Failure routes to the
+    # existing rollback below.
+    if [[ ! -d "$applied_file" ]] && jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
+        :
+    else
+        rm -f "$atmp"
+        local _rb_ok=1
+        cp -f -- "$live_bak" "$cfg" 2>/dev/null || _rb_ok=0
+        prepare_abox_runtime_permissions "$core" 2>/dev/null || _rb_ok=0
+        if [[ -n "$applied_bak" ]]; then
+            cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || _rb_ok=0
+        else
+            rm -f -- "$applied_file"
+        fi
+        if (( _rb_ok == 1 )); then
+            rm -f -- "$live_bak" "$applied_bak"
+        else
+            msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+        fi
+        msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+        return 1
+    fi
+    # Commit point: the new .applied record and the new live
+    # config are only committed after permissions + restart
+    # both succeed. On failure both are rolled back (live
+    # config from live_bak, .applied from applied_bak or
+    # removed when there was none), so the next apply still
+    # sees the old record and re-pushes the policy.
+    # H-23 (Carbon R3): restart only when the desired state is
+    # RUNNING and the service was running before the apply; the
+    # new config and .applied record are already on disk, so a
+    # stopped stack stays stopped instead of being revived (or
+    # rolled back when the restart fails on a down service).
+    if service_restart_permitted "$core"; then
+        if prepare_abox_runtime_permissions "$core" && restart_service_soft "$core" && routing_service_stable "$core"; then
+            rm -f -- "$live_bak" "$applied_bak"
+        else
+            cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+            if [[ -n "$applied_bak" ]]; then
+                cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+            else
+                rm -f -- "$applied_file"
+            fi
+            if prepare_abox_runtime_permissions "$core" && restart_service_soft "$core"; then
+                rm -f -- "$live_bak" "$applied_bak"
+            else
+                return 1
+            fi
+            return 1
+        fi
+    else
+        # Gate closed: the new config and .applied record
+        # are already committed on disk; just drop the
+        # backup temp files instead of rolling back.
+        rm -f -- "$live_bak" "$applied_bak"
+    fi
+}
 routing_apply_live() {
     local core='' cfg tmp force_json='[]'
     if [[ $# -gt 0 ]]; then core="$1"; shift; fi
@@ -34288,75 +34476,7 @@ routing_apply_live() {
                 applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
                 cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then rm -f -- "$live_bak" "$applied_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
-            if ! atmp=$(mktemp); then
-                if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
-                fi
-                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
-                return 1
-            fi
-            # R16-F09-03: refuse a directory $applied_file target:
-            # `mv -f file dir/` succeeds by moving the record INTO the
-            # dir, so without this guard the code walks past the commit
-            # point with no record file and later rule deletions cannot
-            # retire the still-live rules. Failure routes to the
-            # existing rollback below.
-            if [[ ! -d "$applied_file" ]] && jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
-                :
-            else
-                rm -f "$atmp"
-                local _rb_ok=1
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || _rb_ok=0
-                prepare_abox_runtime_permissions xray 2>/dev/null || _rb_ok=0
-                if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || _rb_ok=0
-                else
-                    rm -f -- "$applied_file"
-                fi
-                if (( _rb_ok == 1 )); then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
-                fi
-                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
-                return 1
-            fi
-            # Commit point: the new .applied record and the new live
-            # config are only committed after permissions + restart
-            # both succeed. On failure both are rolled back (live
-            # config from live_bak, .applied from applied_bak or
-            # removed when there was none), so the next apply still
-            # sees the old record and re-pushes the policy.
-            # H-23 (Carbon R3): restart only when the desired state is
-            # RUNNING and the service was running before the apply; the
-            # new config and .applied record are already on disk, so a
-            # stopped stack stays stopped instead of being revived (or
-            # rolled back when the restart fails on a down service).
-            if service_restart_permitted xray; then
-                if prepare_abox_runtime_permissions xray && restart_service_soft xray && routing_service_stable xray; then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                    if [[ -n "$applied_bak" ]]; then
-                        cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                    else
-                        rm -f -- "$applied_file"
-                    fi
-                    if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
-                        rm -f -- "$live_bak" "$applied_bak"
-                    else
-                        return 1
-                    fi
-                    return 1
-                fi
-            else
-                # Gate closed: the new config and .applied record
-                # are already committed on disk; just drop the
-                # backup temp files instead of rolling back.
-                rm -f -- "$live_bak" "$applied_bak"
-            fi
+            _routing_commit_applied_and_restart xray "$cfg" "$live_bak" "$applied_file" "$applied_bak" || return 1
             ;;
         singbox|sing-box)
             cfg='/etc/sing-box/config.json'
@@ -34421,75 +34541,7 @@ routing_apply_live() {
                 applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
                 cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then rm -f -- "$live_bak" "$applied_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
-            if ! atmp=$(mktemp); then
-                if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
-                fi
-                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
-                return 1
-            fi
-            # R16-F09-03: refuse a directory $applied_file target:
-            # `mv -f file dir/` succeeds by moving the record INTO the
-            # dir, so without this guard the code walks past the commit
-            # point with no record file and later rule deletions cannot
-            # retire the still-live rules. Failure routes to the
-            # existing rollback below.
-            if [[ ! -d "$applied_file" ]] && jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
-                :
-            else
-                rm -f "$atmp"
-                local _rb_ok=1
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || _rb_ok=0
-                prepare_abox_runtime_permissions sing-box 2>/dev/null || _rb_ok=0
-                if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || _rb_ok=0
-                else
-                    rm -f -- "$applied_file"
-                fi
-                if (( _rb_ok == 1 )); then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
-                fi
-                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
-                return 1
-            fi
-            # Commit point: the new .applied record and the new live
-            # config are only committed after permissions + restart
-            # both succeed. On failure both are rolled back (live
-            # config from live_bak, .applied from applied_bak or
-            # removed when there was none), so the next apply still
-            # sees the old record and re-pushes the policy.
-            # H-23 (Carbon R3): restart only when the desired state is
-            # RUNNING and the service was running before the apply; the
-            # new config and .applied record are already on disk, so a
-            # stopped stack stays stopped instead of being revived (or
-            # rolled back when the restart fails on a down service).
-            if service_restart_permitted sing-box; then
-                if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box && routing_service_stable sing-box; then
-                    rm -f -- "$live_bak" "$applied_bak"
-                else
-                    cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                    if [[ -n "$applied_bak" ]]; then
-                        cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                    else
-                        rm -f -- "$applied_file"
-                    fi
-                    if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
-                        rm -f -- "$live_bak" "$applied_bak"
-                    else
-                        return 1
-                    fi
-                    return 1
-                fi
-            else
-                # Gate closed: the new config and .applied record
-                # are already committed on disk; just drop the
-                # backup temp files instead of rolling back.
-                rm -f -- "$live_bak" "$applied_bak"
-            fi
+            _routing_commit_applied_and_restart sing-box "$cfg" "$live_bak" "$applied_file" "$applied_bak" || return 1
             ;;
         *) return 1 ;;
     esac
@@ -39128,6 +39180,21 @@ abox_caddy_owned() {
            grep -qE '^[[:space:]]*Exec[A-Za-z]*=.*[[:space:]]caddy([[:space:]]|$)' "$_ref" 2>/dev/null; then
             return 1
         fi
+        # S2 (R37-02 follow-up): init scripts have no Exec* lines, so a
+        # foreign init service calling bare `caddy` (a direct command, an
+        # OpenRC `command="caddy"` assignment, or `sh -c 'caddy ...'`)
+        # was invisible to the checks above and would lose its binary on
+        # cleanup. Comment lines are stripped first (a comment merely
+        # mentioning caddy is not a consumer); any other match keeps the
+        # binary (fail-closed direction).
+        case "$_ref" in
+            /etc/init.d/*)
+                if grep -vE '^[[:space:]]*#' "$_ref" 2>/dev/null | grep -qE $'^[[:space:]]*caddy([[:space:]]|$)' ||
+                   grep -vE '^[[:space:]]*#' "$_ref" 2>/dev/null | grep -qE $'[[:space:]\'"(=]caddy([[:space:]]|[\'\";)]|$)'; then
+                    return 1
+                fi
+                ;;
+        esac
     done
     return 0
 }
@@ -39749,7 +39816,10 @@ users_registries_wipe() {
     # users_registries_remove_core, R8-F04-2). The leaf ! -L guard only
     # covers the last component; a linked dir would delete ordinary
     # files outside the registry. A missing dir stays a no-op success.
+    # H2 (R15b residual, hardening): ancestor chain too, like
+    # users_registries_remove_core above.
     [[ ! -L "$_dir" ]] || return 1
+    path_parent_chain_safe "$_dir" || return 1
     [[ -d "$_dir" ]] || return 0
     for _f in "$_dir"/*.json; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
@@ -41847,7 +41917,7 @@ fetch_abox_mirror_asset() {
     if (( _core_ver_rc == 2 )); then msg "${YELLOW}[!] recovery binary cannot be executed (not a version mismatch); check the workdir mount options (/tmp noexec is common) or TMPDIR${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if (( _core_ver_rc != 0 )); then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if [[ -d "$dest_file" ]]; then msg "${YELLOW}[!] recovery destination is a directory, refusing to move asset into it${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
-    mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+    mv -fT -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
     msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"
     return 0
 }
@@ -42112,7 +42182,7 @@ write_full_uuid_list_to_file() {
 }
 
 sync_uuids_into_xray_config() {
-    local cfg='/usr/local/etc/xray/config.json' tmp primary extras_json
+    local cfg='/usr/local/etc/xray/config.json' tmp primary
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     primary="${UUID:-}"
     [[ -n "$primary" ]] || return 1
@@ -42121,38 +42191,73 @@ sync_uuids_into_xray_config() {
     # also a live client in the xray config; otherwise the emitted
     # users.d nodes would be dead. write_full_uuid_list_to_file fails
     # closed on an unreadable list (never sync an untrusted list).
-    local _uuid_list_tmp=''
+    # S3 (R40-H1 follow-up): group the merged list by registry tag
+    # instead of flattening it into every VLESS inbound. The map is
+    # {tag: [{id, email}]} over xray/vless registries, enabled users
+    # only (same filter as list_usersd_uuids), first-seen order,
+    # deduped by id; a symlinked / unreadable registry fails closed.
+    local _uuid_list_tmp='' _tag_map_tmp='' _tag_files=() _tag_file='' _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" _first_tag='' _untagged_json=''
     _uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-list.XXXXXX) || return 1
     if ! write_full_uuid_list_to_file "$_uuid_list_tmp"; then
         rm -f -- "$_uuid_list_tmp"
         msg "${RED}UUID list unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
         return 1
     fi
-    # R40-M1: check the conversion: the old pipe (jq -R | jq -s) ran
-    # with pipefail unset, so a failing first jq was invisible to the
-    # assignment status and a failed conversion fell through to '[]'
-    # below, silently dropping every non-primary user from the config.
-    # A single jq -Rn call over [inputs] is directly checkable (and
-    # jq -s -R is NOT equivalent: it slurps the whole input as one
-    # string, so map() fails on it).
-    extras_json=$(jq -Rn -c --arg p "${primary}" '[inputs | select(length > 0 and (. | ascii_downcase) != ($p | ascii_downcase))]' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp"; return 1; }
+    _tag_map_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-tagmap.XXXXXX) || { rm -f -- "$_uuid_list_tmp"; return 1; }
+    for _tag_file in "$_users_dir"/*.json; do
+        [[ -e "$_tag_file" || -L "$_tag_file" ]] || continue
+        [[ ! -L "$_tag_file" && -f "$_tag_file" && -r "$_tag_file" ]] || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+        _tag_files+=("$_tag_file")
+    done
+    if (( ${#_tag_files[@]} > 0 )); then
+        jq -s -c '
+          reduce .[] as $r ({}; if ($r.core // "") == "xray" and ($r.protocol // "") == "vless" and (($r.tag // "") != "") then
+            .[$r.tag] = ((.[$r.tag] // []) + [$r.users[]? | select(.disabled != true and ((.blocked // "") == "")) | {id: (.uuid // ""), email: (if (.email // "") != "" then .email else ($r.tag + "/x-" + (.uuid // "")[0:8]) end)} | select(.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))])
+          else . end)
+          | map_values(reduce .[] as $u ([]; if (map(.id) | index($u.id)) then . else . + [$u] end))
+        ' "${_tag_files[@]}" > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+    else
+        printf '%s' '{}' > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+    fi
+    # Untagged UUIDs (primary + extras: the merged list minus every
+    # registry UUID, compared case-insensitively) belong to no tag and
+    # go to the first VLESS inbound only. R40-M1: a single jq -Rn call
+    # over [inputs] is directly checkable (jq -s -R is NOT equivalent:
+    # it slurps the whole input as one string, so map() fails on it).
+    _untagged_json=$(jq -Rn -c --slurpfile tagmap "$_tag_map_tmp" '
+      [inputs | select(length > 0)] as $merged
+      | ([$tagmap[0][] | .[].id | ascii_downcase] | unique) as $reg_all
+      | [$merged[] | select((ascii_downcase as $l | $reg_all | index($l) | not))]
+    ' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
     rm -f -- "$_uuid_list_tmp"
-    [[ -n "$extras_json" ]] || extras_json='[]'
-    tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
-    if ! jq --rawfile p <(printf '%s' "$primary") --slurpfile extras <(printf '%s' "$extras_json") '
+    [[ -n "$_untagged_json" ]] || _untagged_json='[]'
+    _first_tag=$(jq -r '.inbounds[]? | select(.protocol == "vless") | (.tag // "vless")' "$cfg" 2>/dev/null | head -1 || true)
+    tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || { rm -f -- "$_tag_map_tmp"; return 1; }
+    if ! jq --rawfile p <(printf '%s' "$primary") --arg first_tag "$_first_tag" --slurpfile tagmap "$_tag_map_tmp" --slurpfile untagged <(printf '%s' "$_untagged_json") '
         .inbounds |= map(
-          if .protocol=="vless" then
-            (.settings.clients[0].flow // "") as $flow |
+          if .protocol == "vless" then
             (.tag // "vless") as $itag |
-            .settings.clients = (
-              [({id:$p, email:($itag + "/main")} + (if $flow != "" then {flow:$flow} else {} end))]
-              + ($extras[0] | map({id:., email:($itag + "/x-" + .[0:8])} + (if $flow != "" then {flow:$flow} else {} end)))
+            (.settings.clients[0].flow // "") as $flow |
+            (($tagmap[0][$itag] // []) as $reg |
+             (if $itag == $first_tag then $untagged[0] else [] end) as $pre |
+             (if ($reg | length) > 0 then
+                .settings.clients = (
+                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
+                  + ($reg | map({id: .id, email: .email} + (if $flow != "" then {flow: $flow} else {} end)))
+                )
+              elif $itag == $first_tag then
+                .settings.clients = (
+                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
+                  + (.settings.clients // [] | map(select(.id as $id | ($pre | index($id)) | not)))
+                )
+              else . end)
             )
           else . end
         )
       ' "$cfg" > "$tmp"; then
-        rm -f "$tmp"; return 1
+        rm -f -- "$tmp" "$_tag_map_tmp"; return 1
     fi
+    rm -f -- "$_tag_map_tmp"
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     if [[ -x /usr/local/bin/xray ]]; then
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -46864,12 +46969,19 @@ snapshot_dns_state() {
     else
         printf absent > "$dir/dnscrypt-socket-listen.absent" || return 1
     fi
-    if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
+    # S4 (R44-M2 follow-up): refuse a symlinked live drop-in here too.
+    # The dnscrypt-socket branch above already fails closed on the same
+    # path, so this is defense-in-depth (a future reorder cannot reopen
+    # it): cp -a would otherwise store the link itself in the snapshot
+    # and the restore below would put a live symlink back.
+    if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
         mkdir -p "$dir/dnscrypt-socket-dropin" || return 1
         cp -a /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf "$dir/dnscrypt-socket-dropin/abox-listen.conf" || return 1
         printf present > "$dir/dnscrypt-socket-dropin-state" || return 1
-    else
+    elif [[ ! -e /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
         printf absent > "$dir/dnscrypt-socket-dropin-state" || return 1
+    else
+        return 1
     fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
@@ -47005,12 +47117,17 @@ restore_dns_snapshot_body() {
         local _listen_state='' _socket_changed=0
         _listen_state=$(tr -d '[:space:]' < "$dir/dnscrypt-socket-state" 2>/dev/null || true)
         if [[ "$_listen_state" == present && -f "$dir/dnscrypt-socket/abox-listen.conf" ]]; then
+            # S4 (R44-M2 follow-up): a symlinked snapshot entry must fail
+            # closed, not be restored as a live symlink (cp -a preserves
+            # the link); the dnscrypt toml got the same treatment in R44-M2.
+            [[ ! -L "$dir/dnscrypt-socket/abox-listen.conf" ]] || return 1
             mkdir -p /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
             if [[ ! -f "$_abox_listen" ]] || ! cmp -s "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" 2>/dev/null; then
                 _socket_changed=1
             fi
             rm -f -- "$_abox_listen" || return 1
             cp -a "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" || return 1
+            [[ -f "$_abox_listen" && ! -L "$_abox_listen" ]] || return 1
         elif [[ "$_listen_state" == absent ]]; then
             if [[ -f "$_abox_listen" ]]; then
                 # 06c2-02: same marker gate as the dropin-state restore
@@ -47090,9 +47207,14 @@ restore_dns_snapshot_body() {
     # abox-listen.conf (no A-Box marker) is never removed: fail
     # closed instead of clobbering an admin-pinned override.
     if [[ -f "$dir/dnscrypt-socket-dropin/abox-listen.conf" ]]; then
+        # S4 (R44-M2 follow-up): same symlink refusal as the
+        # dnscrypt-socket branch above -- a symlinked snapshot entry
+        # fails closed instead of being restored as a live symlink.
+        [[ ! -L "$dir/dnscrypt-socket-dropin/abox-listen.conf" ]] || return 1
         [[ -d /etc/systemd/system/dnscrypt-proxy.socket.d ]] || install -d -m 755 /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
         rm -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
         cp -a "$dir/dnscrypt-socket-dropin/abox-listen.conf" /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
+        [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] || return 1
     elif [[ -f "$dir/dnscrypt-socket-dropin-state" ]] && [[ "$(tr -d '[:space:]' < "$dir/dnscrypt-socket-dropin-state" 2>/dev/null || true)" == absent ]]; then
         if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
             grep -Fq '# Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || return 1
@@ -47500,6 +47622,69 @@ _nm_dns_resolv_managed() {
     return 0
 }
 
+# H5 (R45-M1 residual, hardening): complete effective-upstream check
+# (resolvectl). nm_dns_verify_applied below proves the connection
+# profile carries the requested servers and that resolv.conf's first
+# nameserver is one of them (or a provably NM-fed loopback stub) -- but
+# neither proves the requested servers are the ones actually serving
+# queries on the effective link: a stale DHCP upstream or a
+# higher-priority link can still win while the profile looks right.
+# Ask the running resolver directly, on the effective device
+# (nm_effective_device, the same device apply_host_dns modified):
+#   1. `resolvectl dns <dev>` must list exactly the requested server
+#      set (normalised, order-insensitive); a link reporting no
+#      servers at all is a definite mismatch, not an inconclusive
+#      query.
+#   2. `resolvectl status <dev>` "Current DNS Server", when resolved
+#      reports one, must be one of the requested servers -- the
+#      configured list alone does not prove which server answers.
+#      Absent (no query yet) is inconclusive and is skipped.
+# Fail-open only when the evidence itself is unavailable: no
+# resolvectl binary, no determinable effective device, or resolvectl
+# answering nothing at all for the device (resolved not managing it).
+# A present-but-different server set is positive evidence of a wrong
+# upstream and fails closed. One retry after 1s on mismatch: resolved
+# updates asynchronously after `nmcli device reapply`.
+_nm_dns_effective_upstream_matches() {
+    local dev="$1" v4="$2" v6="${3:-}" _out='' _line='' _servers='' _cur='' _found=0 _tok=''
+    local -a _req_toks=()
+    IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
+    _out=$(resolvectl dns "$dev" 2>/dev/null || true)
+    [[ -n "$_out" ]] || return 0
+    _servers=''
+    while IFS= read -r _line; do
+        case "$_line" in
+            *"(${dev}):"*) _servers="${_line#*:}"; _found=1 ;;
+        esac
+    done <<< "$_out"
+    (( _found == 1 )) || return 0
+    [[ -n "${_servers//[[:space:]]/}" ]] || return 1
+    [[ "$(_nm_dns_norm_set "$_servers")" == "$(_nm_dns_norm_set "$v4${v6:+ $v6}")" ]] || return 1
+    _out=$(resolvectl status "$dev" 2>/dev/null || true)
+    _cur=$(printf '%s\n' "$_out" | awk '/^Current DNS Server:/ {print $NF; exit}' || true)
+    if [[ -n "$_cur" ]]; then
+        _cur=$(normalize_ip_literal "$_cur")
+        for _tok in "${_req_toks[@]}"; do
+            [[ "$(normalize_ip_literal "$_tok")" == "$_cur" ]] && return 0
+        done
+        return 1
+    fi
+    return 0
+}
+
+_nm_dns_verify_effective_upstream() {
+    local v4="$1" v6="${2:-}" dev='' _try=0
+    command -v resolvectl >/dev/null 2>&1 || return 0
+    dev=$(nm_effective_device 2>/dev/null || true)
+    [[ -n "$dev" ]] || return 0
+    while (( _try < 2 )); do
+        if _nm_dns_effective_upstream_matches "$dev" "$v4" "$v6"; then return 0; fi
+        _try=$(( _try + 1 ))
+        (( _try < 2 )) && sleep 1
+    done
+    return 1
+}
+
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
     v=$(nmcli --escape no -g ipv4.dns connection show "$connection" 2>/dev/null || true)
@@ -47520,7 +47705,12 @@ nm_dns_verify_applied() {
     _first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' "$rc" 2>/dev/null || true)
     [[ -n "$_first_ns" ]] || return 1
     if [[ "$_first_ns" =~ ^127\.0\.0\.(1|53)$ ]]; then
-        _nm_dns_loopback_trusted "$_first_ns" && return 0
+        if _nm_dns_loopback_trusted "$_first_ns"; then
+            # H5: a trusted stub only proves the backend provenance; the
+            # requested upstreams behind it still have to win.
+            _nm_dns_verify_effective_upstream "$v4" "$v6"
+            return $?
+        fi
     fi
     local -a _req_toks=()
     IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
@@ -47530,7 +47720,12 @@ nm_dns_verify_applied() {
     local _first_ns_norm=''
     _first_ns_norm=$(normalize_ip_literal "$_first_ns")
     for _req_tok in "${_req_toks[@]}"; do
-        [[ "$(normalize_ip_literal "$_req_tok")" == "$_first_ns_norm" ]] && return 0
+        if [[ "$(normalize_ip_literal "$_req_tok")" == "$_first_ns_norm" ]]; then
+            # H5: first-nameserver match is necessary, not sufficient;
+            # confirm the requested servers are the effective upstream.
+            _nm_dns_verify_effective_upstream "$v4" "$v6"
+            return $?
+        fi
     done
     return 1
 }
@@ -50761,6 +50956,20 @@ sni_verify_raw_report() {
     local asn_cache vps_ip vps_meta vps_asn vps_country target_ip target_meta target_asn target_country target_org asn_match same_country cdn_penalty progress_every=20
     : > "$verified" || return 1
     asn_cache=$(mktemp -d /tmp/A-Box-asn-cache.XXXXXX) || die 'SNI ASN cache directory creation failed; refusing to use a shared temporary directory.'
+    # R48-L1: the three `|| return 1` exits below run before the
+    # explicit cleanup at the end; a RETURN trap guarantees the cache
+    # directory is removed on every exit path (same pattern as the
+    # _jq_cfg trap in routing_apply_live).
+    # L10-fix: a RETURN trap is a single global slot. The trap above
+    # stayed installed after this function returned and refired on
+    # every later function return with $asn_cache already unbound
+    # (fatal under set -u; it killed $(sni_auto_select_default) and
+    # emptied the default SNI). Save the caller's trap and restore it
+    # from inside the action, else clear the slot, so the cleanup
+    # fires exactly once (same pattern as the jq() shim).
+    local _asn_caller_trap=''
+    _asn_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -rf -- "$asn_cache" 2>/dev/null || true; if [[ -n "${_asn_caller_trap:-}" ]]; then eval "$_asn_caller_trap"; else trap - RETURN; fi; true' RETURN
     vps_ip=$(get_public_ip 2>/dev/null || true)
     vps_meta=$(asn_lookup_ip "$vps_ip" "$asn_cache")
     vps_asn=$(awk -F'\t|=' '{for(i=1;i<=NF;i++) if($i=="asn"){print $(i+1); exit}}' <<< "$vps_meta")
@@ -51315,6 +51524,9 @@ rollback_new_swap_activation_only() {
 
 rollback_abox_new_swap() {
     local fstab_backup="${1:-}" rollback_tmp=''
+    # R48-L2: _orig_mode must stay local; a bare assignment would
+    # clobber a caller's same-named local via dynamic scoping.
+    local _orig_mode=''
     if [[ -n "$fstab_backup" && -f "$fstab_backup" && ! -L "$fstab_backup" ]]; then
         if ! cp -a "$fstab_backup" /etc/fstab; then
             msg "${RED}[!] $(tr_msg rollback_abox_new_swap_fstab_unrecoverable)${NC}" >&2
@@ -51374,6 +51586,8 @@ fstab_path_is_safe() {
 
 setup_swap_2g() {
     local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte="" _swap_nocow=0
+    # R48-L2: _orig_mode must stay local (see rollback_abox_new_swap).
+    local _orig_mode=''
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg setup_swap_2g_title)${NC}"
@@ -52171,6 +52385,8 @@ remove_abox_swap() {
     grep -Fxq 'A-Box managed swap v1' "$ABOX_DIR/.swapfile.managed" 2>/dev/null || return 1
     fstab_path_is_safe || return 1
     local tmp backup swap_active=0 swap_state=1
+    # R48-L2: _orig_mode must stay local (see rollback_abox_new_swap).
+    local _orig_mode=''
     if [[ -f /swapfile && ! -L /swapfile ]]; then
         swapfile_active_state
         swap_state=$?
@@ -53037,7 +53253,12 @@ read_crontab_to_file() {
         rm -f -- "$err"
         return 0
     elif grep -Eqi "no crontab|no crontab for|can't open '[^']*': No such file" "$err"; then
-        : > "$out"
+        # S5 (R51-M2 follow-up): the truncation must not be silent -- a
+        # failed `: >` (e.g. the file vanishing between the two opens)
+        # used to fall through to `return 0` and report an empty
+        # crontab, the same masking R51-M2 fixed in
+        # capture_abox_iptables_snapshot.
+        : > "$out" || return 1
         rm -f -- "$err"
         return 0
     fi
@@ -55389,6 +55610,12 @@ backup_current_config() {
         fi
         # A-05a: Do NOT write ${tarball}.key next to archive (co-location defeats HMAC trust model).
         # Key lives ONLY in /root/A-Box-backup-keys/ (mode 700, root-only).
+        # H6 (R52-02 = L12): the separated key is PERMANENTLY retained.
+        # It is the only copy of the HMAC key for its archive, and the
+        # archive may have been copied to external media; retention
+        # below therefore never deletes separated keys. The only
+        # deletion path is cleanup_separated_backup_keys (explicit
+        # name + typed DELETE-KEY confirmation, via backup menu 5).
         msg "${GREEN}[*] $(tr_msg bk_recovery_key)${NC} $separated_key"
         msg "${YELLOW}[!] $(tr_msg bk_keep_key)${NC}"
     fi
@@ -55399,6 +55626,10 @@ backup_current_config() {
     fi
     # R9C14-01: retention deletion lives inside the Python program below
     # (exact Path objects, no name round-trip through bash).
+    # H6 (R52-02 = L12): retention deletes archives and their
+    # archive-adjacent sidecars (.sha256/.hmac/.key) ONLY -- the
+    # separated keys in /root/A-Box-backup-keys/ are never touched
+    # (see cleanup_separated_backup_keys for the lifecycle policy).
     if python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" "$tarball" <<'PY_BACKUP_RETENTION'
 from pathlib import Path
 import sys
@@ -55437,6 +55668,62 @@ PY_BACKUP_RETENTION
         msg "${YELLOW}[!] $(tr_msg bk_retention_fail)${NC}"
     fi
     msg "${GREEN}[*] $(tr_msg bk_created)${NC} $tarball"
+}
+
+# H6 (R52-02 = L12, hardening): separated recovery-key lifecycle.
+# POLICY -- explicit permanent retention + operator-named manual
+# cleanup. The key in /root/A-Box-backup-keys/ is the ONLY copy of
+# the HMAC key for its archive, and the archive itself may have been
+# copied to external media long ago. Local archive absence therefore
+# proves nothing about whether the key is still needed: deleting a
+# key because no same-named archive survives locally could destroy
+# the recovery of an externally stored archive. So:
+#   * retention (backup_current_config) NEVER deletes separated keys
+#     -- it removes archives and their archive-adjacent sidecars only;
+#   * this function is the ONLY deletion path, and it deletes only a
+#     key the operator names explicitly (exact basename, no bulk or
+#     "orphan" mode), after a typed DELETE-KEY confirmation and a
+#     printed warning that the archive may live on external media.
+# No argument lists the keys (with advisory local-archive presence)
+# and deletes nothing; interactively it then offers one named
+# deletion, non-interactively it stops at the list.
+# ABOX_BACKUP_KEYS_DIR is a test seam; production is always
+# /root/A-Box-backup-keys.
+cleanup_separated_backup_keys() {
+    local keys_dir="${ABOX_BACKUP_KEYS_DIR:-/root/A-Box-backup-keys}" _name="${1:-}" _f='' _archive='' _present='' _answer='' _target='' _any=0
+    (( EUID == 0 )) || return 1
+    [[ -d "$keys_dir" && ! -L "$keys_dir" ]] || return 1
+    path_parent_chain_safe "$keys_dir" || return 1
+    if [[ -z "$_name" ]]; then
+        for _f in "$keys_dir"/A-Box-backup-*.tar.gz.key; do
+            [[ -f "$_f" && ! -L "$_f" ]] || continue
+            _any=1
+            _archive="$(basename -- "${_f%.key}")"
+            _present='no'
+            if [[ -f "${ABOX_DIR:-/etc/ddr}/backups/$_archive" || -f "/root/A-Box-backups/$_archive" ]]; then _present='yes'; fi
+            msg "[*] $_f (same-named archive present locally: $_present)"
+        done
+        (( _any == 0 )) && msg '[*] No separated recovery keys.'
+        msg '[!] A separated key is the only copy for its archive, which may live on external media; local archive absence does not mean the key is unneeded. Deletion is by explicit name only.'
+        if [[ -t 0 ]]; then
+            read -r -p 'Key basename to delete (empty = none): ' _name || return 0
+            [[ -n "$_name" ]] || return 0
+        else
+            return 0
+        fi
+    fi
+    case "$_name" in */*|*..*) return 1 ;; esac
+    [[ "$_name" == A-Box-backup-*.tar.gz.key ]] || return 1
+    _target="$keys_dir/$_name"
+    [[ -f "$_target" && ! -L "$_target" ]] || return 1
+    path_parent_chain_safe "$_target" || return 1
+    msg "[!] Deleting $_target destroys recovery of its archive, which may be stored on external media. This cannot be undone."
+    read -r -p 'Type DELETE-KEY to confirm permanent deletion: ' _answer || return 1
+    [[ "$_answer" == 'DELETE-KEY' ]] || return 1
+    rm -f -- "$_target" || return 1
+    [[ ! -e "$_target" && ! -L "$_target" ]] || return 1
+    msg "[*] Deleted separated recovery key: $_target"
+    return 0
 }
 
 auto_backup_prompt() {
@@ -55972,6 +56259,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} Restore from backup"
         msg "${CYAN}3.${NC} Export recovery key to a separate medium"
         msg "${CYAN}4.${NC} Convert a legacy backup to manifest v3"
+        msg "${CYAN}5.${NC} Clean up separated recovery keys"
         msg "${CYAN}0.${NC} Back"
             ;;
         ru)
@@ -55979,6 +56267,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} Восстановление из резервной копии"
         msg "${CYAN}3.${NC} Экспорт ключа восстановления на отдельный носитель"
         msg "${CYAN}4.${NC} Конвертация старой резервной копии в manifest v3"
+        msg "${CYAN}5.${NC} Очистка отделённых ключей восстановления"
         msg "${CYAN}0.${NC} Назад"
             ;;
         fa)
@@ -55986,6 +56275,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} بازیابی از پشتیبان"
         msg "${CYAN}3.${NC} صدور کلید بازیابی به رسانه جداگانه"
         msg "${CYAN}4.${NC} تبدیل پشتیبان قدیمی به manifest v3"
+        msg "${CYAN}5.${NC} پاک‌سازی کلیدهای بازیابی جداگانه"
         msg "${CYAN}0.${NC} بازگشت"
             ;;
         ja)
@@ -55993,6 +56283,7 @@ backup_restore_menu() {
             msg "${CYAN}2.${NC} バックアップから復元"
             msg "${CYAN}3.${NC} 復旧キーを別の媒体にエクスポート"
             msg "${CYAN}4.${NC} 旧バージョンのバックアップを manifest v3 に安全に変換"
+            msg "${CYAN}5.${NC} 分離された復旧キーをクリーンアップ"
             msg "${CYAN}0.${NC} 戻る"
             ;;
         zh-tw)
@@ -56000,6 +56291,7 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} 從備份恢復"
         msg "${CYAN}3.${NC} 將恢復金鑰匯出到獨立介質"
         msg "${CYAN}4.${NC} 將舊版備份安全轉換為 manifest v3"
+        msg "${CYAN}5.${NC} 清理分離的復原金鑰"
         msg "${CYAN}0.${NC} 返回"
             ;;
         *)
@@ -56007,11 +56299,12 @@ backup_restore_menu() {
         msg "${CYAN}2.${NC} 从备份恢复"
         msg "${CYAN}3.${NC} 将恢复密钥导出到独立介质"
         msg "${CYAN}4.${NC} 将旧版备份安全转换为 manifest v3"
+        msg "${CYAN}5.${NC} 清理分离的恢复密钥"
         msg "${CYAN}0.${NC} 返回"
             ;;
     esac
     local c
-    read -r -p "$(tr_msg bk_select_0_4)" c || return 0
+    read -r -p "$(tr_msg bk_select_0_5)" c || return 0
     c=$(normalize_fa_ar_digits "${c:-}")
     case "$c" in
         1) backup_current_config; pause_return ;;
@@ -56026,6 +56319,10 @@ backup_restore_menu() {
             read -r -p "$(tr_msg bk_legacy_path)" legacy_path || return 0
             read -r -p "$(tr_msg bk_legacy_out)" legacy_out || return 0
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
+            ;;
+        5)
+            # H6 (R52-02 = L12): the only separated-key deletion entry.
+            cleanup_separated_backup_keys; pause_return
             ;;
         0|'') return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
@@ -56963,6 +57260,22 @@ wallos_image_id_from_archive() {
     [[ -f "$archive" && ! -L "$archive" ]] || return 1
     python3 -I - "$archive" <<'PY_WALLOS_ARCHIVE_ID'
 import sys, tarfile, hashlib, json
+import resource
+# S7 (R51-M1 follow-up): same bound as S6 -- tarfile reads PAX/GNU
+# longname extension headers whole into memory before yielding the next
+# member (getmember/getnames scan them), so no member/size cap can bound
+# them. A 512 MiB RLIMIT_AS fails closed (MemoryError -> non-zero exit)
+# on a crafted giant header; see the R51-M1 note in
+# validate_legacy_backup_archive for the measured headroom.
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    sys.exit(1)
 archive = sys.argv[1]
 try:
     tf = tarfile.open(archive, 'r:gz')
@@ -59537,6 +59850,27 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # /opt/wallos ownership state file exists; anything else is left
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
+# H7 (R58b-M1, hardening): pin a Wallos container by ID, not by name.
+# The ownership label proves the container found by name is managed
+# at check time, but a later stop/start/rm by name re-resolves the
+# name and can touch a different container if the name was retaken
+# in between (docker run --name wallos fails while the managed
+# container exists, so the swap needs a privileged actor in the
+# window -- hence hardening, not a confirmed vulnerability). Capture
+# the ID once (docker inspect -f '{{.Id}}', validated as a sha256
+# digest) and address the ID: docker resolves an ID unambiguously,
+# so stop/start/rm by ID can only ever touch that exact container.
+_wallos_container_id() {
+    local _id=''
+    _id=$(docker inspect -f '{{.Id}}' wallos 2>/dev/null || true)
+    [[ "$_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+    printf '%s\n' "$_id"
+}
+_wallos_valid_container_id() { [[ "${1:-}" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; }
+_wallos_stop_id() { _wallos_valid_container_id "${1:-}" || return 1; docker stop "$1" >/dev/null 2>&1; }
+_wallos_start_id() { _wallos_valid_container_id "${1:-}" || return 1; docker start "$1" >/dev/null 2>&1; }
+_wallos_rm_id() { _wallos_valid_container_id "${1:-}" || return 1; docker rm -f "$1" >/dev/null 2>&1; }
+
 # R21-WALLOS: classify a failed `docker inspect wallos` as "container gone"
 # only when Docker's own "no such container/object" wording is present
 # (matched case-insensitively: Docker 29 reports it lowercase) AND a
@@ -59600,12 +59934,17 @@ wallos_stack_teardown() {
         # case-insensitively by _wallos_container_gone (Docker 29
         # reports it lowercase) and confirmed by `docker ps -a`.
         if _inspect_err=$(docker inspect wallos 2>&1 >/dev/null); then
-            local _lbl=''
+            local _lbl='' _tid=''
             _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
             # R16C15-01: only the managed label authorizes removal;
             # a leftover state file alone is not proof of ownership.
-            if [[ "$_lbl" == 'true' ]]; then
-                if docker rm -f wallos >/dev/null 2>&1; then
+            # H7 (R58b-M1): pin the ID next to the label check; the rm
+            # below addresses the ID, and the recheck must also prove
+            # that ID gone (a same-name recreation must not pass as
+            # the removal of the pinned container).
+            _tid=$(_wallos_container_id) || _tid=''
+            if [[ "$_lbl" == 'true' && -n "$_tid" ]]; then
+                if _wallos_rm_id "$_tid"; then
                     # Same three-state classification for the post-rm
                     # recheck: _wallos_container_gone (case-insensitive
                     # "no such container/object" + `docker ps -a`
@@ -59622,7 +59961,14 @@ wallos_stack_teardown() {
                         # _gone == 0).
                         _unknown=1
                     elif _wallos_container_gone "$_recheck_err"; then
-                        _gone=1
+                        # H7: the name is gone, but the pinned container
+                        # may have been renamed instead of removed; only
+                        # the ID being gone proves the removal.
+                        if docker container inspect "$_tid" >/dev/null 2>&1; then
+                            _unknown=1
+                        else
+                            _gone=1
+                        fi
                     else
                         _unknown=1
                     fi
@@ -59844,7 +60190,13 @@ wallos_restore_direct_container() {
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
-    wallos_wait_healthy "$port" || return 1
+    # S8 (R54-M2 follow-up): same U217 rule as the rollback/install
+    # paths -- an omitted -p means the rebuilt container is unpublished,
+    # so the health gate must not demand a publication it will never
+    # have (the bare call above failed every unpublished restore).
+    local _health_mode=published
+    (( ${#_pub_args[@]} == 0 )) && _health_mode=unpublished
+    wallos_wait_healthy "$port" "$_health_mode" || return 1
     wallos_write_state "$image" "$port" "$tz" "$bind_address" "$mode" '' '' "$version" || return 1
     return 0
 }
@@ -60958,7 +61310,7 @@ wallos_choose_access_mode() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_container_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     command -v jq >/dev/null 2>&1 || { msg "${RED}$(tr_msg wl_iu_need_jq)${NC}"; return 1; }
     wallos_print_host_info
@@ -61005,6 +61357,12 @@ wallos_install_or_update() {
         # .Config.Image can be retagged before recovery runs.
         old_image_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
         [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
+            msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
+        }
+        # H7 (R58b-M1): pin the container ID at capture time, next to
+        # the S135 image-ID pin; the stop/rm/start below address the
+        # ID, never the re-resolved name.
+        old_container_id=$(_wallos_container_id) || {
             msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
         }
         old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
@@ -61227,15 +61585,15 @@ wallos_install_or_update() {
         chmod 600 "$WALLOS_DIR/.A-Box-managed" || return 1
     fi
     if (( running == 1 )); then
-        if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
+        if (( was_running == 1 )); then _wallos_stop_id "$old_container_id" || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
+        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || _wallos_start_id "$old_container_id" || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
         wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" || {
-            (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+            (( was_running == 0 )) || _wallos_start_id "$old_container_id" || true
             msg "${RED}$(tr_msg wl_iu_journal_fail)${NC}"
             return 1
         }
-        docker rm wallos >/dev/null 2>&1 || {
+        docker rm "$old_container_id" >/dev/null 2>&1 || {
             wallos_recover_interrupted_upgrade || msg "${RED}$(tr_msg wl_iu_start_fail)${NC}"
             return 1
         }
@@ -61894,16 +62252,23 @@ wallos_status() {
 }
 
 wallos_resume_after_backup() {
-    local was_running="${1:-0}" backup_path="${2:-}"
+    local was_running="${1:-0}" backup_path="${2:-}" _cid="${3:-}"
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 2
     [[ "$was_running" == 1 ]] || return 0
-    if docker start wallos >/dev/null 2>&1; then return 0; fi
+    # H7 (R58b-M1): when the caller pinned the container ID, restart
+    # that ID, never the re-resolved name. No ID (old callers and the
+    # self-test) keeps the previous by-name behaviour.
+    if [[ -n "$_cid" ]]; then
+        if _wallos_start_id "$_cid"; then return 0; fi
+    elif docker start wallos >/dev/null 2>&1; then
+        return 0
+    fi
     msg "${RED}$(tprintf wl_bn_restart_fail "${backup_path:-not-created}")${NC}" >&2
     return 1
 }
 
 wallos_backup_now() {
-    local stamp backup was_running=0 _inspect_err _running _managed
+    local stamp backup was_running=0 _inspect_err _running _managed _cid=''
     [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
     # R6C15-03: an inspect failure is NOT "stopped". Only a daemon-confirmed
     # absence ("No such container/object", matched case-insensitively by
@@ -61920,9 +62285,13 @@ wallos_backup_now() {
             msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}" >&2
             return 1
         fi
+        # H7 (R58b-M1): pin the container ID next to the label check;
+        # the stop below and the resume after the backup address the
+        # ID, never the re-resolved name.
+        _cid=$(_wallos_container_id) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
         _running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
         if [[ "$_running" == true ]]; then
-            docker stop wallos >/dev/null 2>&1 || return 1
+            _wallos_stop_id "$_cid" || return 1
             was_running=1
         elif [[ "$_running" != false ]]; then
             msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
@@ -61937,11 +62306,11 @@ wallos_backup_now() {
     fi
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     if ! backup=$(wallos_create_backup "$stamp"); then
-        wallos_resume_after_backup "$was_running" '' || true
+        wallos_resume_after_backup "$was_running" '' "$_cid" || true
         msg "${RED}$(tr_msg wl_bn_fail)${NC}"
         return 1
     fi
-    if ! wallos_resume_after_backup "$was_running" "$backup"; then
+    if ! wallos_resume_after_backup "$was_running" "$backup" "$_cid"; then
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
@@ -62186,10 +62555,10 @@ wallos_menu() {
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
                 # absent container keeps the existing failure outcome.
-                local _wl_label='' _wl_names=''
+                local _wl_label='' _wl_names='' _wl_id=''
                 if ! docker container inspect wallos >/dev/null 2>&1; then
                     msg "${RED}$(tr_msg wl_remove_fail)${NC}"
-                elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]]; then
+                elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]] || ! _wl_id=$(_wallos_container_id); then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
                 # R15-F15-07: verify the container is gone without a pipe.
@@ -62201,7 +62570,10 @@ wallos_menu() {
                 # truly absent. _wl_names is assigned separately from its
                 # `local` declaration: `local x=$(...)` would mask the
                 # command's exit status.
-                elif docker rm -f wallos >/dev/null 2>&1 && _wl_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) && [[ $'\n'"$_wl_names"$'\n' != *$'\n'wallos$'\n'* ]]; then
+                # H7 (R58b-M1): remove by the pinned ID and verify the
+                # ID is gone too, not just the name -- a same-name
+                # recreation must not pass as the removal.
+                elif _wallos_rm_id "$_wl_id" && _wl_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) && [[ $'\n'"$_wl_names"$'\n' != *$'\n'wallos$'\n'* ]] && ! docker container inspect "$_wl_id" >/dev/null 2>&1; then
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
@@ -62320,7 +62692,7 @@ other_protocols_menu() {
         4) socks5_toolbox_entry; pause_return ;;
         5) deploy_with_instance_choice sing-box shadowtls-in deploy_singbox_shadowtls; pause_return ;;
         6) argo_menu ;;
-        0) return 0 ;;
+        0|"") return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
     esac
     done
@@ -65443,6 +65815,75 @@ core_post_upgrade_health_gate() {
     fi
 }
 
+# R62-L02: shared version-direction gate for the three core-only
+# upgrade functions (xray / sing-box / hysteria). Calls
+# core_version_upgrade_decision and maps its outcome: 0 proceeds;
+# 3 (current above target) / 4 (already at target) print the
+# caller's skip/already message and return 3/4 so the caller can
+# return 0; 1 (downgrade refused) / 2 (uncomparable) / unexpected
+# die with the caller's message. Message strings are preformatted by
+# the caller: each core has its own translation keys and tprintf
+# enforces exact arg counts, so the keys cannot be shared. $10 is an
+# optional staged temp dir: when given, a die/skip/already outcome
+# removes it first (the final gate's tmp; the initial gate passes
+# '' because no tmp exists yet) and skip/already also clear
+# ABOX_CORE_UPGRADE_TMP, matching the inline code. Returns 0/3/4.
+_core_upgrade_version_direction() {
+    local current_tag="$1" target_ref="$2" pinned_flag="$3" allow_downgrade="$4"
+    local downgrade_msg="$5" incomparable_msg="$6" skip_msg="$7" already_msg="$8" unexpected_msg="$9" tmp_dir="${10:-}"
+    local decision=0
+    core_version_upgrade_decision "$current_tag" "$target_ref" "$pinned_flag" "$allow_downgrade"
+    decision=$?
+    case "$decision" in
+        0) return 0 ;;
+        1) [[ -n "$tmp_dir" ]] && rm -rf -- "$tmp_dir"; die "$downgrade_msg" ;;
+        2) [[ -n "$tmp_dir" ]] && rm -rf -- "$tmp_dir"; die "$incomparable_msg" ;;
+        3) msg "${YELLOW}[!] ${skip_msg}${NC}"; if [[ -n "$tmp_dir" ]]; then rm -rf -- "$tmp_dir"; ABOX_CORE_UPGRADE_TMP=''; fi; return 3 ;;
+        4) msg "${GREEN}[OK] ${already_msg}${NC}"; if [[ -n "$tmp_dir" ]]; then rm -rf -- "$tmp_dir"; ABOX_CORE_UPGRADE_TMP=''; fi; return 4 ;;
+        *) [[ -n "$tmp_dir" ]] && rm -rf -- "$tmp_dir"; die "$unexpected_msg" ;;
+    esac
+}
+
+# R62-L02: shared install/commit tail for the three core-only upgrade
+# functions. $1 = service (xray | sing-box | hysteria), $2 = health-gate
+# arg (xray | singbox | hysteria), $3 = installed binary path,
+# $4 = staged binary path, $5 = staged temp dir, $6 = was_active (0/1),
+# $7/$8 = old/new version strings, $9 = backup-failure message,
+# ${10} = install-failure message, ${11} = ownership-failure tr_msg key,
+# ${12} = OK message, ${13} = optional stopped-state smoke-test function
+# (hysteria only: it has no standalone config-check command, so a
+# stopped service gets a temporary start + port probe + stop cycle
+# instead of a blind OK; the other cores pass '' and skip it).
+_core_upgrade_commit_install() {
+    local svc="$1" health_arg="$2" bin_path="$3" staged_path="$4" tmp="$5" was_active="$6" old_ver="$7" new_ver="$8"
+    local backup_fail_msg="$9" install_fail_msg="${10}" ownership_fail_key="${11}" ok_msg="${12}" smoke_fn="${13:-}"
+    local backup=''
+    # M-11: prechecks are done; arm the transaction now, immediately
+    # before the first mutating step (old-binary backup + install).
+    core_upgrade_transaction_arm
+    [[ -f "$bin_path" ]] && { backup="$tmp/$(basename "$bin_path").backup"; cp -a "$bin_path" "$backup" || { rm -rf "$tmp"; die "$backup_fail_msg"; }; }
+    install_binary_atomically "$staged_path" "$bin_path" || { rm -rf "$tmp"; die "$install_fail_msg"; }
+    if [[ "$was_active" == '1' ]]; then
+        if ! restart_service_soft "$svc" || ! core_post_upgrade_health_gate "$health_arg"; then
+            rollback_core_upgrade_verified "$svc" "$bin_path" "$backup" "$tmp"
+        fi
+    else
+        if [[ -n "$smoke_fn" ]]; then
+            if ! "$smoke_fn"; then
+                msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
+                rollback_core_upgrade_verified "$svc" "$bin_path" "$backup" "$tmp" "$was_active"
+            fi
+        fi
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership "$svc" || { rm -rf "$tmp"; die "$(tr_msg "$ownership_fail_key")"; }
+    fi
+    msg "${GREEN}[OK] ${ok_msg}${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
+    rm -rf -- "$tmp"
+    ABOX_CORE_UPGRADE_TMP=''
+}
+
 upgrade_xray_core_only() {
     local was_active=0 active_state='' backup='' tmp xray_zip xray_ext old_ver new_ver
     # C2 (Q8): handle any retired xray-latest instance before upgrading.
@@ -65463,14 +65904,17 @@ upgrade_xray_core_only() {
         if [[ -z "$current_tag" ]]; then
             [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_xray_core_only_current_version_unparseable)"
         else
-            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            _core_upgrade_version_direction "$current_tag" "$target_ref" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+                "$(tprintf upgrade_xray_core_only_downgrade_refused "${current_tag}" "${target_ref}")" \
+                "$(tr_msg upgrade_xray_core_only_version_uncomparable)" \
+                "$(tprintf upgrade_xray_core_only_current_higher_skip "${current_tag}" "${target_ref}")" \
+                "$(tprintf upgrade_xray_core_only_already_target "${current_tag}" "${target_ref}")" \
+                'Xray version-direction guard returned an unexpected status.' \
+                ''
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "$(tprintf upgrade_xray_core_only_downgrade_refused "${current_tag}" "${target_ref}")" ;;
-                2) die "$(tr_msg upgrade_xray_core_only_version_uncomparable)" ;;
-                3) msg "${YELLOW}[!] $(tprintf upgrade_xray_core_only_current_higher_skip "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] $(tprintf upgrade_xray_core_only_already_target "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
+                3|4) return 0 ;;
                 *) die 'Xray version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -65489,38 +65933,26 @@ upgrade_xray_core_only() {
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
         final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_final_version_unparseable)"; }
-        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        _core_upgrade_version_direction "$current_tag" "$final_tag" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+            "$(tprintf upgrade_xray_core_only_downgrade_final_refused "${current_tag}" "${final_tag}")" \
+            "$(tr_msg upgrade_xray_core_only_final_version_uncomparable)" \
+            "$(tprintf upgrade_xray_core_only_final_lower_skip "${final_tag}" "${current_tag}")" \
+            "$(tprintf upgrade_xray_core_only_final_same_skip "${final_tag}")" \
+            "$(tr_msg upgrade_xray_core_only_direction_check_abnormal)" \
+            "$tmp"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "$(tprintf upgrade_xray_core_only_downgrade_final_refused "${current_tag}" "${final_tag}")" ;;
-            2) rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_final_version_uncomparable)" ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_xray_core_only_final_lower_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_xray_core_only_final_same_skip "${final_tag}")${NC}"; return 0 ;;
+            3|4) return 0 ;;
             *) rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_direction_check_abnormal)" ;;
         esac
     fi
     if [[ -f /usr/local/etc/xray/config.json ]] && ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$xray_ext/xray" run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New Xray is incompatible with the current config; installed binary was not changed.'
     fi
-    # M-11: prechecks are done; arm the transaction now, immediately
-    # before the first mutating step (old-binary backup + install).
-    core_upgrade_transaction_arm
-    [[ -f /usr/local/bin/xray ]] && { backup="$tmp/xray.backup"; cp -a /usr/local/bin/xray "$backup" || { rm -rf "$tmp"; die 'Xray binary backup failed.'; }; }
-    install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || { rm -rf "$tmp"; die 'Xray binary atomic install failed.'; }
-    if [[ "$was_active" == '1' ]]; then
-        if ! restart_service_soft xray || ! core_post_upgrade_health_gate xray; then
-            rollback_core_upgrade_verified xray /usr/local/bin/xray "$backup" "$tmp"
-        fi
-    else
-        # P1-A: service was stopped, so restart_service_soft (which refreshes
-        # the ownership manifest) was skipped. Record the new binary now to
-        # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership xray || { rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_ownership_update_failed)"; }
-    fi
-    msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
-    rm -rf -- "$tmp"
-    ABOX_CORE_UPGRADE_TMP=''
+    _core_upgrade_commit_install xray xray /usr/local/bin/xray "$xray_ext/xray" "$tmp" "$was_active" "${old_ver:-}" "${new_ver:-}" \
+        'Xray binary backup failed.' 'Xray binary atomic install failed.' \
+        'upgrade_xray_core_only_ownership_update_failed' 'Xray-core upgraded.'
 }
 
 upgrade_singbox_core_only() {
@@ -65541,14 +65973,17 @@ upgrade_singbox_core_only() {
         if [[ -z "$current_tag" ]]; then
             [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_singbox_core_only_current_version_unparseable)"
         else
-            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            _core_upgrade_version_direction "$current_tag" "$target_ref" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+                "$(tprintf upgrade_singbox_core_only_downgrade_refused "${current_tag}" "${target_ref}")" \
+                "$(tr_msg upgrade_singbox_core_only_version_incomparable)" \
+                "$(tprintf upgrade_singbox_core_only_above_pinned_skip "${current_tag}" "${target_ref}")" \
+                "$(tprintf upgrade_singbox_core_only_already_pinned "${current_tag}")" \
+                'sing-box version-direction guard returned an unexpected status.' \
+                ''
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "$(tprintf upgrade_singbox_core_only_downgrade_refused "${current_tag}" "${target_ref}")" ;;
-                2) die "$(tr_msg upgrade_singbox_core_only_version_incomparable)" ;;
-                3) msg "${YELLOW}[!] $(tprintf upgrade_singbox_core_only_above_pinned_skip "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] $(tprintf upgrade_singbox_core_only_already_pinned "${current_tag}")${NC}"; return 0 ;;
+                3|4) return 0 ;;
                 *) die 'sing-box version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -65568,38 +66003,26 @@ upgrade_singbox_core_only() {
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
         final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_version_unparseable)"; }
-        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        _core_upgrade_version_direction "$current_tag" "$final_tag" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+            "$(tprintf upgrade_singbox_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" \
+            "$(tr_msg upgrade_singbox_core_only_final_version_incomparable)" \
+            "$(tprintf upgrade_singbox_core_only_final_below_skip "${final_tag}" "${current_tag}")" \
+            "$(tprintf upgrade_singbox_core_only_final_same "${final_tag}")" \
+            "$(tr_msg upgrade_singbox_core_only_final_direction_error)" \
+            "$tmp"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "$(tprintf upgrade_singbox_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" ;;
-            2) rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_version_incomparable)" ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_singbox_core_only_final_below_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_singbox_core_only_final_same "${final_tag}")${NC}"; return 0 ;;
+            3|4) return 0 ;;
             *) rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_direction_error)" ;;
         esac
     fi
     if [[ -f /etc/sing-box/config.json ]] && ! "$sb_path" check -c /etc/sing-box/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New sing-box is incompatible with the current config; installed binary was not changed.'
     fi
-    # M-11: prechecks are done; arm the transaction now, immediately
-    # before the first mutating step (old-binary backup + install).
-    core_upgrade_transaction_arm
-    [[ -f /usr/local/bin/sing-box ]] && { backup="$tmp/sing-box.backup"; cp -a /usr/local/bin/sing-box "$backup" || { rm -rf "$tmp"; die 'sing-box binary backup failed.'; }; }
-    install_binary_atomically "$sb_path" /usr/local/bin/sing-box || { rm -rf "$tmp"; die 'sing-box binary atomic install failed.'; }
-    if [[ "$was_active" == '1' ]]; then
-        if ! restart_service_soft sing-box || ! core_post_upgrade_health_gate singbox; then
-            rollback_core_upgrade_verified sing-box /usr/local/bin/sing-box "$backup" "$tmp"
-        fi
-    else
-        # P1-A: service was stopped, so restart_service_soft (which refreshes
-        # the ownership manifest) was skipped. Record the new binary now to
-        # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership sing-box || { rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_ownership_update_fail)"; }
-    fi
-    msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
-    rm -rf -- "$tmp"
-    ABOX_CORE_UPGRADE_TMP=''
+    _core_upgrade_commit_install sing-box singbox /usr/local/bin/sing-box "$sb_path" "$tmp" "$was_active" "${old_ver:-}" "${new_ver:-}" \
+        'sing-box binary backup failed.' 'sing-box binary atomic install failed.' \
+        'upgrade_singbox_core_only_ownership_update_fail' 'sing-box upgraded.'
 }
 
 upgrade_hysteria_core_only() {
@@ -65620,14 +66043,17 @@ upgrade_hysteria_core_only() {
         if [[ -z "$current_tag" ]]; then
             [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_hysteria_core_only_current_version_unparseable)"
         else
-            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            _core_upgrade_version_direction "$current_tag" "$target_ref" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+                "$(tprintf upgrade_hysteria_core_only_downgrade_refused "${current_tag}" "${target_ref#*/}")" \
+                "$(tr_msg upgrade_hysteria_core_only_version_incomparable)" \
+                "$(tprintf upgrade_hysteria_core_only_above_pinned_skip "${current_tag}" "${target_ref#*/}")" \
+                "$(tprintf upgrade_hysteria_core_only_already_pinned "${current_tag}")" \
+                'Hysteria version-direction guard returned an unexpected status.' \
+                ''
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "$(tprintf upgrade_hysteria_core_only_downgrade_refused "${current_tag}" "${target_ref#*/}")" ;;
-                2) die "$(tr_msg upgrade_hysteria_core_only_version_incomparable)" ;;
-                3) msg "${YELLOW}[!] $(tprintf upgrade_hysteria_core_only_above_pinned_skip "${current_tag}" "${target_ref#*/}")${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] $(tprintf upgrade_hysteria_core_only_already_pinned "${current_tag}")${NC}"; return 0 ;;
+                3|4) return 0 ;;
                 *) die 'Hysteria version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -65644,45 +66070,26 @@ upgrade_hysteria_core_only() {
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
         final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_version_unparseable)"; }
-        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        _core_upgrade_version_direction "$current_tag" "$final_tag" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" \
+            "$(tprintf upgrade_hysteria_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" \
+            "$(tr_msg upgrade_hysteria_core_only_final_version_incomparable)" \
+            "$(tprintf upgrade_hysteria_core_only_final_below_skip "${final_tag}" "${current_tag}")" \
+            "$(tprintf upgrade_hysteria_core_only_final_same "${final_tag}")" \
+            "$(tr_msg upgrade_hysteria_core_only_final_direction_error)" \
+            "$tmp"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "$(tprintf upgrade_hysteria_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" ;;
-            2) rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_version_incomparable)" ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_hysteria_core_only_final_below_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_hysteria_core_only_final_same "${final_tag}")${NC}"; return 0 ;;
+            3|4) return 0 ;;
             *) rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_direction_error)" ;;
         esac
     fi
     if ! hysteria_staged_binary_smoke_test "$hy2_bin"; then
         rm -rf "$tmp"; die 'Hysteria staged startup precheck failed; installed binary was not changed.'
     fi
-    # M-11: prechecks are done; arm the transaction now, immediately
-    # before the first mutating step (old-binary backup + install).
-    core_upgrade_transaction_arm
-    [[ -f /usr/local/bin/hysteria ]] && { backup="$tmp/hysteria.backup"; cp -a /usr/local/bin/hysteria "$backup" || { rm -rf "$tmp"; die 'Hysteria binary backup failed.'; }; }
-    install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
-    if [[ "$was_active" == '1' ]]; then
-        if ! restart_service_soft hysteria || ! core_post_upgrade_health_gate hysteria; then
-            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
-        fi
-    else
-        # N-04 fix: Hysteria has no standalone config-check command. When the
-        # service was not running, validate the new binary with a temporary
-        # start + port probe + stop cycle instead of blindly reporting OK.
-        if ! hysteria_binary_smoke_test; then
-            msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
-            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp" "$was_active"
-        fi
-        # P1-A: service was stopped, so restart_service_soft (which refreshes
-        # the ownership manifest) was skipped. Record the new binary now to
-        # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership hysteria || { rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_ownership_update_fail)"; }
-    fi
-    msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
-    rm -rf -- "$tmp"
-    ABOX_CORE_UPGRADE_TMP=''
+    _core_upgrade_commit_install hysteria hysteria /usr/local/bin/hysteria "$hy2_bin" "$tmp" "$was_active" "${old_ver:-}" "${new_ver:-}" \
+        'Hysteria binary backup failed.' 'Hysteria binary atomic install failed.' \
+        'upgrade_hysteria_core_only_ownership_update_fail' 'Hysteria upgraded.' 'hysteria_binary_smoke_test'
 }
 
 # H1 (OTA Hy2 gap): staged-startup precheck helpers. The staged binary is
@@ -65847,7 +66254,10 @@ def main():
     cfg = sys.argv[1]
     out = sys.argv[2]
     try:
-        with open(cfg, "r", encoding="utf-8") as f:
+        # R62-L01: newline="" keeps CR/CRLF intact so the "\r" check
+        # below can actually fire; the default universal-newlines mode
+        # translated CRLF to "\n" and made the reject branch dead code.
+        with open(cfg, "r", encoding="utf-8", newline="") as f:
             raw = f.read()
     except OSError:
         reject("config unreadable")
@@ -66503,7 +66913,7 @@ upgrade_current_cores_only() {
     is_yes "$answer" || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction (begin → upgrade → commit)
     # inside a subshell, so a failure rolls back only that core.
-    local failed_cores=() stopped=0 idx=0
+    local failed_cores=() stopped=0 idx=0 rb_ok=0 rb_none=0 rb_bad=0
     for t in "${targets[@]}"; do
         msg "${CYAN}--- Upgrading $t (independent transaction) ---${NC}"
         # Each core runs in a subshell with its own transaction and
@@ -66524,24 +66934,24 @@ upgrade_current_cores_only() {
             case "$rb_state" in
                 ok)
                     msg "${YELLOW}[!] [$t] upgrade failed and was rolled back independently; continuing.${NC}"
-                    failed_cores+=("$t")
+                    failed_cores+=("$t"); rb_ok=$((rb_ok + 1))
                     ;;
                 not-started)
                     msg "${YELLOW}[!] [$t] upgrade failed before any change was made; no rollback needed; continuing.${NC}"
-                    failed_cores+=("$t")
+                    failed_cores+=("$t"); rb_none=$((rb_none + 1))
                     ;;
                 not-modified)
                     msg "${YELLOW}[!] [$t] upgrade failed during precheck; installed binary was not changed, no rollback needed; continuing.${NC}"
-                    failed_cores+=("$t")
+                    failed_cores+=("$t"); rb_none=$((rb_none + 1))
                     ;;
                 failed)
                     msg "${RED}[!] [$t] upgrade failed and its rollback FAILED; stopping further core upgrades.${NC}"
-                    failed_cores+=("$t"); stopped=1
+                    failed_cores+=("$t"); rb_bad=$((rb_bad + 1)); stopped=1
                     break
                     ;;
                 *)
                     msg "${RED}[!] [$t] upgrade failed with rollback state unknown (interrupted mid-transaction); stopping further core upgrades.${NC}"
-                    failed_cores+=("$t"); stopped=1
+                    failed_cores+=("$t"); rb_bad=$((rb_bad + 1)); stopped=1
                     break
                     ;;
             esac
@@ -66557,7 +66967,11 @@ upgrade_current_cores_only() {
         for (( j=idx+1; j<${#targets[@]}; j++ )); do unattempted+=("${targets[j]}"); done
         msg "${YELLOW}[!] Core upgrade loop stopped early; failed cores: ${failed_cores[*]}; remaining cores not attempted: ${unattempted[*]}${NC}"
     elif (( ${#failed_cores[@]} > 0 )); then
-        msg "${YELLOW}[!] Completed with failures (rolled back): ${failed_cores[*]}${NC}"
+        # R63a-L01: do not claim every failure was rolled back: only
+        # the `ok` class was; `not-started`/`not-modified` needed no
+        # rollback, and `failed`/unknown means rollback failed or
+        # never reported. Summarise the three classes separately.
+        msg "${YELLOW}[!] Completed with failures: ${failed_cores[*]} (rolled back: ${rb_ok}; no rollback needed: ${rb_none}; rollback failed/unknown: ${rb_bad})${NC}"
     else
         msg "${GREEN}All detected core-only upgrades completed. Node parameters were preserved.${NC}"
     fi
@@ -68411,6 +68825,17 @@ PY_SELFTEST_TAR
     fi
     assert_bad wallos_resume_after_backup invalid ''
     assert_ok wallos_resume_after_backup 0 ''
+    # H7 (R58b-M1): resume by pinned container ID, not by name. The
+    # recording stub proves the restart addresses the ID; the
+    # failing-stub case proves an unstartable pinned container is
+    # reported, not silently replaced by whatever holds the name.
+    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-id-calls"; return 0; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'start sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-id-calls" ); then
+        echo 'FAIL: Wallos backup restart did not address the pinned container ID'; failures=$((failures + 1))
+    fi
+    if ( docker() { return 1; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos backup restart by ID must report an unstartable pinned container'; failures=$((failures + 1))
+    fi
+    assert_bad wallos_resume_after_backup 1 '' 'not-a-container-id'
     # N-11: versioned history — SHA256SUMS append/sort/prune logic.
     {
         local n11_tmp n11_versions
@@ -69278,6 +69703,18 @@ EOF_SELFTEST_IPT
     unset runtime_traverse
 
     if (( EUID == 0 )); then
+        # S9 (R65 follow-up): the ML-KEM warning check is static (it only
+        # greps the source), so it stays outside the python3 gate below
+        # and still runs when python3 is missing.
+        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
+        # Gate the whole Clash YAML generation segment on python3:
+        # write_clash_yaml / write_mihomo_user_yaml need it internally
+        # (realpath), so without it every generation would count as a
+        # failure instead of a skip. R65-01 only gated the three bare
+        # `python3 -I` calls; the generation calls themselves were not.
+        if ! selftest_has python3; then
+            selftest_note 'Clash YAML generation tests skipped (python3 missing)'
+        else
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
@@ -69311,7 +69748,6 @@ EOF_SELFTEST_IPT
             echo 'FAIL: Mihomo single-user YAML must refuse a mode with no VLESS leg'; failures=$((failures + 1))
         fi
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
-        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
         if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
@@ -69328,6 +69764,7 @@ if values != ['a"b\\c']:
 PY_SELFTEST_YAML
         else
             selftest_note 'Clash YAML secret escaping check skipped (python3 missing)'
+        fi
         fi
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
@@ -69446,8 +69883,13 @@ PY_SELFTEST_YAML
     declare -p redacted_json >/dev/null 2>&1 && declare -p redacted_headers >/dev/null 2>&1 || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
     grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' <<< "$source_body" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
-    grep -Fq 'core_post_upgrade_health_gate xray' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
-    grep -Fq 'core_post_upgrade_health_gate singbox' <<< "$source_body" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    # L15 (R62-L02): the health gate now lives in _core_upgrade_commit_install
+    # (shared by all three cores); check the wiring instead of the old
+    # inline call sites: the helper must enforce the gate, and the xray /
+    # sing-box call sites must pass their own health argument through.
+    grep -Fq 'core_post_upgrade_health_gate "$health_arg"' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install xray xray' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install sing-box singbox' <<< "$source_body" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     # Audit 2026-10-14: regression guards for P1-1/P1-2/P2/P3 fixes.
     declare -F stop_abox_service_soft >/dev/null || { echo 'FAIL: stop_abox_service_soft must be defined'; failures=$((failures + 1)); }
     # B9-02: core_tls_listen_ports removed (was dead code).
@@ -69997,13 +70439,27 @@ PY_F05_TPUB
                         echo 'FAIL: F-05 malformed timestamp accepted'; failures=$((failures + 1))
                     fi
                     # Revocation: revoked key must not verify.
-                    _f05_fp=$(printf '%s' "$_f05_pub_b64" | base64 -d 2>/dev/null | sha256sum | awk '{print $1}')
+                    # R66-01: the old assertion used data.txt.sig, which
+                    # is EMPTY on hosts without Ed25519 CLI support (the
+                    # `: >` fallback above), so it passed vacuously even
+                    # if revocation were broken. Reuse the baked ctypes
+                    # vector instead: it verifies while unrevoked and
+                    # must fail once its pubkey fingerprint is revoked.
+                    # _OPENSSL_ED25519_OK=1 forces the ctypes path on
+                    # every host, so the check is real everywhere.
+                    _f05_ct_fp=$(printf '%s' "$_f05_ct_pub_b64" | base64 -d 2>/dev/null | sha256sum | awk '{print $1}')
                     _f05_saved_revoked=("${ABOX_REVOKED_PUBKEY_FPS[@]}")
-                    ABOX_REVOKED_PUBKEY_FPS=("$_f05_fp")
-                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                    _f05_ct_saved_pubkeys2=("${ABOX_SIGNING_PUBKEYS[@]}")
+                    ABOX_SIGNING_PUBKEYS=("f05-ct:$_f05_ct_pub_b64")
+                    if ! _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
+                        echo 'FAIL: F-05 baked vector rejected before revocation'; failures=$((failures + 1))
+                    fi
+                    ABOX_REVOKED_PUBKEY_FPS=("$_f05_ct_fp")
+                    if _OPENSSL_ED25519_OK=1 verify_ed25519_detached "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" 2>/dev/null; then
                         echo 'FAIL: F-05 revoked key still verifies'; failures=$((failures + 1))
                     fi
                     ABOX_REVOKED_PUBKEY_FPS=("${_f05_saved_revoked[@]}")
+                    ABOX_SIGNING_PUBKEYS=("${_f05_ct_saved_pubkeys2[@]}")
                     ABOX_SIGNING_PUBKEYS=("${_f05_saved_pubkeys[@]}")
                 else
                     echo 'FAIL: F-05 pubkey extraction'; failures=$((failures + 1))

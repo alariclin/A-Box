@@ -56843,7 +56843,12 @@ _wallos_rollback_recover_impl() {
     # tag lookup could confirm a different image.
     [[ "$(docker image inspect -f '{{.Id}}' "$prev_image" 2>/dev/null || true)" == "$prev_image" ]] || return 1
     [[ -s "$WALLOS_DIR/db/wallos.db" && ! -L "$WALLOS_DIR/db/wallos.db" ]] || return 1
-    wallos_wait_healthy "$port" || return 1
+    # U217 (same rule as the restore/install paths): an omitted -p
+    # means the recovered container is unpublished, so the health gate
+    # must not demand a publication it will never have.
+    local _health_mode=published
+    (( ${#_pub_args[@]} == 0 )) && _health_mode=unpublished
+    wallos_wait_healthy "$port" "$_health_mode" || return 1
     # R13-09: commit the recovered deployment's state from the
     # captured pre-rollback metadata (restore mode: a captured
     # empty field stays absent instead of inheriting the backup's
@@ -56859,12 +56864,23 @@ _wallos_rollback_recover_impl() {
 # wallos_recover_interrupted_upgrade above): a failed rollback
 # leaves the Wallos jail pointing at a removed overlay; drop it when
 # provably dangling so `fail2ban-client -t` passes again. The
-# rollback's own return status is preserved unchanged.
+# rollback's own return status is preserved unchanged. On success the
+# jail is refreshed to the recovered container's log path (R54-M3):
+# the caller's success-path refresh is skipped when recovery is
+# reached from a failure branch, and the old jail would otherwise
+# guard a deleted overlay forever.
 _wallos_rollback_recover() {
     _wallos_rollback_recover_impl "$@"
     local _rc=$?
     if (( _rc != 0 )); then
         wallos_fail2ban_drop_stale_jail >/dev/null 2>&1 || true
+    else
+        # R54-M3: recovery recreated the container, so the jail still
+        # points at the removed overlay; refresh it to the recovered
+        # container's log path (best-effort, like the rollback success
+        # path). If the refresh fails, drop the provably stale jail
+        # rather than leaving a dead jail behind.
+        wallos_bruteforce_protection "$2" "$4" 2>/dev/null || wallos_fail2ban_drop_stale_jail >/dev/null 2>&1 || true
     fi
     return "$_rc"
 }
@@ -56907,6 +56923,27 @@ wallos_local_image_has_digest() {
         _norm=$(wallos_normalize_digest "$_d") || continue
         [[ "$_norm" == "$_norm_expected" ]] && return 0
     done <<< "$_digests"
+    return 1
+}
+
+# R54-M1: store-aware binding for a loaded image ID. Under the Docker
+# (graphdriver) store the daemon .Id is the config digest; under the
+# containerd store it is the manifest digest. The adopted ID must equal
+# one of them; anything else means the tag was retargeted between load
+# and inspect (or the load produced a different image), and the load
+# must be refused. A missing/malformed manifest digest simply disables
+# the containerd branch (the Docker-store branch still applies).
+wallos_loaded_id_matches_archive() {
+    local _daemon_id="${1:-}" _config_id="${2:-}" _manifest_digest="${3:-}" _hex _mhex
+    [[ "$_daemon_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    [[ "$_config_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    _hex="${_daemon_id#sha256:}"
+    [[ "$_hex" == "${_config_id#sha256:}" ]] && return 0
+    _mhex="${_manifest_digest#docker.io/}"
+    _mhex="${_mhex#bellamy/wallos@}"
+    _mhex="${_mhex#sha256:}"
+    _mhex="${_mhex,,}"
+    [[ "$_mhex" =~ ^[0-9a-f]{64}$ && "$_hex" == "$_mhex" ]] && return 0
     return 1
 }
 
@@ -57239,7 +57276,11 @@ wallos_rollback_to_version() {
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
-    wallos_wait_healthy "$port" || { msg "${RED}$(tprintf wl_rb_unhealthy "$target_tag")${NC}"
+    # U217: an omitted -p means the rolled-back container is
+    # unpublished; do not demand a publication it will never have.
+    local _health_mode=published
+    (( ${#_pub_args[@]} == 0 )) && _health_mode=unpublished
+    wallos_wait_healthy "$port" "$_health_mode" || { msg "${RED}$(tprintf wl_rb_unhealthy "$target_tag")${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
@@ -57309,6 +57350,12 @@ _wallos_pull_versioned_image() {
     _archive_id=$(wallos_image_id_from_archive "$work/$asset") || { rm -rf -- "$work"; return 1; }
     [[ "$_archive_id" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$work"; return 1; }
     local load_out image_tag="${tag#v}"
+    # R54-M1: the manifest digest is the containerd store's image ID;
+    # capture it before $work is removed (the binding check below runs
+    # after the load, when $work is gone).
+    local _manifest_digest=''
+    _manifest_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
+    _manifest_digest=$(wallos_normalize_digest "$_manifest_digest" 2>/dev/null || true)
     load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
     if ! wallos_check_loaded_image "$load_out" "$image_tag"; then
         rm -rf -- "$work"; return 1
@@ -57320,6 +57367,12 @@ _wallos_pull_versioned_image() {
     local _archive_tag_id
     _archive_tag_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null) || return 1
     [[ "$_archive_tag_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    # R54-M1: bind the adopted ID to the authenticated archive. The
+    # daemon .Id is the config digest under the Docker store and the
+    # manifest digest under the containerd store; anything else means
+    # the tag was retargeted between load and inspect (or the load
+    # produced a different image), and the load must be refused.
+    wallos_loaded_id_matches_archive "$_archive_tag_id" "$_archive_id" "$_manifest_digest" || return 1
     wallos_record_image "bellamy/wallos:$image_tag"
     WALLOS_IMAGE_RESULT="$_archive_tag_id"
     WALLOS_IMAGE_VERSION="$image_tag"
@@ -57482,10 +57535,6 @@ wallos_pull_or_restore_image() {
             _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
             # Normalize to the same canonical form as manifest digests.
             _pulled_digest=$(wallos_normalize_digest "$_pulled_digest" 2>/dev/null || true)
-            if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
-                msg "${CYAN}$(tprintf wl_pi_digest "$_pulled_digest")${NC}"
-                docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
-            fi
             # U115: run by the exact digest just pulled, not the mutable tag.
             # The digest here is observed (not manifest-verified); it still
             # closes the pull-to-run TOCTOU window. No digest observed -> fall through to the manifest-verified recovery path below; running by mutable tag would reopen the TOCTOU window.
@@ -57600,6 +57649,10 @@ wallos_pull_or_restore_image() {
         msg "${RED}$(tprintf wl_pi_no_digest "$arch")${NC}"
         return 1
     fi
+    # R54-M1: bind the resolved ID to the authenticated archive (same
+    # store-aware rule as _wallos_pull_versioned_image): config digest
+    # (Docker store) or manifest digest (containerd store).
+    wallos_loaded_id_matches_archive "$_loaded_id" "$_archive_id" "$expected_digest" || { rm -rf -- "$work"; msg "${RED}Wallos loaded image ID does not match the verified archive; refusing.${NC}"; return 1; }
     # Defense-in-depth: If RepoDigests is populated (e.g. image was pulled), verify it matches.
     # F04: RepoDigests can hold several entries (multi-platform
     # plus platform-specific pulls of the same image); checking

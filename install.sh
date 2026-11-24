@@ -68978,6 +68978,7 @@ N11EOF
     # Archive extractors must never remove a caller-owned pre-existing destination
     # when rejecting an extraction. This is a regression test for a destructive
     # cleanup bug found during the independent v70/v71 archive audit.
+    if selftest_has python3; then
     python3 -I - "$tmp" <<'PY_SELFTEST_ARCHIVE_CREATE' >/dev/null 2>&1 || { echo 'FAIL: archive regression fixture creation'; failures=$((failures + 1)); }
 import io, os, sys, tarfile, zipfile
 base=sys.argv[1]
@@ -69008,6 +69009,9 @@ PY_SELFTEST_TAR_GZ_CREATE
     rm -f "$tmp/extract-new-tar"
     assert_ok extract_tar_regular_basename_safely "$tmp/extract-regress.tar.gz" target.txt "$tmp/extract-new-tar"
     [[ "$(cat "$tmp/extract-new-tar")" == 'new-content' ]] || { echo 'FAIL: TAR successful extraction content'; failures=$((failures + 1)); }
+    else
+        selftest_note 'archive regression tests skipped (python3 missing)'
+    fi
     if command -v cmp >/dev/null 2>&1; then
         cmp -s "$tmp/atomic.src" "$tmp/atomic.dest" || { echo 'FAIL: atomic file install content'; failures=$((failures + 1)); }
     else
@@ -69309,6 +69313,7 @@ EOF_SELFTEST_IPT
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
+        if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
 import json, sys
 from pathlib import Path
@@ -69321,6 +69326,9 @@ for line in text.splitlines():
 if values != ['a"b\\c']:
     raise SystemExit(1)
 PY_SELFTEST_YAML
+        else
+            selftest_note 'Clash YAML secret escaping check skipped (python3 missing)'
+        fi
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
     fi

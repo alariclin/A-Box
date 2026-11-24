@@ -52700,7 +52700,12 @@ def _bare_id_end(text, pos):
     i = pos
     while i < n:
         c = text[i]
-        if c in ",}\]\r\n":
+        # R50-H1: no backslash in the terminator set. The old
+        # literal kept a literal backslash (an unrecognised
+        # escape in a plain string), so an id value starting with a
+        # backslash ended at pos and was skipped whole, and a
+        # mid-value backslash leaked the tail after it.
+        if c in ",}]\r\n":
             break
         if c == ";":
             if _bare_id_stops(text, i):
@@ -53008,11 +53013,12 @@ collect_abox_cron() {
       inblock {print}
       /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) END$/ {inblock=0}
       !inblock && bare_line_owner(norm_line($0)) != "" {
-          n = $0
-          gsub(/[ \t]+/, " ", n)
-          sub(/^ /, "", n)
-          sub(/ $/, "", n)
-          print n
+          # R50-M1: print the same normalised line the recognition
+          # used. The old block re-normalised $0 (spaces only), so a
+          # bare task ending in a literal backslash-r was recognised
+          # but printed with it intact, and the validator (exact
+          # allowlist) then failed the whole collection.
+          print norm_line($0)
       }
       END {if (inblock) exit 1}
     ' "$all" > "$extracted" || { rm -f "$all" "$err" "$extracted"; return 1; }
@@ -53461,8 +53467,15 @@ _apply_managed_service_state_file() {
                         # after the snapshot; otherwise leave enablement
                         # alone (post-state check below accepts indirect or
                         # disabled, i.e. "not directly enabled").
+                        # R50-M2: a runtime-only direct enablement
+                        # (enabled-runtime) is direct enablement too:
+                        # drop it with disable --runtime, or the
+                        # post-state check below (indirect or disabled)
+                        # fails the restore.
                         if [[ "$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null)" == enabled ]]; then
                             systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1
+                        elif [[ "$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null)" == enabled-runtime ]]; then
+                            systemctl disable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1
                         fi ;;
                 esac
             fi

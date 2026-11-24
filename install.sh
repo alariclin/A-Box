@@ -58474,7 +58474,11 @@ wallos_upgrade_journal_write() {
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
     { [[ -z "$old_image_id" ]] || [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; } || return 1
     # H7rest: the pre-upgrade container ID (empty for old callers).
-    { [[ -z "$old_container_id" ]] || [[ "$old_container_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; } || return 1
+    # H7-ID: stored bare-hex (the form Docker accepts); a sha256:
+    # spelling is normalized, never stored.
+    if [[ -n "$old_container_id" ]]; then
+        old_container_id=$(_wallos_normalize_container_id "$old_container_id" 2>/dev/null) || return 1
+    fi
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
 phase=$phase
@@ -58558,7 +58562,12 @@ _wallos_recover_interrupted_upgrade_impl() {
     # is used instead.
     local _journal_container_id=''
     _journal_container_id=$(wallos_txn_value "$journal" old_container_id 2>/dev/null || true)
-    { [[ -z "$_journal_container_id" ]] || [[ "$_journal_container_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; } || return 1
+    # H7-ID: a journal written before the fix may carry a sha256:
+    # spelling; normalize to bare hex so the pin comparison below
+    # (live bare hex vs journal) cannot false-mismatch.
+    if [[ -n "$_journal_container_id" ]]; then
+        _journal_container_id=$(_wallos_normalize_container_id "$_journal_container_id" 2>/dev/null) || return 1
+    fi
     _run_image="${old_image_id:-$old_image}"
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
@@ -60054,26 +60063,33 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # in between (docker run --name wallos fails while the managed
 # container exists, so the swap needs a privileged actor in the
 # window -- hence hardening, not a confirmed vulnerability). Capture
-# the ID once (docker inspect -f '{{.Id}}', validated as a sha256
-# digest) and address the ID: docker resolves an ID unambiguously,
+# the ID once (docker inspect -f '{{.Id}}', validated as bare 64-hex)
+# and address the ID: docker resolves an ID unambiguously,
 # so stop/start/rm by ID can only ever touch that exact container.
+# H7-ID: Docker reports a *container* .Id as bare 64-hex; the sha256:
+# prefix belongs to *image* IDs. A sha256: form addresses no
+# container (inspect/stop/start fail; rm -f exits 0 without removing),
+# so the canonical internal form is bare hex everywhere.
 _wallos_container_id() {
     local _id=''
     _id=$(docker inspect -f '{{.Id}}' wallos 2>/dev/null || true)
-    [[ "$_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+    _id="${_id#sha256:}"
+    [[ "$_id" =~ ^[0-9a-f]{64}$ ]] || return 1
     printf '%s\n' "$_id"
 }
-_wallos_valid_container_id() { [[ "${1:-}" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; }
-_wallos_stop_id() { _wallos_valid_container_id "${1:-}" || return 1; docker stop "$1" >/dev/null 2>&1; }
-_wallos_start_id() { _wallos_valid_container_id "${1:-}" || return 1; docker start "$1" >/dev/null 2>&1; }
-_wallos_rm_id() { _wallos_valid_container_id "${1:-}" || return 1; docker rm -f "$1" >/dev/null 2>&1; }
-# H7rest: normalize a container ID to canonical sha256:<hex> form.
-# _wallos_container_id returns sha256:<hex>; --cidfile records bare hex.
+_wallos_valid_container_id() { [[ "${1:-}" =~ ^[0-9a-f]{64}$ ]]; }
+_wallos_stop_id() { local _id=''; _id=$(_wallos_normalize_container_id "${1:-}" 2>/dev/null) || return 1; docker stop "$_id" >/dev/null 2>&1; }
+_wallos_start_id() { local _id=''; _id=$(_wallos_normalize_container_id "${1:-}" 2>/dev/null) || return 1; docker start "$_id" >/dev/null 2>&1; }
+_wallos_rm_id() { local _id=''; _id=$(_wallos_normalize_container_id "${1:-}" 2>/dev/null) || return 1; docker rm -f "$_id" >/dev/null 2>&1; }
+# H7-ID: normalize a container ID to canonical bare-hex form.
+# _wallos_container_id returns bare hex; --cidfile records bare hex.
+# A sha256: spelling (e.g. from an old journal) is accepted and
+# stripped, never passed to docker.
 _wallos_normalize_container_id() { # $1 -> canonical ID on stdout
     local _id="${1:-}"
-    if [[ "$_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; then printf '%s' "$_id"; return 0; fi
-    if [[ "$_id" =~ ^[0-9a-f]{64}$ ]]; then printf 'sha256:%s' "$_id"; return 0; fi
-    return 1
+    _id="${_id#sha256:}"
+    _wallos_valid_container_id "$_id" || return 1
+    printf '%s' "$_id"
 }
 # H7rest: remove whatever holds the 'wallos' name, by ID only. $1 is
 # the expected container ID (optional, either form): it is removed by
@@ -69068,23 +69084,29 @@ PY_SELFTEST_TAR
     # recording stub proves the restart addresses the ID; the
     # failing-stub case proves an unstartable pinned container is
     # reported, not silently replaced by whatever holds the name.
-    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-id-calls"; return 0; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'start sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-id-calls" ); then
+    # H7-ID: a sha256: spelling is normalized -- the recorded docker
+    # call must carry the bare hex Docker actually accepts.
+    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-id-calls"; return 0; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'start aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-id-calls" ); then
         echo 'FAIL: Wallos backup restart did not address the pinned container ID'; failures=$((failures + 1))
     fi
-    if ( docker() { return 1; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+    if ( docker() { return 1; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos backup restart by ID must report an unstartable pinned container'; failures=$((failures + 1))
     fi
     assert_bad wallos_resume_after_backup 1 '' 'not-a-container-id'
     # H7rest: the upgrade journal carries the pinned container ID
     # (9th line); an invalid ID is refused; old 7-arg writes keep
     # working with an empty container ID.
+    # H7-ID: the journal stores the ID bare-hex; a sha256: input is
+    # normalized on write, never stored.
     if ! (
         WALLOS_DIR="$tmp/wallos-h7rest-journal"
         mkdir -p "$WALLOS_DIR/backups" || exit 40
         printf 'x' > "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" || exit 41
-        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 42
-        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 43
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 42
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 43
         [[ "$(wc -l < "$WALLOS_DIR/.upgrade-transaction" | tr -d '[:space:]')" == 9 ]] || exit 44
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 47
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 48
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'not-a-container-id' && exit 45
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 || exit 46
     ); then
@@ -69092,24 +69114,46 @@ PY_SELFTEST_TAR
     fi
     # H7rest: _wallos_rm_named_id removes by ID (gone expected ID plus
     # no live holder is a no-op success) and refuses a foreign holder.
-    if ! ( docker() { case "$*" in *'{{.Id}}'*) return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+    # H7-ID: inspect returns bare hex; rm is addressed by bare hex.
+    if ! ( docker() { case "$*" in *'{{.Id}}'*) return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must succeed when nothing holds the name'; failures=$((failures + 1))
     fi
-    if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'; return 0 ;; *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+    if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'; return 0 ;; *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must refuse a foreign holder'; failures=$((failures + 1))
     fi
-    if ! ( : > "$tmp/wallos-rm-calls"; printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-live-id"
+    if ! ( : > "$tmp/wallos-rm-calls"; printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-live-id"
         docker() { printf '%s\n' "$*" >> "$tmp/wallos-rm-calls"; case "$*" in
             *'{{.Id}}'*) if [[ -s "$tmp/wallos-live-id" ]]; then cat "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
             'rm -f '*) if [[ "${3:-}" == "$(cat "$tmp/wallos-live-id" 2>/dev/null)" ]]; then : > "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
             *'Config.Labels'*) printf 'true\n'; return 0 ;;
             *) return 0 ;; esac; }
-        _wallos_rm_named_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'rm -f sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-rm-calls" ); then
+        _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-rm-calls" ); then
         echo 'FAIL: Wallos named-container removal did not address the pinned container ID'; failures=$((failures + 1))
     fi
     # H7rest: the php version probe execs the pinned container ID.
-    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then
+    if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then
         echo 'FAIL: Wallos php version did not address the pinned container ID'; failures=$((failures + 1))
+    fi
+    # H7-ID: Docker reports a container .Id as bare hex, and a sha256:
+    # form addresses no container (inspect/stop/start fail; rm -f exits
+    # 0 without removing). The ID helpers must accept the bare hex
+    # inspect returns, and must never pass a sha256: form to docker --
+    # the recording stub below fails any docker call carrying one.
+    if ! ( : > "$tmp/wallos-h7id-calls"
+        docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7id-calls"; case "$*" in
+            *'sha256:'*) return 1 ;;
+            *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;;
+            *) return 0 ;; esac; }
+        [[ "$(_wallos_container_id 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 51
+        _wallos_stop_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 || exit 52
+        _wallos_start_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 || exit 53
+        _wallos_rm_id 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 || exit 54
+        grep -qx 'stop aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-h7id-calls" || exit 55
+        grep -qx 'start aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-h7id-calls" || exit 56
+        grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-h7id-calls" || exit 57
+        ! grep -q 'sha256:' "$tmp/wallos-h7id-calls" || exit 58
+    ); then
+        echo 'FAIL: Wallos container ID must be bare hex and never reach docker as sha256:'; failures=$((failures + 1))
     fi
     # N-11: versioned history — SHA256SUMS append/sort/prune logic.
     {

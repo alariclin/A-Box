@@ -22913,6 +22913,23 @@ extract_tar_regular_basename_safely() {
     [[ -s "$archive" && "$basename" =~ ^[A-Za-z0-9._-]+$ && -n "$dest" ]] || return 1
     python3 -I - "$archive" "$basename" "$dest" <<'PY_TAR_EXTRACT'
 import os, posixpath, sys, tarfile
+import resource
+# S6 (R51-M1 follow-up): bound this process's address space. tarfile
+# reads PAX/GNU longname extension headers whole into memory before
+# yielding the next member, so the member/size/total caps cannot bound
+# them (a 100 MB header peaked at 612 MB RSS in trial; the extractor
+# peaked at 912 MB). A 512 MiB cap fails closed (MemoryError -> non-zero
+# exit) on a crafted giant header while leaving ~30x headroom over
+# legitimate archives (baseline VSZ ~17 MB, legit RSS ~12 MB).
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    raise SystemExit(1)
 archive, wanted, dest = sys.argv[1:]
 MAX_MEMBERS = 10000
 MAX_FILE = 512 * 1024 * 1024
@@ -26654,6 +26671,38 @@ check_socket_or_fail() {
 # JSON, python3 missing) keeps the old behavior: check the socket.
 # Return 0 = inbound present (or unknown: check the socket);
 # 1 = config parsed and the inbound is gone (skip the socket check).
+# R35b-M2 follow-up: extract a flag's VALUE from /proc/<pid>/cmdline by
+# iterating NUL-delimited argv exactly. The old `tr '\0' '\n'` + awk
+# erased the boundary, so a single argv containing a newline (e.g.
+# $'xray\n-config\n<evil>\n') split into fake lines and the scan took
+# <evil> as the live config. Only argv[0] whose basename is a known core
+# is trusted; the value must be the very next argv token and absolute.
+# Unreadable cmdline / unknown exe / flag without a value / relative
+# value all fail (rc 1) so the caller falls back to the default config
+# (fail-open to the socket check, as before).
+_cmdline_config_value() {
+    local _pid="$1" _arg='' _exe='' _first=1 _want=''
+    [[ "$_pid" =~ ^[0-9]+$ && "$_pid" -gt 1 ]] || return 1
+    while IFS= read -r -d '' _arg; do
+        if (( _first == 1 )); then
+            _first=0
+            _exe="${_arg##*/}"
+            case "$_exe" in
+                xray) _want='-config' ;;
+                sing-box|hysteria) _want='-c' ;;
+                *) return 1 ;;
+            esac
+            continue
+        fi
+        if [[ "$_arg" == "$_want" || "$_arg" == '--config' && "$_exe" == 'xray' ]]; then
+            IFS= read -r -d '' _arg || return 1
+            [[ "$_arg" == /* ]] || return 1
+            printf '%s\n' "$_arg"
+            return 0
+        fi
+    done < "/proc/$_pid/cmdline" 2>/dev/null
+    return 1
+}
 config_has_inbound_port() {
     local proto="$1" port="$2" cfg='' pid="${MAIN_PID:-}" _cfg_rc=0
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
@@ -26662,10 +26711,7 @@ config_has_inbound_port() {
         # Gate the flag on argv[0]: a bare "-c" scan would misread an
         # unrelated "-c" earlier in the argv (e.g. "python3 -c ...")
         # and take the following field as the config path.
-        cfg=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | awk '
-            NR==1 { _exe=$0; sub(/.*\//, "", _exe); next }
-            _exe=="xray" && ($0=="-config" || $0=="--config") { getline _v; print _v; exit }
-            (_exe=="sing-box" || _exe=="hysteria") && $0=="-c" { getline _v; print _v; exit }')
+        cfg=$(_cmdline_config_value "$pid" 2>/dev/null || true)
     fi
     if [[ -z "$cfg" || "$cfg" != /* ]]; then
         case "${CORE:-}" in
@@ -39134,6 +39180,21 @@ abox_caddy_owned() {
            grep -qE '^[[:space:]]*Exec[A-Za-z]*=.*[[:space:]]caddy([[:space:]]|$)' "$_ref" 2>/dev/null; then
             return 1
         fi
+        # S2 (R37-02 follow-up): init scripts have no Exec* lines, so a
+        # foreign init service calling bare `caddy` (a direct command, an
+        # OpenRC `command="caddy"` assignment, or `sh -c 'caddy ...'`)
+        # was invisible to the checks above and would lose its binary on
+        # cleanup. Comment lines are stripped first (a comment merely
+        # mentioning caddy is not a consumer); any other match keeps the
+        # binary (fail-closed direction).
+        case "$_ref" in
+            /etc/init.d/*)
+                if grep -vE '^[[:space:]]*#' "$_ref" 2>/dev/null | grep -qE $'^[[:space:]]*caddy([[:space:]]|$)' ||
+                   grep -vE '^[[:space:]]*#' "$_ref" 2>/dev/null | grep -qE $'[[:space:]\'"(=]caddy([[:space:]]|[\'\";)]|$)'; then
+                    return 1
+                fi
+                ;;
+        esac
     done
     return 0
 }
@@ -42121,7 +42182,7 @@ write_full_uuid_list_to_file() {
 }
 
 sync_uuids_into_xray_config() {
-    local cfg='/usr/local/etc/xray/config.json' tmp primary extras_json
+    local cfg='/usr/local/etc/xray/config.json' tmp primary
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     primary="${UUID:-}"
     [[ -n "$primary" ]] || return 1
@@ -42130,38 +42191,73 @@ sync_uuids_into_xray_config() {
     # also a live client in the xray config; otherwise the emitted
     # users.d nodes would be dead. write_full_uuid_list_to_file fails
     # closed on an unreadable list (never sync an untrusted list).
-    local _uuid_list_tmp=''
+    # S3 (R40-H1 follow-up): group the merged list by registry tag
+    # instead of flattening it into every VLESS inbound. The map is
+    # {tag: [{id, email}]} over xray/vless registries, enabled users
+    # only (same filter as list_usersd_uuids), first-seen order,
+    # deduped by id; a symlinked / unreadable registry fails closed.
+    local _uuid_list_tmp='' _tag_map_tmp='' _tag_files=() _tag_file='' _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" _first_tag='' _untagged_json=''
     _uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-list.XXXXXX) || return 1
     if ! write_full_uuid_list_to_file "$_uuid_list_tmp"; then
         rm -f -- "$_uuid_list_tmp"
         msg "${RED}UUID list unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
         return 1
     fi
-    # R40-M1: check the conversion: the old pipe (jq -R | jq -s) ran
-    # with pipefail unset, so a failing first jq was invisible to the
-    # assignment status and a failed conversion fell through to '[]'
-    # below, silently dropping every non-primary user from the config.
-    # A single jq -Rn call over [inputs] is directly checkable (and
-    # jq -s -R is NOT equivalent: it slurps the whole input as one
-    # string, so map() fails on it).
-    extras_json=$(jq -Rn -c --arg p "${primary}" '[inputs | select(length > 0 and (. | ascii_downcase) != ($p | ascii_downcase))]' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp"; return 1; }
+    _tag_map_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-tagmap.XXXXXX) || { rm -f -- "$_uuid_list_tmp"; return 1; }
+    for _tag_file in "$_users_dir"/*.json; do
+        [[ -e "$_tag_file" || -L "$_tag_file" ]] || continue
+        [[ ! -L "$_tag_file" && -f "$_tag_file" && -r "$_tag_file" ]] || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+        _tag_files+=("$_tag_file")
+    done
+    if (( ${#_tag_files[@]} > 0 )); then
+        jq -s -c '
+          reduce .[] as $r ({}; if ($r.core // "") == "xray" and ($r.protocol // "") == "vless" and (($r.tag // "") != "") then
+            .[$r.tag] = ((.[$r.tag] // []) + [$r.users[]? | select(.disabled != true and ((.blocked // "") == "")) | {id: (.uuid // ""), email: (if (.email // "") != "" then .email else ($r.tag + "/x-" + (.uuid // "")[0:8]) end)} | select(.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))])
+          else . end)
+          | map_values(reduce .[] as $u ([]; if (map(.id) | index($u.id)) then . else . + [$u] end))
+        ' "${_tag_files[@]}" > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+    else
+        printf '%s' '{}' > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
+    fi
+    # Untagged UUIDs (primary + extras: the merged list minus every
+    # registry UUID, compared case-insensitively) belong to no tag and
+    # go to the first VLESS inbound only. R40-M1: a single jq -Rn call
+    # over [inputs] is directly checkable (jq -s -R is NOT equivalent:
+    # it slurps the whole input as one string, so map() fails on it).
+    _untagged_json=$(jq -Rn -c --slurpfile tagmap "$_tag_map_tmp" '
+      [inputs | select(length > 0)] as $merged
+      | ([$tagmap[0][] | .[].id | ascii_downcase] | unique) as $reg_all
+      | [$merged[] | select((ascii_downcase as $l | $reg_all | index($l) | not))]
+    ' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
     rm -f -- "$_uuid_list_tmp"
-    [[ -n "$extras_json" ]] || extras_json='[]'
-    tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
-    if ! jq --rawfile p <(printf '%s' "$primary") --slurpfile extras <(printf '%s' "$extras_json") '
+    [[ -n "$_untagged_json" ]] || _untagged_json='[]'
+    _first_tag=$(jq -r '.inbounds[]? | select(.protocol == "vless") | (.tag // "vless")' "$cfg" 2>/dev/null | head -1 || true)
+    tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || { rm -f -- "$_tag_map_tmp"; return 1; }
+    if ! jq --rawfile p <(printf '%s' "$primary") --arg first_tag "$_first_tag" --slurpfile tagmap "$_tag_map_tmp" --slurpfile untagged <(printf '%s' "$_untagged_json") '
         .inbounds |= map(
-          if .protocol=="vless" then
-            (.settings.clients[0].flow // "") as $flow |
+          if .protocol == "vless" then
             (.tag // "vless") as $itag |
-            .settings.clients = (
-              [({id:$p, email:($itag + "/main")} + (if $flow != "" then {flow:$flow} else {} end))]
-              + ($extras[0] | map({id:., email:($itag + "/x-" + .[0:8])} + (if $flow != "" then {flow:$flow} else {} end)))
+            (.settings.clients[0].flow // "") as $flow |
+            (($tagmap[0][$itag] // []) as $reg |
+             (if $itag == $first_tag then $untagged[0] else [] end) as $pre |
+             (if ($reg | length) > 0 then
+                .settings.clients = (
+                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
+                  + ($reg | map({id: .id, email: .email} + (if $flow != "" then {flow: $flow} else {} end)))
+                )
+              elif $itag == $first_tag then
+                .settings.clients = (
+                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
+                  + (.settings.clients // [] | map(select(.id as $id | ($pre | index($id)) | not)))
+                )
+              else . end)
             )
           else . end
         )
       ' "$cfg" > "$tmp"; then
-        rm -f "$tmp"; return 1
+        rm -f -- "$tmp" "$_tag_map_tmp"; return 1
     fi
+    rm -f -- "$_tag_map_tmp"
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     if [[ -x /usr/local/bin/xray ]]; then
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -46873,12 +46969,19 @@ snapshot_dns_state() {
     else
         printf absent > "$dir/dnscrypt-socket-listen.absent" || return 1
     fi
-    if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
+    # S4 (R44-M2 follow-up): refuse a symlinked live drop-in here too.
+    # The dnscrypt-socket branch above already fails closed on the same
+    # path, so this is defense-in-depth (a future reorder cannot reopen
+    # it): cp -a would otherwise store the link itself in the snapshot
+    # and the restore below would put a live symlink back.
+    if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
         mkdir -p "$dir/dnscrypt-socket-dropin" || return 1
         cp -a /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf "$dir/dnscrypt-socket-dropin/abox-listen.conf" || return 1
         printf present > "$dir/dnscrypt-socket-dropin-state" || return 1
-    else
+    elif [[ ! -e /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
         printf absent > "$dir/dnscrypt-socket-dropin-state" || return 1
+    else
+        return 1
     fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
@@ -47014,12 +47117,17 @@ restore_dns_snapshot_body() {
         local _listen_state='' _socket_changed=0
         _listen_state=$(tr -d '[:space:]' < "$dir/dnscrypt-socket-state" 2>/dev/null || true)
         if [[ "$_listen_state" == present && -f "$dir/dnscrypt-socket/abox-listen.conf" ]]; then
+            # S4 (R44-M2 follow-up): a symlinked snapshot entry must fail
+            # closed, not be restored as a live symlink (cp -a preserves
+            # the link); the dnscrypt toml got the same treatment in R44-M2.
+            [[ ! -L "$dir/dnscrypt-socket/abox-listen.conf" ]] || return 1
             mkdir -p /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
             if [[ ! -f "$_abox_listen" ]] || ! cmp -s "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" 2>/dev/null; then
                 _socket_changed=1
             fi
             rm -f -- "$_abox_listen" || return 1
             cp -a "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" || return 1
+            [[ -f "$_abox_listen" && ! -L "$_abox_listen" ]] || return 1
         elif [[ "$_listen_state" == absent ]]; then
             if [[ -f "$_abox_listen" ]]; then
                 # 06c2-02: same marker gate as the dropin-state restore
@@ -47099,9 +47207,14 @@ restore_dns_snapshot_body() {
     # abox-listen.conf (no A-Box marker) is never removed: fail
     # closed instead of clobbering an admin-pinned override.
     if [[ -f "$dir/dnscrypt-socket-dropin/abox-listen.conf" ]]; then
+        # S4 (R44-M2 follow-up): same symlink refusal as the
+        # dnscrypt-socket branch above -- a symlinked snapshot entry
+        # fails closed instead of being restored as a live symlink.
+        [[ ! -L "$dir/dnscrypt-socket-dropin/abox-listen.conf" ]] || return 1
         [[ -d /etc/systemd/system/dnscrypt-proxy.socket.d ]] || install -d -m 755 /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
         rm -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
         cp -a "$dir/dnscrypt-socket-dropin/abox-listen.conf" /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
+        [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf && ! -L /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]] || return 1
     elif [[ -f "$dir/dnscrypt-socket-dropin-state" ]] && [[ "$(tr -d '[:space:]' < "$dir/dnscrypt-socket-dropin-state" 2>/dev/null || true)" == absent ]]; then
         if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
             grep -Fq '# Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || return 1
@@ -53131,7 +53244,12 @@ read_crontab_to_file() {
         rm -f -- "$err"
         return 0
     elif grep -Eqi "no crontab|no crontab for|can't open '[^']*': No such file" "$err"; then
-        : > "$out"
+        # S5 (R51-M2 follow-up): the truncation must not be silent -- a
+        # failed `: >` (e.g. the file vanishing between the two opens)
+        # used to fall through to `return 0` and report an empty
+        # crontab, the same masking R51-M2 fixed in
+        # capture_abox_iptables_snapshot.
+        : > "$out" || return 1
         rm -f -- "$err"
         return 0
     fi
@@ -57133,6 +57251,22 @@ wallos_image_id_from_archive() {
     [[ -f "$archive" && ! -L "$archive" ]] || return 1
     python3 -I - "$archive" <<'PY_WALLOS_ARCHIVE_ID'
 import sys, tarfile, hashlib, json
+import resource
+# S7 (R51-M1 follow-up): same bound as S6 -- tarfile reads PAX/GNU
+# longname extension headers whole into memory before yielding the next
+# member (getmember/getnames scan them), so no member/size cap can bound
+# them. A 512 MiB RLIMIT_AS fails closed (MemoryError -> non-zero exit)
+# on a crafted giant header; see the R51-M1 note in
+# validate_legacy_backup_archive for the measured headroom.
+try:
+    _hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(512 * 1024 * 1024, _hard)
+    else:
+        _cap = 512 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
+except Exception:
+    sys.exit(1)
 archive = sys.argv[1]
 try:
     tf = tarfile.open(archive, 'r:gz')
@@ -60047,7 +60181,13 @@ wallos_restore_direct_container() {
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
-    wallos_wait_healthy "$port" || return 1
+    # S8 (R54-M2 follow-up): same U217 rule as the rollback/install
+    # paths -- an omitted -p means the rebuilt container is unpublished,
+    # so the health gate must not demand a publication it will never
+    # have (the bare call above failed every unpublished restore).
+    local _health_mode=published
+    (( ${#_pub_args[@]} == 0 )) && _health_mode=unpublished
+    wallos_wait_healthy "$port" "$_health_mode" || return 1
     wallos_write_state "$image" "$port" "$tz" "$bind_address" "$mode" '' '' "$version" || return 1
     return 0
 }
@@ -69554,6 +69694,18 @@ EOF_SELFTEST_IPT
     unset runtime_traverse
 
     if (( EUID == 0 )); then
+        # S9 (R65 follow-up): the ML-KEM warning check is static (it only
+        # greps the source), so it stays outside the python3 gate below
+        # and still runs when python3 is missing.
+        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
+        # Gate the whole Clash YAML generation segment on python3:
+        # write_clash_yaml / write_mihomo_user_yaml need it internally
+        # (realpath), so without it every generation would count as a
+        # failure instead of a skip. R65-01 only gated the three bare
+        # `python3 -I` calls; the generation calls themselves were not.
+        if ! selftest_has python3; then
+            selftest_note 'Clash YAML generation tests skipped (python3 missing)'
+        else
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
@@ -69587,7 +69739,6 @@ EOF_SELFTEST_IPT
             echo 'FAIL: Mihomo single-user YAML must refuse a mode with no VLESS leg'; failures=$((failures + 1))
         fi
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
-        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
         if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
@@ -69604,6 +69755,7 @@ if values != ['a"b\\c']:
 PY_SELFTEST_YAML
         else
             selftest_note 'Clash YAML secret escaping check skipped (python3 missing)'
+        fi
         fi
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'

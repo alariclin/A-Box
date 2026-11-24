@@ -59063,13 +59063,17 @@ _wallos_service_confirmed_stopped() {
 # carrying the marker; any foreign copy (or symlink / non-regular path)
 # refuses, even when /etc already holds an A-Box copy.
 _wallos_front_unit_owned_or_absent() {
-    local _unit _dir
+    local _unit
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        for _dir in /etc/systemd/system /run/systemd/system /usr/local/lib/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
-            _unit="$_dir/${1}.service"
-            [[ -e "$_unit" || -L "$_unit" ]] || continue
-            [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null || return 1
-        done
+        # R56-M1: ask systemd for the actually-loaded unit first
+        # (same idiom as systemd_same_name_unit_path): a same-named
+        # foreign unit in a transient/generator path is invisible
+        # to a fixed-directory scan, yet teardown stops it by name.
+        _unit=$(systemd_same_name_unit_path "$1" 2>/dev/null || true)
+        if [[ -n "$_unit" ]]; then
+            [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null
+            return $?
+        fi
         return 0
     else
         _unit="/etc/init.d/${1}"
@@ -59094,8 +59098,13 @@ wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 
         systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || {
             # R14-02: a failed disable is OK only if no boot
             # registration remains (repeat / partial teardown).
-            local _wants=(/etc/systemd/system/*.wants/abox-wallos-caddy.service)
-            [[ ! -e "${_wants[0]}" ]] || return 1
+            # R56-M4: check EVERY wants link, and count a dangling
+            # symlink (-L) as residue too: -e is false for a
+            # dangling link, and checking only [0] misses later links.
+            local _w _wants=(/etc/systemd/system/*.wants/abox-wallos-caddy.service)
+            for _w in "${_wants[@]}"; do
+                [[ -e "$_w" || -L "$_w" ]] && return 1
+            done
         }
         rm -f "/etc/systemd/system/abox-wallos-caddy.service" || return 1
         systemctl daemon-reload >/dev/null 2>&1 || return 1
@@ -59108,7 +59117,9 @@ wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 
         fi
         rc-update del abox-wallos-caddy default >/dev/null 2>&1 || {
             # R14-02: same idempotency rule for the runlevel link.
-            [[ ! -e /etc/runlevels/default/abox-wallos-caddy ]] || return 1
+            # R56-M4: a dangling link is residue too (-e is false
+            # for a dangling link).
+            [[ ! -e /etc/runlevels/default/abox-wallos-caddy && ! -L /etc/runlevels/default/abox-wallos-caddy ]] || return 1
         }
         rm -f "/etc/init.d/abox-wallos-caddy" || return 1
     fi
@@ -59253,7 +59264,7 @@ wallos_public_ipv4() {
 }
 
 wallos_https_setup() { # $1 = public port, $2 = internal container port
-    local pubport="$1" internal="$2" pub_ip='' tmp_json='' tmpd='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
+    local pubport="$1" internal="$2" pub_ip='' tmp_json='' tmpd='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2 _cand=''
     # M-28: must not go through get_public_ip: with IP_PREF=ipv6 it
     # returns an IPv6 address and this setup would misreport "no
     # public IPv4" on a dual-stack host that has one.
@@ -59316,23 +59327,40 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # R14C15-02: record whether 80/tcp is already owned before opening it,
     # so a later failure revokes only a rule this setup newly added.
     wallos_https_80_owned; _http80_pre=$?
-    ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg wl_fw_80_fail)${NC}"
+    if [[ "$_http80_pre" == 2 ]]; then
+        # R56-M2: unknown pre-state must not lead to an untracked
+        # rule: allowPort could add a rule that neither the rollback
+        # nor the registration below would ever see (_http80_new
+        # stays 0). Skip the firewall change and warn; issuance may
+        # still succeed where 80 is already open.
+        msg "${YELLOW}[!] Wallos HTTPS setup: the 80/tcp firewall state could not be determined; skipping the firewall change so no untracked rule is added.${NC}"
+    else
+        ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg wl_fw_80_fail)${NC}"
+    fi
     wallos_https_80_owned; _http80_post=$?
     if [[ "$_http80_pre" == 1 && "$_http80_post" == 0 ]]; then _http80_new=1; fi
     wallos_https_write_unit || { msg "${RED}$(tr_msg wl_hs_unit_fail)${NC}"; wallos_https_80_rollback "$_http80_new"; return 1; }
     # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
     while (( _t < 120 )); do
-        _cert=$(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" 2>/dev/null | head -1)
-        if [[ -n "$_cert" ]]; then
-            # A preserved store may hold an expired shortlived cert
-            # (6-day validity): accept only a still-valid one, so
-            # Caddy gets the window to renew instead of the TLS
-            # check failing on a dead certificate. Without openssl,
-            # accept the file as before.
-            if ! command -v openssl >/dev/null 2>&1 || openssl x509 -in "$_cert" -noout -checkend 0 2>/dev/null; then
+        _cert=''
+        # R56-M3: check EVERY candidate, not just the first one: a
+        # preserved store may hold an expired shortlived cert
+        # (6-day validity) ahead of a valid one (e.g. after a CA
+        # change), and the old `head -1` never looked past it.
+        # NUL-separated traversal: certificate paths come from the
+        # filesystem and must not be split on whitespace.
+        while IFS= read -r -d '' _cand; do
+            # Accept only a still-valid cert, so Caddy gets the
+            # window to renew instead of the TLS check failing on
+            # a dead certificate. Without openssl, accept the file
+            # as before.
+            if ! command -v openssl >/dev/null 2>&1 || openssl x509 -in "$_cand" -noout -checkend 0 2>/dev/null; then
+                _cert="$_cand"
                 break
             fi
-            _cert=''
+        done < <(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" -print0 2>/dev/null)
+        if [[ -n "$_cert" ]]; then
+            break
         fi
         is_service_running abox-wallos-caddy 2>/dev/null || break
         sleep 3; _t=$((_t + 3))
@@ -59474,8 +59502,13 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
         systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || {
             # R14-02: a failed disable is OK only if no boot
             # registration remains (repeat / partial teardown).
-            local _wants=(/etc/systemd/system/*.wants/abox-wallos-cftunnel.service)
-            [[ ! -e "${_wants[0]}" ]] || return 1
+            # R56-M4: check EVERY wants link, and count a dangling
+            # symlink (-L) as residue too: -e is false for a
+            # dangling link, and checking only [0] misses later links.
+            local _w _wants=(/etc/systemd/system/*.wants/abox-wallos-cftunnel.service)
+            for _w in "${_wants[@]}"; do
+                [[ -e "$_w" || -L "$_w" ]] && return 1
+            done
         }
         rm -f "/etc/systemd/system/abox-wallos-cftunnel.service" || return 1
         systemctl daemon-reload >/dev/null 2>&1 || return 1
@@ -59488,7 +59521,9 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
         fi
         rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || {
             # R14-02: same idempotency rule for the runlevel link.
-            [[ ! -e /etc/runlevels/default/abox-wallos-cftunnel ]] || return 1
+            # R56-M4: a dangling link is residue too (-e is false
+            # for a dangling link).
+            [[ ! -e /etc/runlevels/default/abox-wallos-cftunnel && ! -L /etc/runlevels/default/abox-wallos-cftunnel ]] || return 1
         }
         rm -f "/etc/init.d/abox-wallos-cftunnel" || return 1
     fi

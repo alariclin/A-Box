@@ -60367,21 +60367,22 @@ _fw_rollback_firewalld_scope() {
 # own record attempt still fails loudly on such a file. Lines are
 # buffered and only printed after every line validates.
 _wallos_fw_ledger_lines() {
-    local _spec _proto _line _f1 _f2 _f3 _rest _out=''
+    local _spec _proto _line _f1 _f2 _f3 _rest _out='' _content=''
     _spec=$(normalize_port_spec "${1:-}") || return 1
     _proto="${2:-}"
     [[ "$_proto" == tcp || "$_proto" == udp ]] || return 1
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     [[ -f "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] || return 1
-    # R15-F15-06: open the ledger on its own fd and check the open. The old
-    # `done < file` left a failed redirect unchecked: the while body never
-    # ran, the loop exited 0, and the caller got an empty ledger as a valid
-    # snapshot. An unreadable file (or one removed between the -f check and
-    # the open) must fail, never read as "nothing changed". The invalid-line
-    # path now flags and breaks (fd closed below) instead of returning from
-    # inside the loop; the observable outcome is unchanged (rc 1, no output).
-    local _fd _bad=0
-    exec {_fd}<"$ABOX_FW_STATE" || return 1
+    # R57-M3 (same 07h1-03 principle as the registry read in reclaim):
+    # read the whole ledger up front and check the read. A `while
+    # read` loop cannot report a mid-read I/O failure (its exit
+    # status is the last body command's): a failed read with an empty
+    # line ends the loop normally and the caller gets a partial
+    # snapshot as a valid one. On a read failure, return 1 with no
+    # output. The old fd-based open had the same gap for mid-read
+    # failures (it only fixed the failed-redirect case).
+    local _bad=0
+    _content=$(cat -- "$ABOX_FW_STATE" 2>/dev/null) || return 1
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         [[ -n "$_line" ]] || continue
         if ! native_firewall_record_valid "$_line"; then _bad=1; break; fi
@@ -60389,8 +60390,7 @@ _wallos_fw_ledger_lines() {
         if [[ ( "$_f1" == ufw || "$_f1" == firewalld ) && "$_f2" == "$_spec" && "$_f3" == "$_proto" ]]; then
             _out+="${_line}"$'\n'
         fi
-    done <&$_fd
-    exec {_fd}<&- 2>/dev/null || true
+    done <<< "$_content"
     (( _bad == 0 )) || return 1
     printf '%s' "$_out"
     return 0
@@ -60807,7 +60807,7 @@ _wallos_hy2_http01_keeps_80() {
 }
 
 wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
-    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept='' _reg_content='' _tmp=''
+    local reg line spec proto keep _k _removed=0 _failed=0 _del_failed=0 _hy2_rc=0 _kept='' _reg_content='' _tmp='' _vline=''
     reg=$(wallos_fw_registry_file)
     # 07h1-01: always (re-)run the migration, not just when the
     # registry is missing: an earlier interrupted import may have
@@ -60818,13 +60818,19 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
     # Rebuild the registry from the live firewall state first; a
     # failed rebuild with no registry at all means the live state is
     # unknown, so fail loudly instead of claiming success with rules
-    # leaking. A failed rebuild with a registry in place only warns:
-    # the registered openings are still reclaimed below.
+    # leaking. A failed rebuild with a registry in place warns and
+    # marks the reclaim failed (R57-M1): the registered openings are
+    # still reclaimed below, but unprobed candidates were never verified.
     if ! wallos_fw_import_legacy_registry; then
         if [[ ! -f "$reg" || -L "$reg" ]]; then
             msg "${YELLOW}[!] Could not rebuild the missing Wallos firewall registry from the live firewall rules; check the firewall rules manually.${NC}"
             return 1
         fi
+        # R57-M1: the registered openings are still reclaimed below,
+        # but the rebuild failure must reach the caller: unprobed
+        # candidates were never verified, so a 0 return would claim
+        # a complete reclaim.
+        _failed=1
         msg "${YELLOW}[!] Could not fully verify the Wallos firewall registry from the live firewall rules; reclaiming the registered openings only.${NC}"
     fi
     [[ -f "$reg" && ! -L "$reg" ]] || return 0
@@ -60835,6 +60841,15 @@ wallos_fw_reclaim_registered() { # $@ = "spec/proto" entries to KEEP
     # read, let alone deleted. On a read failure, return 1 with the
     # file untouched.
     _reg_content=$(cat -- "$reg" 2>/dev/null) || return 1
+    # R57-M2: validate the whole snapshot before deleting anything:
+    # a malformed non-empty line would otherwise be silently skipped
+    # by the loop below and then permanently discarded by the atomic
+    # publish, losing the only record of an opening whose rule may
+    # still be live. Fail with the file untouched.
+    while IFS= read -r _vline || [[ -n "$_vline" ]]; do
+        [[ -n "$_vline" ]] || continue
+        case "$_vline" in */tcp|*/udp) ;; *) msg "${YELLOW}[!] Wallos firewall registry contains a malformed entry; refusing to reclaim with the file untouched.${NC}"; return 1 ;; esac
+    done <<< "$_reg_content"
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
         case "$line" in */tcp|*/udp) ;; *) continue ;; esac

@@ -34,21 +34,21 @@
 
 ## این چیست
 
-A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود ۷۱٬۰۵۳ خط) که سرویس‌های پروکسی و شبکه را روی یک VPS لینوکسی مستقر و نگهداری می‌کند. Xray و sing-box و سرور رسمی Hysteria 2 را نصب و پیکربندی می‌کند، پیکربندی کلاینت تولید می‌کند و کارهای روزمره — قوانین فایروال، محافظت Fail2Ban، تنظیمات DNS، پشتیبان‌گیری، به‌روزرسانی و عیب‌یابی — را در یک منوی تعاملی شش‌زبانه گرد هم می‌آورد. تا وقتی در منو انتخاب نکنید چیزی مستقر نمی‌شود و عملیات مخرب همیشه تأیید می‌خواهند.
+A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود ۷۱٬۱۸۵ خط) که سرویس‌های پروکسی و شبکه را روی یک VPS لینوکسی مستقر و نگهداری می‌کند. Xray و sing-box و سرور رسمی Hysteria 2 را نصب و پیکربندی می‌کند، پیکربندی کلاینت تولید می‌کند و کارهای روزمره — قوانین فایروال، محافظت Fail2Ban، تنظیمات DNS، پشتیبان‌گیری، به‌روزرسانی و عیب‌یابی — را در یک منوی تعاملی شش‌زبانه گرد هم می‌آورد. تا وقتی در منو انتخاب نکنید چیزی مستقر نمی‌شود و عملیات مخرب همیشه تأیید می‌خواهند.
 
 ## شروع سریع
 
 منبع رسمی، با دستور قفل‌شده روی یک کامیت تغییرناپذیر:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/c8069fed841cc8d6ae5f5ad6fb646e0f6893348a/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/88f54afe6cafe7ccfd05fba50ed116414f848dc0/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 آینه شخص ثالث همان فایل قفل‌شده (فقط مسیر انتقال است، نه یک درگاه رسمی). آن را مستقیم اجرا نکنید: ابتدا دانلود کنید، سپس بایت‌به‌بایت با منبع رسمی مقایسه کنید و تنها پس از تطابق اجرا کنید. آینه را فقط زمانی به کار ببرید که به پروکسی اعتماد دارید؛ فایل آینه بررسی‌نشده را هرگز در محیط واقعی اجرا نکنید:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/c8069fed841cc8d6ae5f5ad6fb646e0f6893348a/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/c8069fed841cc8d6ae5f5ad6fb646e0f6893348a/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/88f54afe6cafe7ccfd05fba50ed116414f848dc0/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/88f54afe6cafe7ccfd05fba50ed116414f848dc0/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

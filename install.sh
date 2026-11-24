@@ -65170,7 +65170,7 @@ while i < n:
     if c == '/' and i + 1 < n and data[i+1] == '*':
         j = data.find('*/', i + 2)
         if j == -1:
-            break
+            raise ValueError('unterminated JSONC block comment')
         out.append(' ')
         i = j + 2
         continue
@@ -65323,9 +65323,9 @@ core_expected_tls_tcp_targets() {
     esac
     _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null); _strip_rc=$?
     (( _strip_rc == 0 )) || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_strip_failed "${cfg}")${NC}" >&2; return 1; }
-    _doc=$(printf '%s' "$_stripped" | jq -c '.' 2>/dev/null); _doc_rc=$?
+    _doc=$(printf '%s' "$_stripped" | jq -s -c 'if length == 1 then .[0] else error("expected exactly one JSON document") end' 2>/dev/null); _doc_rc=$?
     (( _doc_rc == 0 )) || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_parse_failed "${cfg}")${NC}" >&2; return 1; }
-    printf '%s' "$_doc" | jq -e 'type == "object" and ((.inbounds // null) == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_bad_shape "${cfg}")${NC}" >&2; return 1; }
+    printf '%s' "$_doc" | jq -e 'type == "object" and (.inbounds == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_bad_shape "${cfg}")${NC}" >&2; return 1; }
     case "$core" in
         xray)
             # R7-F16-5: a string port is normalized before the scalar

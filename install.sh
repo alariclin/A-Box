@@ -30452,8 +30452,16 @@ EOF_SVC
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (.listen_port // empty)' "$cfg" 2>/dev/null || true)
     fi
+    # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
+    # independent inbound that merely shares $tag must not be
+    # silently replaced by the merge below; only a genuine SOCKS5
+    # inbound (type socks or mixed) proceeds.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and (.type=="socks" or .type=="mixed"))' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
     fi
     # R4C8-04: the seed above only runs when the binary was
     # missing. If the binary exists but the config is missing /
@@ -30473,7 +30481,20 @@ EOF_SVC
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '.inbounds = (.inbounds // [])
              | (.inbounds | map(select(.tag==$t))) as $old
-             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+             | .inbounds |= (
+                 map(select(.tag!=$t))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array") and ($ex.users | length) > 1
+                                and ($new.users | type == "array") and ($new.users | length) > 0) then
+                               $new | .users = ([$new.users[0]] + $ex.users[1:])
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
@@ -30977,14 +30998,35 @@ EOF_SVC
         > "$tmp_json" || die "$(tr_msg dp_trojan_json)"
 
     local tmp_cfg
+    # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
+    # independent inbound that merely shares $tag must not be
+    # silently replaced by the merge below; only a genuine Trojan
+    # inbound proceeds.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="trojan")' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '.inbounds = (.inbounds // [])
              | (.inbounds | map(select(.tag==$t))) as $old
-             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+             | .inbounds |= (
+                 map(select(.tag!=$t))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array") and ($ex.users | length) > 1
+                                and ($new.users | type == "array") and ($new.users | length) > 0) then
+                               $new | .users = ([$new.users[0]] + $ex.users[1:])
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
@@ -35524,6 +35566,13 @@ EOF_SVC
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         local tmp_cfg
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+        # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
+        # independent inbound that merely shares $tag must not be
+        # silently replaced by the merge below; only a genuine SOCKS
+        # inbound proceeds.
+        if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="socks")' "$cfg" >/dev/null 2>&1; then
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
@@ -35531,7 +35580,20 @@ EOF_SVC
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
-                 | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
+                 | .inbounds |= (
+                     map(select(.tag!=$t))
+                     + [
+                         $nb[] as $new
+                         | (
+                             ($old | map(select(.tag==$new.tag)) | first) as $ex
+                             | if ($ex and ($ex.settings.accounts | type == "array") and ($ex.settings.accounts | length) > 1
+                                    and ($new.settings.accounts | type == "array") and ($new.settings.accounts | length) > 0) then
+                                   $new | .settings.accounts = ([$new.settings.accounts[0]] + $ex.settings.accounts[1:])
+                               else $new
+                               end
+                           )
+                       ]
+                   )' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
         fi

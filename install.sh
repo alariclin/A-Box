@@ -371,6 +371,17 @@ WALLOS_DOCKER_HARDENING=(
 WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
+# Geo mirror fallback (fetch_geo_data): A-Box-signed mirror of the
+# Loyalsoldier geoip.dat/geosite.dat assets, same trust model as
+# test-tools-mirror (detached Ed25519 SHA256SUMS.sig + SHA-256 of the
+# asset itself; any verification failure refuses the mirror file).
+# NOTE: the 'geo-mirror' Release does not exist yet — it must be populated
+# by CI (assets geoip.dat, geosite.dat, SHA256SUMS + SHA256SUMS.sig signed
+# with the F-05 key) before the fallback can succeed; until then the mirror
+# leg fails closed and fetch_geo_data keeps its old die behaviour.
+# Override the base with ABOX_GEO_MIRROR_BASE (https:// only).
+ABOX_GEO_MIRROR_RELEASE='geo-mirror'
+ABOX_GEO_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/geo-mirror'
 # Xray target for an explicitly selected pinned policy;
 # not an automatic disaster-recovery fallback.
 # It is NOT the default install target: Xray now tracks the latest stable
@@ -9095,6 +9106,12 @@ tr_msg() {
         ru:gd_bad_name) echo 'Недопустимое имя файла данных Geo: %s' ;;
         fa:gd_bad_name) echo 'نام فایل داده Geo نامعتبر است: %s' ;;
         ja:gd_bad_name) echo 'Geo データのファイル名が不正です： %s' ;;
+        zh:gd_both_failed) echo '上游与 A-Box 签名镜像均无法提供校验通过的 Geo 数据文件 %s；已保留旧文件。' ;;
+        zh-tw:gd_both_failed) echo '上游與 A-Box 簽名鏡像均無法提供校驗通過的 Geo 資料檔案 %s；已保留舊檔案。' ;;
+        en:gd_both_failed) echo 'Neither the upstream nor the A-Box signed mirror could provide a verified Geo data file %s; the old file was kept.' ;;
+        ru:gd_both_failed) echo 'Ни основной источник, ни подписанное зеркало A-Box не смогли предоставить проверенный файл данных Geo %s; старый файл сохранён.' ;;
+        fa:gd_both_failed) echo 'نه منبع بالادستی و نه آینه امضاشده A-Box نتوانستند فایل داده Geo ‏%s را با بررسی موفق ارائه دهند؛ فایل قدیمی حفظ شد.' ;;
+        ja:gd_both_failed) echo '上流も A-Box 署名ミラーも、検証済みの Geo データファイル %s を提供できませんでした。旧ファイルを保持しました。' ;;
         zh:gd_commit) echo 'Geo 数据文件 %s 原子提交失败。' ;;
         zh-tw:gd_commit) echo 'Geo 資料檔案 %s 原子提交失敗。' ;;
         en:gd_commit) echo 'Failed to atomically commit the Geo data file %s.' ;;
@@ -24385,8 +24402,103 @@ fetch_github_release() {
     die "$(tr_msg fg_none_valid)"
 }
 
+# Geo upstream leg (extracted from fetch_geo_data, die -> return 1).
+# Downloads $3 (tmp file) from the GitHub Release named by $2 for asset $1,
+# verifying the official API digest. Prints the failure reason to stderr
+# and returns 1 on any failure; the caller decides whether to fall back.
+# Never dies: a failure here must not abort the install before the mirror
+# leg has been tried. $3 is removed on failure.
+fetch_geo_upstream_data() {
+    local file_name="${1:-}" official_url="${2:-}" tmp_out="${3:-}"
+    local repo asset release_json asset_json asset_name download_url digest release_ref _geo_max_time=90
+    [[ -n "$file_name" && -n "$official_url" && -n "$tmp_out" ]] || return 1
+    [[ "$official_url" =~ ^https://github.com/([^/]+/[^/]+)/releases/latest/download/([^/?#]+)$ ]] || return 1
+    repo="${BASH_REMATCH[1]}"
+    asset="${BASH_REMATCH[2]}"
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; return 1; }
+    fi
+    release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
+    [[ -n "$release_json" ]] || { printf '%s\n' "$(tprintf gd_api "$repo")" >&2; rm -f -- "$tmp_out"; return 1; }
+    asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
+    [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { printf '%s\n' "$(tprintf gd_asset_missing "$asset")" >&2; rm -f -- "$tmp_out"; return 1; }
+    asset_name=$(jq -r '.name // ""' <<< "$asset_json")
+    release_ref=$(jq -r '.tag_name // ""' <<< "$release_json")
+    download_url=$(jq -r '.url' <<< "$asset_json")
+    digest=$(jq -r '.digest // ""' <<< "$asset_json")
+    [[ -n "$asset_name" && -n "$release_ref" ]] || { printf '%s\n' 'Geo Release metadata missing asset name or tag.' >&2; rm -f -- "$tmp_out"; return 1; }
+    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { printf '%s\n' "$(tr_msg gd_url_mismatch)" >&2; rm -f -- "$tmp_out"; return 1; }
+    _geo_max_time=90
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; return 1; }
+        _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; return 1; }
+    fi
+    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; rm -f -- "$tmp_out"; return 1; }
+    if ! verify_github_asset_digest "$tmp_out" "$digest"; then
+        printf '%s\n' "$(tprintf gd_digest "$file_name")" >&2
+        rm -f -- "$tmp_out"
+        return 1
+    fi
+}
+
+# Geo mirror fallback (test-tools-mirror trust model, same verification
+# strength as the upstream leg, never weaker):
+#   1. Fetch SHA256SUMS + SHA256SUMS.sig from the A-Box geo-mirror Release
+#      (https only; ABOX_GEO_MIRROR_BASE override must also be https).
+#   2. Verify the detached Ed25519 signature DIRECTLY with
+#      verify_ed25519_detached (the run_mirrored_test_script P3-02 pattern),
+#      NOT the degradable abox_verify_sig_gate: a missing or invalid
+#      signature rejects the mirror even when ABOX_SIGNING_ENFORCE=0.
+#   3. Download the asset and SHA-256-check it against the signed manifest.
+# Any failure returns 1 (mirror file refused, never executed/installed);
+# the caller keeps the old geo file and dies only after both legs fail.
+# $1=file_name (geoip.dat|geosite.dat only), $2=tmp file to fill.
+fetch_geo_mirror_data() {
+    local file_name="${1:-}" tmp_out="${2:-}"
+    local base='' sum_dir='' sums='' sums_sig='' expected='' actual='' _m_max_time=90 _m_retry=2
+    [[ -n "$file_name" && -n "$tmp_out" ]] || return 1
+    case "$file_name" in geoip.dat|geosite.dat) ;; *) return 1 ;; esac
+    base="${ABOX_GEO_MIRROR_BASE:-${ABOX_GEO_MIRROR_BASE_DEFAULT:-}}"
+    [[ -n "$base" ]] || return 1
+    case "$base" in
+        https://*) ;;
+        *) printf '%s\n' '[fetch] geo mirror base must use https://; refusing plaintext mirror.' >&2; return 1 ;;
+    esac
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (SHA256SUMS)" || return 1
+        _m_max_time=$(abox_fetch_curl_max_time 90) || return 1
+        _m_retry=0
+    fi
+    sum_dir=$(mktemp -d /tmp/A-Box-geo-mirror.XXXXXX) || return 1
+    sums="$sum_dir/SHA256SUMS"; sums_sig="$sum_dir/SHA256SUMS.sig"
+    if ! curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS" -o "$sums" 2>/dev/null; then
+        rm -rf -- "$sum_dir"; return 1
+    fi
+    curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS.sig" -o "$sums_sig" 2>/dev/null || true
+    if [[ -L "$sums" || ( -e "$sums_sig" && -L "$sums_sig" ) ]]; then rm -rf -- "$sum_dir"; return 1; fi
+    if ! verify_ed25519_detached "$sums" "$sums_sig" >/dev/null 2>&1; then
+        printf '%s\n' "[fetch] geo mirror SHA256SUMS signature verification failed; refusing mirror ${file_name}." >&2
+        rm -rf -- "$sum_dir"; return 1
+    fi
+    expected=$(awk -v f="$file_name" '$2==f || $2==("*" f) {print $1; exit}' "$sums") || expected=''
+    if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ ]]; then rm -rf -- "$sum_dir"; return 1; fi
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (asset)" || { rm -rf -- "$sum_dir"; return 1; }
+        _m_max_time=$(abox_fetch_curl_max_time 90) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    if ! abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/${file_name}" -o "$tmp_out"; then
+        rm -rf -- "$sum_dir"; return 1
+    fi
+    rm -rf -- "$sum_dir"
+    actual=$(sha256sum < "$tmp_out" 2>/dev/null | awk '{print $1}') || actual=''
+    if [[ "${actual,,}" != "${expected,,}" ]]; then
+        printf '%s\n' "[fetch] geo mirror SHA-256 mismatch for ${file_name}; refusing." >&2
+        rm -f -- "$tmp_out"; return 1
+    fi
+}
+
 fetch_geo_data() {
-    local file_name official_url out tmp_out size repo asset release_json asset_json asset_name download_url digest release_ref out_created=0 _geo_t0 _geo_now _geo_max_time=90
+    local file_name official_url out tmp_out size out_created=0 _geo_t0 _geo_now
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
@@ -24404,30 +24516,16 @@ fetch_geo_data() {
     tmp_out=$(umask 077; mktemp "${out}.download.XXXXXX") || { (( out_created == 1 )) && rm -f -- "$out"; die "$(tr_msg gd_tmp)"; }
 
     if [[ "$official_url" =~ ^https://github.com/([^/]+/[^/]+)/releases/latest/download/([^/?#]+)$ ]]; then
-        repo="${BASH_REMATCH[1]}"
-        asset="${BASH_REMATCH[2]}"
-        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-            abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} metadata."; }
-        fi
-        release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
-        [[ -n "$release_json" ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_api "$repo")"; }
-        asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
-        [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_asset_missing "$asset")"; }
-        asset_name=$(jq -r '.name // ""' <<< "$asset_json")
-        release_ref=$(jq -r '.tag_name // ""' <<< "$release_json")
-        download_url=$(jq -r '.url' <<< "$asset_json")
-        digest=$(jq -r '.digest // ""' <<< "$asset_json")
-        [[ -n "$asset_name" && -n "$release_ref" ]] || { rm -f -- "$tmp_out"; die 'Geo Release metadata missing asset name or tag.'; }
-        valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die "$(tr_msg gd_url_mismatch)"; }
-        _geo_max_time=90
-        if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-            abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
-            _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; die "Geo fetch aborted: total fetch budget expired before ${file_name} download."; }
-        fi
-        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
-        if ! verify_github_asset_digest "$tmp_out" "$digest"; then
+        # Upstream first; on ANY upstream failure (API rate-limit included)
+        # fall back to the A-Box signed mirror before giving up. A non-GitHub
+        # URL still refuses outright below (URL contract unchanged).
+        if fetch_geo_upstream_data "$file_name" "$official_url" "$tmp_out"; then
+            :
+        elif fetch_geo_mirror_data "$file_name" "$tmp_out"; then
+            msg "[fetch] geo ${file_name}: recovered from A-Box signed mirror (${ABOX_GEO_MIRROR_RELEASE:-geo-mirror})"
+        else
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
-            die "$(tprintf gd_digest "$file_name")"
+            die "$(tprintf gd_both_failed "$file_name")"
         fi
     else
         rm -f -- "$tmp_out"

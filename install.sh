@@ -37481,7 +37481,14 @@ proc_starttime() {
 _manifest_rows_valid() {
     local file="$1" line t f p h rest TAB=$'\t'
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    if ! tr -d '\000' < "$file" | cmp -s - "$file"; then return 1; fi
+    # NUL bytes must fail closed. cmp is not guaranteed: diffutils may be
+    # absent on minimal RPM images, so compare byte counts via coreutils
+    # (tr + wc), which are always present. tr only removes NULs, so the
+    # counts differ exactly when NULs were present.
+    local _stripped_len _orig_len
+    _stripped_len=$(tr -d '\000' < "$file" | wc -c)
+    _orig_len=$(wc -c < "$file")
+    (( _stripped_len == _orig_len )) || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         # SYD-B7: TAB is IFS whitespace, so a plain read folds empty fields
         # away; require exactly 3 TABs (4 fields) before splitting.
@@ -55459,7 +55466,14 @@ abox_restore_preserved_name() {
 _manifest_rows_valid() {
     local file="$1" line t f p h rest TAB=$'\t'
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    if ! tr -d '\000' < "$file" | cmp -s - "$file"; then return 1; fi
+    # NUL bytes must fail closed. cmp is not guaranteed: diffutils may be
+    # absent on minimal RPM images, so compare byte counts via coreutils
+    # (tr + wc), which are always present. tr only removes NULs, so the
+    # counts differ exactly when NULs were present.
+    local _stripped_len _orig_len
+    _stripped_len=$(tr -d '\000' < "$file" | wc -c)
+    _orig_len=$(wc -c < "$file")
+    (( _stripped_len == _orig_len )) || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         # SYD-B7: TAB is IFS whitespace, so a plain read folds empty fields
         # away; require exactly 3 TABs (4 fields) before splitting.

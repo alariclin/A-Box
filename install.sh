@@ -9150,12 +9150,6 @@ tr_msg() {
         ru:gd_download) echo 'Не удалось загрузить файл данных Geo %s.' ;;
         fa:gd_download) echo 'دانلود فایل داده Geo ‏%s ناموفق بود.' ;;
         ja:gd_download) echo 'Geo データファイル %s のダウンロードに失敗しました。' ;;
-        zh:gd_html) echo 'Geo 数据文件 %s 看起来是 HTML 错误页。' ;;
-        zh-tw:gd_html) echo 'Geo 資料檔案 %s 看起來是 HTML 錯誤頁。' ;;
-        en:gd_html) echo 'The Geo data file %s looks like an HTML error page.' ;;
-        ru:gd_html) echo 'Файл данных Geo %s выглядит как HTML-страница ошибки.' ;;
-        fa:gd_html) echo 'فایل داده Geo ‏%s شبیه صفحه خطای HTML است.' ;;
-        ja:gd_html) echo 'Geo データファイル %s は HTML エラーページのようです。' ;;
         zh:gd_no_digest) echo 'Geo 数据 URL 必须是带官方 digest 的 GitHub Release 下载地址；拒绝无 digest 的明文拉取： %s' ;;
         zh-tw:gd_no_digest) echo 'Geo 資料 URL 必須是帶官方 digest 的 GitHub Release 下載位址；拒絕無 digest 的明文拉取： %s' ;;
         en:gd_no_digest) echo 'The Geo data URL must be a GitHub Release download URL with an official digest; refusing a plaintext fetch without a digest: %s' ;;
@@ -9192,12 +9186,6 @@ tr_msg() {
         ru:gd_params) echo 'Отсутствуют параметры загрузки данных Geo.' ;;
         fa:gd_params) echo 'پارامترهای دانلود داده Geo وجود ندارد.' ;;
         ja:gd_params) echo 'Geo データのダウンロードパラメータが不足しています。' ;;
-        zh:gd_size) echo 'Geo 数据文件 %s 大小异常。' ;;
-        zh-tw:gd_size) echo 'Geo 資料檔案 %s 大小異常。' ;;
-        en:gd_size) echo 'The Geo data file %s has an abnormal size.' ;;
-        ru:gd_size) echo 'Файл данных Geo %s имеет аномальный размер.' ;;
-        fa:gd_size) echo 'اندازه فایل داده Geo ‏%s غیرعادی است.' ;;
-        ja:gd_size) echo 'Geo データファイル %s のサイズが異常です。' ;;
         zh:gd_tmp) echo 'Geo 数据临时文件创建失败。' ;;
         zh-tw:gd_tmp) echo 'Geo 資料臨時檔案建立失敗。' ;;
         en:gd_tmp) echo 'Failed to create the Geo data temp file.' ;;

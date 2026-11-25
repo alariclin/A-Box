@@ -42781,94 +42781,6 @@ write_full_uuid_list_to_file() {
     return 0
 }
 
-sync_uuids_into_xray_config() {
-    local cfg='/usr/local/etc/xray/config.json' tmp primary
-    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    primary="${UUID:-}"
-    [[ -n "$primary" ]] || return 1
-    # H-24 (Carbon R3): sync the MERGED uuid list (primary + extras +
-    # users.d), so every UUID the Clash YAML / subscription emits is
-    # also a live client in the xray config; otherwise the emitted
-    # users.d nodes would be dead. write_full_uuid_list_to_file fails
-    # closed on an unreadable list (never sync an untrusted list).
-    # S3 (R40-H1 follow-up): group the merged list by registry tag
-    # instead of flattening it into every VLESS inbound. The map is
-    # {tag: [{id, email}]} over xray/vless registries, enabled users
-    # only (same filter as list_usersd_uuids), first-seen order,
-    # deduped by id; a symlinked / unreadable registry fails closed.
-    local _uuid_list_tmp='' _tag_map_tmp='' _tag_files=() _tag_file='' _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" _first_tag='' _untagged_json=''
-    _uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-list.XXXXXX) || return 1
-    if ! write_full_uuid_list_to_file "$_uuid_list_tmp"; then
-        rm -f -- "$_uuid_list_tmp"
-        msg "${RED}UUID list unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
-        return 1
-    fi
-    _tag_map_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-tagmap.XXXXXX) || { rm -f -- "$_uuid_list_tmp"; return 1; }
-    for _tag_file in "$_users_dir"/*.json; do
-        [[ -e "$_tag_file" || -L "$_tag_file" ]] || continue
-        [[ ! -L "$_tag_file" && -f "$_tag_file" && -r "$_tag_file" ]] || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
-        _tag_files+=("$_tag_file")
-    done
-    if (( ${#_tag_files[@]} > 0 )); then
-        jq -s -c '
-          reduce .[] as $r ({}; if ($r.core // "") == "xray" and ($r.protocol // "") == "vless" and (($r.tag // "") != "") then
-            .[$r.tag] = ((.[$r.tag] // []) + [$r.users[]? | select(.disabled != true and ((.blocked // "") == "")) | {id: (if (.uuid // "") != "" then .uuid else (.secret // "") end), email: (if (.email // "") != "" then .email else ($r.tag + "/x-" + (if (.uuid // "") != "" then .uuid else (.secret // "") end)[0:8]) end)} | select(.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))])
-          else . end)
-          | map_values(reduce .[] as $u ([]; if (map(.id) | index($u.id)) then . else . + [$u] end))
-        ' "${_tag_files[@]}" > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
-    else
-        printf '%s' '{}' > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
-    fi
-    # Untagged UUIDs (primary + extras: the merged list minus every
-    # registry UUID, compared case-insensitively) belong to no tag and
-    # go to the first VLESS inbound only. R40-M1: a single jq -Rn call
-    # over [inputs] is directly checkable (jq -s -R is NOT equivalent:
-    # it slurps the whole input as one string, so map() fails on it).
-    _untagged_json=$(jq -Rn -c --slurpfile tagmap "$_tag_map_tmp" '
-      [inputs | select(length > 0)] as $merged
-      | ([$tagmap[0][] | .[].id | ascii_downcase] | unique) as $reg_all
-      | [$merged[] | select((ascii_downcase as $l | $reg_all | index($l) | not))]
-    ' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
-    rm -f -- "$_uuid_list_tmp"
-    [[ -n "$_untagged_json" ]] || _untagged_json='[]'
-    _first_tag=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol == "vless") | (.tag // "vless")' 2>/dev/null | head -1 || true)
-    tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || { rm -f -- "$_tag_map_tmp"; return 1; }
-    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --rawfile p <(printf '%s' "$primary") --arg first_tag "$_first_tag" --slurpfile tagmap "$_tag_map_tmp" --slurpfile untagged <(printf '%s' "$_untagged_json") '
-        .inbounds |= map(
-          if .protocol == "vless" then
-            (.tag // "vless") as $itag |
-            (.settings.clients[0].flow // "") as $flow |
-            (($tagmap[0][$itag] // []) as $reg |
-             (if $itag == $first_tag then $untagged[0] else [] end) as $pre |
-             (if ($reg | length) > 0 then
-                .settings.clients = (
-                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
-                  + ($reg | map({id: .id, email: .email} + (if $flow != "" then {flow: $flow} else {} end)))
-                )
-              elif $itag == $first_tag then
-                .settings.clients = (
-                  ($pre | map({id: ., email: ($itag + (if . == $p then "/main" else "/x-" + .[0:8] end))} + (if $flow != "" then {flow: $flow} else {} end)))
-                  + (.settings.clients // [] | map(select(.id as $id | ($pre | index($id)) | not)))
-                )
-              else . end)
-            )
-          else . end
-        )
-      ' > "$tmp"; then
-        rm -f -- "$tmp" "$_tag_map_tmp"; return 1
-    fi
-    rm -f -- "$_tag_map_tmp"
-    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
-    if [[ -x /usr/local/bin/xray ]]; then
-        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
-    fi
-    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
-    # C-02: Restore abox-xray read permission (install_file_atomically creates root:root 600).
-    prepare_abox_runtime_permissions xray || { rm -f "$tmp"; return 1; }
-    rm -f "$tmp"
-    return 0
-}
-
 export_lightweight_subscription() {
     local CALLER=${1:-manual} F_IP VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E uri_file b64_file clash_file u url client_uuid proxy_name
     ensure_abox_dir_owned "$ABOX_DIR" || die 'subscribe dir prepare failed'
@@ -51752,12 +51664,12 @@ sni_auto_select_default() {
     # taken before the explicit cleanup, and restores the caller's
     # traps so nothing persists after this function returns. The EXIT
     # trap covers die()/exit inside a callee (e.g. sni_verify_raw_report).
-    local _sni_auto_caller_return_trap='' _sni_auto_caller_exit_trap='' _sni_auto_caller_int_trap='' _sni_auto_caller_term_trap=''
-    _sni_auto_caller_return_trap=$(trap -p RETURN 2>/dev/null || true)
+    local _sni_auto_caller_trap='' _sni_auto_caller_exit_trap='' _sni_auto_caller_int_trap='' _sni_auto_caller_term_trap=''
     _sni_auto_caller_exit_trap=$(trap -p EXIT 2>/dev/null || true)
     _sni_auto_caller_int_trap=$(trap -p INT 2>/dev/null || true)
     _sni_auto_caller_term_trap=$(trap -p TERM 2>/dev/null || true)
-    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_return_trap:-}" ]]; then eval "$_sni_auto_caller_return_trap"; fi; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
+    _sni_auto_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_trap:-}" ]]; then eval "$_sni_auto_caller_trap"; fi; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi' EXIT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 130' INT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 143' TERM
@@ -53371,7 +53283,7 @@ def redact_text(value):
     return value
 
 
-_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)"
+_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)"
 _block_scalar_re = re.compile(
     r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
@@ -53572,7 +53484,7 @@ _INLINE_KEY_CANDIDATE = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
     r"""|authorization|proxy-authorization|cookie|set-cookie"""
-    r"""|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)\b["']?"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)\b["']?"""
 )
 
 
@@ -69968,7 +69880,7 @@ PY_SELFTEST_TAR
     [[ "$(core_release_mirror_version XTLS/Xray-core)" == 'v26.11.9' ]] || { echo 'FAIL: Xray mirror pin value must be v26.11.9'; failures=$((failures + 1)); }
     local mock_core_versions=$'schema=1\nXray=v26.3.27\nsing-box=v1.14.3\nHysteria=app/v2.13.0'
     [[ "$(core_latest_mirror_tag_from_text XTLS/Xray-core "$mock_core_versions")" == 'v26.3.27' ]] || { echo 'FAIL: latest Xray mirror metadata parser'; failures=$((failures + 1)); }
-    awk '/^run_self_tests\(\) \{/ { exit } /curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "\$mirror_sum" -o "\$sum_file"/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
+    awk '/^run_self_tests\(\) \{/ { exit } /curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "\$mirror_sum" -o "\$sum_file"/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text SagerNet/sing-box "$mock_core_versions")" == 'v1.14.3' ]] || { echo 'FAIL: latest sing-box mirror metadata parser'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text HyNetworks/hysteria "$mock_core_versions")" == 'app/v2.13.0' ]] || { echo 'FAIL: latest Hysteria mirror metadata parser'; failures=$((failures + 1)); }
     if core_latest_mirror_tag_from_text XTLS/Xray-core $'Xray=v26.7.28-rc.1'; then echo 'FAIL: prerelease mirror metadata accepted as latest stable'; failures=$((failures + 1)); fi

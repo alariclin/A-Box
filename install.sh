@@ -7020,6 +7020,12 @@ tr_msg() {
         fa:rollback_copy_fail) echo 'کپی بازگشت ناموفق بود؛ پشتیبان قدیمی نگه داشته شد، آن را دستی بازیابی و بررسی کنید.' ;;
         zh-tw:rollback_copy_fail) echo '回滾複製失敗，舊備份已保留未刪，請手動還原並檢查。' ;;
         ja:rollback_copy_fail) echo 'ロールバックのコピーに失敗しました。古いバックアップは削除せず残してあります。手動で復元し、確認してください。' ;;
+        zh:rollback_perm_fail) echo '旧证书/配置已成功恢复，但 sing-box 运行时权限修复失败，服务重启可能因权限被拒而失败，请手动检查权限并重启服务。' ;;
+        en:rollback_perm_fail) echo 'The old certificates/configuration were restored successfully, but applying the sing-box runtime permissions failed; the service may fail to restart with permission denied. Check the permissions manually and restart the service.' ;;
+        ru:rollback_perm_fail) echo 'Предыдущая конфигурация успешно восстановлена, но применить разрешения времени выполнения sing-box не удалось; служба может не запуститься из-за отказа в доступе. Проверьте разрешения вручную и перезапустите службу.' ;;
+        fa:rollback_perm_fail) echo 'پیکربندی قبلی با موفقیت بازیابی شد، اما اعمال مجوزهای زمان اجرای sing-box ناموفق بود؛ ممکن است سرویس به دلیل عدم دسترسی راه‌اندازی مجدد نشود. مجوزها را به‌صورت دستی بررسی و سرویس را راه‌اندازی مجدد کنید.' ;;
+        zh-tw:rollback_perm_fail) echo '舊憑證/設定已成功還原，但 sing-box 執行階段權限修復失敗，服務重新啟動可能因權限被拒而失敗，請手動檢查權限並重新啟動服務。' ;;
+        ja:rollback_perm_fail) echo '以前の証明書/設定は正常に復元されましたが、sing-box の実行時権限の適用に失敗しました。サービスが権限拒否で再起動に失敗する可能性があります。権限を手動で確認し、サービスを再起動してください。' ;;
         zh:rollback_restart_fail) echo '旧配置已成功恢复，但 sing-box 服务重启失败，请手动重启服务并检查。' ;;
         en:rollback_restart_fail) echo 'The previous configuration was restored successfully, but the sing-box service failed to restart; restart the service manually and check.' ;;
         ru:rollback_restart_fail) echo 'Предыдущая конфигурация успешно восстановлена, но перезапустить службу sing-box не удалось; перезапустите службу вручную и проверьте.' ;;
@@ -29009,6 +29015,42 @@ restore_tuic_backups() {
         msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}" >&2
         return 1
     fi
+    # H-2 (Gemini) dim 2: a restored TUIC key/cert comes back with the
+    # backup's 0600 mode (cp -f keeps the destination inode's mode, and
+    # the backup itself was chmod 600), but sing-box runs as
+    # abox-singbox and needs 0640 root:abox-singbox. Re-apply the runtime
+    # permissions now; a failure here is explicit (the rollback itself
+    # succeeded, so the message must not claim a copy failure) and
+    # refuses, so the caller never restarts a service that is about to
+    # fail with permission denied.
+    if ! prepare_abox_runtime_permissions sing-box; then
+        msg "${RED}[!] $(tr_msg rollback_perm_fail)${NC}" >&2
+        return 1
+    fi
+    return 0
+}
+
+# H-2 (Gemini) dim 3: remove stale tuic-*.A-Box-bak files that no live
+# inbound references (via .tls.certificate_path / .tls.key_path in $1).
+# A stale backup otherwise drifts the recorded core-family ownership
+# list and makes a later removal fail closed. $2 overrides the cert
+# directory (default /etc/sing-box; the self-test passes a temp dir).
+# Best-effort and fail-closed: an unreadable config keeps every backup.
+_tuic_cleanup_stale_backups() {
+    local cfg="$1" dir="${2:-/etc/sing-box}" bak base _stripped='' _refs=''
+    # Fail-closed: a config that cannot be stripped at all keeps every
+    # backup. An empty jq result must mean "no references", never "the
+    # read failed" -- jq exits 0 on empty input, so the strip status
+    # is checked separately first.
+    _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || return 0
+    if ! _refs=$(printf '%s' "$_stripped" | jq -r '.inbounds[]? | (.tls.certificate_path // empty), (.tls.key_path // empty)' 2>/dev/null); then
+        return 0
+    fi
+    for bak in "$dir"/tuic-*.A-Box-bak; do
+        [[ -e "$bak" || -L "$bak" ]] || continue
+        base="${bak%.A-Box-bak}"
+        grep -Fxq -- "$base" <<< "$_refs" || rm -f -- "$bak" 2>/dev/null || true
+    done
     return 0
 }
 
@@ -31438,6 +31480,12 @@ EOF_SVC
             die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
+    # H-2 (Gemini) dim 3: drop stale tuic-*.A-Box-bak files left by an
+    # earlier failed deploy, but only when no live inbound still
+    # references the underlying cert/key path -- a referenced backup is
+    # the last-good copy for the live inbound and must survive. An
+    # unreadable config keeps every backup (fail-closed).
+    _tuic_cleanup_stale_backups "$cfg"
     # Back up any existing cert pair before regenerating: sing-box
     # check requires the new cert in place, so generation cannot be
     # deferred past the commit point. An existing .bak is kept (it
@@ -31495,8 +31543,8 @@ EOF_SVC
     prepare_abox_runtime_permissions sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_runtime)"; }
     restart_service_soft sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_restart)"; }
 
-    ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -42579,7 +42627,7 @@ sync_uuids_into_xray_config() {
     if (( ${#_tag_files[@]} > 0 )); then
         jq -s -c '
           reduce .[] as $r ({}; if ($r.core // "") == "xray" and ($r.protocol // "") == "vless" and (($r.tag // "") != "") then
-            .[$r.tag] = ((.[$r.tag] // []) + [$r.users[]? | select(.disabled != true and ((.blocked // "") == "")) | {id: (.uuid // ""), email: (if (.email // "") != "" then .email else ($r.tag + "/x-" + (.uuid // "")[0:8]) end)} | select(.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))])
+            .[$r.tag] = ((.[$r.tag] // []) + [$r.users[]? | select(.disabled != true and ((.blocked // "") == "")) | {id: (if (.uuid // "") != "" then .uuid else (.secret // "") end), email: (if (.email // "") != "" then .email else ($r.tag + "/x-" + (if (.uuid // "") != "" then .uuid else (.secret // "") end)[0:8]) end)} | select(.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))])
           else . end)
           | map_values(reduce .[] as $u ([]; if (map(.id) | index($u.id)) then . else . + [$u] end))
         ' "${_tag_files[@]}" > "$_tag_map_tmp" || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
@@ -42598,9 +42646,9 @@ sync_uuids_into_xray_config() {
     ' "$_uuid_list_tmp") || { rm -f -- "$_uuid_list_tmp" "$_tag_map_tmp"; return 1; }
     rm -f -- "$_uuid_list_tmp"
     [[ -n "$_untagged_json" ]] || _untagged_json='[]'
-    _first_tag=$(jq -r '.inbounds[]? | select(.protocol == "vless") | (.tag // "vless")' "$cfg" 2>/dev/null | head -1 || true)
+    _first_tag=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol == "vless") | (.tag // "vless")' 2>/dev/null | head -1 || true)
     tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || { rm -f -- "$_tag_map_tmp"; return 1; }
-    if ! jq --rawfile p <(printf '%s' "$primary") --arg first_tag "$_first_tag" --slurpfile tagmap "$_tag_map_tmp" --slurpfile untagged <(printf '%s' "$_untagged_json") '
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --rawfile p <(printf '%s' "$primary") --arg first_tag "$_first_tag" --slurpfile tagmap "$_tag_map_tmp" --slurpfile untagged <(printf '%s' "$_untagged_json") '
         .inbounds |= map(
           if .protocol == "vless" then
             (.tag // "vless") as $itag |
@@ -42621,7 +42669,7 @@ sync_uuids_into_xray_config() {
             )
           else . end
         )
-      ' "$cfg" > "$tmp"; then
+      ' > "$tmp"; then
         rm -f -- "$tmp" "$_tag_map_tmp"; return 1
     fi
     rm -f -- "$_tag_map_tmp"
@@ -58575,6 +58623,41 @@ wallos_rebuild_state_from_live() {
     return 0
 }
 
+# H-4 (Gemini): update only the IMAGE and VERSION keys of an existing
+# .abox-state in place, preserving every other persisted key
+# (PORT/BIND/MODE/PUBPORT/CFHOST/TZ). wallos_write_state cannot do
+# this: it rewrites the whole file and drops MODE-gated keys (CFHOST
+# only when mode==cftunnel, PUBPORT only when mode==https), so a
+# rebuild from a stopped frontend silently destroyed them. A stale
+# VERSION_SOURCE line (it described how the OLD version was derived)
+# is dropped with the old VERSION. Returns 1 when there is no state
+# file to update or the version is malformed.
+wallos_state_update_image_version() {
+    local image="$1" version="$2" state="$WALLOS_DIR/.abox-state" tmp
+    [[ -f "$state" && ! -L "$state" ]] || return 1
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
+    if ! awk -F= -v img="$image" -v ver="$version" '
+        BEGIN { seen_img=0; seen_ver=0 }
+        $1=="IMAGE" && !seen_img { print "IMAGE=" img; seen_img=1; next }
+        $1=="IMAGE" { next }
+        $1=="VERSION" && !seen_ver { print "VERSION=" ver; seen_ver=1; next }
+        $1=="VERSION" { next }
+        $1=="VERSION_SOURCE" { next }
+        { print }
+        END {
+            if (!seen_img) print "IMAGE=" img
+            if (!seen_ver) print "VERSION=" ver
+        }' "$state" > "$tmp"; then
+        rm -f -- "$tmp"; return 1
+    fi
+    if [[ -d "$WALLOS_DIR/.abox-state" ]]; then rm -f -- "$tmp"; return 1; fi
+    chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$WALLOS_DIR/.abox-state" || { rm -f -- "$tmp"; return 1; }
+    [[ -f "$WALLOS_DIR/.abox-state" ]] || return 1
+    return 0
+}
+
 # LOW-1: a backup trusts the state file's VERSION, but the state
 # is only a record -- a container swapped out-of-band (e.g. a manual
 # docker run of another Wallos image) leaves the state stale, and the
@@ -58585,14 +58668,22 @@ wallos_rebuild_state_from_live() {
 # RepoTag for the live image ID (same sources as
 # wallos_rebuild_state_from_live). No live container, or either
 # version unparseable -> return 0 (old behavior, no opinion).
-# A mismatch warns and attempts a state rebuild from live; a
-# successful rebuild -> 0 (backup proceeds with fresh state), a
-# failed rebuild -> loud message + return 1 (backup refuses rather
-# than embedding a known-stale version). An empty state VERSION
-# with a parseable live version counts as a mismatch (the rebuild
-# fills it). Diagnostics go to stderr: callers capture stdout.
+# A mismatch warns and updates the state from live: an existing state
+# file gets only its IMAGE/VERSION keys updated in place (a full
+# rebuild from a stopped frontend would destroy the persisted
+# MODE/PUBPORT/CFHOST); only a missing state file is rebuilt whole.
+# A successful update/rebuild -> 0 (backup proceeds with fresh state),
+# a failed one -> loud message + return 1 (backup refuses rather than
+# embedding a known-stale version). An empty state VERSION with a
+# parseable live version counts as a mismatch (the update fills it).
+# Diagnostics go to stderr: callers capture stdout.
 wallos_backup_state_matches_live() {
-    local _live_img='' _live_img_id='' _live_ver='' _state_ver='' _tags='' _tag=''
+    local _live_img='' _live_img_id='' _live_ver='' _state_ver='' _tags='' _tag='' _label=''
+    # H-4: a foreign same-name holder is not a live (managed) container
+    # for this check; treat it as "no live container" (return 0, no
+    # opinion), like the function's own header comment promises.
+    _label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+    [[ "$_label" == 'true' ]] || return 0
     _live_img=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     [[ -n "$_live_img" ]] || return 0
     if [[ "$_live_img" =~ ^(docker\.io/)?bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
@@ -58614,11 +58705,22 @@ wallos_backup_state_matches_live() {
     if [[ "$_state_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$_state_ver" == "$_live_ver" ]]; then
         return 0
     fi
-    msg "${YELLOW}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}); rebuilding state from the live container before backup.${NC}" >&2
-    if wallos_rebuild_state_from_live; then
+    msg "${YELLOW}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}); updating state from the live container before backup.${NC}" >&2
+    # H-4: when a state file exists, only IMAGE/VERSION can be stale --
+    # this check only ever compared versions. Update those two keys in
+    # place so a stopped frontend cannot destroy the persisted
+    # PORT/BIND/MODE/PUBPORT/CFHOST/TZ, and an unpublished container
+    # (no recoverable port) no longer refuses the backup. Only a
+    # missing state file gets the full rebuild from live.
+    if [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+        _live_img="${_live_img#docker.io/}"
+        if wallos_state_update_image_version "$_live_img" "$_live_ver"; then
+            return 0
+        fi
+    elif wallos_rebuild_state_from_live; then
         return 0
     fi
-    msg "${RED}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}) and the state could not be rebuilt; refusing to back up a known-stale version.${NC}" >&2
+    msg "${RED}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}) and the state could not be updated; refusing to back up a known-stale version.${NC}" >&2
     return 1
 }
 
@@ -62169,6 +62271,25 @@ wallos_choose_access_mode() {
     done
 }
 
+# H-3 (Gemini): abort helper for failures after the new container B has
+# started. Upgrade path (running==1): recover the old container from
+# the journal. Fresh-install path (running==0): there is no journal,
+# so delete B itself -- by its --cidfile ID plus the managed-label
+# re-check, same idiom as the health gate above -- otherwise the next
+# call finds a managed container with no .abox-state and no journal
+# and refuses at the old_port gate, deadlocking the install entry.
+# No verified ID means leave it and fail loudly (fail-closed).
+_wallos_abort_started_install() {
+    if (( running == 1 )); then
+        wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+    elif [[ "$_wallos_created_id" =~ ^[0-9a-f]{64}$ ]] &&
+        [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_wallos_created_id" 2>/dev/null || true)" == "true" ]]; then
+        docker rm -f "$_wallos_created_id" >/dev/null 2>&1 || true
+    else
+        msg "${YELLOW}No verified container ID for this attempt; not deleting 'wallos' by name.${NC}" >&2
+    fi
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_container_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
@@ -62678,6 +62799,7 @@ wallos_install_or_update() {
     if ! wallos_preserve_cftoken; then
         msg "${RED}$(tr_msg wl_iu_cftoken_backup_fail)${NC}"
         wallos_fw_rollback_added "${_fw_added[@]}" || true
+        _wallos_abort_started_install
         return 1
     fi
 
@@ -62698,12 +62820,14 @@ wallos_install_or_update() {
         if ! wallos_cftunnel_teardown >/dev/null 2>&1; then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
+            _wallos_abort_started_install
             return 1
         fi
     elif [[ "$wmode" == cftunnel ]]; then
         if ! wallos_https_teardown >/dev/null 2>&1; then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
+            _wallos_abort_started_install
             return 1
         fi
     elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
@@ -62715,6 +62839,7 @@ wallos_install_or_update() {
         if (( _td_ok == 0 )); then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
+            _wallos_abort_started_install
             return 1
         fi
     fi
@@ -62745,13 +62870,13 @@ wallos_install_or_update() {
                 elif (( running == 1 )); then
                     msg "${RED}Wallos rebind succeeded but the replacement container ID could not be recorded; refusing to commit an unidentified container.${NC}"
                     wallos_fw_rollback_added "${_fw_added[@]}" || true
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    _wallos_abort_started_install
                     return 1
                 fi
                 if (( running == 1 )) && ! wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id"; then
                     msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
                     wallos_fw_rollback_added "${_fw_added[@]}" || true
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    _wallos_abort_started_install
                     return 1
                 fi
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
@@ -62767,9 +62892,7 @@ wallos_install_or_update() {
                 if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" "$image_version"; then
                     msg "${RED}$(tr_msg wl_iu_state_save_fail)${NC}"
                     wallos_fw_rollback_added "${_fw_added[@]}" || true
-                    if (( running == 1 )); then
-                        wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-                    fi
+                    _wallos_abort_started_install
                     return 1
                 fi
                 case "${ABOX_LANG:-zh}" in
@@ -62780,8 +62903,10 @@ wallos_install_or_update() {
                 # the pre-fallback container instead of leaving no service.
                 # A declined fallback (_fb==0) never removed anything, so it
                 # takes the plain failure branch below.
+                local _fb_restored=0
                 if wallos_restore_direct_container "$image" "$port" "$tz" "$bind_address" "$image_version" "$_wallos_created_id"; then
                     msg "${YELLOW}$(tr_msg wl_iu_fb_restored)${NC}"
+                    _fb_restored=1
                 else
                     msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 fi
@@ -62800,14 +62925,17 @@ wallos_install_or_update() {
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
                 if (( running == 1 )); then
                     wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                elif (( _fb_restored == 0 )); then
+                    # H-3: the restore above rebuilt a healthy,
+                    # state-backed container; only delete B when the
+                    # restore failed and left no state behind.
+                    _wallos_abort_started_install
                 fi
                 return 1
             else
                 msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
-                if (( running == 1 )); then
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-                fi
+                _wallos_abort_started_install
                 return 1
             fi
         fi
@@ -62827,26 +62955,20 @@ wallos_install_or_update() {
             if ! cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken"; then
                 msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
-                if (( running == 1 )); then
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-                fi
+                _wallos_abort_started_install
                 return 1
             fi
             if ! chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken"; then
                 msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
-                if (( running == 1 )); then
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-                fi
+                _wallos_abort_started_install
                 return 1
             fi
         fi
             write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || {
                 msg "${RED}$(tr_msg wallos_install_or_update_token_save_failed)${NC}"
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
-                if (( running == 1 )); then
-                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-                fi
+                _wallos_abort_started_install
                 return 1
             }
             cftoken=''
@@ -62877,9 +62999,7 @@ wallos_install_or_update() {
             fi
         fi
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
@@ -62891,9 +63011,7 @@ wallos_install_or_update() {
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ; msg "$(tr_msg wl_health_fail_repair_hint)" ;;
         esac
         wallos_fw_rollback_added "${_fw_added[@]}" || true
-        if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-        fi
+        _wallos_abort_started_install
         return 1
     fi
     # R9C15-02: firewall opens are a post-deployment check, not a
@@ -62909,9 +63027,7 @@ wallos_install_or_update() {
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         if (( _fw_open_rc != 0 )); then
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         # R3-NEW-03: _wallos_fw_open_tracked only reports NEW ufw/firewalld
@@ -62924,18 +63040,14 @@ wallos_install_or_update() {
         if ! wallos_fw_register_opened "$pubport" tcp; then
             msg "${RED}[!] Failed to record the Wallos firewall opening ${pubport}/tcp; refusing to commit an untracked opening.${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         if (( _fw_open_rc != 0 )); then
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         # R3-NEW-03: same ledger gap as the public port above (and 80/tcp
@@ -62944,17 +63056,13 @@ wallos_install_or_update() {
         if ! wallos_fw_register_opened 80 tcp; then
             msg "${RED}[!] Failed to record the Wallos firewall opening 80/tcp; refusing to commit an untracked opening.${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         if ! save_firewall_rules; then
             msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
@@ -62962,9 +63070,7 @@ wallos_install_or_update() {
         [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         if (( _fw_open_rc != 0 )); then
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
         # R3-NEW-03: same ledger gap as the https ports above; the http
@@ -62973,9 +63079,7 @@ wallos_install_or_update() {
         if ! save_firewall_rules; then
             msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"
             wallos_fw_rollback_added "${_fw_added[@]}" || true
-            if (( running == 1 )); then
-                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            fi
+            _wallos_abort_started_install
             return 1
         fi
     fi
@@ -62992,9 +63096,7 @@ wallos_install_or_update() {
     if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost" "$image_version"; then
         msg "${RED}$(tr_msg wl_iu_state_save_fail)${NC}"
         wallos_fw_rollback_added "${_fw_added[@]}" || true
-        if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-        fi
+        _wallos_abort_started_install
         return 1
     fi
     # S143: the upgrade journal is the rollback material. It must not be
@@ -64172,10 +64274,17 @@ write_clash_standalone_yaml() {
     local _nodes="$1" _groups="$2" _rows _record _pk _pub _rc=0
     local _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}"
+    # H-5 (Gemini): the standalone exporter needs the Xray Reality
+    # ML-KEM gate too -- decided by xray_reality_requires_mlkem
+    # directly, NOT via clash_reality_mlkem_enabled (that one also
+    # requires CORE==xray, which fails for a sing-box main stack with
+    # a standalone Xray Trojan inbound).
+    local _xray_mlkem='false'
+    if xray_reality_requires_mlkem; then _xray_mlkem='true'; fi
 
     _rows=$(umask 077; mktemp "${_nodes%/*}/.A-Box-clash-records.XXXXXX") || return 1
 
-    if ! python3 -I - "$_sc" "$_xc" "${LINK_IP:-}" > "$_rows" <<'PY_CLASH_STANDALONE'
+    if ! python3 -I - "$_sc" "$_xc" "${LINK_IP:-}" "$_xray_mlkem" > "$_rows" <<'PY_CLASH_STANDALONE'
 import json
 import os
 import re
@@ -64184,7 +64293,7 @@ import subprocess
 import sys
 import uuid
 
-sb_path, xr_path, server = sys.argv[1:]
+sb_path, xr_path, server, xray_mlkem_arg = sys.argv[1:]
 LIMIT = 8 * 1024 * 1024
 
 
@@ -64195,6 +64304,13 @@ class Bad(ValueError):
 def require(ok, reason):
     if not ok:
         raise Bad(reason)
+
+
+# H-5: the standalone Xray Reality ML-KEM flag ("true"/"false"), decided
+# in bash by xray_reality_requires_mlkem. Validated here, after require
+# exists; only trojan_xray passes it on (see reality()).
+require(xray_mlkem_arg in ("true", "false"), "invalid xray_mlkem flag")
+XRAY_MLKEM = xray_mlkem_arg == "true"
 
 
 def obj(value):
@@ -64345,11 +64461,16 @@ def short_id(value):
     return value
 
 
-def reality(node, private, sid):
+def reality(node, private, sid, mlkem=None):
     private = text(private, "missing Reality private key")
     require(re.fullmatch(r"[A-Za-z0-9_-]{43}", private) is not None,
             "invalid Reality private key")
     node["reality-opts"] = {"public-key": "", "short-id": short_id(sid)}
+    # H-5 (Gemini): only the Xray Trojan builder passes mlkem; the
+    # sing-box Reality builders (trojan_sb, anytls) leave it None and
+    # never write the field (no ML-KEM semantic there).
+    if mlkem is not None:
+        node["reality-opts"]["support-x25519mlkem768"] = mlkem
     return {"node": node, "private": private}
 
 
@@ -64413,7 +64534,7 @@ def trojan_xray(inbound, inbounds):
         "sni": text(first(r.get("serverNames"), "missing SNI"), "missing SNI"),
         "client-fingerprint": "chrome",
     })
-    return reality(node, r.get("privateKey"), r.get("shortIds"))
+    return reality(node, r.get("privateKey"), r.get("shortIds"), XRAY_MLKEM)
 
 
 def tuic_cert_policy(tls):
@@ -70914,6 +71035,21 @@ EOF_SELFTEST_IPT
         [[ "$(grep -Fc '11111111-1111-4111-8111-111111111111' "$clash_dir/A-Box-mihomo-single.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must carry only the current user UUID'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-old.yaml" write_mihomo_user_yaml >/dev/null 2>&1 || { echo 'FAIL: Mihomo single-user YAML generation on old Xray'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-mihomo-single-old.yaml")" -eq 2 ]] || { echo 'FAIL: Mihomo single-user YAML must disable REALITY ML-KEM flags on old Xray'; failures=$((failures + 1)); }
+        # H-5 (Gemini): the standalone exporter must carry the ML-KEM
+        # flag on its Xray Trojan-Reality node too (the main-stack count
+        # assertions above are blind to it: standalone nodes are
+        # appended by write_clash_standalone_yaml, not by the emit
+        # helper). Fake sb/xray configs with one Trojan-Reality
+        # inbound each; the sing-box node must NOT get the field.
+        local _sa_sb="$clash_dir/sa-sb.json" _sa_xr="$clash_dir/sa-xray.json"
+        printf '%s' '{"inbounds": [{"tag": "trojan-landing", "type": "trojan", "listen_port": 8444, "users": [{"password": "sbpass123"}], "tls": {"enabled": true, "server_name": "www.jetbrains.com", "reality": {"enabled": true, "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "short_id": "0123456789abcdef"}}}]}' > "$_sa_sb" || { echo 'FAIL: standalone ML-KEM fixture (sb config)'; failures=$((failures + 1)); }
+        printf '%s' '{"inbounds": [{"tag": "trojan-landing", "protocol": "trojan", "port": 8443, "settings": {"clients": [{"password": "testpassword123"}]}, "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverNames": ["www.jetbrains.com"], "privateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "shortIds": ["0123456789abcdef"]}}}]}' > "$_sa_xr" || { echo 'FAIL: standalone ML-KEM fixture (xray config)'; failures=$((failures + 1)); }
+        chmod 600 "$_sa_sb" "$_sa_xr" || { echo 'FAIL: standalone ML-KEM fixture (perms)'; failures=$((failures + 1)); }
+        ABOX_SB_CFG="$_sa_sb" ABOX_XRAY_CFG="$_sa_xr" ABOX_XRAY_VERSION=v26.11.9 LINK_IP=203.0.113.10 write_clash_standalone_yaml "$clash_dir/sa-nodes-new.yaml" "$clash_dir/sa-groups-new.yaml" >/dev/null 2>&1 || { echo 'FAIL: standalone Clash YAML generation (new Xray)'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/sa-nodes-new.yaml")" -eq 1 ]] || { echo 'FAIL: standalone Xray Trojan-Reality node must enable REALITY ML-KEM flag on new Xray'; failures=$((failures + 1)); }
+        grep -q 'Trojan-Reality-sing-box' "$clash_dir/sa-nodes-new.yaml" || { echo 'FAIL: standalone sing-box Trojan-Reality node missing'; failures=$((failures + 1)); }
+        ABOX_SB_CFG="$_sa_sb" ABOX_XRAY_CFG="$_sa_xr" ABOX_XRAY_VERSION=v26.7.28 LINK_IP=203.0.113.10 write_clash_standalone_yaml "$clash_dir/sa-nodes-old.yaml" "$clash_dir/sa-groups-old.yaml" >/dev/null 2>&1 || { echo 'FAIL: standalone Clash YAML generation (old Xray)'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/sa-nodes-old.yaml")" -eq 1 ]] || { echo 'FAIL: standalone Xray Trojan-Reality node must disable REALITY ML-KEM flag on old Xray'; failures=$((failures + 1)); }
         if ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=SS LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 SS_PORT=2053 MIHOMO_USER_YAML_PATH="$clash_dir/A-Box-mihomo-single-ss.yaml" write_mihomo_user_yaml >/dev/null 2>&1; then
             echo 'FAIL: Mihomo single-user YAML must refuse a mode with no VLESS leg'; failures=$((failures + 1))
         fi

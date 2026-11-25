@@ -30435,7 +30435,7 @@ deploy_singbox_socks5_landing() {
     # once both files are removed explicitly.
     local _sb_socks5_prev_trap_exit='' _sb_socks5_exit_trap_cmd='' _sb_socks5_old_cmd=''
     _sb_socks5_prev_trap_exit=$(trap -p EXIT || true)
-    _sb_socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    _sb_socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; true'
     if [[ -n "$_sb_socks5_prev_trap_exit" ]]; then
         _sb_socks5_old_cmd="${_sb_socks5_prev_trap_exit#trap -- }"
         _sb_socks5_old_cmd="${_sb_socks5_old_cmd% EXIT}"
@@ -30583,8 +30583,15 @@ EOF_SVC
     # Replace in place if the tag exists; otherwise append. No API: restart after check.
     # Capture the replaced port now: after the merge it is gone.
     local tmp_cfg old_port='' cfg_bak=''
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the
+    # old_port read, the uniqueness gate and the merge below all
+    # read the stripped copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
-        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (.listen_port // empty)' "$cfg" 2>/dev/null || true)
+        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (.listen_port // empty)' "$_cfg_stripped" 2>/dev/null || true)
     fi
     # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
     # independent inbound that merely shares $tag must not be
@@ -30594,8 +30601,8 @@ EOF_SVC
     # duplicated tag (two inbounds sharing $tag, whatever their
     # types) refuses, because the merge below deletes the whole
     # tag group and would silently drop the alien inbound.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and ($same[0].type == "socks" or $same[0].type == "mixed"))' "$cfg" >/dev/null 2>&1; then
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_cfg_stripped" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and ($same[0].type == "socks" or $same[0].type == "mixed"))' "$_cfg_stripped" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -30615,6 +30622,11 @@ EOF_SVC
         install_file_atomically "$_seed2_json" "$cfg" 600 || { rm -f "$_seed2_json"; die "$(tr_msg dp_sb_cfg)"; }
         rm -f "$_seed2_json"
     fi
+    # M-6 rescan: re-strip here -- the seed block above may just
+    # have installed a fresh $cfg, which the stripped copy made
+    # before the gate does not reflect. The merge below must read
+    # the live file as it is now.
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '.inbounds = (.inbounds // [])
@@ -30633,7 +30645,7 @@ EOF_SVC
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
@@ -30652,6 +30664,7 @@ EOF_SVC
     ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     # Recycle the replaced port's rules when no inbound still uses it.
     # Either core's config counts: a port rule shared with another
     # core's live inbound must survive. Cleanup failure never fails
@@ -30813,7 +30826,7 @@ deploy_xray_trojan_landing() {
     # real exit code instead of the cleanup's status.
     local _xj_trojan_prev_trap_exit='' _xj_trojan_exit_trap_cmd='' _xj_trojan_old_cmd=''
     _xj_trojan_prev_trap_exit=$(trap -p EXIT || true)
-    _xj_trojan_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    _xj_trojan_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; (exit "$_ec")'
     if [[ -n "$_xj_trojan_prev_trap_exit" ]]; then
         _xj_trojan_old_cmd="${_xj_trojan_prev_trap_exit#trap -- }"
         _xj_trojan_old_cmd="${_xj_trojan_old_cmd% EXIT}"
@@ -30899,6 +30912,13 @@ deploy_xray_trojan_landing() {
     sni=$(sni_prompt_or_auto)
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the
+    # uniqueness gate below, the old_port read and the merge all
+    # read the stripped copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
     # M-1: uniqueness gate runs BEFORE $tmp_json is written, so a
     # refused redeploy leaves no secret temp file behind.
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
@@ -30907,8 +30927,8 @@ deploy_xray_trojan_landing() {
     # SX-F1: uniqueness gate, not an existence check -- a
     # duplicated tag refuses, because the merge below deletes
     # the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$cfg" >/dev/null 2>&1; then
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_cfg_stripped" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$_cfg_stripped" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -30934,13 +30954,18 @@ deploy_xray_trojan_landing() {
         install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$seed_json"
     fi
+    # M-6 rescan: re-strip here -- the seed block above may just
+    # have installed a fresh $cfg, which the stripped copy made
+    # before the gate does not reflect. The old_port read and the
+    # merge below must read the live file as it is now.
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         local tmp_cfg
         # R29b-M3: capture the replaced inbound's port before the merge
         # discards it, so the old port's firewall rules can be recycled
         # below. Only a numeric .port is taken; a range/string port
         # (hand-edited config) is left alone.
-        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (if (.port | type) == "number" then (.port | tostring) else empty end)' "$cfg" 2>/dev/null || true)
+        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (if (.port | type) == "number" then (.port | tostring) else empty end)' "$_cfg_stripped" 2>/dev/null || true)
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
@@ -30964,7 +30989,7 @@ deploy_xray_trojan_landing() {
                            )
                        ]
                    )' \
-                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+                "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_trojan_update)"
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_xray_json)"; }
@@ -30993,6 +31018,7 @@ deploy_xray_trojan_landing() {
         _recycle_port_rules_if_unused "$old_port" 2>/dev/null || true
     fi
     rm -f -- "$cfg_bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     ensure_service_running_soft xray || die "$(tr_msg dp_xray_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_xj_trojan_prev_trap_exit"
@@ -31033,7 +31059,7 @@ deploy_singbox_trojan_landing() {
     # once both files are removed explicitly.
     local _sb_trojan_prev_trap_exit='' _sb_trojan_exit_trap_cmd='' _sb_trojan_old_cmd=''
     _sb_trojan_prev_trap_exit=$(trap -p EXIT || true)
-    _sb_trojan_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    _sb_trojan_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; true'
     if [[ -n "$_sb_trojan_prev_trap_exit" ]]; then
         _sb_trojan_old_cmd="${_sb_trojan_prev_trap_exit#trap -- }"
         _sb_trojan_old_cmd="${_sb_trojan_old_cmd% EXIT}"
@@ -31186,8 +31212,15 @@ EOF_SVC
     # Trojan inbound proceeds. SX-F1: uniqueness gate, not an
     # existence check -- a duplicated tag refuses, because the
     # merge below deletes the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "trojan")' "$cfg" >/dev/null 2>&1; then
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the
+    # uniqueness gate below and the merge both read the stripped
+    # copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_cfg_stripped" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "trojan")' "$_cfg_stripped" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -31211,7 +31244,7 @@ EOF_SVC
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
@@ -31228,6 +31261,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_sb_trojan_prev_trap_exit"
@@ -31271,7 +31305,7 @@ deploy_singbox_tuic() {
     # real exit code instead of the cleanup's status.
     local _sb_tuic_prev_trap_exit='' _sb_tuic_exit_trap_cmd='' _sb_tuic_old_cmd=''
     _sb_tuic_prev_trap_exit=$(trap -p EXIT || true)
-    _sb_tuic_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    _sb_tuic_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; (exit "$_ec")'
     if [[ -n "$_sb_tuic_prev_trap_exit" ]]; then
         _sb_tuic_old_cmd="${_sb_tuic_prev_trap_exit#trap -- }"
         _sb_tuic_old_cmd="${_sb_tuic_old_cmd% EXIT}"
@@ -31432,8 +31466,15 @@ EOF_SVC
     # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
     # check -- a duplicated tag refuses, because the merge below
     # deletes the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$cfg" >/dev/null 2>&1; then
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the
+    # uniqueness gate below and the merge both read the stripped
+    # copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_cfg_stripped" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$_cfg_stripped" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -31488,7 +31529,7 @@ EOF_SVC
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_json)"; }
@@ -31505,6 +31546,7 @@ EOF_SVC
     ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_sb_tuic_prev_trap_exit"
@@ -31546,7 +31588,7 @@ deploy_singbox_anytls() {
     # real exit code instead of the cleanup's status.
     local _sb_anytls_prev_trap_exit='' _sb_anytls_exit_trap_cmd='' _sb_anytls_old_cmd=''
     _sb_anytls_prev_trap_exit=$(trap -p EXIT || true)
-    _sb_anytls_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    _sb_anytls_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; (exit "$_ec")'
     if [[ -n "$_sb_anytls_prev_trap_exit" ]]; then
         _sb_anytls_old_cmd="${_sb_anytls_prev_trap_exit#trap -- }"
         _sb_anytls_old_cmd="${_sb_anytls_old_cmd% EXIT}"
@@ -31688,8 +31730,15 @@ EOF_SVC
     # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
     # check -- a duplicated tag refuses, because the merge below
     # deletes the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "anytls")' "$cfg" >/dev/null 2>&1; then
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the
+    # uniqueness gate below and the merge both read the stripped
+    # copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_cfg_stripped" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "anytls")' "$_cfg_stripped" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -31726,7 +31775,7 @@ EOF_SVC
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
@@ -31743,6 +31792,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_sb_anytls_prev_trap_exit"
@@ -31783,7 +31833,7 @@ deploy_singbox_shadowtls() {
     # real exit code instead of the cleanup's status.
     local _sb_sh_prev_trap_exit='' _sb_sh_exit_trap_cmd='' _sb_sh_old_cmd=''
     _sb_sh_prev_trap_exit=$(trap -p EXIT || true)
-    _sb_sh_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    _sb_sh_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_jq_cfg:-}" ]] && (( ${_jq_tmp:-0} == 1 )) && rm -f -- "$_jq_cfg" 2>/dev/null; (exit "$_ec")'
     if [[ -n "$_sb_sh_prev_trap_exit" ]]; then
         _sb_sh_old_cmd="${_sb_sh_prev_trap_exit#trap -- }"
         _sb_sh_old_cmd="${_sb_sh_old_cmd% EXIT}"
@@ -31917,6 +31967,25 @@ EOF_SVC
     # has no listen_port of its own (reachable only through the detour).
     local listen_addr
     listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
+    # M-6-rescan (D-leg): read the live config through a JSONC-stripped
+    # snapshot (same _jq_cfg pattern as users_adopt): raw jq on a
+    # commented config fails the uniqueness gates AND the merge below.
+    # The snapshot is taken after the seed above, so it is current for
+    # both; the merge input switches to it as well. On strip failure
+    # fall back to the raw file (strip failure != read failure);
+    # _jq_tmp marks whether _jq_cfg is a temp file (safe to delete).
+    local _jq_cfg='' _jq_tmp=0
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-sb-shadowtls-json.XXXXXX) || _jq_cfg=''
+        if [[ -n "$_jq_cfg" ]] && jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null; then
+            _jq_tmp=1
+        else
+            [[ -n "$_jq_cfg" ]] && rm -f -- "$_jq_cfg"
+            _jq_cfg="$cfg"
+        fi
+    else
+        _jq_cfg="$cfg"
+    fi
     # M-1: uniqueness gate runs BEFORE $tmp_json is written, so a
     # refused redeploy leaves no secret temp file behind.
     # 2dh: same guard as R14C9-01, for the outer tag. An independent
@@ -31927,8 +31996,8 @@ EOF_SVC
     # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
     # check -- a duplicated tag refuses, because the merge below
     # deletes the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" --arg it "$itag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "shadowtls" and $same[0].detour == $it)' "$cfg" >/dev/null 2>&1; then
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_jq_cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" --arg it "$itag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "shadowtls" and $same[0].detour == $it)' "$_jq_cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
         else
             die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
@@ -31939,15 +32008,15 @@ EOF_SVC
     # below would otherwise silently destroy that independent inbound.
     # A jq read failure (invalid config) skips the check and lets the
     # merge fail closed as before; only a confirmed conflict refuses.
-    if jq -e --arg it "$itag" '.inbounds[]? | select(.tag==$it)' "$cfg" >/dev/null 2>&1; then
-        if ! jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
+    if jq -e --arg it "$itag" '.inbounds[]? | select(.tag==$it)' "$_jq_cfg" >/dev/null 2>&1; then
+        if ! jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$_jq_cfg" >/dev/null 2>&1; then
             die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
         # R-1 (SX-F1 same-shape): the pair check above is an existence
         # check; a duplicated companion tag still passes it, and the
         # merge below deletes the whole companion group. Require
         # exactly one companion object of type shadowsocks.
-        if ! jq -e --arg it "$itag" '[.inbounds[]? | select(.tag==$it)] as $same | (($same | length) == 1 and $same[0].type == "shadowsocks")' "$cfg" >/dev/null 2>&1; then
+        if ! jq -e --arg it "$itag" '[.inbounds[]? | select(.tag==$it)] as $same | (($same | length) == 1 and $same[0].type == "shadowsocks")' "$_jq_cfg" >/dev/null 2>&1; then
             die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
@@ -31978,7 +32047,7 @@ EOF_SVC
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_jq_cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
@@ -31997,6 +32066,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
+    (( ${_jq_tmp:-0} == 1 )) && rm -f -- "$_jq_cfg" 2>/dev/null || true
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_sb_sh_prev_trap_exit"
@@ -32141,7 +32211,7 @@ argo_deploy_ws() {
     # real exit code instead of the cleanup's status.
     local _argo_ws_prev_trap_exit='' _argo_ws_exit_trap_cmd='' _argo_ws_old_cmd=''
     _argo_ws_prev_trap_exit=$(trap -p EXIT || true)
-    _argo_ws_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    _argo_ws_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null; (exit "$_ec")'
     if [[ -n "$_argo_ws_prev_trap_exit" ]]; then
         _argo_ws_old_cmd="${_argo_ws_prev_trap_exit#trap -- }"
         _argo_ws_old_cmd="${_argo_ws_old_cmd% EXIT}"
@@ -32174,6 +32244,12 @@ argo_deploy_ws() {
     # (additional credentials are not wiped); the main UUID is prepended
     # only when it is missing. A new inbound, or users that are not an
     # array, falls back to the single-user array built above.
+    # M-6 rescan: the live config may legally carry // or /* */
+    # comments, which bare jq rejects. Strip once here; the merge
+    # below reads the stripped copy. Write paths still target $cfg.
+    local _cfg_stripped=''
+    _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
     if ! jq --slurpfile nb "$tmp_json" --rawfile uuid <(printf '%s' "$ARGO_UUID") \
             '(.inbounds | map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))) as $old
              | .inbounds |= (
@@ -32194,7 +32270,7 @@ argo_deploy_ws() {
                        )
                    ]
                )' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            "$_cfg_stripped" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
@@ -32211,6 +32287,7 @@ argo_deploy_ws() {
     rm -f "$tmp_cfg" "$tmp_json"
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
     rm -f -- "$cfg_bak"
+    [[ -n "${_cfg_stripped:-}" ]] && rm -f -- "$_cfg_stripped" 2>/dev/null
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     trap - EXIT
     restore_saved_trap EXIT "$_argo_ws_prev_trap_exit"
@@ -33483,8 +33560,27 @@ deploy_with_instance_choice() {
     fi
     local cfg='' exists=0
     cfg=$(users_cfg_of "$core" 2>/dev/null || true)
+    # M-6-rescan (D-leg): strip-once snapshot, built here -- outside the
+    # suffix while loop below, which re-reads $cfg per iteration (same
+    # _jq_cfg pattern as users_adopt). On strip failure fall back to
+    # the raw file (strip failure != read failure); _jq_tmp marks a
+    # temp file (safe to delete). No config exists yet: _jq_cfg stays
+    # empty and the reads below are guarded by the -f test / exists.
+    local _jq_cfg="$cfg" _jq_tmp=0 _jq_caller_trap=''
+    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-inst-json.XXXXXX) || _jq_cfg=''
+        if [[ -n "$_jq_cfg" ]] && jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null; then
+            _jq_tmp=1
+        else
+            [[ -n "$_jq_cfg" ]] && rm -f -- "$_jq_cfg"
+            _jq_cfg="$cfg"
+        fi
+    fi
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap '(( ${_jq_tmp:-0} == 1 )) && rm -f -- "${_jq_cfg:-}" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
     print_port_occupancy
-    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then exists=1; fi
+    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1; then exists=1; fi
     if (( exists == 0 )); then "$@"; return $?; fi
     msg "${YELLOW}$(tr_msg mu_inst_exists) (${btag})${NC}"
     msg "${CYAN}1.${NC} $(tr_msg mu_inst_replace)   ${CYAN}2.${NC} $(tr_msg mu_inst_add)   ${CYAN}0.${NC} $(tr_msg mu_inst_cancel)"
@@ -33495,7 +33591,7 @@ deploy_with_instance_choice() {
         1) "$@" ;;
         2)
             local n=2 _stem=''
-            while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
+            while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1; do n=$((n + 1)); done
             msg "${CYAN}$(tr_msg mu_inst_tag): ${btag}-${n} ($(tr_msg mu_inst_port_note))${NC}"
             # M-02: the -2/-3 link stem must be per-core for the shared
             # trojan/socks5 btags, or both cores overwrite the same
@@ -33672,7 +33768,10 @@ users_reg_is_live() {
         *) return 1 ;;
     esac
     [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 1
-    [[ -n "$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null | head -n 1)" ]]
+    # M-6-rescan (D-leg): single read through the stripped view; raw jq
+    # on a commented config returns nothing and the registry entry
+    # would wrongly read as stale.
+    [[ -n "$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tag' 2>/dev/null | head -n 1)" ]]
 }
 
 _menu_info_collect() {
@@ -34570,7 +34669,10 @@ routing_ruleset_urls_ok() {
             msg "${RED}[!] ${url}${NC}"
             return 1
         fi
-    done < <(jq -r '.route.rule_set[]? | select(.type == "remote") | .url // empty' "$cfg" 2>/dev/null)
+    # M-6-rescan (D-leg): read the remote rule-set URLs through the
+    # stripped view; raw jq on a commented config yields no URLs and a
+    # 404 rule-set would sail through unchecked.
+    done < <(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.route.rule_set[]? | select(.type == "remote") | .url // empty' 2>/dev/null)
     return 0
 }
 
@@ -35709,7 +35811,7 @@ deploy_socks5_landing() {
     # the _n2 temp-dir trap chain, same strip-and-eval idiom.)
     local _socks5_prev_trap_exit='' _socks5_exit_trap_cmd='' _socks5_old_cmd=''
     _socks5_prev_trap_exit=$(trap -p EXIT || true)
-    _socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    _socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; [[ -n "${_jq_cfg:-}" ]] && (( ${_jq_tmp:-0} == 1 )) && rm -f -- "$_jq_cfg" 2>/dev/null; true'
     if [[ -n "$_socks5_prev_trap_exit" ]]; then
         _socks5_old_cmd="${_socks5_prev_trap_exit#trap -- }"
         _socks5_old_cmd="${_socks5_old_cmd% EXIT}"
@@ -35870,8 +35972,26 @@ EOF_SVC
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
 
+    # M-6-rescan (D-leg): strip-once snapshot for the uniqueness gate
+    # and the merge below (same _jq_cfg pattern as users_adopt). The
+    # snapshot is taken after the seed above, so it is current for
+    # both. On strip failure fall back to the raw file (strip failure
+    # != read failure); _jq_tmp marks a temp file (safe to delete).
+    local _jq_cfg='' _jq_tmp=0
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-socks5-json.XXXXXX) || _jq_cfg=''
+        if [[ -n "$_jq_cfg" ]] && jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null; then
+            _jq_tmp=1
+        else
+            [[ -n "$_jq_cfg" ]] && rm -f -- "$_jq_cfg"
+            _jq_cfg="$cfg"
+        fi
+    else
+        _jq_cfg="$cfg"
+    fi
+
     # If the tag already exists, replace it in place; otherwise hot-add.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$_jq_cfg" >/dev/null 2>&1; then
         local tmp_cfg
         # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
         # independent inbound that merely shares $tag must not be
@@ -35880,7 +36000,7 @@ EOF_SVC
         # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
         # check -- a duplicated tag refuses, because the merge below
         # deletes the whole tag group.
-        if ! jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "socks")' "$cfg" >/dev/null 2>&1; then
+        if ! jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "socks")' "$_jq_cfg" >/dev/null 2>&1; then
             die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
@@ -35907,7 +36027,7 @@ EOF_SVC
                            )
                        ]
                    )' \
-                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+                "$_jq_cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_socks5_update)"
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_xray_json)"; }
@@ -35932,6 +36052,7 @@ EOF_SVC
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     ensure_service_running_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     rm -f -- "$cfg_bak"
+    (( ${_jq_tmp:-0} == 1 )) && rm -f -- "$_jq_cfg" 2>/dev/null || true
     trap - EXIT
     restore_saved_trap EXIT "$_socks5_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
@@ -40989,7 +41110,12 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             # ws inbound remains (one-pass Boolean, rc 1); a jq
             # failure or an empty config keeps it.
             local _argo_jq_rc=0
-            jq -s -e '([.[] | .inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")] | length) > 0' "$cfg" >/dev/null 2>&1 || _argo_jq_rc=$?
+            # M-6-rescan (D-leg): jq -s over the stripped view; raw jq
+            # on a commented config fails with a parse error (rc 5),
+            # neither 0 nor 1, so the shared Argo link would wrongly
+            # survive when no ws inbound remains. -s slurp over stdin
+            # keeps the same one-document array shape as file input.
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -s -e '([.[] | .inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")] | length) > 0' >/dev/null 2>&1 || _argo_jq_rc=$?
             if [[ "$_argo_jq_rc" == 1 ]]; then
                 rm -f -- /etc/ddr/standalone-links.d/argo.link 2>/dev/null || true
                 argo_remove_unit argo || true
@@ -41260,7 +41386,10 @@ clear_all_remove_sole_api_inbound() {
     # jq first (its failure must fail closed), paste second: a
     # jq | paste pipeline would report paste's status and hide a
     # corrupt config.
-    tags=$(jq -r '.inbounds[]? | .tag // empty' "$cfg" 2>/dev/null) || return 1
+    # M-6-rescan (D-leg): read tags through the stripped view; raw jq
+    # on a commented config yields no tags and a sole-api config
+    # would never be recognised as such.
+    tags=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | .tag // empty' 2>/dev/null) || return 1
     tags=$(printf '%s' "$tags" | paste -sd, -)
     [[ "$tags" == 'api' ]] || return 0
     _remove_inbounds_from_config "$core" api
@@ -44402,28 +44531,41 @@ users_link_combo() {
     [[ -n "$ip" ]] || ip=$(get_public_ip 2>/dev/null || true)
     [[ -n "$ip" ]] || ip='<server-ip>'
     cfg=$(users_cfg_of "$core") || return 1
+    # M-6-rescan (B-leg): Xray configs may carry // comments jq
+    # rejects, so strip once here and read the stripped view at
+    # every jq point below. sing-box configs are strict JSON, so
+    # the strip is a no-op for them; any other core keeps the raw
+    # file (hy2 is YAML, never JSONC) so behaviour is unchanged.
+    # jsonc_strip_comments falls back to cat on failure, so a
+    # strip failure reads exactly as before (fail-closed).
+    local _jq_stripped=''
+    if [[ "$core" == xray || "$core" == sing-box ]]; then
+        _jq_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null)
+    else
+        _jq_stripped=$(cat "$cfg" 2>/dev/null || true)
+    fi
     local pbk="${PUBLIC_KEY:-}" sid="${SHORT_ID:-}"
     case "$tag" in
         vision)
-            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            port=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' 2>/dev/null | head -1)
             local sni="${VISION_SNI:-${VLESS_SNI:-}}"
             printf 'vless://%s@%s:%s?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s-%s' \
                 "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${VLESS_PORT:-443}}" "$sni" "$pbk" "$sid" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         xhttp)
-            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            port=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' 2>/dev/null | head -1)
             local sni="${XHTTP_SNI:-${VLESS_SNI:-}}"
             # R15-F11-05: the path is not always /xhttp: read it from
             # the live inbound (other readers, e.g. the TSV extract
             # and the SNI check, already do), defaulting to /xhttp.
             local xpath=''
-            xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$cfg" 2>/dev/null | head -1)
+            xpath=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' 2>/dev/null | head -1)
             [[ -n "$xpath" ]] || xpath='/xhttp'
             printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%s&mode=stream-one#%s-%s' \
                 "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$(urlencode "$xpath")" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         ss)
-            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            port=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' 2>/dev/null | head -1)
             local method='' eff=''
-            method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.method // .settings.method // "")' "$cfg" 2>/dev/null | head -1)
+            method=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.method // .settings.method // "")' 2>/dev/null | head -1)
             [[ -n "$method" ]] || method='2022-blake3-aes-128-gcm'
             if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
             printf 'ss://%s:%s@%s:%s#%s-%s' \
@@ -44431,9 +44573,9 @@ users_link_combo() {
                 "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         hy2)
             local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q='' pin='' _hy2_ep='' _hy2_qp='' _hy2_host=''
-            obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
-            obfs_type=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.type // ""' "$cfg" 2>/dev/null | head -1)
-            sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
+            obfs=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' 2>/dev/null | head -1)
+            obfs_type=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.type // ""' 2>/dev/null | head -1)
+            sni=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' 2>/dev/null | head -1)
             # R15C11-03: keep certificate validation for trusted
             # certificates; only self-signed (or undeterminable)
             # keeps insecure=1. ACME implies publicly trusted.
@@ -44444,11 +44586,11 @@ users_link_combo() {
             # `[` as the URI host). Take the first element when it
             # is an array (empty array -> no domain), and keep
             # accepting a plain string for tolerance.
-            acme_domain=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.acme.domain | if type == "array" then (.[0] // "") elif type == "string" then . else "" end)' "$cfg" 2>/dev/null | head -1)
+            acme_domain=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.acme.domain | if type == "array" then (.[0] // "") elif type == "string" then . else "" end)' 2>/dev/null | head -1)
             if [[ -n "$acme_domain" ]]; then
                 insecure=0
             else
-                cert_path=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.certificate_path // ""' "$cfg" 2>/dev/null | head -1)
+                cert_path=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.certificate_path // ""' 2>/dev/null | head -1)
                 if [[ -n "$cert_path" && -f "$cert_path" ]] && command -v openssl >/dev/null 2>&1; then
                     local _iss='' _sub=''
                     _iss=$(openssl x509 -in "$cert_path" -noout -issuer 2>/dev/null | sed 's/^issuer= *//')
@@ -44861,10 +45003,19 @@ users_pick_user() {
 # use 16. An unreadable method keeps the historical 16-byte
 # default (sync rollback protects a wrong guess).
 users_ss_new_secret() {
-    local core="$1" tag="$2" method='' keylen=16 cfg=''
+    local core="$1" tag="$2" method='' keylen=16 cfg='' _jq_stripped=''
     cfg=$(users_cfg_of "$core" 2>/dev/null || echo "")
     if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]]; then
-        method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.method // .method // "")' "$cfg" 2>/dev/null | head -1)
+        # M-6-rescan (B-leg): Xray configs may carry // comments jq
+        # rejects; strip once here (same rule as users_link_combo:
+        # strip xray/sing-box, raw file otherwise so a hy2 YAML
+        # config is never mangled by the JSONC stripper).
+        if [[ "$core" == xray || "$core" == sing-box ]]; then
+            _jq_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null)
+        else
+            _jq_stripped=$(cat "$cfg" 2>/dev/null || true)
+        fi
+        method=$(printf '%s' "$_jq_stripped" | jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.method // .method // "")' 2>/dev/null | head -1)
     fi
     [[ "$method" == *256* || "$method" == "2022-blake3-chacha20-poly1305" ]] && keylen=32
     openssl rand -base64 "$keylen" 2>/dev/null | tr -d '\n\r'
@@ -45253,6 +45404,21 @@ users_hot_remove() {
     reg=$(users_reg_file "$core" "$tag")
     proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 1
     [[ -f "$cfg" && ! -L "$cfg" && -x "$bin" ]] || return 1
+    # M-6-rescan (B-leg): Xray configs may carry // comments jq
+    # rejects; strip once here and read the stripped view at every
+    # jq point below (same rule as users_link_combo: strip
+    # xray/sing-box, raw file otherwise). The snapshot below
+    # reads this same stripped view (its L-01 per-point strip was
+    # removed as redundant: the xray branch already stripped into
+    # a mktemp file, the sing-box branch read the raw file). The
+    # write path (install_file_atomically "$tmp" "$cfg") still
+    # targets the ORIGINAL $cfg, never the stripped view.
+    local _jq_stripped=''
+    if [[ "$core" == xray || "$core" == sing-box ]]; then
+        _jq_stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null)
+    else
+        _jq_stripped=$(cat "$cfg" 2>/dev/null || true)
+    fi
     # Single-password SS: the jq below DELETES the whole inbound (no
     # clients array to remove one user from). Snapshot it into the
     # registry first, or a later re-enable sync can never rebuild it
@@ -45260,26 +45426,21 @@ users_hot_remove() {
     # own all-disabled path writes). Snapshot failure fails closed:
     # keep the inbound rather than delete it unsnapshotted.
     if [[ "$proto" == 'shadowsocks' ]]; then
-        local _snap_obj='' _snap_reg='' _snap_cfg="$cfg"
-        # L-01: Xray configs may carry // comments jq rejects; read
-        # this snapshot point through the JSONC-stripped view (the
-        # $_jq_cfg pattern of users_adopt/users_sync). sing-box
-        # configs are strict JSON, so they keep the raw file.
-        if [[ "$core" == xray ]]; then
-            _snap_cfg=$(mktemp /tmp/A-Box-uhot-json.XXXXXX) || return 1
-            jsonc_strip_comments "$cfg" > "$_snap_cfg" 2>/dev/null || { rm -f -- "$_snap_cfg"; return 1; }
-        fi
-        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_snap_cfg" 2>/dev/null) || { [[ "$_snap_cfg" != "$cfg" ]] && rm -f -- "$_snap_cfg"; return 1; }
-        [[ "$_snap_cfg" != "$cfg" ]] && rm -f -- "$_snap_cfg"
+        local _snap_obj='' _snap_reg=''
+        # M-6-rescan (B-leg): the snapshot reads the entry-stripped
+        # view above. This replaces the L-01 per-point strip (xray
+        # stripped into a mktemp file, sing-box read the raw file,
+        # so a commented sing-box config still failed this read).
+        _snap_obj=$(printf '%s' "$_jq_stripped" | jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' 2>/dev/null) || return 1
         # R10C11-01: also snapshot when removing the last client: the
         # removal below deletes the whole inbound (an empty clients
         # array plus the retained password would fall back to
         # single-password mode), and the snapshot lets a later sync
         # rebuild it.
         local _snap_needed=0
-        if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+        if ! printf '%s' "$_jq_stripped" | jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' >/dev/null 2>&1; then
             _snap_needed=1
-        elif jq -e --arg t "$tag" --arg e "$email" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array" and ((.settings.clients | map(select(.email != $e)) | length) == 0)' "$cfg" >/dev/null 2>&1; then
+        elif printf '%s' "$_jq_stripped" | jq -e --arg t "$tag" --arg e "$email" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array" and ((.settings.clients | map(select(.email != $e)) | length) == 0)' >/dev/null 2>&1; then
             _snap_needed=1
         fi
         if [[ -n "$_snap_obj" && "$_snap_needed" == 1 ]]; then
@@ -45294,7 +45455,7 @@ users_hot_remove() {
     # return-1 after it sends the caller to a full users_sync restart
     # (which reloads the already-edited disk config).
     local _ss_no_clients=0
-    if [[ "$proto" == 'shadowsocks' ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+    if [[ "$proto" == 'shadowsocks' ]] && ! printf '%s' "$_jq_stripped" | jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' >/dev/null 2>&1; then
         _ss_no_clients=1
     fi
     tmpd=$(mktemp -d /tmp/A-Box-uhot.XXXXXX) || return 1
@@ -45302,11 +45463,11 @@ users_hot_remove() {
     local ok=0
     case "$proto" in
         vless|trojan)
-            jq --arg t "$tag" --arg e "$email" '
+            printf '%s' "$_jq_stripped" | jq --arg t "$tag" --arg e "$email" '
                 .inbounds |= map(if .tag == $t then .settings.clients |= map(select(.email != $e)) else . end)
-            ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
+            ' > "$tmp" 2>/dev/null && ok=1 ;;
         shadowsocks)
-            jq --arg t "$tag" --arg e "$email" '
+            printf '%s' "$_jq_stripped" | jq --arg t "$tag" --arg e "$email" '
                 .inbounds |= map(if .tag == $t then
                     (if ((.settings.clients // null) | type) == "array"
                      then (if (.settings.clients | map(select(.email != $e)) | length) == 0
@@ -45314,7 +45475,7 @@ users_hot_remove() {
                            else .settings.clients |= map(select(.email != $e)) end)
                      else empty end)
                 else . end)
-            ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
+            ' > "$tmp" 2>/dev/null && ok=1 ;;
         *) : ;;
     esac
     (( ok == 1 )) || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
@@ -45347,6 +45508,13 @@ users_hot_remove() {
     # SS never reaches here (it returned above).
     if [[ "$proto" == 'shadowsocks' ]]; then
         local _rmi_rc=0
+        # M-6-rescan (B-leg): NOT stripped, by the D-leg precedent
+        # (cf. users_xray_ensure_tags L43046): every path reaching
+        # here passed install_file_atomically "$tmp" "$cfg" above,
+        # which atomically installed jq-generated (comment-free)
+        # output as $cfg in this same invocation, so no comment can
+        # be present; the intervening steps touch only permissions
+        # and the live API, never the file content.
         jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || _rmi_rc=$?
         if [[ "$_rmi_rc" == 1 || "$_rmi_rc" == 4 ]]; then
             "$bin" api rmi --server "127.0.0.1:$(users_api_port_of "$core")" "$tag" >/dev/null 2>&1 || true
@@ -45729,32 +45897,50 @@ _nsni_handshake_check() {
     command -v python3 >/dev/null 2>&1 || return 2
     command -v jq >/dev/null 2>&1 || return 2
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
+    # M-6 rescan (leg A): $cfg is a live core config. Xray's is JSONC
+    # (a user // or /* */ comment is legal there) and every bare jq
+    # read below fails on it, emptying port/uuid and returning 2
+    # (unavailable) instead of verifying the handshake; the sing-box
+    # file is strict JSON, so stripping is a no-op there, but the same
+    # read path keeps both branches consistent (jq still fails first
+    # on a commented file). Strip once here; all 21 jq reads below use
+    # the stripped temp file. This function never writes $cfg, so no
+    # write path is touched.
+    local _jq_cfg='' _jq_caller_trap=''
+    _jq_cfg=$(mktemp /tmp/A-Box-nsni-json.XXXXXX) || return 2
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
+    # jsonc_strip_comments falls back to `cat` on failure, so a failed
+    # strip still leaves the raw file in $_jq_cfg (reads then fail
+    # exactly as before the fix); only a temp-file failure returns 2.
+    jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 2
     if [[ "$core" == 'sing-box' ]]; then
-        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen_port // empty' "$cfg" 2>/dev/null | head -n 1)
-        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
-        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].uuid // empty' "$cfg" 2>/dev/null | head -n 1)
-        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.tls.reality.short_id | type) == "array" then (.tls.reality.short_id[0] // "") else (.tls.reality.short_id // "") end' "$cfg" 2>/dev/null | head -n 1)
-        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].flow // ""' "$cfg" 2>/dev/null | head -n 1)
+        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen_port // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].uuid // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.tls.reality.short_id | type) == "array" then (.tls.reality.short_id[0] // "") else (.tls.reality.short_id // "") end' "$_jq_cfg" 2>/dev/null | head -n 1)
+        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].flow // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
         # R15-F11-06: $net is Xray-shaped (.streamSettings), so it
         # is always "tcp" for a sing-box inbound; the transport type
         # lives in .transport. Copy the whole transport object into
         # the temp client below: a gRPC/xhttp/ws inbound probed with
         # a bare-TCP client fails the handshake and the caller rolls
         # back a valid SNI change.
-        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport.type // "tcp")' "$cfg" 2>/dev/null | head -n 1)
-        _transport=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport // null)' "$cfg" 2>/dev/null | head -n 1)
+        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport.type // "tcp")' "$_jq_cfg" 2>/dev/null | head -n 1)
+        _transport=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport // null)' "$_jq_cfg" 2>/dev/null | head -n 1)
         [[ -n "$_transport" ]] || _transport='null'
     else
-        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .port // empty' "$cfg" 2>/dev/null | head -n 1)
-        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
-        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].id // empty' "$cfg" 2>/dev/null | head -n 1)
-        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].flow // ""' "$cfg" 2>/dev/null | head -n 1)
-        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.network // "tcp"' "$cfg" 2>/dev/null | head -n 1)
-        xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$cfg" 2>/dev/null | head -n 1)
-        xhost=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.host // ""' "$cfg" 2>/dev/null | head -n 1)
-        xmode=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.mode // "stream-one"' "$cfg" 2>/dev/null | head -n 1)
-        grpc_service=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.grpcSettings.serviceName // ""' "$cfg" 2>/dev/null | head -n 1)
-        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.streamSettings.realitySettings.shortIds | type) == "array" then (.streamSettings.realitySettings.shortIds[0] // "") else (.streamSettings.realitySettings.shortIds // "") end' "$cfg" 2>/dev/null | head -n 1)
+        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .port // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].id // empty' "$_jq_cfg" 2>/dev/null | head -n 1)
+        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].flow // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
+        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.network // "tcp"' "$_jq_cfg" 2>/dev/null | head -n 1)
+        xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$_jq_cfg" 2>/dev/null | head -n 1)
+        xhost=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.host // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
+        xmode=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.mode // "stream-one"' "$_jq_cfg" 2>/dev/null | head -n 1)
+        grpc_service=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.grpcSettings.serviceName // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
+        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.streamSettings.realitySettings.shortIds | type) == "array" then (.streamSettings.realitySettings.shortIds[0] // "") else (.streamSettings.realitySettings.shortIds // "") end' "$_jq_cfg" 2>/dev/null | head -n 1)
     fi
     [[ -n "$port" && -n "$uuid" ]] || return 2
     # R9C12-01: a range port ("443-445") is not dialable; probe the
@@ -45772,10 +45958,10 @@ _nsni_handshake_check() {
     # wrong probe must not roll back a healthy SNI. Validated here,
     # before any temp resource is allocated.
     if [[ "$core" == 'sing-box' ]]; then
-        tport=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.reality.handshake.server_port // 443)' "$cfg" 2>/dev/null | head -n 1)
+        tport=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.reality.handshake.server_port // 443)' "$_jq_cfg" 2>/dev/null | head -n 1)
         if [[ ! "$tport" =~ ^[0-9]+$ ]] || (( 10#$tport < 1 || 10#$tport > 65535 )); then return 2; fi
     else
-        _tgt=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.streamSettings.realitySettings.target // .streamSettings.realitySettings.dest // "")' "$cfg" 2>/dev/null | head -n 1)
+        _tgt=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.streamSettings.realitySettings.target // .streamSettings.realitySettings.dest // "")' "$_jq_cfg" 2>/dev/null | head -n 1)
         case "$_tgt" in
             '') tport='443' ;;
             /*|@*) tport='443' ;;
@@ -45801,9 +45987,9 @@ _nsni_handshake_check() {
     # Link-file and .env copies go stale on redeploy (new keypair), and
     # a stale pbk fails REALITY auth outright (proven: wrong pbk -> 000).
     if [[ "$core" == 'sing-box' ]]; then
-        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.reality.private_key // ""' "$cfg" 2>/dev/null | head -n 1)
+        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.reality.private_key // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
     else
-        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.realitySettings.privateKey // ""' "$cfg" 2>/dev/null | head -n 1)
+        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.realitySettings.privateKey // ""' "$_jq_cfg" 2>/dev/null | head -n 1)
     fi
     if [[ -n "$_priv" ]]; then
         pbk=$(_reality_pbk_from_private "$_priv" 2>/dev/null || true)

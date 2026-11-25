@@ -31458,12 +31458,15 @@ EOF_SVC
     local tmp_cfg
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
     # that merely shares $tag must not be silently replaced by the
-    # merge below; only a genuine TUIC inbound proceeds.
+    # merge below; only a single genuine TUIC inbound proceeds.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="tuic")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
@@ -31671,12 +31674,15 @@ EOF_SVC
     local tmp_cfg
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
     # that merely shares $tag must not be silently replaced by the
-    # merge below; only a genuine AnyTLS inbound proceeds.
+    # merge below; only a single genuine AnyTLS inbound proceeds.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="anytls")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "anytls")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31879,14 +31885,17 @@ EOF_SVC
     local tmp_cfg cfg_bak=''
     # 2dh: same guard as R14C9-01, for the outer tag. An independent
     # inbound that merely shares $tag must not be silently replaced by
-    # the merge below; only the existing ShadowTLS pair (or an unoccupied
-    # tag) proceeds. The "updating its config" notice is shown only for
-    # the genuine pair.
+    # the merge below; only a single existing ShadowTLS pair (or an
+    # unoccupied tag) proceeds. The "updating its config" notice is
+    # shown only for the genuine pair.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" --arg it "$itag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "shadowtls" and $same[0].detour == $it)' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     # R14C9-01: refuse if the companion tag is already used by an inbound
@@ -31897,6 +31906,13 @@ EOF_SVC
     if jq -e --arg it "$itag" '.inbounds[]? | select(.tag==$it)' "$cfg" >/dev/null 2>&1; then
         if ! jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
             die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
+        # R-1 (SX-F1 same-shape): the pair check above is an existence
+        # check; a duplicated companion tag still passes it, and the
+        # merge below deletes the whole companion group. Require
+        # exactly one companion object of type shadowsocks.
+        if ! jq -e --arg it "$itag" '[.inbounds[]? | select(.tag==$it)] as $same | (($same | length) == 1 and $same[0].type == "shadowsocks")' "$cfg" >/dev/null 2>&1; then
+            die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -35780,10 +35796,13 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
         # independent inbound that merely shares $tag must not be
-        # silently replaced by the merge below; only a genuine SOCKS
-        # inbound proceeds.
-        if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="socks")' "$cfg" >/dev/null 2>&1; then
-            die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        # silently replaced by the merge below; only a single genuine
+        # SOCKS inbound proceeds.
+        # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+        # check -- a duplicated tag refuses, because the merge below
+        # deletes the whole tag group.
+        if ! jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "socks")' "$cfg" >/dev/null 2>&1; then
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
@@ -63562,10 +63581,10 @@ run_acheck_tool() {
     # an unsigned main/proxy download is never executed, and a stale cache
     # is never trusted without fresh verification.
     _md=$(abox_mktemp_exec_dir acheck-mirror 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
-    if ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
-       || ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
+       || ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
        || ! abox_verify_sig_gate "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" "A-Check SHA256SUMS" \
-       || ! curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
+       || ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
         rm -rf -- "$_md"
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1

@@ -774,10 +774,10 @@ rebuild_standalone_links() {
     _prune_standalone_links sing-box || true
     [[ -n "$_ip" || -n "${HY2_DOMAIN:-}" ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
+    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta='' _nul='' _net='' _svc='' _wspath='' _wshost='' _xpath='' _ttype='' _alpn='' _has_pass='' _detour='' _inner_method='' _inner_user='' _inner_nul=''
     local _tj_row='' _tj_rows='' _tj_tag='' _tj_stem='' _tj_seen='' _tj_legacy_n='' _tj_n='' _tj_leg='' _tj_leg_port='' _tj_sfx='' _tj_pc='' _tj_pc_port=''
-    local _sk_row='' _sk_rows='' _sk_tag='' _sk_stem='' _sk_seen='' _sk_legacy_n='' _sk_n='' _sk_leg='' _sk_leg_port='' _sk_sfx='' _sk_pc='' _sk_pc_port=''
-    local _tuic_row='' _tuic_rows='' _tuic_seen='' _anytls_row='' _anytls_rows='' _anytls_seen='' _sh_row='' _sh_rows='' _sh_seen=''
+    local _sk_row='' _sk_rows='' _sk_tag='' _sk_stem='' _sk_seen='' _sk_legacy_n='' _sk_n='' _sk_leg='' _sk_leg_port='' _sk_sfx='' _sk_pc='' _sk_pc_port='' _sk_type=''
+    local _tuic_row='' _tuic_rows='' _tuic_seen='' _anytls_row='' _anytls_rows='' _anytls_seen='' _sh_row='' _sh_rows='' _sh_seen='' _tuic_tag='' _tuic_stem='' _anytls_tag='' _anytls_stem='' _sh_tag='' _sh_stem=''
     if [[ -n "$_ip" && -f "$_xc" ]]; then
         _tj_rows=$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r '.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != "")) | [(.tag // ""), (.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null) || _tj_rows=''
         _tj_seen=''
@@ -925,7 +925,7 @@ rebuild_standalone_links() {
             case " $_tuic_seen " in *" $_tuic_stem "*) continue ;; esac
             _tuic_seen+=" $_tuic_stem"
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
+                printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (${_tuic_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
                 # R8-F1-2: fail-closed default — allow_insecure=1 is
                 # written only when the certificate is positively
@@ -970,7 +970,7 @@ rebuild_standalone_links() {
                 fi
                 register_standalone_link "$_tuic_stem" "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=$(urlencode "$_alpn")&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_tuic_stem")${NC}" >&2
             fi
             done <<< "$_tuic_rows"
         fi
@@ -993,7 +993,7 @@ rebuild_standalone_links() {
             case " $_anytls_seen " in *" $_anytls_stem "*) continue ;; esac
             _anytls_seen+=" $_anytls_stem"
             if [[ "$_nul" == 'true' ]]; then
-                printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
+                printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (${_anytls_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 # B01-02: derivation and registration must NOT be one
                 # && chain with comments in between. Bash skips comment
@@ -1009,10 +1009,10 @@ rebuild_standalone_links() {
                 if [[ -n "$_pub" ]]; then
                     register_standalone_link "$_anytls_stem" "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
                 else
-                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_anytls_stem")${NC}" >&2
                 fi
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_anytls_stem")${NC}" >&2
             fi
             done <<< "$_anytls_rows"
         fi
@@ -1043,7 +1043,7 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}shadowtls password contains a NUL byte, link skipped (${_sh_stem})${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
-                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sh_stem")${NC}" >&2
                 else
                     _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // ""), (((.password // "") | contains("\u0000")) or ((.users[0].password // "") | contains("\u0000")))] | @tsv' 2>/dev/null)" _inner _inner_method _inner_user _inner_nul
                     _tsv_unescape "$_inner" _inner; _tsv_unescape "$_inner_method" _inner_method; _tsv_unescape "$_inner_user" _inner_user
@@ -1075,24 +1075,24 @@ rebuild_standalone_links() {
                        [[ -n "$_pb" ]]; then
                         register_standalone_link "$_sh_stem" "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                     else
-                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sh_stem")${NC}" >&2
                     fi
                     else
-                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sh_stem")${NC}" >&2
                     fi
                 fi
             elif [[ -n "$_port$_pass$_sni$_inner" ]]; then
-                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sh_stem")${NC}" >&2
             fi
             done <<< "$_sh_rows"
         fi
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor
-            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // ""), (((.users[0].username // "") | contains("\u0000")) or ((.users[0].password // "") | contains("\u0000")))] | @tsv' 2>/dev/null) || _sk_rows=''
+            _sk_rows=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r '.inbounds[]? | select((.tag // "") | test("^socks5-landing(-[0-9]+)?$")) | [(.tag // ""), (.listen_port|tostring), (.users[0].username // ""), (.users[0].password // ""), (((.users[0].username // "") | contains("\u0000")) or ((.users[0].password // "") | contains("\u0000"))), (.type // "socks")] | @tsv' 2>/dev/null) || _sk_rows=''
             _sk_seen=''
             while IFS= read -r _sk_row; do
                 [[ -n "$_sk_row" ]] || continue
-                _port=''; _user=''; _pass=''
-                _tsv_split "$_sk_row" _sk_tag _port _user _pass _nul
+                _port=''; _user=''; _pass=''; _sk_type=''
+                _tsv_split "$_sk_row" _sk_tag _port _user _pass _nul _sk_type
                 case "$_sk_tag" in
                     socks5-landing|socks5-landing-[0-9]*) ;;
                     *) _sk_tag='socks5-landing' ;;
@@ -1112,7 +1112,11 @@ rebuild_standalone_links() {
                 if [[ "$_nul" == 'true' ]]; then
                     printf '%s\n' "${YELLOW}socks5 credentials contain a NUL byte, link skipped (${_sk_stem})${NC}" >&2
                 elif [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                    register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                    if [[ "$_sk_type" == 'mixed' ]]; then
+                        register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'Mixed (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}" "http://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                    else
+                        register_standalone_link "$_sk_stem" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                    fi
                 elif [[ -n "$_port$_user$_pass" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete "$_sk_stem")${NC}" >&2
                 fi
@@ -1240,10 +1244,10 @@ die() {
     # before reaching its staging cleanup. Remove this process's own
     # staging here, under the same owner-process gate as the hook, so a
     # die() inside a command substitution never deletes the parent's
-    # live staging. Only a /tmp/A-Box-* directory is ever removed (never
+    # live staging. Only a /tmp, /var/tmp or ${ABOX_DIR:-/etc/ddr} A-Box-* directory is ever removed (never
     # /tmp itself, never a path with '..', never a symlink or a file).
     if [[ "${BASH_SUBSHELL:-0}" == 0 || "${BASHPID:-}" == "${ABOX_DEPLOY_TX_OWNER:-}" ]]; then
-        if [[ -n "${ABOX_DEPLOY_TX_TMP:-}" && "${ABOX_DEPLOY_TX_TMP}" == /tmp/A-Box-* && "${ABOX_DEPLOY_TX_TMP}" != /tmp/A-Box- && "${ABOX_DEPLOY_TX_TMP}" != *..* && -d "${ABOX_DEPLOY_TX_TMP}" && ! -L "${ABOX_DEPLOY_TX_TMP}" ]]; then
+        if [[ -n "${ABOX_DEPLOY_TX_TMP:-}" && ( "${ABOX_DEPLOY_TX_TMP}" == /tmp/A-Box-?* || "${ABOX_DEPLOY_TX_TMP}" == /var/tmp/A-Box-?* || "${ABOX_DEPLOY_TX_TMP}" == "${ABOX_DIR:-/etc/ddr}"/A-Box-?* ) && "${ABOX_DEPLOY_TX_TMP}" != *..* && -d "${ABOX_DEPLOY_TX_TMP}" && ! -L "${ABOX_DEPLOY_TX_TMP}" ]]; then
             rm -rf -- "${ABOX_DEPLOY_TX_TMP}" 2>/dev/null || true
             ABOX_DEPLOY_TX_TMP=''
         fi
@@ -7093,11 +7097,11 @@ tr_msg() {
         zh-tw:reality_mlkem_notice_title) echo '[!] REALITY 相容性提示：部分用戶端無法直連本節點' ;;
         ja:reality_mlkem_notice_title) echo '[!] REALITY 互換性に関する注意：一部のクライアントはこのノードに直接接続できません' ;;
         zh:reality_mlkem_notice_cannot) echo '无法连接：基于上游 sing-box 的客户端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。mihomo 使用 ios 或 edge 指纹时无法连接本节点，即使设置 reality-opts.support-x25519mlkem768: true 也无效。' ;;
-        en:reality_mlkem_notice_cannot) echo 'Cannot connect: clients based on upstream sing-box (official SFA, GUI.for.SingBox, NekoBox, original NekoRay), as well as Shadowrocket 2.2.92 and earlier versions.' ;;
-        ru:reality_mlkem_notice_cannot) echo 'Не могут подключиться: клиенты на базе upstream-версии sing-box (официальный SFA, GUI.for.SingBox, NekoBox, оригинальный NekoRay), а также Shadowrocket версии 2.2.92 и более ранних версий.' ;;
-        fa:reality_mlkem_notice_cannot) echo 'وصل نمی‌شوند: کلاینت‌های مبتنی بر sing-box بالادستی (SFA رسمی، GUI.for.SingBox، NekoBox، NekoRay اصلی) و Shadowrocket نسخه 2.2.92 و نسخه‌های قدیمی‌تر.' ;;
-        zh-tw:reality_mlkem_notice_cannot) echo '無法連線：基於上游 sing-box 的用戶端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。' ;;
-        ja:reality_mlkem_notice_cannot) echo '接続不可：upstream sing-box コアを使用するクライアント（公式 SFA、GUI.for.SingBox、NekoBox、オリジナル版 NekoRay）、および Shadowrocket 2.2.92 以前のバージョン。' ;;
+        en:reality_mlkem_notice_cannot) echo 'Cannot connect: clients based on upstream sing-box (official SFA, GUI.for.SingBox, NekoBox, original NekoRay), as well as Shadowrocket 2.2.92 and earlier versions. Mihomo cannot connect to this node when using the ios or edge fingerprint, even with reality-opts.support-x25519mlkem768: true.' ;;
+        ru:reality_mlkem_notice_cannot) echo 'Не могут подключиться: клиенты на базе upstream-версии sing-box (официальный SFA, GUI.for.SingBox, NekoBox, оригинальный NekoRay), а также Shadowrocket версии 2.2.92 и более ранних версий. Клиенты mihomo с отпечатком ios или edge не смогут подключиться к этому узлу даже при включённом reality-opts.support-x25519mlkem768: true.' ;;
+        fa:reality_mlkem_notice_cannot) echo 'وصل نمی‌شوند: کلاینت‌های مبتنی بر sing-box بالادستی (SFA رسمی، GUI.for.SingBox، NekoBox، NekoRay اصلی) و Shadowrocket نسخه 2.2.92 و نسخه‌های قدیمی‌تر. در mihomo هنگام استفاده از اثر انگشت ios یا edge، حتی با تنظیم reality-opts.support-x25519mlkem768: true نیز اتصال به این گره برقرار نمی‌شود.' ;;
+        zh-tw:reality_mlkem_notice_cannot) echo '無法連線：基於上游 sing-box 的用戶端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。mihomo 使用 ios 或 edge 指紋時無法連線本節點，即使設定 reality-opts.support-x25519mlkem768: true 也無效。' ;;
+        ja:reality_mlkem_notice_cannot) echo '接続不可：upstream sing-box コアを使用するクライアント（公式 SFA、GUI.for.SingBox、NekoBox、オリジナル版 NekoRay）、および Shadowrocket 2.2.92 以前のバージョン。mihomo で ios または edge フィンガープリントを使用すると、reality-opts.support-x25519mlkem768: true を設定してもこのノードには接続できません。' ;;
         zh:reality_mlkem_notice_mihomo) echo 'Mihomo 系客户端（Clash Verge Rev、CMFA、Clash Party、FlClash）须修改配置：将指纹设为 chrome，并添加 reality-opts.support-x25519mlkem768: true；请使用下方完整 YAML，不要扫描单个节点链接。' ;;
         en:reality_mlkem_notice_mihomo) echo 'Mihomo-based clients (Clash Verge Rev, CMFA, Clash Party, FlClash) require configuration changes: set the fingerprint to chrome and add reality-opts.support-x25519mlkem768: true; use the full YAML below instead of scanning a single-node link.' ;;
         ru:reality_mlkem_notice_mihomo) echo 'Для клиентов на базе Mihomo (Clash Verge Rev, CMFA, Clash Party, FlClash) нужно изменить настройки: выбрать TLS-отпечаток chrome и добавить reality-opts.support-x25519mlkem768: true; используйте полную конфигурацию YAML ниже, а не сканирование ссылки на отдельный узел.' ;;
@@ -22733,7 +22737,7 @@ install_remote_abox_script_guarded() {
         url="$resolved_url"
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX) || die "$(tr_msg ir_tmp)"
-    abox_run_wait "$(tr_msg ir_dl_label)" curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg ir_download)"; }
+    abox_run_wait "$(tr_msg ir_dl_label)" curl -fLs --proto =https --proto-redir =https --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg ir_download)"; }
     if ! ( validate_abox_script_file "$tmp" "$(tr_msg install_remote_abox_script_guarded_remote_script)" && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"
         die "$(tr_msg ir_verify)"
@@ -23215,7 +23219,7 @@ github_api_get() {
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-github-api.XXXXXX) || return 1
     headers=$(umask 077; mktemp /tmp/A-Box-github-api-headers.XXXXXX) || { rm -f -- "$tmp"; return 1; }
-    args=(-sS -L --connect-timeout 10 -m 60 -D "$headers"
+    args=(-sS -L --proto =https --proto-redir =https --connect-timeout 10 -m 60 -D "$headers"
         -H 'Accept: application/vnd.github+json'
         -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
@@ -23230,7 +23234,7 @@ github_api_get() {
             abox_fetch_deadline_check "github_api_get $url" || { rm -f -- "$tmp" "$headers"; return 1; }
             _api_max_time=$(abox_fetch_curl_max_time 60) || { rm -f -- "$tmp" "$headers"; return 1; }
         fi
-        args=(-sS -L --connect-timeout 10 -m "$_api_max_time" -D "$headers"
+        args=(-sS -L --proto =https --proto-redir =https --connect-timeout 10 -m "$_api_max_time" -D "$headers"
             -H 'Accept: application/vnd.github+json'
             -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
         : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
@@ -23978,12 +23982,12 @@ core_latest_mirror_release_ref() {
         *) msg "${RED}[!] ABOX_CORE_MIRROR_BASE must use https://; refusing plaintext mirror (integrity bypass).${NC}" >&2; return 1 ;;
     esac
     workdir=$(mktemp -d /tmp/A-Box-core-mirror-meta.XXXXXX) || return 1
-    if ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS" -o "$workdir/CORE-VERSIONS" || ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS" -o "$workdir/SHA256SUMS"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS" -o "$workdir/CORE-VERSIONS" || ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS" -o "$workdir/SHA256SUMS"; then
         rm -rf -- "$workdir"; return 1
     fi
     # F-05: fetch detached signatures (best-effort); gate enforces when on.
-    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS.sig" -o "$workdir/CORE-VERSIONS.sig" 2>/dev/null || true
-    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS.sig" -o "$workdir/SHA256SUMS.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS.sig" -o "$workdir/CORE-VERSIONS.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS.sig" -o "$workdir/SHA256SUMS.sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$workdir/CORE-VERSIONS" "$workdir/CORE-VERSIONS.sig" "core mirror CORE-VERSIONS"; then
         rm -rf -- "$workdir"; return 1
     fi
@@ -24274,7 +24278,7 @@ core_fetch_upstream_release_asset() {
             abox_fetch_deadline_remaining >/dev/null 2>&1 && _up_retry=0
         fi
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry "$_up_retry" --retry-delay 2 --connect-timeout 10 -m "$_up_max_time" "${mirror}${download_url}" -o "$tmp_file"; then
+        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --proto =https --proto-redir =https --retry "$_up_retry" --retry-delay 2 --connect-timeout 10 -m "$_up_max_time" "${mirror}${download_url}" -o "$tmp_file"; then
             # S31 (GPT-11): digest first -- the digest is already in hand
             # from release metadata, so the cheap SHA-256 check must reject
             # a bad archive before the expensive full-archive parse runs.
@@ -24460,7 +24464,7 @@ fetch_geo_upstream_data() {
         abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || return 1
         _geo_max_time=$(abox_fetch_curl_max_time 90) || return 1
     fi
-    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; return 1; }
+    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --proto =https --proto-redir =https --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; return 1; }
     if ! verify_github_asset_digest "$tmp_out" "$digest"; then
         printf '%s\n' "$(tprintf gd_digest "$file_name")" >&2
         return 1
@@ -27673,7 +27677,7 @@ fetch_one() {
     [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/${asset}" && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
-    abox_run_wait "$(geo_download_label)" curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
+    abox_run_wait "$(geo_download_label)" curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
     actual=$(sha256sum "$out" | awk '{print $1}')
     [[ "${actual,,}" == "${expected,,}" ]] || return 1
     size=$(wc -c < "$out" 2>/dev/null | tr -d ' ')
@@ -27755,7 +27759,7 @@ tmpdir=$(umask 077; mktemp -d /tmp/A-Box-geo.XXXXXX) || exit 1
 trap 'rm -rf -- "$tmpdir"' EXIT
 release_file="$tmpdir/release.json"
 api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
-curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api" -o "$release_file" || exit 1
+curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api" -o "$release_file" || exit 1
 GEO_RELEASE_TAG=$(jq -er 'select(.draft == false and .prerelease == false) | .tag_name | select(type=="string" and test("^[A-Za-z0-9._-]+$"))' "$release_file" 2>/dev/null) || exit 1
 fetch_one geoip.dat "$tmpdir/geoip.dat" "$release_file" || exit 1
 fetch_one geosite.dat "$tmpdir/geosite.dat" "$release_file" || exit 1
@@ -30840,6 +30844,24 @@ EOF_SVC
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak='' old_port=''
+    # SX-TMP (M-1): $tmp_json holds the cleartext password / REALITY
+    # private key and $cfg_bak a copy of the live config (all
+    # credentials); die() exits the process, so only an EXIT trap
+    # cleans them on the gate / post-install die paths (same chained
+    # idiom as deploy_socks5_landing). Restored on the success path
+    # below, once both files are removed explicitly. The trap saves
+    # $? in _ec first and restores it with (exit "$_ec") before
+    # chaining the previous trap, so the outer trap still sees the
+    # real exit code instead of the cleanup's status.
+    local _xj_trojan_prev_trap_exit='' _xj_trojan_exit_trap_cmd='' _xj_trojan_old_cmd=''
+    _xj_trojan_prev_trap_exit=$(trap -p EXIT || true)
+    _xj_trojan_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    if [[ -n "$_xj_trojan_prev_trap_exit" ]]; then
+        _xj_trojan_old_cmd="${_xj_trojan_prev_trap_exit#trap -- }"
+        _xj_trojan_old_cmd="${_xj_trojan_old_cmd% EXIT}"
+        _xj_trojan_exit_trap_cmd="$_xj_trojan_exit_trap_cmd; eval $_xj_trojan_old_cmd"
+    fi
+    trap "$_xj_trojan_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -30919,6 +30941,21 @@ deploy_xray_trojan_landing() {
     sni=$(sni_prompt_or_auto)
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
+    # M-1: uniqueness gate runs BEFORE $tmp_json is written, so a
+    # refused redeploy leaves no secret temp file behind.
+    # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
+    # that merely shares $tag must not be silently replaced by the
+    # merge below; only a single genuine Trojan inbound proceeds.
+    # SX-F1: uniqueness gate, not an existence check -- a
+    # duplicated tag refuses, because the merge below deletes
+    # the whole tag group.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
+    fi
     # Build the trojan+reality inbound object (A-Box realitySettings format).
     local listen_addr
     listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
@@ -30941,19 +30978,6 @@ deploy_xray_trojan_landing() {
     fi
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         local tmp_cfg
-        # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
-        # that merely shares $tag must not be silently replaced by the
-        # merge below; only a single genuine Trojan inbound proceeds.
-        # SX-F1: uniqueness gate, not an existence check -- a
-        # duplicated tag refuses, because the merge below deletes
-        # the whole tag group.
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-            if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$cfg" >/dev/null 2>&1; then
-                msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
-            else
-                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
-            fi
-        fi
         # R29b-M3: capture the replaced inbound's port before the merge
         # discards it, so the old port's firewall rules can be recycled
         # below. Only a numeric .port is taken; a range/string port
@@ -31010,6 +31034,8 @@ deploy_xray_trojan_landing() {
     fi
     rm -f -- "$cfg_bak"
     ensure_service_running_soft xray || die "$(tr_msg dp_xray_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_xj_trojan_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip
@@ -31274,6 +31300,24 @@ EOF_SVC
 deploy_singbox_tuic() {
     local port pass uuid sni cc cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-tuic-in}" tmp_json cfg_bak=''
+    # SX-TMP (M-1): $tmp_json holds the cleartext password / REALITY
+    # private key and $cfg_bak a copy of the live config (all
+    # credentials); die() exits the process, so only an EXIT trap
+    # cleans them on the gate / post-install die paths (same chained
+    # idiom as deploy_socks5_landing). Restored on the success path
+    # below, once both files are removed explicitly. The trap saves
+    # $? in _ec first and restores it with (exit "$_ec") before
+    # chaining the previous trap, so the outer trap still sees the
+    # real exit code instead of the cleanup's status.
+    local _sb_tuic_prev_trap_exit='' _sb_tuic_exit_trap_cmd='' _sb_tuic_old_cmd=''
+    _sb_tuic_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_tuic_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    if [[ -n "$_sb_tuic_prev_trap_exit" ]]; then
+        _sb_tuic_old_cmd="${_sb_tuic_prev_trap_exit#trap -- }"
+        _sb_tuic_old_cmd="${_sb_tuic_old_cmd% EXIT}"
+        _sb_tuic_exit_trap_cmd="$_sb_tuic_exit_trap_cmd; eval $_sb_tuic_old_cmd"
+    fi
+    trap "$_sb_tuic_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31496,6 +31540,8 @@ EOF_SVC
     save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_tuic_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -31523,6 +31569,24 @@ EOF_SVC
 deploy_singbox_anytls() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-anytls-in}" tmp_json cfg_bak=''
+    # SX-TMP (M-1): $tmp_json holds the cleartext password / REALITY
+    # private key and $cfg_bak a copy of the live config (all
+    # credentials); die() exits the process, so only an EXIT trap
+    # cleans them on the gate / post-install die paths (same chained
+    # idiom as deploy_socks5_landing). Restored on the success path
+    # below, once both files are removed explicitly. The trap saves
+    # $? in _ec first and restores it with (exit "$_ec") before
+    # chaining the previous trap, so the outer trap still sees the
+    # real exit code instead of the cleanup's status.
+    local _sb_anytls_prev_trap_exit='' _sb_anytls_exit_trap_cmd='' _sb_anytls_old_cmd=''
+    _sb_anytls_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_anytls_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    if [[ -n "$_sb_anytls_prev_trap_exit" ]]; then
+        _sb_anytls_old_cmd="${_sb_anytls_prev_trap_exit#trap -- }"
+        _sb_anytls_old_cmd="${_sb_anytls_old_cmd% EXIT}"
+        _sb_anytls_exit_trap_cmd="$_sb_anytls_exit_trap_cmd; eval $_sb_anytls_old_cmd"
+    fi
+    trap "$_sb_anytls_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31650,19 +31714,8 @@ EOF_SVC
     sni=$(sni_prompt_or_auto)
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
-    # Build the anytls+reality inbound object.
-    local listen_addr
-    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
-    tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
-        --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-        '{type:"anytls",tag:$tag,listen:$listen_addr,listen_port:$port,
-          users:[{name:"main",password:$pass}],
-          tls:{enabled:true,server_name:$sni,
-            reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
-        > "$tmp_json" || die "$(tr_msg dp_anytls_json)"
-
-    local tmp_cfg
+    # M-1: uniqueness gate runs BEFORE $tmp_json is written, so a
+    # refused redeploy leaves no secret temp file behind.
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
     # that merely shares $tag must not be silently replaced by the
     # merge below; only a single genuine AnyTLS inbound proceeds.
@@ -31676,6 +31729,19 @@ EOF_SVC
             die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
+    # Build the anytls+reality inbound object.
+    local listen_addr
+    listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
+    tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
+        --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
+        '{type:"anytls",tag:$tag,listen:$listen_addr,listen_port:$port,
+          users:[{name:"main",password:$pass}],
+          tls:{enabled:true,server_name:$sni,
+            reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
+        > "$tmp_json" || die "$(tr_msg dp_anytls_json)"
+
+    local tmp_cfg
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '.inbounds = (.inbounds // [])
@@ -31712,6 +31778,8 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_anytls_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -31738,6 +31806,24 @@ deploy_singbox_shadowtls() {
     local port pass inner sni cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-shadowtls-in}" tmp_json
     local itag='shadowtls-ss'; [[ "$tag" != 'shadowtls-in' ]] && itag="${tag}-ss"
+    # SX-TMP (M-1): $tmp_json holds the cleartext password / REALITY
+    # private key and $cfg_bak a copy of the live config (all
+    # credentials); die() exits the process, so only an EXIT trap
+    # cleans them on the gate / post-install die paths (same chained
+    # idiom as deploy_socks5_landing). Restored on the success path
+    # below, once both files are removed explicitly. The trap saves
+    # $? in _ec first and restores it with (exit "$_ec") before
+    # chaining the previous trap, so the outer trap still sees the
+    # real exit code instead of the cleanup's status.
+    local _sb_sh_prev_trap_exit='' _sb_sh_exit_trap_cmd='' _sb_sh_old_cmd=''
+    _sb_sh_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_sh_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    if [[ -n "$_sb_sh_prev_trap_exit" ]]; then
+        _sb_sh_old_cmd="${_sb_sh_prev_trap_exit#trap -- }"
+        _sb_sh_old_cmd="${_sb_sh_old_cmd% EXIT}"
+        _sb_sh_exit_trap_cmd="$_sb_sh_exit_trap_cmd; eval $_sb_sh_old_cmd"
+    fi
+    trap "$_sb_sh_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg shadowtls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31865,15 +31951,8 @@ EOF_SVC
     # has no listen_port of its own (reachable only through the detour).
     local listen_addr
     listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
-    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" --arg listen_addr "$listen_addr" \
-        '({type:"shadowtls",tag:$tag,listen:$listen_addr,listen_port:$port,version:3,strict_mode:true,
-           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
-         ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
-           method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
-        > "$tmp_json" || die "$(tr_msg dp_shadowtls_json)"
-
-    local tmp_cfg cfg_bak=''
+    # M-1: uniqueness gate runs BEFORE $tmp_json is written, so a
+    # refused redeploy leaves no secret temp file behind.
     # 2dh: same guard as R14C9-01, for the outer tag. An independent
     # inbound that merely shares $tag must not be silently replaced by
     # the merge below; only a single existing ShadowTLS pair (or an
@@ -31906,6 +31985,15 @@ EOF_SVC
             die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
+    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" --arg listen_addr "$listen_addr" \
+        '({type:"shadowtls",tag:$tag,listen:$listen_addr,listen_port:$port,version:3,strict_mode:true,
+           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
+         ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
+           method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
+        > "$tmp_json" || die "$(tr_msg dp_shadowtls_json)"
+
+    local tmp_cfg cfg_bak=''
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
             '.inbounds = (.inbounds // [])
@@ -31944,6 +32032,8 @@ EOF_SVC
     save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_sh_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -32013,10 +32103,14 @@ install_cloudflared() {
     esac
     url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${SB_ARCH}"
     tmp=$(abox_mktemp_exec_dir A-Box-cloudflared) || die "$(tr_msg cf_tmp)"
+    # M-1: register the staging dir so die() cleans it if a later
+    # step in this download fails (defence in depth: every die
+    # branch below already removes "$tmp" explicitly).
+    ABOX_DEPLOY_TX_TMP="$tmp"
     msg "$(tr_msg argo_cf_installing)"
     if ! fetch_util_mirror_asset "cloudflared-${CLOUDFLARED_VERSION}-linux-${SB_ARCH}" "$tmp/cloudflared" \
         || [[ "$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
-        if ! curl -fL --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
+        if ! curl -fL --proto =https --proto-redir =https --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
             rm -rf "$tmp"; die "$(tr_msg cf_download)"
         fi
     fi
@@ -32034,6 +32128,7 @@ install_cloudflared() {
     # keeps the binary instead of deleting a possibly foreign one.
     touch /etc/ddr/.abox-cloudflared-owned 2>/dev/null || true
     rm -rf "$tmp"
+    ABOX_DEPLOY_TX_TMP=''
 }
 
 _argo_pick_port() {
@@ -32069,6 +32164,24 @@ _argo_pick_port() {
 # Build/refresh the two loopback WS inbounds in the sing-box config.
 argo_deploy_ws() {
     local cfg='/etc/sing-box/config.json' tmp_json tmp_cfg cfg_bak=''
+    # SX-TMP (M-1): $tmp_json holds the cleartext password / REALITY
+    # private key and $cfg_bak a copy of the live config (all
+    # credentials); die() exits the process, so only an EXIT trap
+    # cleans them on the gate / post-install die paths (same chained
+    # idiom as deploy_socks5_landing). Restored on the success path
+    # below, once both files are removed explicitly. The trap saves
+    # $? in _ec first and restores it with (exit "$_ec") before
+    # chaining the previous trap, so the outer trap still sees the
+    # real exit code instead of the cleanup's status.
+    local _argo_ws_prev_trap_exit='' _argo_ws_exit_trap_cmd='' _argo_ws_old_cmd=''
+    _argo_ws_prev_trap_exit=$(trap -p EXIT || true)
+    _argo_ws_exit_trap_cmd='local _ec=$?; [[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; (exit "$_ec")'
+    if [[ -n "$_argo_ws_prev_trap_exit" ]]; then
+        _argo_ws_old_cmd="${_argo_ws_prev_trap_exit#trap -- }"
+        _argo_ws_old_cmd="${_argo_ws_old_cmd% EXIT}"
+        _argo_ws_exit_trap_cmd="$_argo_ws_exit_trap_cmd; eval $_argo_ws_old_cmd"
+    fi
+    trap "$_argo_ws_exit_trap_cmd" EXIT
     ARGO_UUID=$(_argo_state_get uuid)
     if [[ ! "$ARGO_UUID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89AaBb][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$ ]]; then
         ARGO_UUID=$(generate_robust_uuid) || die "$(tr_msg ag_uuid)"
@@ -32133,6 +32246,8 @@ argo_deploy_ws() {
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_argo_ws_prev_trap_exit"
 }
 
 # $1 = unit name (argo-vmess | argo-vless | argo), $2 = cloudflared args (no binary)
@@ -34936,7 +35051,7 @@ wgcf_resolve_latest() {
     if [[ -z "$digest" || "$digest" == 'null' ]]; then
         sums_url="https://github.com/ViRb3/wgcf/releases/download/${tag}/checksums.txt"
         sums_tmp=$(umask 077; mktemp /tmp/A-Box-wgcf-sums.XXXXXX) || return 1
-        if ! curl -fLsS --connect-timeout 10 -m 30 "$sums_url" -o "$sums_tmp" 2>/dev/null; then rm -f -- "$sums_tmp"; return 1; fi
+        if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 -m 30 "$sums_url" -o "$sums_tmp" 2>/dev/null; then rm -f -- "$sums_tmp"; return 1; fi
         sums_size=$(wc -c < "$sums_tmp" 2>/dev/null | tr -d ' ') || sums_size=''
         [[ "$sums_size" =~ ^[0-9]+$ ]] && (( sums_size <= 65536 )) || { rm -f -- "$sums_tmp"; return 1; }
         hex=$(awk -v f="$asset" '{ g=$2; sub(/^\*/, "", g); if (g == f) { print $1; n++ } } END { if (n != 1) exit 1 }' "$sums_tmp" 2>/dev/null) || { rm -f -- "$sums_tmp"; return 1; }
@@ -34973,7 +35088,7 @@ warp_fetch_wgcf() {
         rm -f -- "$tmp"
         tmp=$(mktemp) || return 1
         url="https://github.com/ViRb3/wgcf/releases/download/v${ver}/wgcf_${ver}_linux_${arch}"
-        if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 120 "$url" -o "$tmp" 2>/dev/null; then rm -f -- "$tmp"; return 1; fi
+        if ! curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 10 -m 120 "$url" -o "$tmp" 2>/dev/null; then rm -f -- "$tmp"; return 1; fi
     fi
     [[ -s "$tmp" ]] || { rm -f -- "$tmp"; return 1; }
     # sanity: must be an ELF binary
@@ -42057,7 +42172,7 @@ probe_core_sources_banner() {
         _try=$((_try + 1))
         (( _try < 3 )) && sleep 1
     done
-    mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
+    mirror_code=$(curl -sSL --proto =https --proto-redir =https -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
     if [[ -n "$repo" && -n "$ref" ]]; then
@@ -42076,7 +42191,7 @@ fetch_util_mirror_asset() {
     [[ -n "$leaf" && -n "$dest" && -n "$base" ]] || return 1
     case "$base" in https://*) ;; *) return 1 ;; esac
     msg "${YELLOW} -> A-Box recovery mirror: ${base%/}/${leaf}${NC}"
-    curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${base%/}/${leaf}" -o "$dest" 2>/dev/null
+    curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${base%/}/${leaf}" -o "$dest" 2>/dev/null
 }
 
 fetch_abox_mirror_asset() {
@@ -42122,10 +42237,10 @@ fetch_abox_mirror_asset() {
         _mirror_max_time=$(abox_fetch_curl_max_time 30) || { rm -rf -- "$sum_dir"; return 1; }
     fi
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] && command -v timeout >/dev/null 2>&1; then
-        if ! timeout "$_mirror_max_time" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+        if ! timeout "$_mirror_max_time" curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
             rm -rf -- "$sum_dir"; return 1
         fi
-    elif ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+    elif ! curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
     # 05g-M4: the .sig download below used to have no deadline check and
@@ -42143,9 +42258,9 @@ fetch_abox_mirror_asset() {
         _mirror_max_time=$(abox_fetch_curl_max_time 30) || { rm -rf -- "$sum_dir"; return 1; }
     fi
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]] && command -v timeout >/dev/null 2>&1; then
-        timeout "$_mirror_max_time" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+        timeout "$_mirror_max_time" curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
     else
-        curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+        curl -fLsS --proto =https --proto-redir =https --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
     fi
     if [[ -L "$sum_file" || -L "$sum_sig" ]]; then
         rm -rf -- "$sum_dir"; return 1
@@ -42165,7 +42280,7 @@ fetch_abox_mirror_asset() {
         _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
         abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
     fi
-    if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
             local versioned_leaf
@@ -42184,7 +42299,7 @@ fetch_abox_mirror_asset() {
                     _mirror_max_time=$(abox_fetch_curl_max_time 180) || { rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; }
                     abox_fetch_deadline_remaining >/dev/null 2>&1 && _mirror_retry=0
                 fi
-                if ! curl -fLsS --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
+                if ! curl -fLsS --proto =https --proto-redir =https --retry "$_mirror_retry" --retry-delay 2 --connect-timeout 10 -m "$_mirror_max_time" "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
             else
                 rm -rf -- "$sum_dir"; return 1
             fi
@@ -50818,7 +50933,7 @@ run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
     tmp=$(umask 077; mktemp /tmp/A-Box-remote.XXXXXX) || die "$(tr_msg run_remote_bash_script_tmpfile_failed)"
-    if ! curl -fLsS --connect-timeout 10 -m 120 "$url" -o "$tmp"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 -m 120 "$url" -o "$tmp"; then
         rm -f "$tmp"
         die "$(tprintf run_remote_bash_script_download_failed "$label")"
     fi
@@ -50910,7 +51025,7 @@ sni_load_candidate_seed() {
         # shipping curl < 8.4). Do not fall back to wget: it has no portable
         # hard output-size cap and would defeat this guard.
         if command -v curl >/dev/null 2>&1; then
-            curl -fLsS --proto-redir =https --connect-timeout 8 --max-time 35 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$url" 2>/dev/null | head -c $((ABOX_SNI_CANDIDATE_MAX_BYTES + 1)) > "$downloaded" 2>/dev/null
+            curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 35 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$url" 2>/dev/null | head -c $((ABOX_SNI_CANDIDATE_MAX_BYTES + 1)) > "$downloaded" 2>/dev/null
             _curl_rc=${PIPESTATUS[0]}
             if (( _curl_rc == 0 )) && [[ -f "$downloaded" ]] && (( $(wc -c < "$downloaded" 2>/dev/null || echo 0) <= ABOX_SNI_CANDIDATE_MAX_BYTES )); then
                 download_ok=1
@@ -56400,13 +56515,13 @@ PY_RB_ENUM
             cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; die "$(tr_msg rb_tmp_fail)"; }
         fi
     done
-    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || die "$(tr_msg rb_sha_bad)"
+    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || { rm -rf -- "$work"; die "$(tr_msg rb_sha_bad)"; }
     # R25-F-S1-05: a legacy (manifest v2) backup has no HMAC sidecar, so
     # without this branch it dies below as rb_auth_fail; detect it here
     # and point at the option-4 converter instead of a misleading auth error.
     if backup_archive_is_legacy "$_rbc"; then rm -rf "$work"; die "$(tr_msg rb_legacy_convert)"; fi
-    prepare_backup_auth_for_manual_restore "$_rbc" || die "$(tr_msg rb_auth_fail)"
-    validate_backup_archive "$_rbc" || die "$(tr_msg rb_structure_fail)"
+    prepare_backup_auth_for_manual_restore "$_rbc" || { rm -rf -- "$work"; die "$(tr_msg rb_auth_fail)"; }
+    validate_backup_archive "$_rbc" || { rm -rf -- "$work"; die "$(tr_msg rb_structure_fail)"; }
     tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
     root="$work/root"
     assert_restore_target_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_target_fail)"; }
@@ -56847,7 +56962,7 @@ run_mirrored_test_script() {
     # Policy: latest-first (user directive). The upstream script is
     # structurally validated (validate_test_script); on any failure the
     # pinned, signature-verified mirror copy is the fallback.
-    if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
+    if curl -fLsS --proto =https --proto-redir =https --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
         selected="$upstream"
         source="$upstream_url (LIVE latest)"
     fi
@@ -57220,7 +57335,7 @@ wallos_mirror_version_list() {
     local work versions_url
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
     versions_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
-    if ! curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
         rm -rf -- "$work"
         return 1
     fi
@@ -57652,11 +57767,11 @@ wallos_versioned_image_digest() {
     ver_manifest="wallos-manifest-${tag}.txt"
     manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
     sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
-    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
-       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
+       ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
-    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos versioned SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
@@ -57927,12 +58042,12 @@ _wallos_pull_versioned_image() {
     local ver_manifest="wallos-manifest-${tag}.txt"
     manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
     sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
-    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
-       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
+       ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
     # P1-2: verify SHA256SUMS signature before trusting it.
-    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos versioned SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
@@ -57950,7 +58065,7 @@ _wallos_pull_versioned_image() {
     mtag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
     [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch-${tag}.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
-    if ! curl -fLsS --connect-timeout 8 --max-time 600 \
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 600 \
         "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"; return 1
     fi
@@ -58001,7 +58116,7 @@ _wallos_pull_versioned_image() {
 
 wallos_latest_stable_tag() {
     local response tag
-    response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
+    response=$(curl -fLsS --proto =https --proto-redir =https --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
     tag=$(jq -er 'select(.draft == false and .prerelease == false) | .tag_name' <<< "$response" 2>/dev/null) || return 1
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
     printf '%s\n' "$tag"
@@ -58051,16 +58166,16 @@ wallos_pull_or_restore_image() {
                 _n2_trap_cmd="$_n2_trap_cmd; eval $_n2_old_cmd"
             fi
             trap "$_n2_trap_cmd" EXIT
-            if curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_manifest_url" -o "$_n2_work/wallos-manifest.txt" 2>/dev/null &&
-               curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url" -o "$_n2_work/SHA256SUMS" 2>/dev/null; then
+            if curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$_n2_manifest_url" -o "$_n2_work/wallos-manifest.txt" 2>/dev/null &&
+               curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$_n2_sum_url" -o "$_n2_work/SHA256SUMS" 2>/dev/null; then
                 local _n2_expected _n2_actual
                 # TRAP-3: filename anchored exactly via awk -v (not unanchored grep).
                 _n2_expected=$(awk -v f="wallos-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$_n2_work/SHA256SUMS" 2>/dev/null || true)
                 _n2_actual=$(sha256sum "$_n2_work/wallos-manifest.txt" 2>/dev/null | awk '{print $1}' || true)
                 if [[ "$_n2_expected" =~ ^[A-Fa-f0-9]{64}$ && "${_n2_expected,,}" == "${_n2_actual,,}" ]]; then
                     # F-05: verify detached Ed25519 signature of the manifest.
-                    curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
-                    curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
+                    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
+                    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
                     # DS-Q4: SHA256SUMS 本身也要验签 (之前只下载不验证)
                     if ! abox_verify_sig_gate "$_n2_work/SHA256SUMS" "$_n2_work/SHA256SUMS.sig" "Wallos SHA256SUMS (N-2 fast path)"; then
                         msg "${RED}$(tr_msg wl_pi_sig_sums)${NC}"
@@ -58172,8 +58287,8 @@ wallos_pull_or_restore_image() {
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
     manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
     sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
-    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/wallos-manifest.txt" ||
-       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/wallos-manifest.txt" ||
+       ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"
         return 1
     fi
@@ -58186,13 +58301,13 @@ wallos_pull_or_restore_image() {
         return 1
     fi
     # P1-2: verify SHA256SUMS signature before trusting it.
-    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos SHA256SUMS (fallback path)"; then
         rm -rf -- "$work"
         return 1
     fi
     # F-05: verify detached Ed25519 signature of the manifest.
-    curl -fLsS --connect-timeout 8 --max-time 30 "${manifest_url}.sig" -o "$work/wallos-manifest.txt.sig" 2>/dev/null || true
+    curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 30 "${manifest_url}.sig" -o "$work/wallos-manifest.txt.sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$work/wallos-manifest.txt" "$work/wallos-manifest.txt.sig" "Wallos manifest (fallback path)"; then
         rm -rf -- "$work"
         return 1
@@ -58213,7 +58328,7 @@ wallos_pull_or_restore_image() {
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rm -rf -- "$work"; return 1; }
     wallos_candidate_version_allowed "$tag" || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
-    if ! curl -fLsS --connect-timeout 8 --max-time 600 \
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 --max-time 600 \
         "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"
         return 1
@@ -59887,7 +60002,7 @@ install_wallos_caddy() {
     esac
     url="https://github.com/caddyserver/caddy/releases/download/v${WALLOS_CADDY_VERSION}/caddy_${WALLOS_CADDY_VERSION}_linux_${SB_ARCH}.tar.gz"
     tmp=$(mktemp -d /tmp/A-Box-caddy.XXXXXX) || return 1
-    abox_run_wait 'Caddy download' curl -fL --retry 2 --connect-timeout 15 -o "$tmp/caddy.tgz" "$url" || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_download)${NC}"; return 1; }
+    abox_run_wait 'Caddy download' curl -fL --proto =https --proto-redir =https --retry 2 --connect-timeout 15 -o "$tmp/caddy.tgz" "$url" || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_download)${NC}"; return 1; }
     got=$(sha256sum "$tmp/caddy.tgz" 2>/dev/null | awk '{print $1}')
     if [[ "$got" != "$want" ]]; then
         rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_sha)${NC}"; return 1
@@ -66082,7 +66197,7 @@ update_script() {
     tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die "$(tr_msg update_script_sni_tmp_create_failed)"; }
     tmp_sni_normalized=$(umask 077; mktemp /tmp/A-Box-update-sni-normalized.XXXXXX) || { rm -f -- "$tmp_update" "$tmp_sni_download"; die "$(tr_msg update_script_sni_verify_tmp_create_failed)"; }
     msg "${YELLOW}[*] $(tr_msg update_script_syncing_pinned_commit)${NC}"
-    if ! curl -fLsS --connect-timeout 10 -m 60 "$OTA_URL" -o "$tmp_update"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 -m 60 "$OTA_URL" -o "$tmp_update"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] $(tr_msg update_script_download_failed_unchanged)${NC}"
         pause_return
@@ -66106,7 +66221,7 @@ update_script() {
     fi
     sha=$(sha256sum "$tmp_update" | awk '{print $1}')
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
-    if ! curl -fLsS --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] $(tr_msg update_script_sni_missing_cancelled)${NC}"
         pause_return

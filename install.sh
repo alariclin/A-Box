@@ -71333,8 +71333,15 @@ PY_SELFTEST_YAML
     # whole-argv config token). The fake-process part runs only as root,
     # only when no real /usr/local/bin/xray exists (never clobber a real
     # install), and only when /usr/local/bin is writable; the dependency
-    # behaviour checks below it always run.
-    local _c1_tmp='' _c1_pid='' _c1_fake=0 _c1_out='' _c1_rc=0 _c1_yes=''
+    # behaviour checks below it always run. The fake core is a copy of the
+    # bash binary itself (never `yes`): on Alpine `yes` is a BusyBox
+    # symlink, so a copy run as "xray" dies at once with "applet not
+    # found" (rc=127) and the match checks fail; bash is a real ELF on
+    # every matrix image. The `-c 'sleep 120; :'` form matters: a lone
+    # `sleep` would be exec'd directly by bash, turning exe into
+    # /usr/bin/sleep and dropping the config token; the trailing `:`
+    # forces a fork so the bash copy stays alive with exe + config argv.
+    local _c1_tmp='' _c1_pid='' _c1_fake=0 _c1_out='' _c1_rc=0 _c1_bash=''
     _c1_tmp=$(mktemp -d /tmp/A-Box-c1-selftest.XXXXXX) || { echo 'FAIL: C-1 self-test temp dir creation failed'; failures=$((failures + 1)); }
     if [[ -n "$_c1_tmp" ]]; then
         : > "$_c1_tmp/traffic_fns.sh"
@@ -71360,12 +71367,12 @@ PY_SELFTEST_YAML
         bash -c 'source "$0"; _manifest_rows_valid "$1"' "$_c1_tmp/traffic_fns.sh" "$_c1_tmp/valid.tsv" || { echo 'FAIL: C-1 traffic _manifest_rows_valid on a valid row failed'; failures=$((failures + 1)); }
         bash -c 'source "$0"; _manifest_rows_valid "$1"' "$_c1_tmp/traffic_fns.sh" "$_c1_tmp/does-not-exist" 2>/dev/null && { echo 'FAIL: C-1 traffic _manifest_rows_valid must fail on a missing file'; failures=$((failures + 1)); } || true
         bash -c 'source "$0"; systemd_available' "$_c1_tmp/traffic_fns.sh" 2>/dev/null; _c1_rc=$?; (( _c1_rc == 0 || _c1_rc == 1 )) || { echo 'FAIL: C-1 traffic systemd_available must return 0/1, not 127'; failures=$((failures + 1)); }
-        _c1_yes=$(command -v yes 2>/dev/null || true)
-        if (( EUID == 0 )) && [[ -n "$_c1_yes" && -d /usr/local/bin && -w /usr/local/bin && ! -e /usr/local/bin/xray ]]; then
-            cp -f "$_c1_yes" /usr/local/bin/xray || { echo 'FAIL: C-1 self-test fake core install failed'; failures=$((failures + 1)); }
+        _c1_bash=$(command -v bash 2>/dev/null || true)
+        if (( EUID == 0 )) && [[ -n "$_c1_bash" && -d /usr/local/bin && -w /usr/local/bin && ! -e /usr/local/bin/xray ]]; then
+            cp -f "$_c1_bash" /usr/local/bin/xray || { echo 'FAIL: C-1 self-test fake core install failed'; failures=$((failures + 1)); }
             if [[ -e /usr/local/bin/xray ]]; then
                 _c1_fake=1
-                /usr/local/bin/xray /usr/local/etc/xray/config.json >/dev/null 2>&1 &
+                /usr/local/bin/xray -c 'sleep 120; :' /usr/local/etc/xray/config.json >/dev/null 2>&1 &
                 _c1_pid=$!
                 sleep 0.3
                 bash -c 'source "$0"; core_process_matches "$1" "$2"' "$_c1_tmp/traffic_fns.sh" xray "$_c1_pid" || { echo 'FAIL: C-1 traffic core_process_matches missed the fake core'; failures=$((failures + 1)); }
@@ -71375,7 +71382,7 @@ PY_SELFTEST_YAML
                 sleep 0.5
                 if kill -0 "$_c1_pid" 2>/dev/null; then echo 'FAIL: C-1 traffic stop reported success but the fake core is still alive'; failures=$((failures + 1)); kill -KILL "$_c1_pid" 2>/dev/null || true; fi
                 wait "$_c1_pid" 2>/dev/null || true
-                /usr/local/bin/xray /usr/local/etc/xray/config.json >/dev/null 2>&1 &
+                /usr/local/bin/xray -c 'sleep 120; :' /usr/local/etc/xray/config.json >/dev/null 2>&1 &
                 _c1_pid=$!
                 sleep 0.3
                 bash -u -c 'source "$0"; core_process_matches "$1" "$2"' "$_c1_tmp/main_fns.sh" xray "$_c1_pid" || { echo 'FAIL: C-1 main core_process_matches missed the fake core'; failures=$((failures + 1)); }

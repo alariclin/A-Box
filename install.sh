@@ -1872,12 +1872,6 @@ tr_msg() {
         fa:view_config_public_ip_changed_save_failed) echo 'IP عمومی تغییر کرده است، اما ذخیرهٔ ماندگار به‌روزرسانی ناموفق بود.' ;;
         zh-tw:view_config_public_ip_changed_save_failed) echo '公網 IP 已變更，但持久化更新失敗。' ;;
         ja:view_config_public_ip_changed_save_failed) echo '公開 IP が変更されましたが、更新の永続化に失敗しました。' ;;
-        zh:view_config_hy2_uri_port_invalid) echo 'Hysteria2 分享链接端口参数无效。' ;;
-        en:view_config_hy2_uri_port_invalid) echo 'The port parameter in the Hysteria 2 share link is invalid.' ;;
-        ru:view_config_hy2_uri_port_invalid) echo 'Параметр порта в ссылке для обмена Hysteria 2 недопустим.' ;;
-        fa:view_config_hy2_uri_port_invalid) echo 'پارامتر درگاه در پیوند اشتراک‌گذاری Hysteria 2 نامعتبر است.' ;;
-        zh-tw:view_config_hy2_uri_port_invalid) echo 'Hysteria 2 分享連結的連接埠參數無效。' ;;
-        ja:view_config_hy2_uri_port_invalid) echo 'Hysteria 2 共有リンクのポートパラメータが無効です。' ;;
         zh:view_config_public_ip_unavailable) echo '未能自动获取公网 IP，分享链接可能不可用。' ;;
         en:view_config_public_ip_unavailable) echo 'Failed to retrieve the public IP automatically; share links may not work.' ;;
         ru:view_config_public_ip_unavailable) echo 'Не удалось автоматически получить публичный IP; ссылки для обмена могут не работать.' ;;
@@ -2892,12 +2886,6 @@ tr_msg() {
         fa:wl_iu_preseed_fail) echo 'آماده‌سازی پایگاه داده تازه Wallos ناموفق بود؛ نصب متوقف شد (کانتینر شروع نشد).' ;;
         zh-tw:wl_iu_preseed_fail) echo 'Wallos 全新資料庫預置失敗，已中止安裝（未啟動容器）。' ;;
         ja:wl_iu_preseed_fail) echo 'Wallos の新規データベース事前準備に失敗しました。インストールを中止しました（コンテナは起動していません）。' ;;
-        zh:wl_iu_meta_fail) echo 'Wallos 状态元数据提交失败。正在尽可能回滚未完成的升级。' ;;
-        en:wl_iu_meta_fail) echo 'Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.' ;;
-        ru:wl_iu_meta_fail) echo 'Не удалось зафиксировать метаданные состояния Wallos. Выполняется откат незавершённого обновления, где возможно.' ;;
-        fa:wl_iu_meta_fail) echo 'ثبت فراداده وضعیت Wallos ناموفق بود. ارتقای ناقص تا حد امکان بازگردانده می‌شود.' ;;
-        zh-tw:wl_iu_meta_fail) echo 'Wallos 狀態中繼資料提交失敗。正在盡可能回滾未完成的升級。' ;;
-        ja:wl_iu_meta_fail) echo 'Wallos の状態メタデータのコミットに失敗しました。可能な範囲で未完了のアップグレードをロールバックします。' ;;
         zh:wl_iu_rb_fail) echo '回滚失败；请保留 %s 与 %s。' ;;
         en:wl_iu_rb_fail) echo 'Rollback failed; preserve %s and %s.' ;;
         ru:wl_iu_rb_fail) echo 'Откат не удался; сохраните %s и %s.' ;;
@@ -3624,12 +3612,12 @@ tr_msg() {
         fa:init_soft_warn) echo 'سیستم init پشتیبانی‌شده (Systemd/OpenRC) شناسایی نشد؛ منو به‌صورت فقط‌خواندنی باز می‌شود و عملیات استقرار در دسترس نیست.' ;;
         zh-tw:init_soft_warn) echo '未偵測到受支援的初始化系統 (Systemd/OpenRC)，選單以唯讀方式開啟，部署類操作不可用。' ;;
         ja:init_soft_warn) echo 'サポートされる init システム (systemd/OpenRC) が検出されませんでした。メニューは読み取り専用で開き、デプロイ操作は利用できません。' ;;
-        zh:wl_menu_prompt) echo '请选择 [0-6]：' ;;
-        en:wl_menu_prompt) echo 'Select [0-6]: ' ;;
-        ru:wl_menu_prompt) echo 'Выберите [0–6]: ' ;;
-        fa:wl_menu_prompt) echo 'انتخاب [۰ تا ۶]: ' ;;
-        zh-tw:wl_menu_prompt) echo '請選擇 [0-6]：' ;;
-        ja:wl_menu_prompt) echo '選択してください [0-6]: ' ;;
+        zh:wl_menu_prompt) echo '请选择 [0-7]：' ;;
+        en:wl_menu_prompt) echo 'Select [0-7]: ' ;;
+        ru:wl_menu_prompt) echo 'Выберите [0–7]: ' ;;
+        fa:wl_menu_prompt) echo 'انتخاب [۰ تا ۷]: ' ;;
+        zh-tw:wl_menu_prompt) echo '請選擇 [0-7]：' ;;
+        ja:wl_menu_prompt) echo '選択してください [0-7]: ' ;;
         zh:wl_menu_title) echo 'Wallos 订阅管理' ;;
         en:wl_menu_title) echo 'Wallos subscription manager' ;;
         ru:wl_menu_title) echo 'Управление подписками Wallos' ;;
@@ -5838,12 +5826,12 @@ tr_msg() {
         fa:upgrade_singbox_core_only_version_incomparable) echo 'قالب نسخه فعلی یا هدف sing-box امکان مقایسه را نمی‌دهد.' ;;
         zh-tw:upgrade_singbox_core_only_version_incomparable) echo '目前或目標 sing-box 版本的格式無法比較。' ;;
         ja:upgrade_singbox_core_only_version_incomparable) echo '現在または対象の sing-box バージョンの形式では、バージョンを比較できません。' ;;
-        zh:upgrade_singbox_core_only_above_pinned_skip) echo '当前 sing-box %s 高于固定兼容版本 %s；为避免自动降级，本次跳过。' ;;
-        en:upgrade_singbox_core_only_above_pinned_skip) echo 'Current sing-box version %s is newer than pinned compatible version %s; skipped this time to avoid an automatic downgrade.' ;;
-        ru:upgrade_singbox_core_only_above_pinned_skip) echo 'Текущая версия sing-box %s новее закреплённой совместимой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
-        fa:upgrade_singbox_core_only_above_pinned_skip) echo 'نسخه فعلی sing-box %s بالاتر از نسخه سازگار ثابت %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
-        zh-tw:upgrade_singbox_core_only_above_pinned_skip) echo '目前 sing-box %s 高於固定相容版本 %s；為避免自動降級，本次略過。' ;;
-        ja:upgrade_singbox_core_only_above_pinned_skip) echo '現在の sing-box %s は固定された互換バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
+        zh:upgrade_singbox_core_only_above_pinned_skip) echo '当前 sing-box %s 高于目标版本 %s；为避免自动降级，本次跳过。' ;;
+        en:upgrade_singbox_core_only_above_pinned_skip) echo 'Current sing-box version %s is newer than target version %s; skipped this time to avoid an automatic downgrade.' ;;
+        ru:upgrade_singbox_core_only_above_pinned_skip) echo 'Текущая версия sing-box %s новее целевой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_singbox_core_only_above_pinned_skip) echo 'نسخه فعلی sing-box %s بالاتر از نسخه هدف %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_above_pinned_skip) echo '目前 sing-box %s 高於目標版本 %s；為避免自動降級，本次略過。' ;;
+        ja:upgrade_singbox_core_only_above_pinned_skip) echo '現在の sing-box %s は対象バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
         zh:upgrade_singbox_core_only_already_pinned) echo '当前 sing-box %s 已是固定兼容版本，无需替换。' ;;
         en:upgrade_singbox_core_only_already_pinned) echo 'Current sing-box version %s is already the pinned compatible version; no replacement is needed.' ;;
         ru:upgrade_singbox_core_only_already_pinned) echo 'Текущая версия sing-box %s уже является закреплённой совместимой версией; замена не требуется.' ;;
@@ -5946,12 +5934,12 @@ tr_msg() {
         fa:upgrade_hysteria_core_only_version_incomparable) echo 'قالب نسخه فعلی یا هدف Hysteria امکان مقایسه را نمی‌دهد.' ;;
         zh-tw:upgrade_hysteria_core_only_version_incomparable) echo '目前或目標 Hysteria 版本的格式無法比較。' ;;
         ja:upgrade_hysteria_core_only_version_incomparable) echo '現在または対象の Hysteria バージョンの形式では、バージョンを比較できません。' ;;
-        zh:upgrade_hysteria_core_only_above_pinned_skip) echo '当前 Hysteria %s 高于固定兼容版本 %s；为避免自动降级，本次跳过。' ;;
-        en:upgrade_hysteria_core_only_above_pinned_skip) echo 'Current Hysteria version %s is newer than pinned compatible version %s; skipped this time to avoid an automatic downgrade.' ;;
-        ru:upgrade_hysteria_core_only_above_pinned_skip) echo 'Текущая версия Hysteria %s новее закреплённой совместимой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
-        fa:upgrade_hysteria_core_only_above_pinned_skip) echo 'نسخه فعلی Hysteria %s بالاتر از نسخه سازگار ثابت %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
-        zh-tw:upgrade_hysteria_core_only_above_pinned_skip) echo '目前 Hysteria %s 高於固定相容版本 %s；為避免自動降級，本次略過。' ;;
-        ja:upgrade_hysteria_core_only_above_pinned_skip) echo '現在の Hysteria %s は固定された互換バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
+        zh:upgrade_hysteria_core_only_above_pinned_skip) echo '当前 Hysteria %s 高于目标版本 %s；为避免自动降级，本次跳过。' ;;
+        en:upgrade_hysteria_core_only_above_pinned_skip) echo 'Current Hysteria version %s is newer than target version %s; skipped this time to avoid an automatic downgrade.' ;;
+        ru:upgrade_hysteria_core_only_above_pinned_skip) echo 'Текущая версия Hysteria %s новее целевой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_hysteria_core_only_above_pinned_skip) echo 'نسخه فعلی Hysteria %s بالاتر از نسخه هدف %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_above_pinned_skip) echo '目前 Hysteria %s 高於目標版本 %s；為避免自動降級，本次略過。' ;;
+        ja:upgrade_hysteria_core_only_above_pinned_skip) echo '現在の Hysteria %s は対象バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
         zh:upgrade_hysteria_core_only_already_pinned) echo '当前 Hysteria %s 已是固定兼容版本，无需替换。' ;;
         en:upgrade_hysteria_core_only_already_pinned) echo 'Current Hysteria version %s is already the pinned compatible version; no replacement is needed.' ;;
         ru:upgrade_hysteria_core_only_already_pinned) echo 'Текущая версия Hysteria %s уже является закреплённой совместимой версией; замена не требуется.' ;;
@@ -11796,18 +11784,6 @@ tr_msg() {
         fa:wallos_pull_or_restore_image_pulling) echo 'دریافت تصویر Wallos' ;;
         zh-tw:wallos_pull_or_restore_image_pulling) echo '拉取 Wallos 映像' ;;
         ja:wallos_pull_or_restore_image_pulling) echo 'Wallos イメージの取得' ;;
-        zh:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 基础端口无效，拒绝生成 Clash/Mihomo 配置。' ;;
-        en:write_clash_yaml_base_port_invalid) echo 'Invalid Hysteria 2 base port; refusing to generate the Clash/Mihomo configuration.' ;;
-        ru:write_clash_yaml_base_port_invalid) echo 'Недопустимый базовый порт Hysteria 2; создание конфигурации Clash/Mihomo запрещено.' ;;
-        fa:write_clash_yaml_base_port_invalid) echo 'پورت پایهٔ Hysteria 2 نامعتبر است؛ از تولید پیکربندی Clash/Mihomo خودداری می‌شود.' ;;
-        zh-tw:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 基礎連接埠無效，拒絕產生 Clash/Mihomo 設定。' ;;
-        ja:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 のベースポートが無効なため、Clash/Mihomo 設定の生成を拒否します。' ;;
-        zh:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 端口跳跃状态无效：HY2_CLASH_PORTS 缺失或非法，拒绝生成 Clash/Mihomo 配置。' ;;
-        en:write_clash_yaml_hy2_ports_invalid) echo 'Invalid Hysteria 2 port-hopping state: HY2_CLASH_PORTS is missing or invalid; refusing to generate the Clash/Mihomo configuration.' ;;
-        ru:write_clash_yaml_hy2_ports_invalid) echo 'Недопустимое состояние переключения портов Hysteria 2: HY2_CLASH_PORTS отсутствует или некорректен; создание конфигурации Clash/Mihomo запрещено.' ;;
-        fa:write_clash_yaml_hy2_ports_invalid) echo 'وضعیت پرش پورت Hysteria 2 نامعتبر است: HY2_CLASH_PORTS موجود نیست یا نامعتبر است؛ از تولید پیکربندی Clash/Mihomo خودداری می‌شود.' ;;
-        zh-tw:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 連接埠跳躍狀態無效：HY2_CLASH_PORTS 缺少或不合法，拒絕產生 Clash/Mihomo 設定。' ;;
-        ja:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 のポートホッピング状態が無効です。HY2_CLASH_PORTS が未設定または不正なため、Clash/Mihomo 設定の生成を拒否します。' ;;
         zh:tp_tty_open) echo '当前环境无可交互 TTY，无法打开控制终端。' ;;
         zh-tw:tp_tty_open) echo '目前環境無可互動 TTY，無法打開控制終端。' ;;
         en:tp_tty_open) echo 'There is no interactive TTY in the current environment; cannot open the control terminal.' ;;
@@ -12734,6 +12710,7 @@ prompt_port_input() {
         prompt=$(tprintf port_prompt "$label" "$default_port")
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
+        input=$(normalize_fa_ar_digits "$input")
         if valid_port "$input"; then
             if is_reserved_port "$input"; then
                 printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue
@@ -12751,6 +12728,7 @@ prompt_ss_port_input() {
         prompt=$(tprintf ss_port_prompt "$label" "$default_port")
         read -r -p "$prompt" input || return 1
         input="${input:-$default_port}"
+        input=$(normalize_fa_ar_digits "$input")
         if valid_port "$input"; then
             if is_reserved_port "$input"; then
                 printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue
@@ -12767,6 +12745,7 @@ prompt_hy2_bandwidth_mbps_input() {
     while true; do
         read -r -p "$prompt" input || return 1
         input="${input:-$default_value}"
+        input=$(normalize_fa_ar_digits "$input")
         if valid_hy2_bandwidth_mbps "$input"; then
             printf '%s\n' "$input"
             return 0
@@ -31407,7 +31386,7 @@ EOF_SVC
     # the cert an existing node already pinned. Unsafe tag characters are
     # sanitized, with a hash suffix always appended, so
     # distinct tags can never collide on one file.
-    sni=$(sni_prompt_or_auto)
+    sni=$(sni_prompt_or_auto 'TUIC')
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
     local _tuic_cert_tag _tuic_key _tuic_crt
     _tuic_cert_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9_-' '_')
@@ -31647,7 +31626,7 @@ EOF_SVC
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die "$(tr_msg dp_sb_keyparse)"
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_sb_keyempty)"
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
-    sni=$(sni_prompt_or_auto)
+    sni=$(sni_prompt_or_auto 'AnyTLS')
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the anytls+reality inbound object.
@@ -31858,7 +31837,7 @@ EOF_SVC
         rm -f "$tmp_json"
     fi
 
-    sni=$(sni_prompt_or_auto)
+    sni=$(sni_prompt_or_auto 'ShadowTLS')
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
@@ -35784,7 +35763,6 @@ EOF_SVC
     # If the tag already exists, replace it in place; otherwise hot-add.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         local tmp_cfg
-        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
         # independent inbound that merely shares $tag must not be
         # silently replaced by the merge below; only a single genuine
@@ -35795,6 +35773,7 @@ EOF_SVC
         if ! jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "socks")' "$cfg" >/dev/null 2>&1; then
             die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
+        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
@@ -36310,7 +36289,7 @@ _xl_legacy_retire_coexist() {
     for _wl2 in "$_sysdir"/*.wants/xray-latest.service; do
         [[ -e "$_wl2" || -L "$_wl2" ]] && _resid=1
     done
-    if [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]]; then
+    if [[ -f "${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" && ! -L "${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" ]]; then
         awk -F'\t' '$2 == "xray-latest" {found=1; exit} END {exit !found}' "$ABOX_CORE_OWNERSHIP" 2>/dev/null; _marc=$?
         (( _marc == 0 || _marc == 2 )) && _resid=1
     fi
@@ -40694,6 +40673,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # block deletes the hop NAT rules.
     local _hop_start="${HY2_RANGE_START:-}" _hop_end="${HY2_RANGE_END:-}" _hop_base="${HY2_BASE_PORT:-}" _hop_iface="${INGRESS_IF:-}" _hop_on="${HY2_HOP:-}"
     local _tuic_ct='' _tuic_f=''
+    local -a _deleted=()
     for tag in "$@"; do
         case "$tag" in
             # R15-F10-03: the Argo source inbounds live in sing-box;
@@ -40771,10 +40751,16 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                 # of ANY protocol still references it (a manual or
                 # other-protocol inbound may share the pair).
                 if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.crt; then
-                    [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
+                    if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]]; then
+                        rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
+                        [[ -e /etc/sing-box/hy2.crt ]] || _deleted+=("/etc/sing-box/hy2.crt")
+                    fi
                 fi
                 if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.key; then
-                    [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+                    if [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
+                        rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+                        [[ -e /etc/sing-box/hy2.key ]] || _deleted+=("/etc/sing-box/hy2.key")
+                    fi
                 fi
             fi
         fi
@@ -40860,12 +40846,17 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
                                 _singbox_cert_referenced /etc/sing-box/config.json "${_tuic_f%.A-Box-bak}" && continue
                             fi
                             rm -f -- "$_tuic_f" 2>/dev/null || true
+                            [[ -e "$_tuic_f" ]] || _deleted+=("$_tuic_f")
                         done
                         ;;
                 esac
             done
         fi
     fi
+    # L-5: a deleted cert's manifest row must go with it (same as
+    # _singbox_cleanup_tuic_certs_when_none_remain), or the manifest
+    # drifts from disk (stale hash vs a same-name rebuild).
+    (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
     return "$_reg_failed"
 }
 
@@ -41061,6 +41052,7 @@ remove_single_protocol_menu() {
         msg "${YELLOW}[!] Protocol ${label} removed, but user registry cleanup failed; credentials may remain on disk.${NC}"
         return 1
     fi
+    refresh_subscription_after_deploy || true
     msg "${GREEN}$(tr_msg cl_done): ${label}${NC}"
     return 0
 }
@@ -42561,8 +42553,7 @@ export_lightweight_subscription() {
     chmod 700 "$SUBSCRIBE_DIR" || return 1
     [[ -f "$ABOX_ENV" ]] || { msg "${RED}No deployment env.${NC}"; pause_return; return 1; }
     load_abox_env "$ABOX_ENV" || die 'env invalid'
-    F_IP="${LINK_IP:-}"
-    [[ "$F_IP" =~ : ]] && F_IP="[$F_IP]"
+    F_IP=$(uri_host "${LINK_IP:-}")
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
     VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
@@ -46083,6 +46074,7 @@ _nsni_apply() {
     fi
     rm -f "$bak" "$_kebak" "$_crtbak" "$_lbak"
     [[ -n "$_shown" ]] && printf '%s' "$_shown"
+    refresh_subscription_after_deploy || true
     return 0
 }
 
@@ -47944,8 +47936,8 @@ _nm_dns_effective_upstream_matches() {
     (( _found == 1 )) || return 0
     [[ -n "${_servers//[[:space:]]/}" ]] || return 1
     [[ "$(_nm_dns_norm_set "$_servers")" == "$(_nm_dns_norm_set "$v4${v6:+ $v6}")" ]] || return 1
-    _out=$(resolvectl status "$dev" 2>/dev/null || true)
-    _cur=$(printf '%s\n' "$_out" | awk '/^Current DNS Server:/ {print $NF; exit}' || true)
+    _out=$(LC_ALL=C resolvectl status "$dev" 2>/dev/null || true)
+    _cur=$(printf '%s\n' "$_out" | awk '/^[[:space:]]*Current DNS Server:/ {print $NF; exit}' || true)
     if [[ -n "$_cur" ]]; then
         _cur=$(normalize_ip_literal "$_cur")
         for _tok in "${_req_toks[@]}"; do
@@ -48627,7 +48619,7 @@ dns_dot_prefer() {
         case "${ABOX_LANG:-zh}" in
             en) msg "${RED}No DoT resolver passed the availability threshold; DNS was not changed.${NC}" ;;
             ru) msg "${RED}Ни один DoT-сервер не прошёл проверку доступности; DNS не изменён.${NC}" ;;
-            fa) msg "${RED}هیچ سرور DoT از آستانه دسترس‌په‌پذیری عبور نکرد؛ DNS تغییر نکرد.${NC}" ;;
+            fa) msg "${RED}هیچ سرور DoT از آستانه دسترس‌پذیری عبور نکرد؛ DNS تغییر نکرد.${NC}" ;;
             zh-tw) msg "${RED}沒有 DoT 候選透過可用性門檻；未修改 DNS。${NC}" ;;
             ja) msg "${RED}可用性のしきい値を満たす DoT リゾルバーがありません。DNS は変更されていません。${NC}" ;;
             *) msg "${RED}没有 DoT 候选通过可用性门槛；未修改 DNS。${NC}" ;;
@@ -51483,7 +51475,7 @@ sni_auto_select_default() {
 # a typed domain is validated and used instead. Prompts go to
 # stderr so the result can be captured with $(...).
 sni_prompt_or_auto() {
-    local _in='' _tier='' _answer='' _dns_rc=0
+    local _in='' _tier='' _answer='' _dns_rc=0 _label="${1:-Trojan-Reality}"
     while true; do
         printf '%s' "$(tr_msg sni_custom_prompt)" >&2
         read -r _in || _in=''
@@ -51521,7 +51513,7 @@ sni_prompt_or_auto() {
                 ;;
         esac
         # R/D/N: loud warning above; explicit second confirmation, default refuse.
-        read -r -p "$(tprintf continue_or_reset 'Trojan-Reality')" _answer || continue
+        read -r -p "$(tprintf continue_or_reset "$_label")" _answer || continue
         is_yes "$_answer" && { printf '%s' "$_in"; return 0; }
     done
 }
@@ -63329,7 +63321,7 @@ wallos_abandon_interrupted_upgrade() {
         return 0
     fi
     confirm_yes_no "$(tr_msg wl_abandon_q)" || return 0
-    rm -f -- "$_journal" "$WALLOS_DIR/.upgrade-transaction.frontend" "$WALLOS_DIR/.upgrade-transaction.cftoken" || {
+    rm -f -- "$_journal" "$WALLOS_DIR/.upgrade-transaction.frontend" "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_DIR/.upgrade-transaction.cid" || {
         msg "${RED}$(tr_msg wl_abandon_rm_fail)${NC}"
         return 1
     }
@@ -63375,19 +63367,10 @@ wallos_menu() {
     msg "${CYAN}6.${NC} $(tr_msg wl_menu_repair)"
     msg "${CYAN}7.${NC} $(tr_msg wl_menu_abandon)"
     msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
-    local c prompt_confirm
+    local c
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
     c=$(normalize_fa_ar_digits "${c:-}")
 
-    case "${ABOX_LANG:-zh}" in
-        en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: ' ;;
-        ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: ' ;;
-        fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: ' ;;
-        zh-tw) prompt_confirm='Wallos 儲存個人訂閱/財務資料，HTTP 無 TLS 加密。繼續？[Y/N]: ' ;;
-        ja)
-            prompt_confirm='Wallos は個人のサブスクリプション / 財務データを保存します。HTTP には TLS 暗号化がありません。続行しますか？[Y/N]: ' ;;
-        *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: ' ;;
-    esac
     case "$c" in
         1) wallos_install_or_update; pause_return ;;
         2) wallos_status; pause_return ;;
@@ -64699,6 +64682,7 @@ _clash_hy2_user_password() {
 
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
+    S_IP="${S_IP#[}"; S_IP="${S_IP%]}"
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
     local _hy2_eff_pass='' _hy2_eff_obfs='' _hy2_eff_user=''
     local clash_ns1 clash_ns2 clash_country
@@ -65516,7 +65500,7 @@ view_config() {
     # instead of killing the whole view (menu 12 must not die on one
     # protocol's port problem).
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || { msg "${YELLOW}[!] Hy2 port endpoint is invalid; Hy2 links skipped in this view.${NC}"; HY2_URI_PORT=''; HY2_QUERY_PREFIX=''; }
-    [[ "${LINK_IP:-}" =~ : ]] && F_IP="[${LINK_IP:-}]"
+    F_IP=$(uri_host "${LINK_IP:-}")
     [[ -z "${LINK_IP:-}" || "${LINK_IP:-}" == 'N/A' ]] && msg "${YELLOW}[!] $(tr_msg view_config_public_ip_unavailable)${NC}"
     VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
     XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
@@ -65609,6 +65593,14 @@ view_config() {
         XHTTP_URL="vless://${UUID:-}@$F_IP:${XHTTP_PORT:-}?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
         msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT:-}")${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
+        # L-4: pure-XHTTP mode never reaches the VISION branch above,
+        # so print the ML-KEM note here too; in ALL/VISION modes the
+        # VISION branch already printed it once.
+        if [[ "${CORE:-}" == 'xray' ]] && [[ "$CALLER" != 'deploy' ]] && xray_reality_requires_mlkem; then
+            if (( _vless_ok == 0 )) || [[ "${MODE:-}" != *'VISION'* && "${MODE:-}" != *'ALL'* && "${MODE:-}" != 'VLESS_SS' ]]; then
+                msg "${YELLOW}$(tprintf vc_xray_mlkem_compat "$(effective_xray_version)")${NC}"
+            fi
+        fi
         generate_qr "$XHTTP_URL"
     fi
     if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
@@ -65692,6 +65684,7 @@ view_config() {
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
     if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_json_ok == 1 )) && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
         S_IP="${LINK_IP:-}"
+        S_IP="${S_IP#[}"; S_IP="${S_IP%]}"
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
             if valid_hy2_sb_ports "${HY2_SB_PORTS:-}"; then
@@ -65796,8 +65789,8 @@ show_usage() {
 4  Official Hysteria 2
 5  Xray + Hysteria 2 combined deployment
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
@@ -65830,8 +65823,8 @@ EOF_USAGE
 4  Официальный Hysteria 2
 5  Комбинированная установка Xray + Hysteria 2
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
 
@@ -65864,8 +65857,8 @@ EOF_USAGE
 4  Hysteria 2 رسمی
 5  نصب ترکیبی Xray + Hysteria 2
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
 
@@ -65898,8 +65891,8 @@ EOF_USAGE
 4  官方 Hysteria 2
 5  Xray + 官方 Hysteria 2 組合部署
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
@@ -65932,8 +65925,8 @@ EOF_USAGE
 4  公式 Hysteria 2
 5  Xray + 公式 Hysteria 2 の組み合わせデプロイ
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
@@ -65966,8 +65959,8 @@ EOF_USAGE
 4  官方 Hysteria 2
 5  Xray + 官方 Hysteria 2 组合部署
 6  sing-box VLESS Vision REALITY
-8  sing-box Shadowsocks-2022
 7  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 

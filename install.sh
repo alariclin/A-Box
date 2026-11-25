@@ -15,7 +15,7 @@ if [[ "${ABOX_STTY_ERASE_H:-}" == '1' ]]; then
 fi
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
-# Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
+# Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and sing-box HY2 ACME semantics.
 # P2-03 Return Code Contract (standardized 2026-10-15):
 #   0 = success
 #   1 = general failure (operation attempted but failed)
@@ -369,6 +369,12 @@ WALLOS_DOCKER_HARDENING=(
 )
 # D-04: top-level init (set -u is active; rollback reads this before any writer runs).
 WALLOS_IMAGE_RESULT=''
+# H7-F1: the container ID most recently created by a Wallos (re)build
+# helper (wallos_http_rebind / wallos_restore_direct_container), so the
+# installer can refresh the upgrade journal with it. Same idiom as
+# WALLOS_IMAGE_RESULT (a global because the helpers cannot return a
+# value through a command substitution without losing side effects).
+WALLOS_CREATED_CONTAINER_ID=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Geo mirror fallback (fetch_geo_data): A-Box-signed mirror of the
@@ -491,6 +497,14 @@ ABOX_TRAFFIC_PAIR_STATE='/etc/ddr/.traffic-pair-state'
 HY2_ACME_OWNER_MARKER='/etc/hysteria/acme/.A-Box-managed'
 PUBLIC_IP_CONNECT_TIMEOUT=${PUBLIC_IP_CONNECT_TIMEOUT:-3}
 PUBLIC_IP_MAX_TIME=${PUBLIC_IP_MAX_TIME:-6}
+# M2: total wall-clock budget (seconds) for one get_public_ip_fresh() round
+# (all v4+v6 endpoints combined). Without it, three v4 endpoints at 6 s each
+# plus three v6 endpoints could block the menu for ~36 s on a dead network;
+# with the default 12 s the worst case is about one slow round plus a
+# second attempt. The menu already serves a stale cache while refreshing
+# in the background (get_public_ip_swr); this caps only the synchronous
+# missing-cache path.
+PUBLIC_IP_TOTAL_BUDGET=${PUBLIC_IP_TOTAL_BUDGET:-12}
 ABOX_DEPLOY_TX_ACTIVE=0
 ABOX_DEPLOY_TX_OWNER=''
 ABOX_DEPLOY_TX_TARGETS=''
@@ -1582,8 +1596,8 @@ tr_msg() {
         fa:pi_bad_domain) echo 'قالب دامنه نامعتبر است: %s' ;;
         zh-tw:pi_bad_domain) echo '域名格式不合法：%s' ;;
         ja:pi_bad_domain) echo 'ドメイン形式が無効です: %s' ;;
-        zh:setup_swap_2g_title) echo 'Swap 虚拟内存一键划拨' ;;
-        en:setup_swap_2g_title) echo 'One-click allocation of swap virtual memory' ;;
+        zh:setup_swap_2g_title) echo '一键配置 Swap' ;;
+        en:setup_swap_2g_title) echo 'One-click swap setup' ;;
         ru:setup_swap_2g_title) echo 'Выделение виртуальной памяти свопа одним нажатием' ;;
         fa:setup_swap_2g_title) echo 'تخصیص یک‌کلیکی حافظه مجازی سواپ' ;;
         zh-tw:setup_swap_2g_title) echo '一鍵配置交換虛擬記憶體' ;;
@@ -1978,19 +1992,19 @@ tr_msg() {
         fa:view_config_clash_yaml_preview_title) echo 'پیش‌نمایش YAML برای Clash / Mihomo' ;;
         zh-tw:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 預覽' ;;
         ja:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML プレビュー' ;;
-        zh:view_config_singbox_outbound_example) echo 'Sing-box 出站示例' ;;
+        zh:view_config_singbox_outbound_example) echo 'sing-box 出站示例' ;;
         en:view_config_singbox_outbound_example) echo 'sing-box outbound example' ;;
         ru:view_config_singbox_outbound_example) echo 'Пример исходящего подключения sing-box' ;;
         fa:view_config_singbox_outbound_example) echo 'نمونهٔ خروجی sing-box' ;;
         zh-tw:view_config_singbox_outbound_example) echo 'sing-box 出站範例' ;;
         ja:view_config_singbox_outbound_example) echo 'sing-box アウトバウンドの例' ;;
-        zh:view_config_singbox_tls_failed_skip) echo 'Sing-box TLS 配置生成失败；已省略无效的出站示例。' ;;
+        zh:view_config_singbox_tls_failed_skip) echo 'sing-box TLS 配置生成失败；已省略无效的出站示例。' ;;
         en:view_config_singbox_tls_failed_skip) echo 'Failed to generate the sing-box TLS configuration; the invalid outbound example was omitted.' ;;
         ru:view_config_singbox_tls_failed_skip) echo 'Не удалось создать конфигурацию TLS для sing-box; недействительный пример исходящего подключения пропущен.' ;;
         fa:view_config_singbox_tls_failed_skip) echo 'تولید پیکربندی TLS برای sing-box ناموفق بود؛ نمونهٔ خروجی نامعتبر حذف شد.' ;;
         zh-tw:view_config_singbox_tls_failed_skip) echo 'sing-box TLS 配置產生失敗；已省略無效的出站範例。' ;;
         ja:view_config_singbox_tls_failed_skip) echo 'sing-box の TLS 設定の生成に失敗しました。無効なアウトバウンド例は省略しました。' ;;
-        zh:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。' ;;
+        zh:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 sing-box 出站示例。' ;;
         en:view_config_hy2_port_hop_state_invalid) echo 'The Hysteria 2 port-hopping state is missing or invalid; the invalid sing-box outbound example was omitted.' ;;
         ru:view_config_hy2_port_hop_state_invalid) echo 'Состояние смены портов Hysteria 2 отсутствует или недопустимо; недействительный пример исходящего подключения sing-box пропущен.' ;;
         fa:view_config_hy2_port_hop_state_invalid) echo 'وضعیت پرش درگاه Hysteria 2 موجود نیست یا نامعتبر است؛ نمونهٔ خروجی نامعتبر sing-box حذف شد.' ;;
@@ -2666,7 +2680,7 @@ tr_msg() {
         en:wl_pu_ssh_then) echo 'Then open http://127.0.0.1:%s/ in your browser; create the admin account on first visit.' ;;
         ru:wl_pu_ssh_then) echo 'Затем откройте http://127.0.0.1:%s/ и создайте учётную запись при первом визите.' ;;
         fa:wl_pu_ssh_then) echo 'سپس http://127.0.0.1:%s/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.' ;;
-        zh-tw:wl_pu_ssh_then) echo '然後瀏覽器打開 http://127.0.0.1:%s/，首次訪問創建管理員賬號。' ;;
+        zh-tw:wl_pu_ssh_then) echo '然後瀏覽器打開 http://127.0.0.1:%s/，首次訪問創建管理員帳號。' ;;
         ja:wl_pu_ssh_then) echo 'ブラウザで http://127.0.0.1:%s/ を開き、初回に管理者アカウントを作成してください。' ;;
         zh:wl_pu_url) echo 'Wallos 网址：http://%s:%s/' ;;
         en:wl_pu_url) echo 'Wallos URL: http://%s:%s/' ;;
@@ -2742,10 +2756,10 @@ tr_msg() {
         ja:wl_iu_docker_fail) echo 'Docker をインストールまたは起動できませんでした。Wallos コンテナは変更されていません。' ;;
         zh:wl_iu_no_free_port) echo '20000–60000 无可用高位端口，请释放端口后重试。' ;;
         en:wl_iu_no_free_port) echo 'No free high port found in 20000-60000; free one and retry.' ;;
-        ru:wl_iu_no_free_port) echo 'Нет свободного высокого порта 20000–60000.' ;;
-        fa:wl_iu_no_free_port) echo 'درگاه آزاد در 20000 تا 60000 یافت نشد.' ;;
+        ru:wl_iu_no_free_port) echo 'Нет свободного высокого порта 20000–60000. Освободите один из этих портов и повторите попытку.' ;;
+        fa:wl_iu_no_free_port) echo 'درگاه آزاد در 20000 تا 60000 یافت نشد. یکی از درگاه‌های این بازه را آزاد کنید و دوباره تلاش کنید.' ;;
         zh-tw:wl_iu_no_free_port) echo '20000–60000 無可用高位連接埠，請釋放後重試。' ;;
-        ja:wl_iu_no_free_port) echo '20000～60000 に空きポートがありません。' ;;
+        ja:wl_iu_no_free_port) echo '20000～60000 に空きポートがありません。この範囲のポートを1つ解放して、再試行してください。' ;;
         zh:wl_iu_unmanaged) echo '已存在一个非 A-Box 管理的 wallos 容器。请改名或在 A-Box 之外管理它；未尝试接管。' ;;
         en:wl_iu_unmanaged) echo 'An unmanaged container named wallos already exists. Rename it or manage it outside A-Box; no takeover was attempted.' ;;
         ru:wl_iu_unmanaged) echo 'Уже существует неуправляемый контейнер с именем wallos. Переименуйте его или управляйте вне A-Box; попытка захвата не выполнялась.' ;;
@@ -2803,7 +2817,7 @@ tr_msg() {
         zh:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（选 cloudflared），页面会给出一条带 --token 的命令；' ;;
         en:wl_iu_cf_guide_1) echo '1) Zero Trust -> Networks -> Tunnels -> Create a tunnel (cloudflared); its install command contains a --token value.' ;;
         ru:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel (cloudflared); команда установки содержит значение --token.' ;;
-        fa:wl_iu_cf_guide_1) echo '۱) Zero Trust ← Networks ← Tunnels ← ساخت تونل (cloudflared)؛ دستور نصب آن شامل مقدار --token است.' ;;
+        fa:wl_iu_cf_guide_1) echo '۱) Zero Trust → Networks → Tunnels → ساخت تونل (cloudflared)؛ دستور نصب آن شامل مقدار --token است.' ;;
         zh-tw:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（選 cloudflared），頁面會給出一條帶 --token 的命令；' ;;
         ja:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（cloudflared を選択）。表示されるインストールコマンドに --token の値が含まれます。' ;;
         zh:wl_iu_cf_guide_2) echo '2) 在该隧道添加 Public Hostname：域名填你想要的（如 wallos.example.com），Service 选 HTTP，URL 填 127.0.0.1:%s；' ;;
@@ -3888,8 +3902,8 @@ tr_msg() {
         ja:dh_snap_staging) echo 'DNS スナップショットのステージングに失敗しました。リゾルバは変更されていません。' ;;
         zh:dh_snap_rollback) echo 'DNS 回滚快照失败或不完整；已保留先前快照；未更改解析器。' ;;
         en:dh_snap_rollback) echo 'DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.' ;;
-        ru:dh_snap_rollback) echo 'Снимок отката DNS не удался или неполон; предыдущий снимок сохранён; resolvers не изменены.' ;;
-        fa:dh_snap_rollback) echo 'snapshot بازگشت DNS ناموفق یا ناقص بود؛ snapshot قبلی حفظ شد؛ تغییری در resolvers داده نشد.' ;;
+        ru:dh_snap_rollback) echo 'Снимок отката DNS не удался или неполон; предыдущий снимок сохранён; резолверы не изменены.' ;;
+        fa:dh_snap_rollback) echo 'اسنپ‌شات بازگشت DNS ناموفق یا ناقص بود؛ اسنپ‌شات قبلی حفظ شد؛ تغییری در حل‌کننده‌ها داده نشد.' ;;
         zh-tw:dh_snap_rollback) echo 'DNS 回滾快照失敗或不完整；已保留先前快照；未更改解析器。' ;;
         ja:dh_snap_rollback) echo 'DNS ロールバック用スナップショットが失敗または不完全です。前のスナップショットは保持され、リゾルバは変更されていません。' ;;
         zh:dh_snap_install) echo 'DNS 快照安装失败；已保留先前快照；未更改解析器。' ;;
@@ -4398,13 +4412,13 @@ tr_msg() {
         ja:vg_init_fail) echo 'システム環境の初期化に失敗しました。' ;;
         zh:vg_title) echo '删除全部节点与环境初始化（可凭自动备份恢复）' ;;
         en:vg_title) echo 'Delete all nodes and perform environment initialization (recoverable from auto-backup)' ;;
-        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения (восстановление из автобэкапа)' ;;
+        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения (восстановление из автоматической резервной копии)' ;;
         fa:vg_title) echo 'حذف همه گره‌ها و مقداردهی محیط (بازیابی از پشتیبان خودکار ممکن است)' ;;
         zh-tw:vg_title) echo '刪除全部節點與環境初始化（可憑自動備份恢復）' ;;
         ja:vg_title) echo '全ノードを削除して環境を初期化（自動バックアップから復旧可）' ;;
         zh:vg_confirm) echo '将删除全部节点并初始化环境（可凭自动备份恢复），确定执行吗？[Y/N]: ' ;;
         en:vg_confirm) echo 'This deletes all nodes and reinitializes the environment (recoverable from the auto-backup). Proceed? [Y/N]: ' ;;
-        ru:vg_confirm) echo 'Будут удалены все узлы, окружение будет переинициализировано (можно восстановить из автобэкапа). Продолжить? [Y/N]: ' ;;
+        ru:vg_confirm) echo 'Будут удалены все узлы, окружение будет переинициализировано (можно восстановить из автоматической резервной копии). Продолжить? [Y/N]: ' ;;
         fa:vg_confirm) echo 'همهٔ گره‌ها حذف و محیط دوباره مقداردهی می‌شود (بازیابی از پشتیبان خودکار ممکن است). ادامه داده شود؟ [Y/N]: ' ;;
         zh-tw:vg_confirm) echo '將刪除全部節點並初始化環境（可憑自動備份恢復），確定執行嗎？[Y/N]: ' ;;
         ja:vg_confirm) echo '全ノードを削除し環境を初期化します（自動バックアップから復旧可）。実行しますか？[Y/N]: ' ;;
@@ -4469,7 +4483,7 @@ tr_msg() {
         zh-tw:um_back) echo '取消並返回' ;;
         ja:um_back) echo 'キャンセルして戻る' ;;
         zh:um_prompt) echo '请输入执行代码 [0-2]: ' ;;
-        en:um_prompt) echo 'Enter the execution code [0-2]: ' ;;
+        en:um_prompt) echo 'Choose an option [0-2]: ' ;;
         ru:um_prompt) echo 'Введите код выполнения [0-2]: ' ;;
         fa:um_prompt) echo 'کد اجرا را وارد کنید [0-2]: ' ;;
         zh-tw:um_prompt) echo '請輸入執行代碼 [0-2]: ' ;;
@@ -4608,10 +4622,10 @@ tr_msg() {
         ja:ip_pref_current) echo '現在: %s' ;;
         zh:ip_select_0_3) echo '选择 [0-3]: ' ;;
         en:ip_select_0_3) echo 'Select [0-3]: ' ;;
-        ru:ip_select_0_3) echo 'Выбор [0-3]: ' ;;
+        ru:ip_select_0_3) echo 'Выберите [0-3]: ' ;;
         fa:ip_select_0_3) echo 'انتخاب [۰-۳]: ' ;;
         zh-tw:ip_select_0_3) echo '選擇 [0-3]: ' ;;
-        ja:ip_select_0_3) echo '選択 [0-3]: ' ;;
+        ja:ip_select_0_3) echo '選択してください [0-3]: ' ;;
         zh:tz_meta_fail) echo '[!] 时区已切换为 %s，但状态元数据写入失败；回滚信息可能不完整。' ;;
         en:tz_meta_fail) echo '[!] Timezone switched to %s, but state metadata write failed; rollback information may be incomplete.' ;;
         ru:tz_meta_fail) echo '[!] Часовой пояс переключён на %s, но запись метаданных состояния не удалась; информация для отката может быть неполной.' ;;
@@ -4626,26 +4640,26 @@ tr_msg() {
         ja:dns_current) echo '現在: IPv4=%s IPv6=%s' ;;
         zh:dns_select_mode) echo '选择 [0-3]: ' ;;
         en:dns_select_mode) echo 'Select [0-3]: ' ;;
-        ru:dns_select_mode) echo 'Выбор [0-3]: ' ;;
+        ru:dns_select_mode) echo 'Выберите [0-3]: ' ;;
         fa:dns_select_mode) echo 'انتخاب [۰-۳]: ' ;;
         zh-tw:dns_select_mode) echo '選擇 [0-3]: ' ;;
-        ja:dns_select_mode) echo '選択 [0-3]: ' ;;
+        ja:dns_select_mode) echo '選択してください [0-3]: ' ;;
         zh:dns_select_provider) echo '选择服务商 [0-10]: ' ;;
         en:dns_select_provider) echo 'Select provider [0-10]: ' ;;
-        ru:dns_select_provider) echo 'Выбор провайдера [0-10]: ' ;;
+        ru:dns_select_provider) echo 'Выберите провайдера [0-10]: ' ;;
         fa:dns_select_provider) echo 'انتخاب ارائه‌دهنده [۰-۱۰]: ' ;;
         zh-tw:dns_select_provider) echo '選擇服務商 [0-10]: ' ;;
-        ja:dns_select_provider) echo 'プロバイダを選択 [0-10]: ' ;;
+        ja:dns_select_provider) echo 'プロバイダを選択してください [0-10]: ' ;;
         zh:dns_manual_v4) echo 'IPv4 DNS：' ;;
         en:dns_manual_v4) echo 'IPv4 DNS: ' ;;
         ru:dns_manual_v4) echo 'DNS IPv4: ' ;;
-        fa:dns_manual_v4) echo 'DNS نسخه ۴: ' ;;
+        fa:dns_manual_v4) echo 'DNS ‏IPv4: ' ;;
         zh-tw:dns_manual_v4) echo 'IPv4 DNS：' ;;
         ja:dns_manual_v4) echo 'IPv4 DNS: ' ;;
         zh:dns_manual_v6) echo 'IPv6 DNS：' ;;
         en:dns_manual_v6) echo 'IPv6 DNS: ' ;;
         ru:dns_manual_v6) echo 'DNS IPv6: ' ;;
-        fa:dns_manual_v6) echo 'DNS نسخه ۶: ' ;;
+        fa:dns_manual_v6) echo 'DNS ‏IPv6: ' ;;
         zh-tw:dns_manual_v6) echo 'IPv6 DNS：' ;;
         ja:dns_manual_v6) echo 'IPv6 DNS: ' ;;
         zh:dns_invalid_v4) echo 'IPv4 无效' ;;
@@ -4844,13 +4858,13 @@ tr_msg() {
         en:wl_rb_none) echo 'No previous Wallos versions available for rollback.' ;;
         ru:wl_rb_none) echo 'Нет предыдущих версий Wallos для отката.' ;;
         fa:wl_rb_none) echo 'نسخه قبلی Wallos برای بازگشت در دسترس نیست.' ;;
-        zh-tw:wl_rb_none) echo '沒有可用於回復的上一個 Wallos 版本。' ;;
+        zh-tw:wl_rb_none) echo '沒有可用於回滾的上一個 Wallos 版本。' ;;
         ja:wl_rb_none) echo 'ロールバック可能な以前の Wallos バージョンがありません。' ;;
         zh:wl_rb_no_other) echo '没有其他可用于回滚的 Wallos 版本。' ;;
         en:wl_rb_no_other) echo 'No other Wallos versions available for rollback.' ;;
         ru:wl_rb_no_other) echo 'Нет других версий Wallos для отката.' ;;
         fa:wl_rb_no_other) echo 'نسخه دیگری از Wallos برای بازگشت در دسترس نیست.' ;;
-        zh-tw:wl_rb_no_other) echo '沒有其他可用於回復的 Wallos 版本。' ;;
+        zh-tw:wl_rb_no_other) echo '沒有其他可用於回滾的 Wallos 版本。' ;;
         ja:wl_rb_no_other) echo 'ロールバック可能な他の Wallos バージョンがありません。' ;;
         zh:wl_rb_invalid) echo '选择无效。' ;;
         en:wl_rb_invalid) echo 'Invalid selection.' ;;
@@ -4967,17 +4981,17 @@ tr_msg() {
         zh-tw:wl_health_fail) echo 'Wallos 健康檢查未通過：容器在重啟迴圈或資料庫不完整（核心表缺失），實際不可用。請檢查：docker logs wallos' ;;
         ja:wl_health_fail) echo 'Wallos のヘルスチェックに失敗しました：コンテナが再起動ループ中か、データベースが不完全（主要テーブル欠落）で、実際には使用できません。確認：docker logs wallos' ;;
         zh:dp_existing) echo '已部署节点（见磁盘配置）' ;;
-        en:dp_existing) echo 'existing deployment (on disk)' ;;
+        en:dp_existing) echo 'Deployed nodes (on disk)' ;;
         ru:dp_existing) echo 'существующее развёртывание (на диске)' ;;
         fa:dp_existing) echo 'استقرار موجود (روی دیسک)' ;;
         zh-tw:dp_existing) echo '已部署節點（見磁碟設定）' ;;
-        ja:dp_existing) echo '導入済みノード（ディスク上の設定）' ;;
+        ja:dp_existing) echo 'デプロイ済みノード（ディスク上の設定）' ;;
         zh:oc_replace_warn) echo '本机已有部署（当前：%s）。继续将覆盖同核心的现有配置，只保留 Vision，其余协议节点会被清除！' ;;
         en:oc_replace_warn) echo 'This host already has a deployment (current: %s). Continuing overwrites the existing configuration of that core and keeps only Vision; the other protocol nodes will be removed!' ;;
         ru:oc_replace_warn) echo 'На этом хосте уже есть развёртывание (текущее: %s). Продолжение перезапишет существующую конфигурацию этого ядра и оставит только Vision; остальные узлы протоколов будут удалены!' ;;
         fa:oc_replace_warn) echo 'این میزبان از قبل یک استقرار دارد (کنونی: %s). ادامه کار، پیکربندی موجود آن هسته را بازنویسی و فقط Vision را نگه می‌دارد؛ گره‌های سایر پروتکل‌ها حذف می‌شوند!' ;;
         zh-tw:oc_replace_warn) echo '本機已有部署（目前：%s）。繼續將覆蓋同核心的現有設定，只保留 Vision，其餘協議節點會被清除！' ;;
-        ja:oc_replace_warn) echo 'このホストには導入済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
+        ja:oc_replace_warn) echo 'このホストにはデプロイ済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
         zh:pi_input_closed) echo '交互输入已结束。' ;;
         en:pi_input_closed) echo 'Interactive input closed.' ;;
         ru:pi_input_closed) echo 'Ввод завершён.' ;;
@@ -5025,7 +5039,7 @@ tr_msg() {
         ru:pf_warp_confirm) echo 'Продолжить развёртывание с текущим маршрутом по умолчанию? [Y/N]: ' ;;
         fa:pf_warp_confirm) echo 'با همین مسیر پیش‌فرض فعلی استقرار ادامه یابد؟ [Y/N]: ' ;;
         zh-tw:pf_warp_confirm) echo '仍要使用目前預設公網路由繼續部署嗎？[Y/N]: ' ;;
-        ja:pf_warp_confirm) echo '現在のデフォルトルートのまま導入を続けますか？[Y/N]: ' ;;
+        ja:pf_warp_confirm) echo '現在のデフォルトルートのままデプロイを続けますか？[Y/N]: ' ;;
         zh:pf_warp_unconfirmed) echo '未确认使用 wg/warp/tun 默认出口。' ;;
         en:pf_warp_unconfirmed) echo 'Use of the wg/warp/tun default egress was not confirmed.' ;;
         ru:pf_warp_unconfirmed) echo 'Использование выхода wg/warp/tun по умолчанию не подтверждено.' ;;
@@ -5037,7 +5051,7 @@ tr_msg() {
         ru:pf_warp_noninteractive) echo 'Неинтерактивное развёртывание обнаружило выход wg/warp/tun по умолчанию; подтвердите в интерактивном режиме перед развёртыванием.' ;;
         fa:pf_warp_noninteractive) echo 'استقرار غیرتعاملی خروجی پیش‌فرض wg/warp/tun را تشخیص داد؛ پیش از استقرار باید در محیط تعاملی تأیید شود.' ;;
         zh-tw:pf_warp_noninteractive) echo '非互動部署偵測到 wg/warp/tun 預設出口；必須先在互動環境確認後再部署。' ;;
-        ja:pf_warp_noninteractive) echo '非対話型の導入で wg/warp/tun のデフォルト出口を検出しました。導入前に、対話環境で明示的に確認してください。' ;;
+        ja:pf_warp_noninteractive) echo '非対話型のデプロイで wg/warp/tun のデフォルト出口を検出しました。デプロイ前に、対話環境で明示的に確認してください。' ;;
         zh:pf_no_init) echo '未检测到受支持的 init 系统' ;;
         en:pf_no_init) echo 'no supported init system detected' ;;
         ru:pf_no_init) echo 'не обнаружена поддерживаемая система инициализации' ;;
@@ -5085,31 +5099,31 @@ tr_msg() {
         ru:dp_stop_warn) echo 'A-Box остановит управляемые службы перед развёртыванием нового стека.' ;;
         fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
         zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
-        ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        ja:dp_stop_warn) echo 'A-Box は新しいスタックをデプロイする前に、管理対象サービスを停止します。' ;;
         zh:dp_cred_regen) echo '覆盖重部署将重生成主凭据，旧订阅链接随即失效，须重新导出。' ;;
         en:dp_cred_regen) echo 'Overwrite redeploy regenerates the main credentials; old subscription links stop working and must be re-exported.' ;;
         ru:dp_cred_regen) echo 'Переустановка с заменой повторно создаёт основные учётные данные; старые ссылки подписки перестают работать, их нужно экспортировать заново.' ;;
         fa:dp_cred_regen) echo 'استقرار مجدد با بازنویسی، اعتبار اصلی را دوباره تولید می‌کند؛ پیوندهای اشتراک قدیمی از کار می‌افتند و باید دوباره صادر شوند.' ;;
         zh-tw:dp_cred_regen) echo '覆寫重部署將重新產生主憑據，舊訂閱連結隨即失效，須重新匯出。' ;;
-        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古い購読リンクは無効になるため、再エクスポートが必要です。' ;;
+        ja:dp_cred_regen) echo '上書き再デプロイではメインの認証情報が再生成され、古いサブスクリプションリンクは無効になるため、再エクスポートが必要です。' ;;
         zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
         en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
         ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
         fa:dp_current) echo 'پیکربندی کنونی: %s | استقرار جدید: %s' ;;
         zh-tw:dp_current) echo '目前設定：%s | 新部署：%s' ;;
-        ja:dp_current) echo '現在の設定: %s | 新規導入: %s' ;;
+        ja:dp_current) echo '現在の設定: %s | 新規デプロイ: %s' ;;
         zh:dp_fast_skip) echo '[快速/一键] 全新主机，跳过部署确认。' ;;
         en:dp_fast_skip) echo '[fast/one-click] fresh host; skip deploy confirm.' ;;
         ru:dp_fast_skip) echo '[быстрый/в один клик] новый хост; подтверждение развёртывания пропущено.' ;;
         fa:dp_fast_skip) echo '[سریع/یک‌کلیکه] میزبان تازه؛ تأیید استقرار رد شد.' ;;
         zh-tw:dp_fast_skip) echo '[快速/一鍵] 全新主機，略過部署確認。' ;;
-        ja:dp_fast_skip) echo '[高速/ワンクリック] 新規ホストのため、導入確認をスキップします。' ;;
+        ja:dp_fast_skip) echo '[高速/ワンクリック] 新規ホストのため、デプロイ確認をスキップします。' ;;
         zh:dp_cancelled) echo '已取消部署。' ;;
         en:dp_cancelled) echo 'Deployment canceled.' ;;
         ru:dp_cancelled) echo 'Развёртывание отменено.' ;;
         fa:dp_cancelled) echo 'استقرار لغو شد.' ;;
         zh-tw:dp_cancelled) echo '已取消部署。' ;;
-        ja:dp_cancelled) echo '導入をキャンセルしました。' ;;
+        ja:dp_cancelled) echo 'デプロイをキャンセルしました。' ;;
         zh:dp_ports_title) echo '当前端口占用（端口 → 协议）：' ;;
         en:dp_ports_title) echo 'Ports currently in use (port -> protocol):' ;;
         ru:dp_ports_title) echo 'Занятые сейчас порты (порт -> протокол):' ;;
@@ -5130,7 +5144,7 @@ tr_msg() {
         ja:dp_ports_external) echo '外部プロセス/不明' ;;
         zh:dp_choice_overwrite) echo '1) 覆盖部署 — 清除现有部署后重新部署（现有独立协议将被删除）' ;;
         en:dp_choice_overwrite) echo '1) Overwrite - wipe the current deployment and redeploy (existing standalone protocols will be removed)' ;;
-        ru:dp_choice_overwrite) echo '1) Перезапись - снести текущее развёртывание и развернуть заново (отдельные протоколы будут удалены)' ;;
+        ru:dp_choice_overwrite) echo '1) Перезапись - удалить текущее развёртывание и развернуть заново (отдельные протоколы будут удалены)' ;;
         fa:dp_choice_overwrite) echo '1) بازنویسی - حذف استقرار فعلی و استقرار دوباره (پروتکل‌های مستقل موجود حذف می‌شوند)' ;;
         zh-tw:dp_choice_overwrite) echo '1) 覆蓋部署 — 清除現有部署後重新部署（現有獨立協定將被刪除）' ;;
         ja:dp_choice_overwrite) echo '1) 上書き - 現在のデプロイを消去して再デプロイ（既存の独立プロトコルは削除されます）' ;;
@@ -5181,7 +5195,7 @@ tr_msg() {
         ru:dp_preserve_fail) echo 'Сохранить отдельные протоколы того же ядра не удалось (%s); продолжаю только с новой конфигурацией. Их можно добавить заново в разделе «Ещё протоколы».' ;;
         fa:dp_preserve_fail) echo 'حفظ پروتکل‌های مستقلِ هم‌هسته ناموفق بود (%s)؛ فقط با پیکربندی جدید ادامه داده می‌شود. پروتکل‌ها را می‌توان از «پروتکل‌های بیشتر» دوباره افزود.' ;;
         zh-tw:dp_preserve_fail) echo '同核心獨立協定保留失敗（%s），已回退為僅新設定；獨立協定可透過「更多協定」重新加入。' ;;
-        ja:dp_preserve_fail) echo '同じコアの独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「その他のプロトコル」から再追加できます。' ;;
+        ja:dp_preserve_fail) echo '同じコアの独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「追加のプロトコル」から再追加できます。' ;;
         zh:dp_preserve_snapshot_fail) echo '独立入站快照失败，保留未生效。' ;;
         en:dp_preserve_snapshot_fail) echo 'Standalone inbound snapshot failed; preservation is not in effect.' ;;
         ru:dp_preserve_snapshot_fail) echo 'Не удалось создать снимок отдельных входящих; сохранение не действует.' ;;
@@ -5253,7 +5267,7 @@ tr_msg() {
         ru:pi_oneclick_sni_fail) echo 'Автовыбор SNI и запасной Amazon не прошли живую проверку; установка в один клик остановлена, чтобы не развернуть нерабочий узел. Используйте интерактивную установку и введите проверяемый SNI.' ;;
         fa:pi_oneclick_sni_fail) echo 'انتخاب خودکار SNI و جایگزین Amazon هر دو در بررسی زنده رد شدند؛ نصب یک‌کلیکه متوقف شد تا گره غیرقابل استفاده مستقر نشود. از نصب تعاملی استفاده کنید و یک SNI قابل بررسی وارد کنید.' ;;
         zh-tw:pi_oneclick_sni_fail) echo 'SNI 自動優選及 Amazon 回退均未通過即時驗證；為避免部署不可用節點，已停止一鍵安裝。請使用互動式安裝並輸入可驗證的 SNI。' ;;
-        ja:pi_oneclick_sni_fail) echo 'SNI の自動選択と Amazon フォールバックの両方がライブ検証に失敗しました。使用できないノードの導入を避けるため、ワンクリックインストールを停止しました。対話型インストールで検証可能な SNI を入力してください。' ;;
+        ja:pi_oneclick_sni_fail) echo 'SNI の自動選択と Amazon フォールバックの両方がライブ検証に失敗しました。使用できないノードのデプロイを避けるため、ワンクリックインストールを停止しました。対話型インストールで検証可能な SNI を入力してください。' ;;
         zh:pi_oneclick_defaults) echo '[one-click] Vision REALITY 默认值：port=%s SNI=%s' ;;
         en:pi_oneclick_defaults) echo '[one-click] Vision REALITY defaults: port=%s SNI=%s' ;;
         ru:pi_oneclick_defaults) echo '[one-click] Значения Vision REALITY по умолчанию: port=%s SNI=%s' ;;
@@ -5278,12 +5292,12 @@ tr_msg() {
         fa:pi_sni_closed) echo 'ورودی SNI مربوط به %s بسته شد.' ;;
         zh-tw:pi_sni_closed) echo '%s SNI 輸入已結束。' ;;
         ja:pi_sni_closed) echo '%s の SNI 入力が終了しました。' ;;
-        zh:pi_hy2_domain_sb) echo '可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: ' ;;
-        en:pi_hy2_domain_sb) echo 'Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): ' ;;
-        ru:pi_hy2_domain_sb) echo 'Необязательный домен сервера для самоподписанного сертификата/SNI Sing-box HY2 (пусто = IP + pinSHA256): ' ;;
-        fa:pi_hy2_domain_sb) echo 'دامنه اختیاری سرور برای گواهی خودامضا/SNI در Sing-box HY2 (خالی = IP + pinSHA256): ' ;;
-        zh-tw:pi_hy2_domain_sb) echo '可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: ' ;;
-        ja:pi_hy2_domain_sb) echo 'Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: ' ;;
+        zh:pi_hy2_domain_sb) echo '可选填写 sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: ' ;;
+        en:pi_hy2_domain_sb) echo 'Optional server domain for sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): ' ;;
+        ru:pi_hy2_domain_sb) echo 'Необязательный домен сервера для самоподписанного сертификата/SNI sing-box HY2 (пусто = IP + pinSHA256): ' ;;
+        fa:pi_hy2_domain_sb) echo 'دامنه اختیاری سرور برای گواهی خودامضا/SNI در sing-box HY2 (خالی = IP + pinSHA256): ' ;;
+        zh-tw:pi_hy2_domain_sb) echo '可選填寫 sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: ' ;;
+        ja:pi_hy2_domain_sb) echo 'sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: ' ;;
         zh:pi_hy2_domain) echo '是否拥有已解析到本机的域名？(留空使用默认自签证书): ' ;;
         en:pi_hy2_domain) echo 'Do you have a domain already resolved to this server? (empty = self-signed certificate): ' ;;
         ru:pi_hy2_domain) echo 'Есть ли у вас домен, уже направленный на этот сервер? (пусто = самоподписанный сертификат): ' ;;
@@ -5373,13 +5387,13 @@ tr_msg() {
         ru:pi_acme_port_advice) echo 'Сначала освободите 80/tcp или перейдите на Cloudflare DNS-01 ACME перед развёртыванием доменного сертификата HY2.' ;;
         fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
         zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
-        ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
+        ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書をデプロイしてください。' ;;
         zh:tl_body) echo '日常部署：Xray、sing-box 与 Hysteria 默认跟随最新正式稳定版。显式选择 pinned 策略时，三者的固定目标依次为：%s / %s / %s。' ;;
         en:tl_body) echo 'Routine deployment: Xray, sing-box and Hysteria default to the latest official stable release. When the pinned policy is explicitly selected, their fixed targets, in the same order, are: %s / %s / %s.' ;;
         ru:tl_body) echo 'При обычном развёртывании Xray, sing-box и Hysteria по умолчанию используют последний официальный стабильный выпуск. При явном выборе политики pinned фиксированные версии в том же порядке: %s / %s / %s.' ;;
         fa:tl_body) echo 'در استقرار عادی، Xray، sing-box و Hysteria به‌طور پیش‌فرض آخرین نسخه پایدار رسمی را انتخاب می‌کنند. با انتخاب صریح سیاست pinned، نسخه‌های ثابت به همان ترتیب عبارت‌اند از: %s / %s / %s.' ;;
         zh-tw:tl_body) echo '日常部署：Xray、sing-box 與 Hysteria 預設跟隨最新正式穩定版。明確選擇 pinned 策略時，三者的固定目標依序為：%s / %s / %s。' ;;
-        ja:tl_body) echo '通常の導入では、Xray、sing-box、Hysteria は既定で最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
+        ja:tl_body) echo '通常のデプロイでは、Xray、sing-box、Hysteria は既定で最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
         zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
         en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
         ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
@@ -5618,7 +5632,7 @@ tr_msg() {
         en:mu_guard_no_file) echo 'Failed to apply: not running from a regular script file (one-liner install), so the multi-user guard runner cannot be built.' ;;
         ru:mu_guard_no_file) echo 'Не удалось применить: запуск выполнен не из обычного файла скрипта (однострочная установка), поэтому runner многопользовательской защиты создать нельзя.' ;;
         fa:mu_guard_no_file) echo 'تنظیم ناموفق بود: از یک فایل اسکریپت معمولی اجرا نشده است (نصب تک‌خطی)، بنابراین نمی‌توان runner محافظت چندکاربره را ساخت.' ;;
-        zh-tw:mu_guard_no_file) echo '設定失敗：目前不是以常規指令碼檔案執行（一鍵命令），無法產生多使用者守護。' ;;
+        zh-tw:mu_guard_no_file) echo '設定失敗：目前不是以常規腳本檔案執行（一鍵命令），無法產生多使用者守護。' ;;
         ja:mu_guard_no_file) echo '設定に失敗しました：通常のスクリプトファイルから実行されていないため（ワンライナー）、マルチユーザーガードのランナーを作成できません。' ;;
         zh:mu_days_prompt) echo '有效天数 (0=永久): ' ;;
         en:mu_days_prompt) echo 'Valid days (0 = forever): ' ;;
@@ -5715,7 +5729,7 @@ tr_msg() {
         ru:mu_export) echo 'Экспорт всех ссылок пользователей (файлы подписки)' ;;
         fa:mu_export) echo 'خروجی همه پیوندهای کاربران (فایل‌های اشتراک)' ;;
         zh-tw:mu_export) echo '匯出全部用戶連結（訂閱檔案）' ;;
-        ja:mu_export) echo '全ユーザーのリンクをエクスポート（購読ファイル）' ;;
+        ja:mu_export) echo '全ユーザーのリンクをエクスポート（サブスクリプションファイル）' ;;
         zh:mu_back_word) echo '返回' ;;
         en:mu_back_word) echo 'Back' ;;
         ru:mu_back_word) echo 'Назад' ;;
@@ -5727,7 +5741,7 @@ tr_msg() {
         ru:mu_exported) echo 'Ссылки экспортированы в каталог подписки (количество)' ;;
         fa:mu_exported) echo 'پیوندهای کاربران به پوشه اشتراک صادر شد (تعداد)' ;;
         zh-tw:mu_exported) echo '已匯出用戶連結到訂閱目錄（條數）' ;;
-        ja:mu_exported) echo 'ユーザーリンクを購読ディレクトリにエクスポートしました（件数）' ;;
+        ja:mu_exported) echo 'ユーザーリンクをサブスクリプションディレクトリにエクスポートしました（件数）' ;;
         zh:mu_export_fail) echo '导出失败或无可用链接。' ;;
         en:mu_export_fail) echo 'Export failed or no links available.' ;;
         ru:mu_export_fail) echo 'Экспорт не удался или нет доступных ссылок.' ;;
@@ -6374,7 +6388,7 @@ tr_msg() {
         en:manual_start_managed_stack_start_commit_fail) echo 'Starting or enabling at least one managed service, or committing the state, failed; rollback of this operation was attempted.' ;;
         ru:manual_start_managed_stack_start_commit_fail) echo 'Не удалось запустить или включить хотя бы один управляемый сервис либо зафиксировать состояние; предпринята попытка отката этой операции.' ;;
         fa:manual_start_managed_stack_start_commit_fail) echo 'راه‌اندازی یا فعال‌سازی حداقل یک سرویس مدیریت‌شده، یا ثبت نهایی وضعیت ناموفق بود؛ تلاش برای بازگردانی این عملیات انجام شد.' ;;
-        zh-tw:manual_start_managed_stack_start_commit_fail) echo '至少一個受管理服務啟動／啟用或狀態提交失敗；已嘗試回復本次操作。' ;;
+        zh-tw:manual_start_managed_stack_start_commit_fail) echo '至少一個受管理服務啟動／啟用或狀態提交失敗；已嘗試回滾本次操作。' ;;
         ja:manual_start_managed_stack_start_commit_fail) echo '少なくとも1つの管理対象サービスの起動／有効化、または状態のコミットに失敗しました。今回の操作のロールバックを試みました。' ;;
         zh:manual_start_managed_stack_tx_cleanup_fail) echo '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。' ;;
         en:manual_start_managed_stack_tx_cleanup_fail) echo 'Service state transaction cleanup failed; services started as expected, but transaction artifacts could not be removed.' ;;
@@ -6476,19 +6490,19 @@ tr_msg() {
         en:setup_zram_swap_helper_write_fail) echo 'Failed to write the zram helper script.' ;;
         ru:setup_zram_swap_helper_write_fail) echo 'Не удалось записать вспомогательный скрипт zram.' ;;
         fa:setup_zram_swap_helper_write_fail) echo 'نوشتن اسکریپت کمکی zram ناموفق بود.' ;;
-        zh-tw:setup_zram_swap_helper_write_fail) echo 'zram 輔助指令碼寫入失敗。' ;;
+        zh-tw:setup_zram_swap_helper_write_fail) echo 'zram 輔助腳本寫入失敗。' ;;
         ja:setup_zram_swap_helper_write_fail) echo 'zram 補助スクリプトの書き込みに失敗しました。' ;;
         zh:setup_zram_swap_enable_cleanup_fail) echo 'zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。' ;;
         en:setup_zram_swap_enable_cleanup_fail) echo 'Failed to enable zram, and failure cleanup could not deactivate the swap space already activated; the helper and configuration have been retained. Run swapoff manually, then retry.' ;;
         ru:setup_zram_swap_enable_cleanup_fail) echo 'Не удалось включить zram, а очистка после сбоя не смогла отключить уже активированную область подкачки; вспомогательный скрипт и конфигурация сохранены. Выполните swapoff вручную, затем повторите попытку.' ;;
         fa:setup_zram_swap_enable_cleanup_fail) echo 'فعال‌سازی zram ناموفق بود و پاک‌سازی پس از خطا نتوانست فضای مبادله فعال‌شده را غیرفعال کند؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند. swapoff را دستی اجرا کنید، سپس دوباره تلاش کنید.' ;;
-        zh-tw:setup_zram_swap_enable_cleanup_fail) echo 'zram 啟用失敗，且失敗清理無法停用已啟用的交換區；已保留輔助指令碼與設定，請手動執行 swapoff 後重試。' ;;
+        zh-tw:setup_zram_swap_enable_cleanup_fail) echo 'zram 啟用失敗，且失敗清理無法停用已啟用的交換區；已保留輔助腳本與設定，請手動執行 swapoff 後重試。' ;;
         ja:setup_zram_swap_enable_cleanup_fail) echo 'zram の有効化に失敗し、失敗時のクリーンアップでも既に有効になったスワップ領域を無効化できませんでした。補助スクリプトと設定は保持しています。手動で swapoff を実行してから再試行してください。' ;;
         zh:setup_zram_swap_enable_fail) echo 'zram 启用失败（设备创建/格式化/挂载任一环节未通过），已保留助手与配置（既有开机建置不受影响）。请改用磁盘 Swap 文件。' ;;
         en:setup_zram_swap_enable_fail) echo 'Failed to enable zram (device creation, formatting, or mounting failed); the helper and configuration have been retained (existing boot setup is unaffected). Use a disk Swap file instead.' ;;
         ru:setup_zram_swap_enable_fail) echo 'Не удалось включить zram (сбой создания устройства, форматирования или подключения); вспомогательный скрипт и конфигурация сохранены (существующая настройка при загрузке не затронута). Используйте дисковый файл Swap.' ;;
         fa:setup_zram_swap_enable_fail) echo 'فعال‌سازی zram ناموفق بود (ایجاد دستگاه، قالب‌بندی یا اتصال شکست خورد)؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند (تنظیمات موجود هنگام بوت تحت تأثیر نیستند). به‌جای آن از فایل Swap روی دیسک استفاده کنید.' ;;
-        zh-tw:setup_zram_swap_enable_fail) echo 'zram 啟用失敗（裝置建立／格式化／掛載任一環節未通過），已保留輔助指令碼與設定（既有開機設定不受影響）。請改用磁碟 Swap 檔案。' ;;
+        zh-tw:setup_zram_swap_enable_fail) echo 'zram 啟用失敗（裝置建立／格式化／掛載任一環節未通過），已保留輔助腳本與設定（既有開機設定不受影響）。請改用磁碟 Swap 檔案。' ;;
         ja:setup_zram_swap_enable_fail) echo 'zram の有効化に失敗しました（デバイス作成／フォーマット／マウントのいずれかで失敗）。補助スクリプトと設定は保持しています（既存の起動時設定には影響しません）。代わりにディスク Swap ファイルを使用してください。' ;;
         zh:setup_zram_swap_autostart_systemd_fail) echo 'zram 已启用，但开机自启设置未成功（systemctl enable 失败），重启后需手动重新启用。' ;;
         en:setup_zram_swap_autostart_systemd_fail) echo 'zram is enabled, but boot autostart setup failed (systemctl enable failed); you must enable it again manually after reboot.' ;;
@@ -6689,7 +6703,7 @@ tr_msg() {
         zh-tw:manual_stop_managed_stack_tx_cleanup_fail) echo '服務狀態交易清理失敗；服務已按預期停止，但未能清理交易資料。' ;;
         ja:manual_stop_managed_stack_tx_cleanup_fail) echo 'サービス状態トランザクションのクリーンアップに失敗しました。サービスは期待どおり停止しましたが、トランザクションの関連データを削除できませんでした。' ;;
         zh:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
-        en:traffic_management_menu_dash_title) echo 'Monthly Traffic Management / Monthly Traffic' ;;
+        en:traffic_management_menu_dash_title) echo 'Monthly Traffic Management' ;;
         ru:traffic_management_menu_dash_title) echo 'Управление месячным трафиком / Monthly Traffic' ;;
         fa:traffic_management_menu_dash_title) echo 'مدیریت ترافیک ماهانه / Monthly Traffic' ;;
         zh-tw:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
@@ -6811,19 +6825,19 @@ tr_msg() {
         zh:cl_m_all) echo '清空全部节点协议（保留核心与脚本）' ;;
         en:cl_m_all) echo 'Remove all node protocols (keep cores & script)' ;;
         ru:cl_m_all) echo 'Удалить все протоколы узлов (ядра и скрипт сохраняются)' ;;
-        fa:cl_m_all) echo 'حذف همه پروتکل‌های نود (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
+        fa:cl_m_all) echo 'حذف همه پروتکل‌های گره (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
         zh-tw:cl_m_all) echo '清空全部節點協議（保留核心與腳本）' ;;
         ja:cl_m_all) echo '全ノードプロトコルを削除（コアとスクリプトは保持）' ;;
         zh:cl_m_reset) echo '重置环境（删除全部节点，可凭自动备份恢复）' ;;
         en:cl_m_reset) echo 'Reset environment (deletes all nodes; recoverable from auto-backup)' ;;
-        ru:cl_m_reset) echo 'Сброс окружения (удаляет все узлы; восстановление из автобэкапа)' ;;
+        ru:cl_m_reset) echo 'Сброс окружения (удаляет все узлы; восстановление из автоматической резервной копии)' ;;
         fa:cl_m_reset) echo 'بازنشانی محیط (همهٔ گره‌ها حذف می‌شوند؛ بازیابی از پشتیبان خودکار ممکن است)' ;;
         zh-tw:cl_m_reset) echo '重置環境（刪除全部節點，可憑自動備份恢復）' ;;
         ja:cl_m_reset) echo '環境リセット（全ノードを削除、自動バックアップから復旧可）' ;;
         zh:cl_none) echo '当前没有已部署的节点协议。' ;;
         en:cl_none) echo 'No node protocols are currently deployed.' ;;
         ru:cl_none) echo 'Сейчас нет развёрнутых протоколов узлов.' ;;
-        fa:cl_none) echo 'در حال حاضر هیچ پروتکل نودی مستقر نیست.' ;;
+        fa:cl_none) echo 'در حال حاضر هیچ پروتکل گرهی مستقر نیست.' ;;
         zh-tw:cl_none) echo '目前沒有已部署的節點協議。' ;;
         ja:cl_none) echo '現在デプロイ済みのノードプロトコルはありません。' ;;
         zh:cl_select) echo '请选择：' ;;
@@ -6883,13 +6897,13 @@ tr_msg() {
         zh:cl_confirm_all) echo '确认清空全部节点协议？核心与脚本保留。' ;;
         en:cl_confirm_all) echo 'Remove ALL node protocols? Cores and the script are kept.' ;;
         ru:cl_confirm_all) echo 'Удалить ВСЕ протоколы узлов? Ядра и скрипт сохраняются.' ;;
-        fa:cl_confirm_all) echo 'همه پروتکل‌های نود حذف شوند؟ هسته‌ها و اسکریپت حفظ می‌شوند.' ;;
+        fa:cl_confirm_all) echo 'همه پروتکل‌های گره حذف شوند؟ هسته‌ها و اسکریپت حفظ می‌شوند.' ;;
         zh-tw:cl_confirm_all) echo '確認清空全部節點協議？核心與腳本保留。' ;;
         ja:cl_confirm_all) echo '全ノードプロトコルを削除しますか？コアとスクリプトは保持されます。' ;;
         zh:cl_all_done) echo '全部节点协议已清空（核心与脚本保留）。' ;;
         en:cl_all_done) echo 'All node protocols removed (cores & script kept).' ;;
         ru:cl_all_done) echo 'Все протоколы узлов удалены (ядра и скрипт сохранены).' ;;
-        fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
+        fa:cl_all_done) echo 'همه پروتکل‌های گره حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
         zh:cl_all_fail) echo '全部清空未完成，请检查上方失败提示。' ;;
@@ -7024,11 +7038,11 @@ tr_msg() {
         fa:select_prompt) echo 'انتخاب کنید' ;;
         zh-tw:select_prompt) echo '請選擇 / Select' ;;
         ja:select_prompt) echo '選択してください' ;;
-        zh:main_command) echo '请求下发执行代号: ' ;;
+        zh:main_command) echo '请输入选项编号：' ;;
         en:main_command) echo 'Input command: ' ;;
         ru:main_command) echo 'Введите команду: ' ;;
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
-        zh-tw:main_command) echo '請求下發執行代號: ' ;;
+        zh-tw:main_command) echo '請輸入選項編號：' ;;
         ja:main_command) echo 'コマンドを入力: ' ;;
         zh:invalid_input) echo '无效输入' ;;
         en:invalid_input) echo 'Invalid input' ;;
@@ -7058,7 +7072,7 @@ tr_msg() {
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
         ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
         fa:reality_sni_prompt) echo '   %s نام SNI پوششی را وارد کنید (درگاه %s، پیش‌فرض: %s): ' ;;
-        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (端口 %s，回車默認: %s): ' ;;
+        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (連接埠 %s，回車默認: %s): ' ;;
         ja:reality_sni_prompt) echo '   %s カモフラージュ SNI を入力 (ポート %s、デフォルト: %s): ' ;;
         zh:bad_sni) echo 'SNI 格式非法: %s' ;;
         en:bad_sni) echo 'Invalid SNI format: %s' ;;
@@ -7070,7 +7084,7 @@ tr_msg() {
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
-        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽端口 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該端口符合你的網絡環境。' ;;
+        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽連接埠 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該連接埠符合你的網絡環境。' ;;
         ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。ご利用のネットワークでこのポートが適切か確認してください。' ;;
         zh:reality_mlkem_notice_title) echo '[!] REALITY 兼容提示：部分客户端无法直连本节点' ;;
         en:reality_mlkem_notice_title) echo '[!] REALITY compatibility notice: some clients cannot connect directly to this node' ;;
@@ -7130,19 +7144,19 @@ tr_msg() {
         en:port_prompt) echo '   %s Enter listen port (default: %s): ' ;;
         ru:port_prompt) echo '   %s Введите порт прослушивания (по умолчанию: %s): ' ;;
         fa:port_prompt) echo '   %s درگاه شنود را وارد کنید (پیش‌فرض: %s): ' ;;
-        zh-tw:port_prompt) echo '   %s 請輸入監聽端口 (回車默認: %s): ' ;;
+        zh-tw:port_prompt) echo '   %s 請輸入監聽連接埠 (回車默認: %s): ' ;;
         ja:port_prompt) echo '   %s リッスンポートを入力 (デフォルト: %s): ' ;;
         zh:ss_port_prompt) echo '   %s 请输入回程监听端口(TCP/UDP) (回车默认: %s): ' ;;
         en:ss_port_prompt) echo '   %s Enter relay listen port (TCP/UDP, default: %s): ' ;;
         ru:ss_port_prompt) echo '   %s Введите порт ретрансляции (TCP/UDP, по умолчанию: %s): ' ;;
         fa:ss_port_prompt) echo '   %s درگاه رله (TCP/UDP، پیش‌فرض: %s) را وارد کنید: ' ;;
-        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽端口(TCP/UDP) (回車默認: %s): ' ;;
+        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽連接埠(TCP/UDP) (回車默認: %s): ' ;;
         ja:ss_port_prompt) echo '   %s リレー受信ポートを入力 (TCP/UDP、デフォルト: %s): ' ;;
         zh:bad_port) echo '端口非法: %s' ;;
         en:bad_port) echo 'Invalid port: %s' ;;
         ru:bad_port) echo 'Недопустимый порт: %s' ;;
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
-        zh-tw:bad_port) echo '端口非法: %s' ;;
+        zh-tw:bad_port) echo '連接埠無效: %s' ;;
         ja:bad_port) echo '無効なポート: %s' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
@@ -7179,12 +7193,12 @@ tr_msg() {
         ru:socks5_title) echo 'Развёртывание SOCKS5 (Xray-core)' ;;
         fa:socks5_title) echo 'استقرار پروکسی لندینگ SOCKS5 (Xray-core)' ;;
         zh-tw:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
-        ja:socks5_title) echo 'SOCKS5 ランディングプロキシを展開 (Xray-core)' ;;
+        ja:socks5_title) echo 'SOCKS5 ランディングプロキシをデプロイ (Xray-core)' ;;
         zh:socks5_port_prompt) echo '请输入 SOCKS5 监听端口 (回车默认 1080): ' ;;
         en:socks5_port_prompt) echo 'Enter SOCKS5 listen port (default 1080): ' ;;
         ru:socks5_port_prompt) echo 'Введите порт SOCKS5 (по умолчанию 1080): ' ;;
         fa:socks5_port_prompt) echo 'درگاه SOCKS5 را وارد کنید (پیش‌فرض 1080): ' ;;
-        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽端口 (回車默認 1080): ' ;;
+        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽連接埠 (回車默認 1080): ' ;;
         ja:socks5_port_prompt) echo 'SOCKS5 リッスンポートを入力 (デフォルト 1080): ' ;;
         zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 main): ' ;;
         en:socks5_user_prompt) echo 'Enter SOCKS5 username (default main): ' ;;
@@ -7197,36 +7211,36 @@ tr_msg() {
         ru:socks5_sb_title) echo 'Развёртывание SOCKS5/Mixed (sing-box)' ;;
         fa:socks5_sb_title) echo 'استقرار پروکسی لندینگ SOCKS5/Mixed (sing-box)' ;;
         zh-tw:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
-        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシを展開 (sing-box)' ;;
+        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシをデプロイ (sing-box)' ;;
         zh:socks5_proto_prompt) echo '选择协议类型 [1] mixed (推荐, SOCKS5+HTTP同端口) [2] 纯SOCKS5: ' ;;
         en:socks5_proto_prompt) echo 'Protocol [1] mixed (recommended, SOCKS5+HTTP same port) [2] plain SOCKS5: ' ;;
-        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется) [2] только SOCKS5: ' ;;
-        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی) [۲] فقط SOCKS5: ' ;;
-        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同端口) [2] 純SOCKS5: ' ;;
-        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨) [2] SOCKS5のみ: ' ;;
+        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется: SOCKS5 и HTTP на одном порту) [2] только SOCKS5: ' ;;
+        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی: SOCKS5 و HTTP روی یک پورت) [۲] فقط SOCKS5: ' ;;
+        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同一連接埠) [2] 純SOCKS5: ' ;;
+        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨、SOCKS5+HTTP 同一ポート) [2] SOCKS5のみ: ' ;;
         zh:socks5_core_prompt) echo '选择核心 [1] Xray (纯SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
         en:socks5_core_prompt) echo 'Select core [1] Xray (plain SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
-        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
-        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box (mixed): ' ;;
+        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (только SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray (فقط SOCKS5) [۲] sing-box (mixed، SOCKS5+HTTP): ' ;;
         zh-tw:socks5_core_prompt) echo '選擇核心 [1] Xray (純SOCKS5) [2] sing-box (mixed): ' ;;
-        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5 のみ) [2] sing-box (mixed、SOCKS5+HTTP): ' ;;
         zh:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
         en:trojan_title) echo 'Deploy Trojan-Reality landing proxy (Xray-core)' ;;
         ru:trojan_title) echo 'Развёртывание Trojan-Reality (Xray-core)' ;;
         fa:trojan_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (Xray-core)' ;;
         zh-tw:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
-        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシを展開 (Xray-core)' ;;
+        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシをデプロイ (Xray-core)' ;;
         zh:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
         en:trojan_sb_title) echo 'Deploy Trojan-Reality landing proxy (sing-box)' ;;
         ru:trojan_sb_title) echo 'Развёртывание Trojan-Reality (sing-box)' ;;
         fa:trojan_sb_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (sing-box)' ;;
         zh-tw:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
-        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシを展開 (sing-box)' ;;
+        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシをデプロイ (sing-box)' ;;
         zh:trojan_port_prompt) echo '请输入 Trojan 监听端口 (回车默认 443): ' ;;
         en:trojan_port_prompt) echo 'Enter Trojan listen port (default 443): ' ;;
         ru:trojan_port_prompt) echo 'Введите порт Trojan (по умолчанию 443): ' ;;
         fa:trojan_port_prompt) echo 'درگاه Trojan را وارد کنید (پیش‌فرض 443): ' ;;
-        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽端口 (回車默認 443): ' ;;
+        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽連接埠 (回車默認 443): ' ;;
         ja:trojan_port_prompt) echo 'Trojan リッスンポートを入力 (デフォルト 443): ' ;;
         zh:trojan_pass_prompt) echo '请输入 Trojan 密码 (回车自动生成随机密码): ' ;;
         en:trojan_pass_prompt) echo 'Enter Trojan password (Enter to auto-generate): ' ;;
@@ -7245,7 +7259,7 @@ tr_msg() {
         ru:trojan_done) echo 'Trojan-Reality развёрнут, ссылка:' ;;
         fa:trojan_done) echo 'Trojan-Reality مستقر شد، لینک:' ;;
         zh-tw:trojan_done) echo 'Trojan-Reality 部署完成，鏈接如下：' ;;
-        ja:trojan_done) echo 'Trojan-Reality を展開しました、リンク:' ;;
+        ja:trojan_done) echo 'Trojan-Reality をデプロイしました、リンク:' ;;
         zh:trojan_core_prompt) echo '选择核心 [1] Xray [2] sing-box: ' ;;
         en:trojan_core_prompt) echo 'Select core [1] Xray [2] sing-box: ' ;;
         ru:trojan_core_prompt) echo 'Выберите ядро [1] Xray [2] sing-box: ' ;;
@@ -7257,7 +7271,7 @@ tr_msg() {
         ru:tuic_title) echo 'Развернуть TUIC (sing-box)' ;;
         fa:tuic_title) echo 'استقرار TUIC (sing-box)' ;;
         zh-tw:tuic_title) echo '部署 TUIC 落地代理 (sing-box)' ;;
-        ja:tuic_title) echo 'TUIC を展開 (sing-box)' ;;
+        ja:tuic_title) echo 'TUIC をデプロイ (sing-box)' ;;
         zh:tuic_port_prompt) echo '请输入 TUIC 监听端口 (UDP, 回车默认 443): ' ;;
         en:tuic_port_prompt) echo 'Enter TUIC listen port (UDP, Enter for 443): ' ;;
         ru:tuic_port_prompt) echo 'Порт TUIC (UDP, Enter = 443): ' ;;
@@ -7287,13 +7301,13 @@ tr_msg() {
         ru:tuic_done) echo 'TUIC развернут, ссылка ниже:' ;;
         fa:tuic_done) echo 'TUIC مستقر شد، لینک زیر:' ;;
         zh-tw:tuic_done) echo 'TUIC 部署完成，連結如下：' ;;
-        ja:tuic_done) echo 'TUIC を展開しました。リンク：' ;;
+        ja:tuic_done) echo 'TUIC をデプロイしました。リンク：' ;;
         zh:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
         en:anytls_title) echo 'Deploy AnyTLS-Reality landing proxy (sing-box)' ;;
         ru:anytls_title) echo 'Развернуть AnyTLS-Reality (sing-box)' ;;
         fa:anytls_title) echo 'استقرار AnyTLS-Reality (sing-box)' ;;
         zh-tw:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
-        ja:anytls_title) echo 'AnyTLS-Reality を展開 (sing-box)' ;;
+        ja:anytls_title) echo 'AnyTLS-Reality をデプロイ (sing-box)' ;;
         zh:anytls_port_prompt) echo '请输入 AnyTLS 监听端口 (回车默认 443): ' ;;
         en:anytls_port_prompt) echo 'Enter AnyTLS listen port (Enter for 443): ' ;;
         ru:anytls_port_prompt) echo 'Порт AnyTLS (Enter = 443): ' ;;
@@ -7317,13 +7331,13 @@ tr_msg() {
         ru:anytls_done) echo 'AnyTLS развернут, ссылка ниже:' ;;
         fa:anytls_done) echo 'AnyTLS مستقر شد، لینک زیر:' ;;
         zh-tw:anytls_done) echo 'AnyTLS 部署完成，連結如下：' ;;
-        ja:anytls_done) echo 'AnyTLS を展開しました。リンク：' ;;
+        ja:anytls_done) echo 'AnyTLS をデプロイしました。リンク：' ;;
         zh:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
         en:shadowtls_title) echo 'Deploy ShadowTLS landing proxy (sing-box)' ;;
         ru:shadowtls_title) echo 'Развернуть ShadowTLS (sing-box)' ;;
         fa:shadowtls_title) echo 'استقرار ShadowTLS (sing-box)' ;;
         zh-tw:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
-        ja:shadowtls_title) echo 'ShadowTLS を展開 (sing-box)' ;;
+        ja:shadowtls_title) echo 'ShadowTLS をデプロイ (sing-box)' ;;
         zh:shadowtls_port_prompt) echo '请输入 ShadowTLS 监听端口 (回车默认 443): ' ;;
         en:shadowtls_port_prompt) echo 'Enter ShadowTLS listen port (Enter for 443): ' ;;
         ru:shadowtls_port_prompt) echo 'Порт ShadowTLS (Enter = 443): ' ;;
@@ -7347,11 +7361,11 @@ tr_msg() {
         ru:shadowtls_done) echo 'ShadowTLS развернут, ссылка ниже:' ;;
         fa:shadowtls_done) echo 'ShadowTLS مستقر شد، لینک زیر:' ;;
         zh-tw:shadowtls_done) echo 'ShadowTLS 部署完成，連結如下：' ;;
-        ja:shadowtls_done) echo 'ShadowTLS を展開しました。リンク：' ;;
+        ja:shadowtls_done) echo 'ShadowTLS をデプロイしました。リンク：' ;;
         zh:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
         en:argo_title) echo 'Argo / CDN Front (sing-box + cloudflared)' ;;
         ru:argo_title) echo 'Argo / CDN-фронт (sing-box + cloudflared)' ;;
-        fa:argo_title) echo 'Argo / CDN (sing-box + cloudflared)' ;;
+        fa:argo_title) echo 'واسط ورودی Argo / CDN (sing-box + cloudflared)' ;;
         zh-tw:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
         ja:argo_title) echo 'Argo / CDN フロント (sing-box + cloudflared)' ;;
         zh:argo_m_temp) echo '部署临时隧道 (trycloudflare, 免账号)' ;;
@@ -7359,13 +7373,13 @@ tr_msg() {
         ru:argo_m_temp) echo 'Временный туннель (trycloudflare, без аккаунта)' ;;
         fa:argo_m_temp) echo 'استقرار تونل موقت (trycloudflare، بدون حساب)' ;;
         zh-tw:argo_m_temp) echo '部署臨時隧道 (trycloudflare, 免帳號)' ;;
-        ja:argo_m_temp) echo '一時トンネルを展開 (trycloudflare、アカウント不要)' ;;
+        ja:argo_m_temp) echo '一時トンネルをデプロイ (trycloudflare、アカウント不要)' ;;
         zh:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
         en:argo_m_fixed) echo 'Deploy fixed tunnel (token + own domain)' ;;
         ru:argo_m_fixed) echo 'Постоянный туннель (токен + свой домен)' ;;
         fa:argo_m_fixed) echo 'استقرار تونل ثابت (توکن + دامنه شخصی)' ;;
         zh-tw:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
-        ja:argo_m_fixed) echo '固定トンネルを展開 (トークン + 独自ドメイン)' ;;
+        ja:argo_m_fixed) echo '固定トンネルをデプロイ (トークン + 独自ドメイン)' ;;
         zh:argo_m_status) echo '状态与链接' ;;
         en:argo_m_status) echo 'Status and links' ;;
         ru:argo_m_status) echo 'Статус и ссылки' ;;
@@ -7413,7 +7427,7 @@ tr_msg() {
         ru:argo_done) echo 'Argo развернут, ссылки ниже:' ;;
         fa:argo_done) echo 'Argo مستقر شد، لینک‌ها در زیر:' ;;
         zh-tw:argo_done) echo 'Argo 部署完成，連結如下：' ;;
-        ja:argo_done) echo 'Argo を展開しました。リンク：' ;;
+        ja:argo_done) echo 'Argo をデプロイしました。リンク：' ;;
         zh:acheck_no_python) echo '未找到 python3：A-Check 需要 Python 3.8 或更高版本，装好后重试。' ;;
         en:acheck_no_python) echo 'python3 not found: A-Check requires Python 3.8 or newer. Install it and retry.' ;;
         ru:acheck_no_python) echo 'python3 не найден: для A-Check нужен Python 3.8 или новее. Установите его и повторите.' ;;
@@ -7449,7 +7463,7 @@ tr_msg() {
         ru:argo_not_deployed) echo 'Argo ещё не развернут.' ;;
         fa:argo_not_deployed) echo 'Argo هنوز مستقر نشده است.' ;;
         zh-tw:argo_not_deployed) echo '尚未部署 Argo。' ;;
-        ja:argo_not_deployed) echo 'Argo はまだ展開されていません。' ;;
+        ja:argo_not_deployed) echo 'Argo はまだデプロイされていません。' ;;
         zh:argo_confirm_uninstall) echo '确认卸载 Argo (删除隧道服务与 WS 入站)? [Y/N]: ' ;;
         en:argo_confirm_uninstall) echo 'Uninstall Argo (remove tunnel services and WS inbounds)? [Y/N]: ' ;;
         ru:argo_confirm_uninstall) echo 'Удалить Argo (службы туннеля и WS inbounds)? [Y/N]: ' ;;
@@ -7477,9 +7491,9 @@ tr_msg() {
         zh:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
         en:socks5_done) echo 'SOCKS5 landing proxy deployed.' ;;
         ru:socks5_done) echo 'SOCKS5 прокси развёрнут.' ;;
-        fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
+        fa:socks5_done) echo 'پروکسی خروجی SOCKS5 راه‌اندازی شد.' ;;
         zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
-        ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
+        ja:socks5_done) echo 'SOCKS5 ランディングプロキシをデプロイしました。' ;;
         zh:sl_node_port) echo '%s · 端口 %s' ;;
         en:sl_node_port) echo '%s · Port %s' ;;
         ru:sl_node_port) echo '%s · Порт %s' ;;
@@ -7509,12 +7523,12 @@ tr_msg() {
         ru:warp_deploying) echo 'Развёртывание WARP...' ;;
         fa:warp_deploying) echo 'در حال استقرار خروجی WARP...' ;;
         zh-tw:warp_deploying) echo '正在部署 WARP 出口...' ;;
-        ja:warp_deploying) echo 'WARP 出口を展開中...' ;;
+        ja:warp_deploying) echo 'WARP 出口をデプロイ中...' ;;
         zh:warp_register_fail) echo 'WARP 账号注册失败。' ;;
         en:warp_register_fail) echo 'WARP account registration failed.' ;;
         ru:warp_register_fail) echo 'Не удалось зарегистрировать WARP.' ;;
         fa:warp_register_fail) echo 'ثبت حساب WARP ناموفق بود.' ;;
-        zh-tw:warp_register_fail) echo 'WARP 賬號註冊失敗。' ;;
+        zh-tw:warp_register_fail) echo 'WARP 帳號註冊失敗。' ;;
         ja:warp_register_fail) echo 'WARP アカウントの登録に失敗しました。' ;;
         zh:warp_profile_fail) echo 'WARP 配置解析失败。' ;;
         en:warp_profile_fail) echo 'Failed to parse WARP profile.' ;;
@@ -7545,7 +7559,7 @@ tr_msg() {
         ru:warp_done) echo 'WARP-выход развёрнут.' ;;
         fa:warp_done) echo 'خروجی WARP مستقر شد.' ;;
         zh-tw:warp_done) echo 'WARP 出口部署完成。' ;;
-        ja:warp_done) echo 'WARP 出口を展開しました。' ;;
+        ja:warp_done) echo 'WARP 出口をデプロイしました。' ;;
         zh:warp_removed) echo 'WARP 已卸载。' ;;
         en:warp_removed) echo 'WARP removed.' ;;
         ru:warp_removed) echo 'WARP удалён.' ;;
@@ -7587,19 +7601,19 @@ tr_msg() {
         ru:warp_status_on) echo 'Статус WARP: развёрнут' ;;
         fa:warp_status_on) echo 'وضعیت WARP: مستقر شده' ;;
         zh-tw:warp_status_on) echo 'WARP 狀態：已部署' ;;
-        ja:warp_status_on) echo 'WARP 状態：展開済み' ;;
+        ja:warp_status_on) echo 'WARP 状態：デプロイ済み' ;;
         zh:warp_status_off) echo 'WARP 状态：未部署' ;;
         en:warp_status_off) echo 'WARP status: not deployed' ;;
         ru:warp_status_off) echo 'Статус WARP: не развёрнут' ;;
         fa:warp_status_off) echo 'وضعیت WARP: مستقر نشده' ;;
         zh-tw:warp_status_off) echo 'WARP 狀態：未部署' ;;
-        ja:warp_status_off) echo 'WARP 状態：未展開' ;;
+        ja:warp_status_off) echo 'WARP 状態：未デプロイ' ;;
         zh:warp_status_stale) echo 'WARP 状态：已部署（未生效）——运行配置中无此出口，请在分流菜单中卸载清理。' ;;
         en:warp_status_stale) echo 'WARP status: deployed (not in effect) — the live config has no such outbound; remove it from the split-routing menu.' ;;
         ru:warp_status_stale) echo 'Статус WARP: развёрнут (не действует) — в действующей конфигурации такого выхода нет; удалите его в меню разделения трафика.' ;;
         fa:warp_status_stale) echo 'وضعیت WARP: مستقر شده (اعمال نشده) — پیکربندی فعال چنین خروجی‌ای ندارد؛ آن را از منوی تفکیک ترافیک حذف کنید.' ;;
         zh-tw:warp_status_stale) echo 'WARP 狀態：已部署（未生效）——運行設定中無此出口，請在分流選單中解除安裝清理。' ;;
-        ja:warp_status_stale) echo 'WARP 状態：展開済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
+        ja:warp_status_stale) echo 'WARP 状態：デプロイ済み（未適用）——実行中の設定にこの出口がありません。振り分けメニューから削除してください。' ;;
         zh:warp_rules_count) echo '分流规则数：%s' ;;
         en:warp_rules_count) echo 'Routing rules: %s' ;;
         ru:warp_rules_count) echo 'Правил маршрутизации: %s' ;;
@@ -7611,7 +7625,7 @@ tr_msg() {
         ru:warp_need_deploy) echo 'Сначала разверните WARP.' ;;
         fa:warp_need_deploy) echo 'ابتدا خروجی WARP را مستقر کنید.' ;;
         zh-tw:warp_need_deploy) echo '請先部署 WARP 出口。' ;;
-        ja:warp_need_deploy) echo '先に WARP 出口を展開してください。' ;;
+        ja:warp_need_deploy) echo '先に WARP 出口をデプロイしてください。' ;;
         zh:warp_preset_done) echo '分流预设已应用。' ;;
         en:warp_preset_done) echo 'Split preset applied.' ;;
         ru:warp_preset_done) echo 'Пресет разделения применён.' ;;
@@ -7623,7 +7637,7 @@ tr_msg() {
         ru:warp_deploy_item) echo 'Развернуть WARP в один клик' ;;
         fa:warp_deploy_item) echo 'استقرار تک‌کلیکی خروجی WARP' ;;
         zh-tw:warp_deploy_item) echo '一鍵部署 WARP 出口' ;;
-        ja:warp_deploy_item) echo 'ワンクリックで WARP 出口を展開' ;;
+        ja:warp_deploy_item) echo 'ワンクリックで WARP 出口をデプロイ' ;;
         zh:warp_preset_item) echo 'WARP 分流预设' ;;
         en:warp_preset_item) echo 'WARP split presets' ;;
         ru:warp_preset_item) echo 'Пресеты разделения WARP' ;;
@@ -7694,7 +7708,7 @@ tr_msg() {
         en:split_port_prompt) echo 'Enter port (default %s)' ;;
         ru:split_port_prompt) echo 'Введите порт (по умолчанию %s)' ;;
         fa:split_port_prompt) echo 'درگاه را وارد کنید (پیش‌فرض %s)' ;;
-        zh-tw:split_port_prompt) echo '請輸入端口（默認 %s）' ;;
+        zh-tw:split_port_prompt) echo '請輸入連接埠（默認 %s）' ;;
         ja:split_port_prompt) echo 'ポートを入力（デフォルト %s）' ;;
         zh:split_user_prompt) echo '请输入用户名（可空，回车跳过）' ;;
         en:split_user_prompt) echo 'Enter username (optional)' ;;
@@ -7811,23 +7825,23 @@ tr_msg() {
         zh-tw:mi_cores) echo '核' ;;
         ja:mi_cores) echo 'コア' ;;
         zh:mi_uptime) echo '运行%s天' ;;
-        en:mi_uptime) echo 'uptime %sd' ;;
-        ru:mi_uptime) echo 'аптайм %sд' ;;
-        fa:mi_uptime) echo '%s روز روشن' ;;
+        en:mi_uptime) echo 'Uptime: %sd' ;;
+        ru:mi_uptime) echo 'Время работы: %s дн.' ;;
+        fa:mi_uptime) echo 'مدت کارکرد: %s روز' ;;
         zh-tw:mi_uptime) echo '運行%s天' ;;
         ja:mi_uptime) echo '稼働%s日' ;;
         zh:mi_nodes) echo '节点' ;;
         en:mi_nodes) echo 'Nodes' ;;
         ru:mi_nodes) echo 'Ноды' ;;
-        fa:mi_nodes) echo 'نودها' ;;
+        fa:mi_nodes) echo 'گره‌ها' ;;
         zh-tw:mi_nodes) echo '節點' ;;
         ja:mi_nodes) echo 'ノード' ;;
         zh:mi_no_nodes) echo '未部署节点' ;;
         en:mi_no_nodes) echo 'No nodes deployed' ;;
         ru:mi_no_nodes) echo 'Ноды не развёрнуты' ;;
-        fa:mi_no_nodes) echo 'نودی مستقر نشده' ;;
+        fa:mi_no_nodes) echo 'گرهی مستقر نشده' ;;
         zh-tw:mi_no_nodes) echo '未部署節點' ;;
-        ja:mi_no_nodes) echo 'ノード未展開' ;;
+        ja:mi_no_nodes) echo 'ノード未デプロイ' ;;
         zh:mi_split) echo '分流' ;;
         en:mi_split) echo 'Split' ;;
         ru:mi_split) echo 'Разделение' ;;
@@ -7930,138 +7944,138 @@ tr_msg() {
         ru:dp_sb_bin) echo 'После безопасной распаковки не найден бинарный файл sing-box.' ;;
         fa:dp_sb_bin) echo 'پس از استخراج امن، برنامه اصلی sing-box یافت نشد.' ;;
         ja:dp_sb_bin) echo '安全な展開後に sing-box 本体が見つかりませんでした。' ;;
-        zh:dp_sb_cfg) echo 'Sing-box config 原子写入失败。' ;;
-        zh-tw:dp_sb_cfg) echo 'Sing-box config 原子寫入失敗。' ;;
-        en:dp_sb_cfg) echo 'Failed to atomically write the Sing-box config.' ;;
-        ru:dp_sb_cfg) echo 'Не удалось атомарно записать конфигурацию Sing-box.' ;;
-        fa:dp_sb_cfg) echo 'نوشتن اتمی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:dp_sb_cfg) echo 'Sing-box 設定のアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_check) echo 'Sing-box 配置校验失败。' ;;
-        zh-tw:dp_sb_check) echo 'Sing-box 設定校驗失敗。' ;;
-        en:dp_sb_check) echo 'The Sing-box configuration check failed.' ;;
-        ru:dp_sb_check) echo 'Проверка конфигурации Sing-box не пройдена.' ;;
-        fa:dp_sb_check) echo 'بررسی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:dp_sb_check) echo 'Sing-box の設定チェックに失敗しました。' ;;
-        zh:dp_sb_chmod) echo 'Sing-box OpenRC 服务权限设置失败。' ;;
-        zh-tw:dp_sb_chmod) echo 'Sing-box OpenRC 服務權限設定失敗。' ;;
-        en:dp_sb_chmod) echo 'Failed to set permissions on the Sing-box OpenRC service.' ;;
-        ru:dp_sb_chmod) echo 'Не удалось задать права службы OpenRC для Sing-box.' ;;
-        fa:dp_sb_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_chmod) echo 'Sing-box の OpenRC サービスの権限設定に失敗しました。' ;;
-        zh:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子写入失败。' ;;
-        zh-tw:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子寫入失敗。' ;;
-        en:dp_sb_confd) echo 'Failed to atomically write the Sing-box OpenRC conf.d file.' ;;
-        ru:dp_sb_confd) echo 'Не удалось атомарно записать OpenRC conf.d для Sing-box.' ;;
-        fa:dp_sb_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_confd) echo 'Sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_cfg) echo 'sing-box config 原子写入失败。' ;;
+        zh-tw:dp_sb_cfg) echo 'sing-box config 原子寫入失敗。' ;;
+        en:dp_sb_cfg) echo 'Failed to atomically write the sing-box config.' ;;
+        ru:dp_sb_cfg) echo 'Не удалось атомарно записать конфигурацию sing-box.' ;;
+        fa:dp_sb_cfg) echo 'نوشتن اتمی پیکربندی sing-box ناموفق بود.' ;;
+        ja:dp_sb_cfg) echo 'sing-box 設定のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_check) echo 'sing-box 配置校验失败。' ;;
+        zh-tw:dp_sb_check) echo 'sing-box 設定校驗失敗。' ;;
+        en:dp_sb_check) echo 'The sing-box configuration check failed.' ;;
+        ru:dp_sb_check) echo 'Проверка конфигурации sing-box не пройдена.' ;;
+        fa:dp_sb_check) echo 'بررسی پیکربندی sing-box ناموفق بود.' ;;
+        ja:dp_sb_check) echo 'sing-box の設定チェックに失敗しました。' ;;
+        zh:dp_sb_chmod) echo 'sing-box OpenRC 服务权限设置失败。' ;;
+        zh-tw:dp_sb_chmod) echo 'sing-box OpenRC 服務權限設定失敗。' ;;
+        en:dp_sb_chmod) echo 'Failed to set permissions on the sing-box OpenRC service.' ;;
+        ru:dp_sb_chmod) echo 'Не удалось задать права службы OpenRC для sing-box.' ;;
+        fa:dp_sb_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_chmod) echo 'sing-box の OpenRC サービスの権限設定に失敗しました。' ;;
+        zh:dp_sb_confd) echo 'sing-box OpenRC conf.d 原子写入失败。' ;;
+        zh-tw:dp_sb_confd) echo 'sing-box OpenRC conf.d 原子寫入失敗。' ;;
+        en:dp_sb_confd) echo 'Failed to atomically write the sing-box OpenRC conf.d file.' ;;
+        ru:dp_sb_confd) echo 'Не удалось атомарно записать OpenRC conf.d для sing-box.' ;;
+        fa:dp_sb_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_confd) echo 'sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
         zh:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子写入失败。' ;;
         zh-tw:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子寫入失敗。' ;;
         en:dp_sb_confd_lc) echo 'Failed to atomically write the sing-box OpenRC conf.d file.' ;;
         ru:dp_sb_confd_lc) echo 'Не удалось атомарно записать OpenRC conf.d для sing-box.' ;;
         fa:dp_sb_confd_lc) echo 'نوشتن اتمی فایل OpenRC conf.d ‏sing-box ناموفق بود.' ;;
         ja:dp_sb_confd_lc) echo 'sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_exec) echo 'Sing-box 执行校验失败。' ;;
-        zh-tw:dp_sb_exec) echo 'Sing-box 執行校驗失敗。' ;;
-        en:dp_sb_exec) echo 'The Sing-box execution check failed.' ;;
-        ru:dp_sb_exec) echo 'Проверка запуска Sing-box не пройдена.' ;;
-        fa:dp_sb_exec) echo 'بررسی اجرای Sing-box ناموفق بود.' ;;
-        ja:dp_sb_exec) echo 'Sing-box の実行チェックに失敗しました。' ;;
-        zh:dp_sb_extdir) echo 'Sing-box 提取目录创建失败。' ;;
-        zh-tw:dp_sb_extdir) echo 'Sing-box 提取目錄建立失敗。' ;;
-        en:dp_sb_extdir) echo 'Failed to create the Sing-box extraction directory.' ;;
-        ru:dp_sb_extdir) echo 'Не удалось создать каталог распаковки Sing-box.' ;;
-        fa:dp_sb_extdir) echo 'ایجاد پوشه استخراج Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extdir) echo 'Sing-box の展開ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_extdir_tmp) echo 'Sing-box 临时提取目录创建失败。' ;;
-        zh-tw:dp_sb_extdir_tmp) echo 'Sing-box 臨時提取目錄建立失敗。' ;;
-        en:dp_sb_extdir_tmp) echo 'Failed to create the Sing-box temporary extraction directory.' ;;
-        ru:dp_sb_extdir_tmp) echo 'Не удалось создать временный каталог распаковки Sing-box.' ;;
-        fa:dp_sb_extdir_tmp) echo 'ایجاد پوشه استخراج موقت Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extdir_tmp) echo 'Sing-box の一時展開ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_extract) echo 'Sing-box 压缩包安全提取失败。' ;;
-        zh-tw:dp_sb_extract) echo 'Sing-box 壓縮包安全提取失敗。' ;;
-        en:dp_sb_extract) echo 'Failed to safely extract the Sing-box archive.' ;;
-        ru:dp_sb_extract) echo 'Не удалось безопасно распаковать архив Sing-box.' ;;
-        fa:dp_sb_extract) echo 'استخراج امن آرشیو Sing-box ناموفق بود.' ;;
-        ja:dp_sb_extract) echo 'Sing-box アーカイブの安全な展開に失敗しました。' ;;
+        zh:dp_sb_exec) echo 'sing-box 执行校验失败。' ;;
+        zh-tw:dp_sb_exec) echo 'sing-box 執行校驗失敗。' ;;
+        en:dp_sb_exec) echo 'The sing-box execution check failed.' ;;
+        ru:dp_sb_exec) echo 'Проверка запуска sing-box не пройдена.' ;;
+        fa:dp_sb_exec) echo 'بررسی اجرای sing-box ناموفق بود.' ;;
+        ja:dp_sb_exec) echo 'sing-box の実行チェックに失敗しました。' ;;
+        zh:dp_sb_extdir) echo 'sing-box 提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir) echo 'sing-box 提取目錄建立失敗。' ;;
+        en:dp_sb_extdir) echo 'Failed to create the sing-box extraction directory.' ;;
+        ru:dp_sb_extdir) echo 'Не удалось создать каталог распаковки sing-box.' ;;
+        fa:dp_sb_extdir) echo 'ایجاد پوشه استخراج sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir) echo 'sing-box の展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extdir_tmp) echo 'sing-box 临时提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir_tmp) echo 'sing-box 臨時提取目錄建立失敗。' ;;
+        en:dp_sb_extdir_tmp) echo 'Failed to create the sing-box temporary extraction directory.' ;;
+        ru:dp_sb_extdir_tmp) echo 'Не удалось создать временный каталог распаковки sing-box.' ;;
+        fa:dp_sb_extdir_tmp) echo 'ایجاد پوشه استخراج موقت sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir_tmp) echo 'sing-box の一時展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extract) echo 'sing-box 压缩包安全提取失败。' ;;
+        zh-tw:dp_sb_extract) echo 'sing-box 壓縮包安全提取失敗。' ;;
+        en:dp_sb_extract) echo 'Failed to safely extract the sing-box archive.' ;;
+        ru:dp_sb_extract) echo 'Не удалось безопасно распаковать архив sing-box.' ;;
+        fa:dp_sb_extract) echo 'استخراج امن آرشیو sing-box ناموفق بود.' ;;
+        ja:dp_sb_extract) echo 'sing-box アーカイブの安全な展開に失敗しました。' ;;
         zh:dp_sb_hy2_cert) echo 'sing-box HY2 自签证书生成或密钥配对验证失败。' ;;
         zh-tw:dp_sb_hy2_cert) echo 'sing-box HY2 自簽憑證產生或金鑰配對驗證失敗。' ;;
         en:dp_sb_hy2_cert) echo 'Failed to generate the sing-box HY2 self-signed certificate or verify its key pair.' ;;
         ru:dp_sb_hy2_cert) echo 'Не удалось сгенерировать самоподписанный сертификат HY2 sing-box или проверить пару ключей.' ;;
         fa:dp_sb_hy2_cert) echo 'ساخت گواهی خودامضا HY2 ‏sing-box یا بررسی جفت کلید آن ناموفق بود.' ;;
         ja:dp_sb_hy2_cert) echo 'sing-box HY2 の自己署名証明書の生成または鍵ペアの検証に失敗しました。' ;;
-        zh:dp_sb_initd) echo 'Sing-box OpenRC unit 原子写入失败。' ;;
-        zh-tw:dp_sb_initd) echo 'Sing-box OpenRC unit 原子寫入失敗。' ;;
-        en:dp_sb_initd) echo 'Failed to atomically write the Sing-box OpenRC unit.' ;;
-        ru:dp_sb_initd) echo 'Не удалось атомарно записать OpenRC-юнит Sing-box.' ;;
-        fa:dp_sb_initd) echo 'نوشتن اتمی یونیت OpenRC ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_initd) echo 'Sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_initd) echo 'sing-box OpenRC unit 原子写入失败。' ;;
+        zh-tw:dp_sb_initd) echo 'sing-box OpenRC unit 原子寫入失敗。' ;;
+        en:dp_sb_initd) echo 'Failed to atomically write the sing-box OpenRC unit.' ;;
+        ru:dp_sb_initd) echo 'Не удалось атомарно записать OpenRC-юнит sing-box.' ;;
+        fa:dp_sb_initd) echo 'نوشتن اتمی یونیت OpenRC ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_initd) echo 'sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
         zh:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子写入失败。' ;;
         zh-tw:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子寫入失敗。' ;;
         en:dp_sb_initd_lc) echo 'Failed to atomically write the sing-box OpenRC unit.' ;;
         ru:dp_sb_initd_lc) echo 'Не удалось атомарно записать OpenRC-юнит sing-box.' ;;
         fa:dp_sb_initd_lc) echo 'نوشتن اتمی یونیت OpenRC ‏sing-box ناموفق بود.' ;;
         ja:dp_sb_initd_lc) echo 'sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
-        zh:dp_sb_json) echo 'Sing-box JSON 格式非法。' ;;
-        zh-tw:dp_sb_json) echo 'Sing-box JSON 格式不合法。' ;;
-        en:dp_sb_json) echo 'The Sing-box JSON is invalid.' ;;
-        ru:dp_sb_json) echo 'Недопустимый формат JSON Sing-box.' ;;
-        fa:dp_sb_json) echo 'قالب JSON ‏Sing-box نامعتبر است.' ;;
-        ja:dp_sb_json) echo 'Sing-box の JSON 形式が不正です。' ;;
-        zh:dp_sb_keyempty) echo 'Sing-box REALITY 密钥为空。' ;;
-        zh-tw:dp_sb_keyempty) echo 'Sing-box REALITY 金鑰為空。' ;;
-        en:dp_sb_keyempty) echo 'The Sing-box REALITY key is empty.' ;;
-        ru:dp_sb_keyempty) echo 'Ключ REALITY Sing-box пуст.' ;;
-        fa:dp_sb_keyempty) echo 'کلید REALITY ‏Sing-box خالی است.' ;;
-        ja:dp_sb_keyempty) echo 'Sing-box REALITY の鍵が空です。' ;;
-        zh:dp_sb_keypair) echo 'Sing-box REALITY 密钥对生成失败。' ;;
-        zh-tw:dp_sb_keypair) echo 'Sing-box REALITY 金鑰對產生失敗。' ;;
-        en:dp_sb_keypair) echo 'Failed to generate the Sing-box REALITY key pair.' ;;
-        ru:dp_sb_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для Sing-box.' ;;
-        fa:dp_sb_keypair) echo 'ساخت جفت کلید REALITY ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_keypair) echo 'Sing-box REALITY の鍵ペアを生成できませんでした。' ;;
-        zh:dp_sb_keyparse) echo 'Sing-box REALITY 密钥解析失败。' ;;
-        zh-tw:dp_sb_keyparse) echo 'Sing-box REALITY 金鑰解析失敗。' ;;
-        en:dp_sb_keyparse) echo 'Failed to parse the Sing-box REALITY key.' ;;
-        ru:dp_sb_keyparse) echo 'Не удалось разобрать ключ REALITY Sing-box.' ;;
-        fa:dp_sb_keyparse) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_keyparse) echo 'Sing-box REALITY の鍵を解析できませんでした。' ;;
-        zh:dp_sb_keyparse_empty) echo 'Sing-box REALITY 密钥解析失败：密钥为空。' ;;
-        zh-tw:dp_sb_keyparse_empty) echo 'Sing-box REALITY 金鑰解析失敗：金鑰為空。' ;;
-        en:dp_sb_keyparse_empty) echo 'Failed to parse the Sing-box REALITY key: the key is empty.' ;;
-        ru:dp_sb_keyparse_empty) echo 'Не удалось разобрать ключ REALITY Sing-box: ключ пуст.' ;;
-        fa:dp_sb_keyparse_empty) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود: کلید خالی است.' ;;
-        ja:dp_sb_keyparse_empty) echo 'Sing-box REALITY の鍵を解析できませんでした：鍵が空です。' ;;
-        zh:dp_sb_restart) echo 'Sing-box 服务重启失败。' ;;
-        zh-tw:dp_sb_restart) echo 'Sing-box 服務重啟失敗。' ;;
-        en:dp_sb_restart) echo 'Failed to restart the Sing-box service.' ;;
-        ru:dp_sb_restart) echo 'Не удалось перезапустить службу Sing-box.' ;;
-        fa:dp_sb_restart) echo 'راه‌اندازی مجدد سرویس Sing-box ناموفق بود.' ;;
-        ja:dp_sb_restart) echo 'Sing-box サービスの再起動に失敗しました。' ;;
-        zh:dp_sb_runtime) echo 'Sing-box 运行时用户/文件权限准备失败。' ;;
-        zh-tw:dp_sb_runtime) echo 'Sing-box 執行階段使用者/檔案權限準備失敗。' ;;
-        en:dp_sb_runtime) echo 'Failed to prepare the Sing-box runtime user/file permissions.' ;;
-        ru:dp_sb_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов Sing-box.' ;;
-        fa:dp_sb_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای Sing-box ناموفق بود.' ;;
-        ja:dp_sb_runtime) echo 'Sing-box のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
-        zh:dp_sb_seed) echo 'Sing-box 初始配置生成失败。' ;;
-        zh-tw:dp_sb_seed) echo 'Sing-box 初始設定產生失敗。' ;;
-        en:dp_sb_seed) echo 'Failed to generate the initial Sing-box configuration.' ;;
-        ru:dp_sb_seed) echo 'Не удалось сгенерировать начальную конфигурацию Sing-box.' ;;
-        fa:dp_sb_seed) echo 'ساخت پیکربندی اولیه Sing-box ناموفق بود.' ;;
-        ja:dp_sb_seed) echo 'Sing-box の初期設定を生成できませんでした。' ;;
-        zh:dp_sb_tmpdir) echo 'Sing-box 临时目录创建失败。' ;;
-        zh-tw:dp_sb_tmpdir) echo 'Sing-box 臨時目錄建立失敗。' ;;
-        en:dp_sb_tmpdir) echo 'Failed to create the Sing-box temporary directory.' ;;
-        ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог Sing-box.' ;;
-        fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت Sing-box ناموفق بود.' ;;
-        ja:dp_sb_tmpdir) echo 'Sing-box の一時ディレクトリを作成できませんでした。' ;;
-        zh:dp_sb_unit) echo 'Sing-box 服务单元准备失败。' ;;
-        zh-tw:dp_sb_unit) echo 'Sing-box 服務單元準備失敗。' ;;
-        en:dp_sb_unit) echo 'Failed to prepare the Sing-box service unit.' ;;
-        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит Sing-box.' ;;
-        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏Sing-box ناموفق بود.' ;;
-        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットの準備に失敗しました。' ;;
+        zh:dp_sb_json) echo 'sing-box JSON 格式非法。' ;;
+        zh-tw:dp_sb_json) echo 'sing-box JSON 格式不合法。' ;;
+        en:dp_sb_json) echo 'The sing-box JSON is invalid.' ;;
+        ru:dp_sb_json) echo 'Недопустимый формат JSON sing-box.' ;;
+        fa:dp_sb_json) echo 'قالب JSON ‏sing-box نامعتبر است.' ;;
+        ja:dp_sb_json) echo 'sing-box の JSON 形式が不正です。' ;;
+        zh:dp_sb_keyempty) echo 'sing-box REALITY 密钥为空。' ;;
+        zh-tw:dp_sb_keyempty) echo 'sing-box REALITY 金鑰為空。' ;;
+        en:dp_sb_keyempty) echo 'The sing-box REALITY key is empty.' ;;
+        ru:dp_sb_keyempty) echo 'Ключ REALITY sing-box пуст.' ;;
+        fa:dp_sb_keyempty) echo 'کلید REALITY ‏sing-box خالی است.' ;;
+        ja:dp_sb_keyempty) echo 'sing-box REALITY の鍵が空です。' ;;
+        zh:dp_sb_keypair) echo 'sing-box REALITY 密钥对生成失败。' ;;
+        zh-tw:dp_sb_keypair) echo 'sing-box REALITY 金鑰對產生失敗。' ;;
+        en:dp_sb_keypair) echo 'Failed to generate the sing-box REALITY key pair.' ;;
+        ru:dp_sb_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для sing-box.' ;;
+        fa:dp_sb_keypair) echo 'ساخت جفت کلید REALITY ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_keypair) echo 'sing-box REALITY の鍵ペアを生成できませんでした。' ;;
+        zh:dp_sb_keyparse) echo 'sing-box REALITY 密钥解析失败。' ;;
+        zh-tw:dp_sb_keyparse) echo 'sing-box REALITY 金鑰解析失敗。' ;;
+        en:dp_sb_keyparse) echo 'Failed to parse the sing-box REALITY key.' ;;
+        ru:dp_sb_keyparse) echo 'Не удалось разобрать ключ REALITY sing-box.' ;;
+        fa:dp_sb_keyparse) echo 'تجزیه کلید REALITY ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_keyparse) echo 'sing-box REALITY の鍵を解析できませんでした。' ;;
+        zh:dp_sb_keyparse_empty) echo 'sing-box REALITY 密钥解析失败：密钥为空。' ;;
+        zh-tw:dp_sb_keyparse_empty) echo 'sing-box REALITY 金鑰解析失敗：金鑰為空。' ;;
+        en:dp_sb_keyparse_empty) echo 'Failed to parse the sing-box REALITY key: the key is empty.' ;;
+        ru:dp_sb_keyparse_empty) echo 'Не удалось разобрать ключ REALITY sing-box: ключ пуст.' ;;
+        fa:dp_sb_keyparse_empty) echo 'تجزیه کلید REALITY ‏sing-box ناموفق بود: کلید خالی است.' ;;
+        ja:dp_sb_keyparse_empty) echo 'sing-box REALITY の鍵を解析できませんでした：鍵が空です。' ;;
+        zh:dp_sb_restart) echo 'sing-box 服务重启失败。' ;;
+        zh-tw:dp_sb_restart) echo 'sing-box 服務重啟失敗。' ;;
+        en:dp_sb_restart) echo 'Failed to restart the sing-box service.' ;;
+        ru:dp_sb_restart) echo 'Не удалось перезапустить службу sing-box.' ;;
+        fa:dp_sb_restart) echo 'راه‌اندازی مجدد سرویس sing-box ناموفق بود.' ;;
+        ja:dp_sb_restart) echo 'sing-box サービスの再起動に失敗しました。' ;;
+        zh:dp_sb_runtime) echo 'sing-box 运行时用户/文件权限准备失败。' ;;
+        zh-tw:dp_sb_runtime) echo 'sing-box 執行階段使用者/檔案權限準備失敗。' ;;
+        en:dp_sb_runtime) echo 'Failed to prepare the sing-box runtime user/file permissions.' ;;
+        ru:dp_sb_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов sing-box.' ;;
+        fa:dp_sb_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای sing-box ناموفق بود.' ;;
+        ja:dp_sb_runtime) echo 'sing-box のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
+        zh:dp_sb_seed) echo 'sing-box 初始配置生成失败。' ;;
+        zh-tw:dp_sb_seed) echo 'sing-box 初始設定產生失敗。' ;;
+        en:dp_sb_seed) echo 'Failed to generate the initial sing-box configuration.' ;;
+        ru:dp_sb_seed) echo 'Не удалось сгенерировать начальную конфигурацию sing-box.' ;;
+        fa:dp_sb_seed) echo 'ساخت پیکربندی اولیه sing-box ناموفق بود.' ;;
+        ja:dp_sb_seed) echo 'sing-box の初期設定を生成できませんでした。' ;;
+        zh:dp_sb_tmpdir) echo 'sing-box 临时目录创建失败。' ;;
+        zh-tw:dp_sb_tmpdir) echo 'sing-box 臨時目錄建立失敗。' ;;
+        en:dp_sb_tmpdir) echo 'Failed to create the sing-box temporary directory.' ;;
+        ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог sing-box.' ;;
+        fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت sing-box ناموفق بود.' ;;
+        ja:dp_sb_tmpdir) echo 'sing-box の一時ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_unit) echo 'sing-box 服务单元准备失败。' ;;
+        zh-tw:dp_sb_unit) echo 'sing-box 服務單元準備失敗。' ;;
+        en:dp_sb_unit) echo 'Failed to prepare the sing-box service unit.' ;;
+        ru:dp_sb_unit) echo 'Не удалось подготовить systemd-юнит sing-box.' ;;
+        fa:dp_sb_unit) echo 'آماده‌سازی یونیت systemd ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit) echo 'sing-box の systemd ユニットの準備に失敗しました。' ;;
         zh:dp_sb_unit_lc) echo 'sing-box 服务单元准备失败。' ;;
         zh-tw:dp_sb_unit_lc) echo 'sing-box 服務單元準備失敗。' ;;
         en:dp_sb_unit_lc) echo 'Failed to prepare the sing-box service unit.' ;;
@@ -8401,7 +8415,7 @@ tr_msg() {
         zh:rs_takeover_prompt) echo '确认接管上述残留并继续？[Y/N]: ' ;;
         en:rs_takeover_prompt) echo 'Confirm takeover of the residue above and continue? [Y/N]: ' ;;
         ru:rs_takeover_prompt) echo 'Подтвердить принятие указанных выше остатков и продолжить? [Y/N]: ' ;;
-        fa:rs_takeover_prompt) echo 'تصاحب باقیمانده‌های بالا تأیید و ادامه داده شود؟ [Y/N]: ' ;;
+        fa:rs_takeover_prompt) echo 'آیا مدیریت موارد باقی‌ماندهٔ بالا به این اسکریپت سپرده شود و عملیات ادامه یابد؟ [Y/N]: ' ;;
         zh-tw:rs_takeover_prompt) echo '確認接管上述殘留並繼續？[Y/N]: ' ;;
         ja:rs_takeover_prompt) echo '上記の残留を引き継いで続行しますか？[Y/N]: ' ;;
         zh:do_chmod) echo '无法设置 A-Box 目录权限： %s' ;;
@@ -8829,7 +8843,7 @@ tr_msg() {
         en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;
         ru:inst_retired_xl) echo 'xray-latest больше не поддерживается; развёртывание экземпляров этого типа недоступно.' ;;
         fa:inst_retired_xl) echo 'xray-latest کنار گذاشته شده است؛ استقرار این نوع نمونه دیگر پشتیبانی نمی‌شود.' ;;
-        ja:inst_retired_xl) echo 'xray-latest は廃止されました。この種類のインスタンスの導入には対応していません。' ;;
+        ja:inst_retired_xl) echo 'xray-latest は廃止されました。この種類のインスタンスのデプロイには対応していません。' ;;
         zh:sc_state_reset_prompt) echo '是否重置为默认快捷键（ab abox）？[y/N]：' ;;
         en:sc_state_reset_prompt) echo 'Reset to the default shortcuts (ab abox)? [y/N]: ' ;;
         ru:sc_state_reset_prompt) echo 'Сбросить к ярлыкам по умолчанию (ab abox)? [y/N]: ' ;;
@@ -9136,12 +9150,6 @@ tr_msg() {
         ru:gd_download) echo 'Не удалось загрузить файл данных Geo %s.' ;;
         fa:gd_download) echo 'دانلود فایل داده Geo ‏%s ناموفق بود.' ;;
         ja:gd_download) echo 'Geo データファイル %s のダウンロードに失敗しました。' ;;
-        zh:gd_html) echo 'Geo 数据文件 %s 看起来是 HTML 错误页。' ;;
-        zh-tw:gd_html) echo 'Geo 資料檔案 %s 看起來是 HTML 錯誤頁。' ;;
-        en:gd_html) echo 'The Geo data file %s looks like an HTML error page.' ;;
-        ru:gd_html) echo 'Файл данных Geo %s выглядит как HTML-страница ошибки.' ;;
-        fa:gd_html) echo 'فایل داده Geo ‏%s شبیه صفحه خطای HTML است.' ;;
-        ja:gd_html) echo 'Geo データファイル %s は HTML エラーページのようです。' ;;
         zh:gd_no_digest) echo 'Geo 数据 URL 必须是带官方 digest 的 GitHub Release 下载地址；拒绝无 digest 的明文拉取： %s' ;;
         zh-tw:gd_no_digest) echo 'Geo 資料 URL 必須是帶官方 digest 的 GitHub Release 下載位址；拒絕無 digest 的明文拉取： %s' ;;
         en:gd_no_digest) echo 'The Geo data URL must be a GitHub Release download URL with an official digest; refusing a plaintext fetch without a digest: %s' ;;
@@ -9178,12 +9186,6 @@ tr_msg() {
         ru:gd_params) echo 'Отсутствуют параметры загрузки данных Geo.' ;;
         fa:gd_params) echo 'پارامترهای دانلود داده Geo وجود ندارد.' ;;
         ja:gd_params) echo 'Geo データのダウンロードパラメータが不足しています。' ;;
-        zh:gd_size) echo 'Geo 数据文件 %s 大小异常。' ;;
-        zh-tw:gd_size) echo 'Geo 資料檔案 %s 大小異常。' ;;
-        en:gd_size) echo 'The Geo data file %s has an abnormal size.' ;;
-        ru:gd_size) echo 'Файл данных Geo %s имеет аномальный размер.' ;;
-        fa:gd_size) echo 'اندازه فایل داده Geo ‏%s غیرعادی است.' ;;
-        ja:gd_size) echo 'Geo データファイル %s のサイズが異常です。' ;;
         zh:gd_tmp) echo 'Geo 数据临时文件创建失败。' ;;
         zh-tw:gd_tmp) echo 'Geo 資料臨時檔案建立失敗。' ;;
         en:gd_tmp) echo 'Failed to create the Geo data temp file.' ;;
@@ -9232,12 +9234,12 @@ tr_msg() {
         ru:va_hy2_elf) echo 'Загруженный Hysteria не является исполняемым файлом ELF.' ;;
         fa:va_hy2_elf) echo 'دانلود Hysteria یک فایل اجرایی ELF نیست.' ;;
         ja:va_hy2_elf) echo 'Hysteria のダウンロード結果が ELF 実行ファイルではありません。' ;;
-        zh:va_sb_tar) echo 'Sing-box 压缩包校验失败。' ;;
-        zh-tw:va_sb_tar) echo 'Sing-box 壓縮包校驗失敗。' ;;
-        en:va_sb_tar) echo 'The Sing-box archive check failed.' ;;
-        ru:va_sb_tar) echo 'Проверка архива Sing-box не пройдена.' ;;
-        fa:va_sb_tar) echo 'بررسی آرشیو Sing-box ناموفق بود.' ;;
-        ja:va_sb_tar) echo 'Sing-box アーカイブのチェックに失敗しました。' ;;
+        zh:va_sb_tar) echo 'sing-box 压缩包校验失败。' ;;
+        zh-tw:va_sb_tar) echo 'sing-box 壓縮包校驗失敗。' ;;
+        en:va_sb_tar) echo 'The sing-box archive check failed.' ;;
+        ru:va_sb_tar) echo 'Проверка архива sing-box не пройдена.' ;;
+        fa:va_sb_tar) echo 'بررسی آرشیو sing-box ناموفق بود.' ;;
+        ja:va_sb_tar) echo 'sing-box アーカイブのチェックに失敗しました。' ;;
         zh:va_undefined) echo '未定义的下载校验规则： %s' ;;
         zh-tw:va_undefined) echo '未定義的下載校驗規則： %s' ;;
         en:va_undefined) echo 'Undefined download validation rule: %s' ;;
@@ -9368,7 +9370,7 @@ tr_msg() {
         zh-tw:fw2_fwd_perm_q) echo 'firewalld permanent 查詢失敗。' ;;
         en:fw2_fwd_perm_q) echo 'The firewalld permanent query failed.' ;;
         ru:fw2_fwd_perm_q) echo 'Запрос permanent firewalld не удался.' ;;
-        fa:fw2_fwd_perm_q) echo 'پرس‌وجوی permanent ‏firewalld ناموفق بود.' ;;
+        fa:fw2_fwd_perm_q) echo 'پرس‌وجوی تنظیمات دائمی (permanent) در firewalld ناموفق بود.' ;;
         ja:fw2_fwd_perm_q) echo 'firewalld の permanent クエリに失敗しました。' ;;
         zh:fw2_fwd_perm_record) echo 'firewalld permanent 规则归属记录失败。' ;;
         zh-tw:fw2_fwd_perm_record) echo 'firewalld permanent 規則歸屬記錄失敗。' ;;
@@ -9398,7 +9400,7 @@ tr_msg() {
         zh-tw:fw2_fwd_runtime_q) echo 'firewalld runtime 查詢失敗。' ;;
         en:fw2_fwd_runtime_q) echo 'The firewalld runtime query failed.' ;;
         ru:fw2_fwd_runtime_q) echo 'Запрос runtime firewalld не удался.' ;;
-        fa:fw2_fwd_runtime_q) echo 'پرس‌وجوی runtime ‏firewalld ناموفق بود.' ;;
+        fa:fw2_fwd_runtime_q) echo 'پرس‌وجوی تنظیمات جاری (runtime) در firewalld ناموفق بود.' ;;
         ja:fw2_fwd_runtime_q) echo 'firewalld の runtime クエリに失敗しました。' ;;
         zh:fw2_fwd_runtime_record) echo 'firewalld runtime 规则归属记录失败。' ;;
         zh-tw:fw2_fwd_runtime_record) echo 'firewalld runtime 規則歸屬記錄失敗。' ;;
@@ -10234,60 +10236,60 @@ tr_msg() {
         ru:ag_ws_update) echo 'Не удалось обновить конфигурацию входящего Argo WS.' ;;
         fa:ag_ws_update) echo 'به‌روزرسانی پیکربندی ورودی Argo WS ناموفق بود.' ;;
         ja:ag_ws_update) echo 'Argo WS インバウンド設定の更新に失敗しました。' ;;
-        zh:bs2_cfgdir) echo 'Sing-box 配置目录权限准备失败。' ;;
-        zh-tw:bs2_cfgdir) echo 'Sing-box 設定目錄權限準備失敗。' ;;
-        en:bs2_cfgdir) echo 'Failed to prepare the Sing-box configuration directory permissions.' ;;
-        ru:bs2_cfgdir) echo 'Не удалось подготовить права каталога конфигурации Sing-box.' ;;
-        fa:bs2_cfgdir) echo 'آماده‌سازی مجوزهای پوشه پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_cfgdir) echo 'Sing-box 設定ディレクトリの権限の準備に失敗しました。' ;;
-        zh:bs2_chmod) echo 'Sing-box 配置权限设置失败。' ;;
-        zh-tw:bs2_chmod) echo 'Sing-box 設定權限設定失敗。' ;;
-        en:bs2_chmod) echo 'Failed to set the Sing-box configuration permissions.' ;;
-        ru:bs2_chmod) echo 'Не удалось задать права конфигурации Sing-box.' ;;
-        fa:bs2_chmod) echo 'تنظیم مجوزهای پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_chmod) echo 'Sing-box 設定の権限設定に失敗しました。' ;;
-        zh:bs2_commit) echo 'Sing-box 配置原子提交失败。' ;;
-        zh-tw:bs2_commit) echo 'Sing-box 設定原子提交失敗。' ;;
-        en:bs2_commit) echo 'Failed to atomically commit the Sing-box configuration.' ;;
-        ru:bs2_commit) echo 'Не удалось атомарно зафиксировать конфигурацию Sing-box.' ;;
-        fa:bs2_commit) echo 'ثبت اتمی پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_commit) echo 'Sing-box 設定のアトミックコミットに失敗しました。' ;;
-        zh:bs2_dir) echo 'Sing-box 配置目录创建失败。' ;;
-        zh-tw:bs2_dir) echo 'Sing-box 設定目錄建立失敗。' ;;
-        en:bs2_dir) echo 'Failed to create the Sing-box configuration directory.' ;;
-        ru:bs2_dir) echo 'Не удалось создать каталог конфигурации Sing-box.' ;;
-        fa:bs2_dir) echo 'ایجاد پوشه پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_dir) echo 'Sing-box 設定ディレクトリを作成できませんでした。' ;;
-        zh:bs2_inbounds) echo 'Sing-box inbounds JSON 构造失败。' ;;
-        zh-tw:bs2_inbounds) echo 'Sing-box inbounds JSON 構造失敗。' ;;
-        en:bs2_inbounds) echo 'Failed to construct the Sing-box inbounds JSON.' ;;
-        ru:bs2_inbounds) echo 'Не удалось построить JSON входящих подключений Sing-box.' ;;
-        fa:bs2_inbounds) echo 'ساخت JSON ورودی‌های Sing-box ناموفق بود.' ;;
-        ja:bs2_inbounds) echo 'Sing-box インバウンド JSON の構築に失敗しました。' ;;
-        zh:bs2_json) echo 'Sing-box JSON 生成失败。' ;;
-        zh-tw:bs2_json) echo 'Sing-box JSON 產生失敗。' ;;
-        en:bs2_json) echo 'Failed to generate the Sing-box JSON.' ;;
-        ru:bs2_json) echo 'Не удалось сгенерировать JSON Sing-box.' ;;
-        fa:bs2_json) echo 'ساخت JSON ‏Sing-box ناموفق بود.' ;;
-        ja:bs2_json) echo 'Sing-box JSON の生成に失敗しました。' ;;
-        zh:bs2_parent) echo 'Sing-box 配置父路径不是目录，拒绝写入。' ;;
-        zh-tw:bs2_parent) echo 'Sing-box 設定父路徑不是目錄，拒絕寫入。' ;;
-        en:bs2_parent) echo 'The Sing-box configuration parent path is not a directory; refusing to write.' ;;
-        ru:bs2_parent) echo 'Родительский путь конфигурации Sing-box не является каталогом; запись отклонена.' ;;
-        fa:bs2_parent) echo 'مسیر والد پیکربندی Sing-box یک پوشه نیست؛ نوشتن رد شد.' ;;
-        ja:bs2_parent) echo 'Sing-box 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
-        zh:bs2_symlink) echo 'Sing-box 配置路径存在符号链接，拒绝写入。' ;;
-        zh-tw:bs2_symlink) echo 'Sing-box 設定路徑存在符號連結，拒絕寫入。' ;;
-        en:bs2_symlink) echo 'A symlink exists in the Sing-box configuration path; refusing to write.' ;;
-        ru:bs2_symlink) echo 'В пути конфигурации Sing-box есть символьная ссылка; запись отклонена.' ;;
-        fa:bs2_symlink) echo 'در مسیر پیکربندی Sing-box پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
-        ja:bs2_symlink) echo 'Sing-box 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
-        zh:bs2_tmp) echo 'Sing-box 配置临时文件创建失败。' ;;
-        zh-tw:bs2_tmp) echo 'Sing-box 設定臨時檔案建立失敗。' ;;
-        en:bs2_tmp) echo 'Failed to create the Sing-box configuration temp file.' ;;
-        ru:bs2_tmp) echo 'Не удалось создать временный файл конфигурации Sing-box.' ;;
-        fa:bs2_tmp) echo 'ایجاد فایل موقت پیکربندی Sing-box ناموفق بود.' ;;
-        ja:bs2_tmp) echo 'Sing-box 設定の一時ファイルを作成できませんでした。' ;;
+        zh:bs2_cfgdir) echo 'sing-box 配置目录权限准备失败。' ;;
+        zh-tw:bs2_cfgdir) echo 'sing-box 設定目錄權限準備失敗。' ;;
+        en:bs2_cfgdir) echo 'Failed to prepare the sing-box configuration directory permissions.' ;;
+        ru:bs2_cfgdir) echo 'Не удалось подготовить права каталога конфигурации sing-box.' ;;
+        fa:bs2_cfgdir) echo 'آماده‌سازی مجوزهای پوشه پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_cfgdir) echo 'sing-box 設定ディレクトリの権限の準備に失敗しました。' ;;
+        zh:bs2_chmod) echo 'sing-box 配置权限设置失败。' ;;
+        zh-tw:bs2_chmod) echo 'sing-box 設定權限設定失敗。' ;;
+        en:bs2_chmod) echo 'Failed to set the sing-box configuration permissions.' ;;
+        ru:bs2_chmod) echo 'Не удалось задать права конфигурации sing-box.' ;;
+        fa:bs2_chmod) echo 'تنظیم مجوزهای پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_chmod) echo 'sing-box 設定の権限設定に失敗しました。' ;;
+        zh:bs2_commit) echo 'sing-box 配置原子提交失败。' ;;
+        zh-tw:bs2_commit) echo 'sing-box 設定原子提交失敗。' ;;
+        en:bs2_commit) echo 'Failed to atomically commit the sing-box configuration.' ;;
+        ru:bs2_commit) echo 'Не удалось атомарно зафиксировать конфигурацию sing-box.' ;;
+        fa:bs2_commit) echo 'ثبت اتمی پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_commit) echo 'sing-box 設定のアトミックコミットに失敗しました。' ;;
+        zh:bs2_dir) echo 'sing-box 配置目录创建失败。' ;;
+        zh-tw:bs2_dir) echo 'sing-box 設定目錄建立失敗。' ;;
+        en:bs2_dir) echo 'Failed to create the sing-box configuration directory.' ;;
+        ru:bs2_dir) echo 'Не удалось создать каталог конфигурации sing-box.' ;;
+        fa:bs2_dir) echo 'ایجاد پوشه پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_dir) echo 'sing-box 設定ディレクトリを作成できませんでした。' ;;
+        zh:bs2_inbounds) echo 'sing-box inbounds JSON 构造失败。' ;;
+        zh-tw:bs2_inbounds) echo 'sing-box inbounds JSON 構造失敗。' ;;
+        en:bs2_inbounds) echo 'Failed to construct the sing-box inbounds JSON.' ;;
+        ru:bs2_inbounds) echo 'Не удалось построить JSON входящих подключений sing-box.' ;;
+        fa:bs2_inbounds) echo 'ساخت JSON ورودی‌های sing-box ناموفق بود.' ;;
+        ja:bs2_inbounds) echo 'sing-box インバウンド JSON の構築に失敗しました。' ;;
+        zh:bs2_json) echo 'sing-box JSON 生成失败。' ;;
+        zh-tw:bs2_json) echo 'sing-box JSON 產生失敗。' ;;
+        en:bs2_json) echo 'Failed to generate the sing-box JSON.' ;;
+        ru:bs2_json) echo 'Не удалось сгенерировать JSON sing-box.' ;;
+        fa:bs2_json) echo 'ساخت JSON ‏sing-box ناموفق بود.' ;;
+        ja:bs2_json) echo 'sing-box JSON の生成に失敗しました。' ;;
+        zh:bs2_parent) echo 'sing-box 配置父路径不是目录，拒绝写入。' ;;
+        zh-tw:bs2_parent) echo 'sing-box 設定父路徑不是目錄，拒絕寫入。' ;;
+        en:bs2_parent) echo 'The sing-box configuration parent path is not a directory; refusing to write.' ;;
+        ru:bs2_parent) echo 'Родительский путь конфигурации sing-box не является каталогом; запись отклонена.' ;;
+        fa:bs2_parent) echo 'مسیر والد پیکربندی sing-box یک پوشه نیست؛ نوشتن رد شد.' ;;
+        ja:bs2_parent) echo 'sing-box 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
+        zh:bs2_symlink) echo 'sing-box 配置路径存在符号链接，拒绝写入。' ;;
+        zh-tw:bs2_symlink) echo 'sing-box 設定路徑存在符號連結，拒絕寫入。' ;;
+        en:bs2_symlink) echo 'A symlink exists in the sing-box configuration path; refusing to write.' ;;
+        ru:bs2_symlink) echo 'В пути конфигурации sing-box есть символьная ссылка; запись отклонена.' ;;
+        fa:bs2_symlink) echo 'در مسیر پیکربندی sing-box پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
+        ja:bs2_symlink) echo 'sing-box 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
+        zh:bs2_tmp) echo 'sing-box 配置临时文件创建失败。' ;;
+        zh-tw:bs2_tmp) echo 'sing-box 設定臨時檔案建立失敗。' ;;
+        en:bs2_tmp) echo 'Failed to create the sing-box configuration temp file.' ;;
+        ru:bs2_tmp) echo 'Не удалось создать временный файл конфигурации sing-box.' ;;
+        fa:bs2_tmp) echo 'ایجاد فایل موقت پیکربندی sing-box ناموفق بود.' ;;
+        ja:bs2_tmp) echo 'sing-box 設定の一時ファイルを作成できませんでした。' ;;
         zh:bx_chmod) echo 'Xray 配置权限设置失败。' ;;
         zh-tw:bx_chmod) echo 'Xray 設定權限設定失敗。' ;;
         en:bx_chmod) echo 'Failed to set the Xray configuration permissions.' ;;
@@ -10796,13 +10798,13 @@ tr_msg() {
         en:apply_host_dns_verify_link_domain) echo 'The global DNS set matched, but a link still carries domains (%s), so matching queries can still go via that link; rolled back.' ;;
         ru:apply_host_dns_verify_link_domain) echo 'Глобальный набор DNS совпал, но на канале остались домены (%s), поэтому совпадающие запросы могут идти через этот канал; выполнен откат.' ;;
         fa:apply_host_dns_verify_link_domain) echo 'مجموعه DNS سراسری مطابقت داشت، اما پیوند هنوز دامنه دارد (%s) و درخواست‌های مطابق ممکن است از آن پیوند عبور کنند؛ تغییرات بازگردانده شد.' ;;
-        zh-tw:apply_host_dns_verify_link_domain) echo '全域 DNS 集合與預期一致，但鏈路仍帶域名（%s），相符的查詢仍可能走該鏈路，已回復。' ;;
+        zh-tw:apply_host_dns_verify_link_domain) echo '全域 DNS 集合與預期一致，但鏈路仍帶域名（%s），相符的查詢仍可能走該鏈路，已回滾。' ;;
         ja:apply_host_dns_verify_link_domain) echo 'システム全体の DNS セットは一致しましたが、リンクにドメインが残っています（%s）。一致するクエリはそのリンクを経由する可能性があるため、ロールバックしました。' ;;
         zh:apply_host_dns_verify_mismatch) echo '应用后全局 DNS 集合与预期不符，已回滚。' ;;
         en:apply_host_dns_verify_mismatch) echo 'The global DNS set did not match the expected set after applying the changes; rolled back.' ;;
         ru:apply_host_dns_verify_mismatch) echo 'После применения общесистемный набор DNS не совпал с ожидаемым; выполнен откат.' ;;
         fa:apply_host_dns_verify_mismatch) echo 'پس از اعمال تغییرات، مجموعه DNS سراسری با مقدار مورد انتظار مطابقت نداشت؛ تغییرات بازگردانده شد.' ;;
-        zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回復。' ;;
+        zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回滾。' ;;
         ja:apply_host_dns_verify_mismatch) echo '適用後のシステム全体の DNS セットが期待値と一致しなかったため、ロールバックしました。' ;;
         zh:dns_rollback_failed_staging_removed) echo 'DNS 回滚失败；本次快照暂存目录已删除。基线快照仍保留，可用 DNS 菜单回滚。' ;;
         en:dns_rollback_failed_staging_removed) echo 'DNS rollback failed; the per-attempt snapshot staging directory was removed. The baseline snapshot is preserved; use the DNS menu to roll back.' ;;
@@ -10978,7 +10980,7 @@ tr_msg() {
         fa:deploy_official_hy2_title) echo 'استقرار نسخه رسمی Hysteria 2' ;;
         zh-tw:deploy_official_hy2_title) echo '官方 Hysteria 2 部署' ;;
         ja:deploy_official_hy2_title) echo '公式 Hysteria 2 のデプロイ' ;;
-        zh:deploy_singbox_title) echo '部署 Sing-box 核心 [%s]' ;;
+        zh:deploy_singbox_title) echo '部署 sing-box 核心 [%s]' ;;
         en:deploy_singbox_title) echo 'sing-box core deployment [%s]' ;;
         ru:deploy_singbox_title) echo 'Развёртывание ядра sing-box [%s]' ;;
         fa:deploy_singbox_title) echo 'استقرار هسته sing-box [%s]' ;;
@@ -11265,7 +11267,7 @@ tr_msg() {
         ru:release_ports_other_stopped) echo 'Это развёртывание остановило следующие работающие службы других ядер: %s. После развёртывания будет перезапущено только вновь установленное ядро; остальные службы автоматически не восстанавливаются. Чтобы продолжить использование, перезапустите службу вручную, а если её конфигурация была удалена этой перезаписью, разверните её заново.' ;;
         fa:release_ports_other_stopped) echo 'این استقرار سرویس‌های در حال اجرای هسته‌های دیگر را متوقف کرد: %s. پس از استقرار، فقط هستهٔ تازه مستقرشده دوباره راه‌اندازی می‌شود؛ سرویس‌های دیگر به‌طور خودکار بازنمی‌گردند. برای ادامهٔ استفاده، آن را به‌صورت دستی راه‌اندازی مجدد کنید و اگر پیکربندی آن با این استقرارِ جایگزین پاک شده است، آن هسته را دوباره مستقر کنید.' ;;
         zh-tw:release_ports_other_stopped) echo '本次部署已停止以下正在執行的其他核心服務：%s。部署完成後僅重新啟動新部署的核心，其他服務不會自動恢復；如需繼續使用請手動重新啟動，若其設定已被本次覆蓋部署清除則需重新部署該核心。' ;;
-        ja:release_ports_other_stopped) echo '今回の導入では、他のコアの次の実行中サービスを停止しました：%s。導入完了後に再起動されるのは新しく導入したコアのみで、他のサービスは自動で復旧しません。引き続き使う場合は手動で再起動してください。今回の上書き導入で設定が削除された場合は、そのコアを再導入してください。' ;;
+        ja:release_ports_other_stopped) echo '今回のデプロイでは、他のコアの次の実行中サービスを停止しました：%s。デプロイ完了後に再起動されるのは新しくデプロイしたコアのみで、他のサービスは自動で復旧しません。引き続き使う場合は手動で再起動してください。今回の上書きデプロイで設定が削除された場合は、そのコアを再デプロイしてください。' ;;
         zh:release_ports_stopping_services) echo '正在停止 A-Box 托管服务...' ;;
         en:release_ports_stopping_services) echo 'Stopping A-Box-managed services...' ;;
         ru:release_ports_stopping_services) echo 'Останавливаются службы под управлением A-Box...' ;;
@@ -11390,7 +11392,7 @@ tr_msg() {
         en:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap rollback cannot restore /etc/fstab; leaving the current state unchanged to avoid a worse inconsistency.' ;;
         ru:rollback_abox_new_swap_fstab_unrecoverable) echo 'При откате Swap не удалось восстановить /etc/fstab; текущее состояние сохранено, чтобы избежать более серьёзных несоответствий.' ;;
         fa:rollback_abox_new_swap_fstab_unrecoverable) echo 'بازگردانی Swap نمی‌تواند /etc/fstab را بازیابی کند؛ وضعیت فعلی حفظ می‌شود تا ناسازگاری شدیدتری ایجاد نشود.' ;;
-        zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回復無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
+        zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回滾無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
         ja:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap のロールバックで /etc/fstab を復元できません。より深刻な不整合を避けるため、現状を維持します。' ;;
         zh:run_local_sni_benchmark_title) echo '本地 SNI 优选' ;;
         en:run_local_sni_benchmark_title) echo 'Local SNI selection' ;;
@@ -11408,19 +11410,19 @@ tr_msg() {
         en:run_remote_bash_script_download_failed) echo 'Remote script download failed: %s' ;;
         ru:run_remote_bash_script_download_failed) echo 'Не удалось загрузить удалённый скрипт: %s' ;;
         fa:run_remote_bash_script_download_failed) echo 'دانلود اسکریپت راه دور ناموفق بود: %s' ;;
-        zh-tw:run_remote_bash_script_download_failed) echo '遠端指令碼下載失敗: %s' ;;
+        zh-tw:run_remote_bash_script_download_failed) echo '遠端腳本下載失敗: %s' ;;
         ja:run_remote_bash_script_download_failed) echo 'リモートスクリプトのダウンロードに失敗しました: %s' ;;
         zh:run_remote_bash_script_syntax_failed) echo '远程脚本语法校验失败: %s' ;;
         en:run_remote_bash_script_syntax_failed) echo 'Remote script syntax check failed: %s' ;;
         ru:run_remote_bash_script_syntax_failed) echo 'Проверка синтаксиса удалённого скрипта не пройдена: %s' ;;
         fa:run_remote_bash_script_syntax_failed) echo 'بررسی نحو اسکریپت راه دور ناموفق بود: %s' ;;
-        zh-tw:run_remote_bash_script_syntax_failed) echo '遠端指令碼語法檢查失敗: %s' ;;
+        zh-tw:run_remote_bash_script_syntax_failed) echo '遠端腳本語法檢查失敗: %s' ;;
         ja:run_remote_bash_script_syntax_failed) echo 'リモートスクリプトの構文チェックに失敗しました: %s' ;;
         zh:run_remote_bash_script_tmpfile_failed) echo '远程脚本临时文件创建失败。' ;;
         en:run_remote_bash_script_tmpfile_failed) echo 'Failed to create a temporary file for the remote script.' ;;
         ru:run_remote_bash_script_tmpfile_failed) echo 'Не удалось создать временный файл для удалённого скрипта.' ;;
         fa:run_remote_bash_script_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت راه دور ناموفق بود.' ;;
-        zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端指令碼的暫存檔建立失敗。' ;;
+        zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端腳本的暫存檔建立失敗。' ;;
         ja:run_remote_bash_script_tmpfile_failed) echo 'リモートスクリプト用の一時ファイルの作成に失敗しました。' ;;
         zh:save_mirror_prefer_fixed_order) echo '核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。' ;;
         en:save_mirror_prefer_fixed_order) echo 'The core download order is fixed: official upstream stable release → pinned A-Box fallback release.' ;;
@@ -11432,13 +11434,13 @@ tr_msg() {
         en:setup_geo_cron_flock_missing) echo 'flock is unavailable: the Geo update script requires a flock lock and will exit silently without it. Installation refused.' ;;
         ru:setup_geo_cron_flock_missing) echo 'Команда flock недоступна: скрипт обновления Geo требует блокировки flock и без неё завершится без сообщений. Установка отклонена.' ;;
         fa:setup_geo_cron_flock_missing) echo 'فرمان flock در دسترس نیست: اسکریپت به‌روزرسانی Geo به قفل flock نیاز دارد و بدون آن بی‌پیام خارج می‌شود. نصب رد شد.' ;;
-        zh-tw:setup_geo_cron_flock_missing) echo 'flock 指令無法使用：Geo 更新指令碼需要 flock 鎖，缺少時會無聲結束，拒絕安裝。' ;;
+        zh-tw:setup_geo_cron_flock_missing) echo 'flock 指令無法使用：Geo 更新腳本需要 flock 鎖，缺少時會無聲結束，拒絕安裝。' ;;
         ja:setup_geo_cron_flock_missing) echo 'flock コマンドを利用できません。Geo 更新スクリプトには flock ロックが必要で、ない場合はメッセージなしで終了します。インストールを拒否します。' ;;
         zh:setup_geo_cron_script_write_failed) echo 'Geo 更新脚本原子写入失败。' ;;
         en:setup_geo_cron_script_write_failed) echo 'Atomic write of the Geo update script failed.' ;;
         ru:setup_geo_cron_script_write_failed) echo 'Атомарная запись скрипта обновления Geo не удалась.' ;;
         fa:setup_geo_cron_script_write_failed) echo 'نوشتن اتمی اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
-        zh-tw:setup_geo_cron_script_write_failed) echo 'Geo 更新指令碼原子寫入失敗。' ;;
+        zh-tw:setup_geo_cron_script_write_failed) echo 'Geo 更新腳本原子寫入失敗。' ;;
         ja:setup_geo_cron_script_write_failed) echo 'Geo 更新スクリプトのアトミック書き込みに失敗しました。' ;;
         zh:setup_health_monitor_flock_missing) echo 'flock 命令不可用：健康探针依赖 flock 锁，缺失时探针会静默退出、监控形同关闭，拒绝安装。' ;;
         en:setup_health_monitor_flock_missing) echo 'flock is unavailable: the health probe requires a flock lock. Without it, the probe exits silently and monitoring is effectively disabled. Installation refused.' ;;
@@ -11468,7 +11470,7 @@ tr_msg() {
         en:setup_traffic_monitor_flock_missing) echo 'flock is unavailable: traffic monitoring requires a flock lock and the script will exit silently without it. Installation refused.' ;;
         ru:setup_traffic_monitor_flock_missing) echo 'Команда flock недоступна: мониторинг трафика требует блокировки flock, без которой скрипт завершится без сообщений. Установка отклонена.' ;;
         fa:setup_traffic_monitor_flock_missing) echo 'فرمان flock در دسترس نیست: پایش ترافیک به قفل flock نیاز دارد و بدون آن اسکریپت بی‌پیام خارج می‌شود. نصب رد شد.' ;;
-        zh-tw:setup_traffic_monitor_flock_missing) echo 'flock 指令無法使用：流量監控需要 flock 鎖，缺少時指令碼會無聲結束，拒絕安裝。' ;;
+        zh-tw:setup_traffic_monitor_flock_missing) echo 'flock 指令無法使用：流量監控需要 flock 鎖，缺少時腳本會無聲結束，拒絕安裝。' ;;
         ja:setup_traffic_monitor_flock_missing) echo 'flock コマンドを利用できません。トラフィック監視には flock ロックが必要で、ない場合はスクリプトがメッセージなしで終了します。インストールを拒否します。' ;;
         zh:setup_traffic_monitor_mkdir_failed) echo '无法创建流量监控目录。' ;;
         en:setup_traffic_monitor_mkdir_failed) echo 'Cannot create the traffic monitoring directory.' ;;
@@ -11486,16 +11488,16 @@ tr_msg() {
         en:setup_traffic_monitor_tmp_write_failed) echo 'Failed to write the traffic monitoring script to the temporary file.' ;;
         ru:setup_traffic_monitor_tmp_write_failed) echo 'Не удалось записать скрипт мониторинга трафика во временный файл.' ;;
         fa:setup_traffic_monitor_tmp_write_failed) echo 'نوشتن اسکریپت پایش ترافیک در فایل موقت ناموفق بود.' ;;
-        zh-tw:setup_traffic_monitor_tmp_write_failed) echo '流量監控指令碼寫入暫存檔失敗。' ;;
+        zh-tw:setup_traffic_monitor_tmp_write_failed) echo '流量監控腳本寫入暫存檔失敗。' ;;
         ja:setup_traffic_monitor_tmp_write_failed) echo 'トラフィック監視スクリプトの一時ファイルへの書き込みに失敗しました。' ;;
         zh:setup_traffic_monitor_tmpfile_failed) echo '流量监控脚本临时文件创建失败。' ;;
         en:setup_traffic_monitor_tmpfile_failed) echo 'Failed to create a temporary file for the traffic monitoring script.' ;;
         ru:setup_traffic_monitor_tmpfile_failed) echo 'Не удалось создать временный файл для скрипта мониторинга трафика.' ;;
         fa:setup_traffic_monitor_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:setup_traffic_monitor_tmpfile_failed) echo '流量監控指令碼的暫存檔建立失敗。' ;;
+        zh-tw:setup_traffic_monitor_tmpfile_failed) echo '流量監控腳本的暫存檔建立失敗。' ;;
         ja:setup_traffic_monitor_tmpfile_failed) echo 'トラフィック監視スクリプトの一時ファイルの作成に失敗しました。' ;;
         zh:show_core_pin_docs_title) echo '核心版本选择与容灾说明' ;;
-        en:show_core_pin_docs_title) echo 'Core release policy' ;;
+        en:show_core_pin_docs_title) echo 'Core version selection and fallback guide' ;;
         ru:show_core_pin_docs_title) echo 'Выбор версии ядра и правила резервирования' ;;
         fa:show_core_pin_docs_title) echo 'انتخاب نسخه هسته و سیاست استفاده از نسخه پشتیبان' ;;
         zh-tw:show_core_pin_docs_title) echo '核心版本選擇與備援說明' ;;
@@ -11540,7 +11542,7 @@ tr_msg() {
         en:sni_load_candidate_seed_use_bundled) echo 'Online SNI data is unavailable; using the local candidate file bundled with the script.' ;;
         ru:sni_load_candidate_seed_use_bundled) echo 'Онлайн-данные SNI недоступны; используется локальный файл кандидатов, поставляемый со скриптом.' ;;
         fa:sni_load_candidate_seed_use_bundled) echo 'داده‌های آنلاین SNI در دسترس نیستند؛ از فایل نامزدهای محلی همراه اسکریپت استفاده می‌شود.' ;;
-        zh-tw:sni_load_candidate_seed_use_bundled) echo 'SNI 線上資料無法使用；使用隨指令碼提供的本機候選檔案。' ;;
+        zh-tw:sni_load_candidate_seed_use_bundled) echo 'SNI 線上資料無法使用；使用隨腳本提供的本機候選檔案。' ;;
         ja:sni_load_candidate_seed_use_bundled) echo 'SNI のオンラインデータは利用できません。スクリプトに同梱されたローカル候補ファイルを使用します。' ;;
         zh:sni_load_candidate_seed_use_cached) echo 'SNI 数据下载失败或未通过校验；使用上次通过校验的本地缓存。' ;;
         en:sni_load_candidate_seed_use_cached) echo 'SNI data download failed or validation did not pass; using the last validated local cache.' ;;
@@ -11595,9 +11597,9 @@ tr_msg() {
         ru:traffic_management_menu_back) echo 'Возврат в главное меню' ;;
         fa:traffic_management_menu_back) echo 'بازگشت به منوی اصلی' ;;
         zh-tw:traffic_management_menu_back) echo '返回主選單' ;;
-        ja:traffic_management_menu_back) echo 'メインメニューへの復帰' ;;
+        ja:traffic_management_menu_back) echo 'メインメニューに戻る' ;;
         zh:traffic_management_menu_limit_range) echo '流量上限必须是 1-8589934591 GB 的整数。' ;;
-        en:traffic_management_menu_limit_range) echo 'The traffic limit must be an integer between 1-8589934591 GB.' ;;
+        en:traffic_management_menu_limit_range) echo 'The traffic limit must be an integer between 1 and 8589934591 GB.' ;;
         ru:traffic_management_menu_limit_range) echo 'Лимит трафика должен быть целым числом в диапазоне 1-8589934591 GB.' ;;
         fa:traffic_management_menu_limit_range) echo 'سقف ترافیک باید عددی صحیح در بازهٔ 1-8589934591 GB باشد.' ;;
         zh-tw:traffic_management_menu_limit_range) echo '流量上限必須是 1-8589934591 GB 範圍內的整數。' ;;
@@ -11660,7 +11662,7 @@ tr_msg() {
         en:users_normalize_default_name_migrate_failed) echo 'User migration synchronisation failed, and writing the registry rollback also failed: %s/%s is still in the migrated state (main), while the core is still abox. The next retry will be skipped; check the registry manually.' ;;
         ru:users_normalize_default_name_migrate_failed) echo 'Синхронизация миграции пользователей и запись отката реестра не удались: %s/%s остаётся в состоянии после миграции (main), а ядро по-прежнему abox. Следующая повторная попытка будет пропущена; проверьте реестр вручную.' ;;
         fa:users_normalize_default_name_migrate_failed) echo 'همگام‌سازی مهاجرت کاربران و نوشتن بازگردانی رجیستری ناموفق بود: %s/%s همچنان در وضعیت پس از مهاجرت (main) است و هسته همچنان abox است. تلاش مجدد بعدی رد خواهد شد؛ رجیستری را دستی بررسی کنید.' ;;
-        zh-tw:users_normalize_default_name_migrate_failed) echo '使用者移轉同步失敗，且登錄表回復寫入失敗：%s/%s 仍為移轉後狀態（main），核心仍為 abox，下次重試將略過，請手動檢查登錄表。' ;;
+        zh-tw:users_normalize_default_name_migrate_failed) echo '使用者移轉同步失敗，且登錄表回滾寫入失敗：%s/%s 仍為移轉後狀態（main），核心仍為 abox，下次重試將略過，請手動檢查登錄表。' ;;
         ja:users_normalize_default_name_migrate_failed) echo 'ユーザー移行の同期に失敗し、レジストリのロールバック書き込みにも失敗しました：%s/%s は移行後の状態（main）のままですが、コアは abox のままです。次回の再試行はスキップされます。レジストリを手動で確認してください。' ;;
         zh:users_reg_write_identity_unreadable) echo '注册表拒绝写入：%s 身份无法读取（非注册表文件或已损坏），请手工处理。' ;;
         en:users_reg_write_identity_unreadable) echo 'Registry write refused: cannot read the identity of %s (not a registry file or corrupted). Handle this manually.' ;;
@@ -11696,7 +11698,7 @@ tr_msg() {
         en:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Failed to set permissions for the traffic monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Не удалось установить права доступа для скрипта мониторинга трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_chmod_failed) echo 'تنظیم مجوزهای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量監控指令碼的權限設定失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量監控腳本的權限設定失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_chmod_failed) echo '通信量監視スクリプトの権限設定に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo '流量限制 cron 事务快照失败。' ;;
         en:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit cron entry.' ;;
@@ -11714,25 +11716,25 @@ tr_msg() {
         en:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Post-verification of the traffic monitoring script'\''s runtime environment marker failed.' ;;
         ru:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Последующая проверка метки среды выполнения скрипта мониторинга трафика не удалась.' ;;
         fa:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'بررسی نهایی نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量監控指令碼執行環境標記的後置驗證失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量監控腳本執行環境標記的後置驗證失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '通信量監視スクリプトの実行環境マーカーの事後検証に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量监控脚本运行环境标记写入失败。' ;;
         en:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Failed to write the runtime environment marker for the traffic monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Не удалось записать маркер среды выполнения скрипта мониторинга трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'نوشتن نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量監控指令碼執行環境標記寫入失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量監控腳本執行環境標記寫入失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'トラフィック監視スクリプトの実行環境マーカーの書き込みに失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制监控脚本事务快照失败。' ;;
         en:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit monitoring script.' ;;
         ru:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Не удалось создать транзакционный снимок скрипта мониторинга лимита трафика.' ;;
         fa:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'ایجاد تصویر لحظه‌ای تراکنش برای اسکریپت پایش محدودیت ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制監控指令碼的交易快照建立失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制監控腳本的交易快照建立失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '通信量制限監視スクリプトのトランザクションスナップショット作成に失敗しました。' ;;
         zh:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量监控脚本原子写入失败。' ;;
         en:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Atomic write of the traffic monitoring script failed.' ;;
         ru:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Атомарная запись скрипта мониторинга трафика не удалась.' ;;
         fa:valid_hy2_bandwidth_mbps_script_write_failed) echo 'نوشتن اتمی اسکریپت پایش ترافیک ناموفق بود.' ;;
-        zh-tw:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量監控指令碼原子寫入失敗。' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量監控腳本原子寫入失敗。' ;;
         ja:valid_hy2_bandwidth_mbps_script_write_failed) echo 'トラフィック監視スクリプトのアトミック書き込みに失敗しました。' ;;
         zh:validate_fail2ban_config_dump_failed) echo 'Fail2Ban 全局配置 dump 失败；可能由系统其它 jail 引起。' ;;
         en:validate_fail2ban_config_dump_failed) echo 'Fail2Ban global configuration dump failed; other system jails may be responsible.' ;;
@@ -11756,7 +11758,7 @@ tr_msg() {
         en:validate_ota_version_direction_bad_metadata) echo 'Invalid OTA script metadata (build/epoch); rejected.' ;;
         ru:validate_ota_version_direction_bad_metadata) echo 'Некорректные метаданные скрипта OTA (build/epoch); скрипт отклонён.' ;;
         fa:validate_ota_version_direction_bad_metadata) echo 'فرادادهٔ اسکریپت OTA نامعتبر است (build/epoch)؛ اسکریپت رد شد.' ;;
-        zh-tw:validate_ota_version_direction_bad_metadata) echo 'OTA 指令碼中繼資料無效（build/epoch），已拒絕。' ;;
+        zh-tw:validate_ota_version_direction_bad_metadata) echo 'OTA 腳本中繼資料無效（build/epoch），已拒絕。' ;;
         ja:validate_ota_version_direction_bad_metadata) echo 'OTA スクリプトのメタデータ（build/epoch）が不正なため、拒否しました。' ;;
         zh:validate_ota_version_direction_downgrade_refused) echo '拒绝 OTA 降级: local=%s(%s) remote=%s(%s)。如确需降级，显式设置 ABOX_ALLOW_DOWNGRADE=1 并配置 SHA256 allowlist。' ;;
         en:validate_ota_version_direction_downgrade_refused) echo 'OTA downgrade refused: local=%s(%s) remote=%s(%s). If a downgrade is required, explicitly set ABOX_ALLOW_DOWNGRADE=1 and configure the SHA256 allowlist.' ;;
@@ -11768,7 +11770,7 @@ tr_msg() {
         en:validate_ota_version_direction_missing_metadata) echo 'The OTA script lacks trusted ABOX_BUILD/ABOX_BUILD_EPOCH metadata.' ;;
         ru:validate_ota_version_direction_missing_metadata) echo 'В скрипте OTA отсутствуют доверенные метаданные ABOX_BUILD/ABOX_BUILD_EPOCH.' ;;
         fa:validate_ota_version_direction_missing_metadata) echo 'اسکریپت OTA فاقد فرادادهٔ قابل اعتماد ABOX_BUILD/ABOX_BUILD_EPOCH است.' ;;
-        zh-tw:validate_ota_version_direction_missing_metadata) echo 'OTA 指令碼缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 中繼資料。' ;;
+        zh-tw:validate_ota_version_direction_missing_metadata) echo 'OTA 腳本缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 中繼資料。' ;;
         ja:validate_ota_version_direction_missing_metadata) echo 'OTA スクリプトに信頼できる ABOX_BUILD/ABOX_BUILD_EPOCH メタデータがありません。' ;;
         zh:verify_domain_points_to_self_not_pointing_here) echo '域名已解析，但未发现解析到当前公网 IP: %s' ;;
         en:verify_domain_points_to_self_not_pointing_here) echo 'The domain resolves, but does not appear to point to the current public IP: %s' ;;
@@ -11957,14 +11959,14 @@ tr_msg() {
         zh-tw:mi_none) echo '無' ;;
         ja:mi_none) echo 'なし' ;;
         zh:mi_kernel) echo '内核' ;;
-        en:mi_kernel) echo 'kernel' ;;
+        en:mi_kernel) echo 'Kernel' ;;
         ru:mi_kernel) echo 'ядро' ;;
         fa:mi_kernel) echo 'هسته' ;;
         zh-tw:mi_kernel) echo '內核' ;;
         ja:mi_kernel) echo 'カーネル' ;;
         zh:mi_hw) echo '硬件' ;;
         en:mi_hw) echo 'HW' ;;
-        ru:mi_hw) echo 'Железо' ;;
+        ru:mi_hw) echo 'Оборудование' ;;
         fa:mi_hw) echo 'سخت‌افزار' ;;
         zh-tw:mi_hw) echo '硬體' ;;
         ja:mi_hw) echo 'HW' ;;
@@ -11985,9 +11987,9 @@ tr_msg() {
         en:mi_net) echo 'Network' ;;
         en:mi_dns_plain) echo 'Plain' ;;
         ru:mi_net) echo 'Сеть' ;;
-        ru:mi_dns_plain) echo 'Обычный' ;;
+        ru:mi_dns_plain) echo 'Без шифрования' ;;
         fa:mi_net) echo 'شبکه' ;;
-        fa:mi_dns_plain) echo 'ساده' ;;
+        fa:mi_dns_plain) echo 'بدون رمزنگاری' ;;
         zh-tw:mi_net) echo '網絡' ;;
         zh-tw:mi_dns_plain) echo '明文' ;;
         ja:mi_net) echo 'ネットワーク' ;;
@@ -12023,11 +12025,11 @@ tr_msg() {
         zh-tw:mi_quick_r) echo '一鍵 Reality（按 R 執行）' ;;
         ja:mi_quick_r) echo 'ワンクリック Reality（Rキーで実行）' ;;
         zh:mi_land) echo '落地' ;;
-        en:mi_land) echo 'Exit' ;;
-        ru:mi_land) echo 'Exit' ;;
-        fa:mi_land) echo 'Exit' ;;
+        en:mi_land) echo 'Egress' ;;
+        ru:mi_land) echo 'Выход' ;;
+        fa:mi_land) echo 'خروجی' ;;
         zh-tw:mi_land) echo '落地' ;;
-        ja:mi_land) echo 'Exit' ;;
+        ja:mi_land) echo '出口' ;;
         zh:mi_dc) echo '机房' ;;
         en:mi_dc) echo 'Datacenter' ;;
         ru:mi_dc) echo 'Дата-центр' ;;
@@ -13172,10 +13174,22 @@ PY_PUBLIC_IP
 }
 
 # BUG-28: hoisted from get_public_ip_fresh().
+# $1 (optional): deadline epoch seconds for the whole fresh-probe round;
+# each attempt is capped at min(PUBLIC_IP_MAX_TIME, remaining budget) and
+# the round stops when the budget is spent. Empty $1 keeps the old
+# per-endpoint-only behaviour (standalone callers).
 __abox_try_v4() {
-    local api ip
+    local api ip _now _remain _mt
     for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS4 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        _mt="$PUBLIC_IP_MAX_TIME"
+        if [[ -n "${1:-}" ]]; then
+            _now=$(date +%s 2>/dev/null || printf '0')
+            _remain=$(( $1 - _now ))
+            (( _remain > 0 )) || return 1
+            (( _remain < _mt )) && _mt="$_remain"
+            (( _mt >= 1 )) || _mt=1
+        fi
+        ip=$(curl -fsS4 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$_mt" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -13184,10 +13198,19 @@ __abox_try_v4() {
     return 1
 }
 # BUG-28: hoisted from get_public_ip_fresh().
+# $1 (optional): deadline epoch seconds; see __abox_try_v4.
 __abox_try_v6() {
-    local api ip
+    local api ip _now _remain _mt
     for api in 'https://api64.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS6 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        _mt="$PUBLIC_IP_MAX_TIME"
+        if [[ -n "${1:-}" ]]; then
+            _now=$(date +%s 2>/dev/null || printf '0')
+            _remain=$(( $1 - _now ))
+            (( _remain > 0 )) || return 1
+            (( _remain < _mt )) && _mt="$_remain"
+            (( _mt >= 1 )) || _mt=1
+        fi
+        ip=$(curl -fsS6 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$_mt" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -13196,18 +13219,20 @@ __abox_try_v6() {
     return 1
 }
 get_public_ip_fresh() {
-    local ip api pref
+    local ip api pref _ip_deadline='' _ip_budget=12
+    [[ "${PUBLIC_IP_TOTAL_BUDGET:-12}" =~ ^[0-9]+$ ]] && _ip_budget="$PUBLIC_IP_TOTAL_BUDGET"
+    _ip_deadline=$(( $(date +%s 2>/dev/null || printf '0') + _ip_budget ))
     pref=$(read_ip_pref 2>/dev/null || printf 'dual')
     case "$pref" in
         ipv4)
-            __abox_try_v4 && return 0
+            __abox_try_v4 "$_ip_deadline" && return 0
             ;;
         ipv6)
-            __abox_try_v6 && return 0
+            __abox_try_v6 "$_ip_deadline" && return 0
             ;;
         *)
-            __abox_try_v4 && return 0
-            __abox_try_v6 && return 0
+            __abox_try_v4 "$_ip_deadline" && return 0
+            __abox_try_v6 "$_ip_deadline" && return 0
             ;;
     esac
     printf 'N/A\n'
@@ -24407,7 +24432,9 @@ fetch_github_release() {
 # verifying the official API digest. Prints the failure reason to stderr
 # and returns 1 on any failure; the caller decides whether to fall back.
 # Never dies: a failure here must not abort the install before the mirror
-# leg has been tried. $3 is removed on failure.
+# leg has been tried. GEO-F3: $3 is left in place on failure -- the
+# caller owns it (mktemp, 0600); deleting it here would make the mirror
+# leg's curl -o recreate it under the ambient umask.
 fetch_geo_upstream_data() {
     local file_name="${1:-}" official_url="${2:-}" tmp_out="${3:-}"
     local repo asset release_json asset_json asset_name download_url digest release_ref _geo_max_time=90
@@ -24416,27 +24443,26 @@ fetch_geo_upstream_data() {
     repo="${BASH_REMATCH[1]}"
     asset="${BASH_REMATCH[2]}"
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-        abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; return 1; }
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || return 1
     fi
     release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
-    [[ -n "$release_json" ]] || { printf '%s\n' "$(tprintf gd_api "$repo")" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$release_json" ]] || { printf '%s\n' "$(tprintf gd_api "$repo")" >&2; return 1; }
     asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
-    [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { printf '%s\n' "$(tprintf gd_asset_missing "$asset")" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { printf '%s\n' "$(tprintf gd_asset_missing "$asset")" >&2; return 1; }
     asset_name=$(jq -r '.name // ""' <<< "$asset_json")
     release_ref=$(jq -r '.tag_name // ""' <<< "$release_json")
     download_url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ -n "$asset_name" && -n "$release_ref" ]] || { printf '%s\n' 'Geo Release metadata missing asset name or tag.' >&2; rm -f -- "$tmp_out"; return 1; }
-    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { printf '%s\n' "$(tr_msg gd_url_mismatch)" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$asset_name" && -n "$release_ref" ]] || { printf '%s\n' 'Geo Release metadata missing asset name or tag.' >&2; return 1; }
+    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { printf '%s\n' "$(tr_msg gd_url_mismatch)" >&2; return 1; }
     _geo_max_time=90
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-        abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; return 1; }
-        _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; return 1; }
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || return 1
+        _geo_max_time=$(abox_fetch_curl_max_time 90) || return 1
     fi
-    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; rm -f -- "$tmp_out"; return 1; }
+    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; return 1; }
     if ! verify_github_asset_digest "$tmp_out" "$digest"; then
         printf '%s\n' "$(tprintf gd_digest "$file_name")" >&2
-        rm -f -- "$tmp_out"
         return 1
     fi
 }
@@ -24471,10 +24497,19 @@ fetch_geo_mirror_data() {
     fi
     sum_dir=$(mktemp -d /tmp/A-Box-geo-mirror.XXXXXX) || return 1
     sums="$sum_dir/SHA256SUMS"; sums_sig="$sum_dir/SHA256SUMS.sig"
-    if ! curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS" -o "$sums" 2>/dev/null; then
+    if ! curl -fLsS --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS" -o "$sums" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
-    curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS.sig" -o "$sums_sig" 2>/dev/null || true
+    # GEO-F1: re-check the budget and recompute the per-call cap
+    # before the .sig request: the manifest fetch above may have
+    # consumed most of it, and reusing the pre-manifest value lets
+    # this request overrun by up to one _m_max_time (<=90s). The
+    # asset stage below already recomputes the same way.
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (SHA256SUMS.sig)" || { rm -rf -- "$sum_dir"; return 1; }
+        _m_max_time=$(abox_fetch_curl_max_time 90) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    curl -fLsS --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS.sig" -o "$sums_sig" 2>/dev/null || true
     if [[ -L "$sums" || ( -e "$sums_sig" && -L "$sums_sig" ) ]]; then rm -rf -- "$sum_dir"; return 1; fi
     if ! verify_ed25519_detached "$sums" "$sums_sig" >/dev/null 2>&1; then
         printf '%s\n' "[fetch] geo mirror SHA256SUMS signature verification failed; refusing mirror ${file_name}." >&2
@@ -24486,19 +24521,35 @@ fetch_geo_mirror_data() {
         abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (asset)" || { rm -rf -- "$sum_dir"; return 1; }
         _m_max_time=$(abox_fetch_curl_max_time 90) || { rm -rf -- "$sum_dir"; return 1; }
     fi
-    if ! abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/${file_name}" -o "$tmp_out"; then
+    if ! abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/${file_name}" -o "$tmp_out"; then
         rm -rf -- "$sum_dir"; return 1
     fi
     rm -rf -- "$sum_dir"
     actual=$(sha256sum < "$tmp_out" 2>/dev/null | awk '{print $1}') || actual=''
     if [[ "${actual,,}" != "${expected,,}" ]]; then
         printf '%s\n' "[fetch] geo mirror SHA-256 mismatch for ${file_name}; refusing." >&2
-        rm -f -- "$tmp_out"; return 1
+        return 1
     fi
 }
 
+# GEO-F4: payload gate shared by both legs. Returns 0 iff $1 is a
+# regular file larger than 500000 bytes whose first 256 bytes are not
+# an HTML error page. Never dies: the caller decides whether to try
+# the other leg. A failed validation is a leg failure, not a local
+# error -- only the atomic commit below still dies.
+validate_geo_payload() {
+    local _f="${1:-}" _size
+    [[ -n "$_f" && -f "$_f" && ! -L "$_f" ]] || return 1
+    _size=$(wc -c < "$_f" 2>/dev/null | tr -d ' ')
+    [[ -n "$_size" && "$_size" -gt 500000 ]] || return 1
+    if head -c 256 "$_f" 2>/dev/null | grep -Eiq '<(html|!doctype)'; then
+        return 1
+    fi
+    return 0
+}
+
 fetch_geo_data() {
-    local file_name official_url out tmp_out size out_created=0 _geo_t0 _geo_now
+    local file_name official_url out tmp_out out_created=0 _geo_t0 _geo_now _geo_leg_ok=0
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
@@ -24519,24 +24570,32 @@ fetch_geo_data() {
         # Upstream first; on ANY upstream failure (API rate-limit included)
         # fall back to the A-Box signed mirror before giving up. A non-GitHub
         # URL still refuses outright below (URL contract unchanged).
+        # GEO-F4: a leg only counts when its payload passes
+        # validate_geo_payload (size + HTML gates). A digest-valid but
+        # too-small/HTML upstream payload falls back to the mirror
+        # instead of dying here; only both legs failing dies.
         if fetch_geo_upstream_data "$file_name" "$official_url" "$tmp_out"; then
-            :
-        elif fetch_geo_mirror_data "$file_name" "$tmp_out"; then
-            msg "[fetch] geo ${file_name}: recovered from A-Box signed mirror (${ABOX_GEO_MIRROR_RELEASE:-geo-mirror})"
-        else
+            if validate_geo_payload "$tmp_out"; then
+                _geo_leg_ok=1
+            else
+                msg "[fetch] geo ${file_name}: upstream payload failed validation (size or HTML); trying the signed mirror."
+            fi
+        fi
+        if (( _geo_leg_ok == 0 )) && fetch_geo_mirror_data "$file_name" "$tmp_out"; then
+            if validate_geo_payload "$tmp_out"; then
+                _geo_leg_ok=1
+                msg "[fetch] geo ${file_name}: recovered from A-Box signed mirror (${ABOX_GEO_MIRROR_RELEASE:-geo-mirror})"
+            else
+                msg "[fetch] geo ${file_name}: mirror payload failed validation (size or HTML)."
+            fi
+        fi
+        if (( _geo_leg_ok == 0 )); then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
             die "$(tprintf gd_both_failed "$file_name")"
         fi
     else
         rm -f -- "$tmp_out"
         die "$(tprintf gd_no_digest "$file_name")"
-    fi
-
-    size=$(wc -c < "$tmp_out" 2>/dev/null | tr -d ' ')
-    [[ -n "$size" && "$size" -gt 500000 ]] || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_size "$file_name")"; }
-    if head -c 256 "$tmp_out" 2>/dev/null | grep -Eiq '<(html|!doctype)'; then
-        rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
-        die "$(tprintf gd_html "$file_name")"
     fi
     # R9C7-01: re-check the target just before commit: $out may have
     # been swapped for a directory during the (up to 90s) download, and a
@@ -27963,7 +28022,7 @@ pre_install_setup() {
     [[ "$MODE_IN" == *'SS'* || "$MODE_IN" == *'ALL'* || "$MODE_IN" == 'VLESS_SS' ]] && HAS_SS=true
 
     # Xray ALL: Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053.
-    # Sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
+    # sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
 
     INGRESS_IF=$(get_active_interface)
     [[ -z "$INGRESS_IF" ]] && die "$(tr_msg pi_no_iface)"
@@ -30374,7 +30433,7 @@ EOF_SVC
 _recycle_port_rules_if_unused() {
     local port="$1" sb_cfg="${2:-/etc/sing-box/config.json}"
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
-    # Sing-box config must parse and explicitly show the port free.
+    # sing-box config must parse and explicitly show the port free.
     jq -e . "$sb_cfg" >/dev/null 2>&1 || return 0
     jq -e --argjson p "$port" '
         if type != "object" then false
@@ -30406,6 +30465,21 @@ _recycle_port_rules_if_unused() {
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
+    # SX-TMP: $tmp_json holds the cleartext SOCKS5 password and
+    # $cfg_bak a copy of the live config (all credentials); die()
+    # exits the process, so only an EXIT trap cleans them on the
+    # type-gate die path (same chained idiom as
+    # deploy_socks5_landing). Restored on the success path below,
+    # once both files are removed explicitly.
+    local _sb_socks5_prev_trap_exit='' _sb_socks5_exit_trap_cmd='' _sb_socks5_old_cmd=''
+    _sb_socks5_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_sb_socks5_prev_trap_exit" ]]; then
+        _sb_socks5_old_cmd="${_sb_socks5_prev_trap_exit#trap -- }"
+        _sb_socks5_old_cmd="${_sb_socks5_old_cmd% EXIT}"
+        _sb_socks5_exit_trap_cmd="$_sb_socks5_exit_trap_cmd; eval $_sb_socks5_old_cmd"
+    fi
+    trap "$_sb_socks5_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -30451,7 +30525,7 @@ deploy_singbox_socks5_landing() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box socks5-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-socks5) || die "$(tr_msg dp_sb_tmpdir)"
@@ -30464,11 +30538,11 @@ deploy_singbox_socks5_landing() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
@@ -30552,13 +30626,17 @@ EOF_SVC
     fi
     # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
     # independent inbound that merely shares $tag must not be
-    # silently replaced by the merge below; only a genuine SOCKS5
-    # inbound (type socks or mixed) proceeds.
+    # silently replaced by the merge below; only a single genuine
+    # SOCKS5 inbound (type socks or mixed) proceeds. SX-F1: the
+    # gate is a uniqueness gate, not an existence check -- a
+    # duplicated tag (two inbounds sharing $tag, whatever their
+    # types) refuses, because the merge below deletes the whole
+    # tag group and would silently drop the alien inbound.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and (.type=="socks" or .type=="mixed"))' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and ($same[0].type == "socks" or $same[0].type == "mixed"))' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     # R4C8-04: the seed above only runs when the binary was
@@ -30597,7 +30675,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -30623,6 +30701,8 @@ EOF_SVC
 
     # Ensure the service is running (minimal-install path).
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_socks5_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -30863,12 +30943,15 @@ deploy_xray_trojan_landing() {
         local tmp_cfg
         # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
         # that merely shares $tag must not be silently replaced by the
-        # merge below; only a genuine Trojan inbound proceeds.
+        # merge below; only a single genuine Trojan inbound proceeds.
+        # SX-F1: uniqueness gate, not an existence check -- a
+        # duplicated tag refuses, because the merge below deletes
+        # the whole tag group.
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="trojan")' "$cfg" >/dev/null 2>&1; then
+            if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$cfg" >/dev/null 2>&1; then
                 msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
             else
-                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
             fi
         fi
         # R29b-M3: capture the replaced inbound's port before the merge
@@ -30956,6 +31039,21 @@ deploy_xray_trojan_landing() {
 deploy_singbox_trojan_landing() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
+    # SX-TMP: $tmp_json holds the cleartext Trojan password and
+    # $cfg_bak a copy of the live config (all credentials); die()
+    # exits the process, so only an EXIT trap cleans them on the
+    # type-gate die path (same chained idiom as
+    # deploy_socks5_landing). Restored on the success path below,
+    # once both files are removed explicitly.
+    local _sb_trojan_prev_trap_exit='' _sb_trojan_exit_trap_cmd='' _sb_trojan_old_cmd=''
+    _sb_trojan_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_trojan_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_sb_trojan_prev_trap_exit" ]]; then
+        _sb_trojan_old_cmd="${_sb_trojan_prev_trap_exit#trap -- }"
+        _sb_trojan_old_cmd="${_sb_trojan_old_cmd% EXIT}"
+        _sb_trojan_exit_trap_cmd="$_sb_trojan_exit_trap_cmd; eval $_sb_trojan_old_cmd"
+    fi
+    trap "$_sb_trojan_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -30974,7 +31072,7 @@ deploy_singbox_trojan_landing() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box trojan-landing"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-trojan) || die "$(tr_msg dp_sb_tmpdir)"
@@ -30987,11 +31085,11 @@ deploy_singbox_trojan_landing() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31098,13 +31196,15 @@ EOF_SVC
     local tmp_cfg
     # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
     # independent inbound that merely shares $tag must not be
-    # silently replaced by the merge below; only a genuine Trojan
-    # inbound proceeds.
+    # silently replaced by the merge below; only a single genuine
+    # Trojan inbound proceeds. SX-F1: uniqueness gate, not an
+    # existence check -- a duplicated tag refuses, because the
+    # merge below deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="trojan")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "trojan")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31129,7 +31229,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31143,6 +31243,8 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_trojan_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -31200,7 +31302,7 @@ deploy_singbox_tuic() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box tuic"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-tuic) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31213,11 +31315,11 @@ deploy_singbox_tuic() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31344,12 +31446,15 @@ EOF_SVC
     local tmp_cfg
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
     # that merely shares $tag must not be silently replaced by the
-    # merge below; only a genuine TUIC inbound proceeds.
+    # merge below; only a single genuine TUIC inbound proceeds.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="tuic")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
@@ -31374,7 +31479,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
@@ -31433,7 +31538,7 @@ deploy_singbox_anytls() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box anytls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-anytls) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31446,11 +31551,11 @@ deploy_singbox_anytls() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31557,12 +31662,15 @@ EOF_SVC
     local tmp_cfg
     # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
     # that merely shares $tag must not be silently replaced by the
-    # merge below; only a genuine AnyTLS inbound proceeds.
+    # merge below; only a single genuine AnyTLS inbound proceeds.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="anytls")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "anytls")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not an AnyTLS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31587,7 +31695,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31647,7 +31755,7 @@ deploy_singbox_shadowtls() {
     # here is bounded by the 300s budget and logged the same way.
     abox_fetch_guard_start "sing-box shadowtls"
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-shadowtls) || die "$(tr_msg dp_sb_tmpdir)"
@@ -31660,11 +31768,11 @@ deploy_singbox_shadowtls() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         ABOX_DEPLOY_TX_TMP=''
         # U31/U34: install the seed only when no usable config exists; an
@@ -31765,14 +31873,17 @@ EOF_SVC
     local tmp_cfg cfg_bak=''
     # 2dh: same guard as R14C9-01, for the outer tag. An independent
     # inbound that merely shares $tag must not be silently replaced by
-    # the merge below; only the existing ShadowTLS pair (or an unoccupied
-    # tag) proceeds. The "updating its config" notice is shown only for
-    # the genuine pair.
+    # the merge below; only a single existing ShadowTLS pair (or an
+    # unoccupied tag) proceeds. The "updating its config" notice is
+    # shown only for the genuine pair.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" --arg it "$itag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "shadowtls" and $same[0].detour == $it)' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     # R14C9-01: refuse if the companion tag is already used by an inbound
@@ -31783,6 +31894,13 @@ EOF_SVC
     if jq -e --arg it "$itag" '.inbounds[]? | select(.tag==$it)' "$cfg" >/dev/null 2>&1; then
         if ! jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
             die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
+        # R-1 (SX-F1 same-shape): the pair check above is an existence
+        # check; a duplicated companion tag still passes it, and the
+        # merge below deletes the whole companion group. Require
+        # exactly one companion object of type shadowsocks.
+        if ! jq -e --arg it "$itag" '[.inbounds[]? | select(.tag==$it)] as $same | (($same | length) == 1 and $same[0].type == "shadowsocks")' "$cfg" >/dev/null 2>&1; then
+            die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag') or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31807,7 +31925,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
@@ -31998,7 +32116,7 @@ argo_deploy_ws() {
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
-    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     # R8C9-01: back up the live config before replacing it; without
@@ -32566,7 +32684,7 @@ deploy_argo_temp() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
@@ -32578,11 +32696,11 @@ deploy_argo_temp() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -32651,7 +32769,7 @@ EOF_SVC
     # missing config. An existing config (even jq-invalid JSONC,
     # per R6C9-02) is never overwritten.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
@@ -32823,7 +32941,7 @@ deploy_argo_fixed() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
-        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
+        singbox_vendor_takeover_gate || die 'sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
@@ -32835,11 +32953,11 @@ deploy_argo_fixed() {
         SB_PATH="$sb_ext/sing-box"
         extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
         [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
         /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
@@ -32908,7 +33026,7 @@ EOF_SVC
     # missing config. An existing config (even jq-invalid JSONC,
     # per R6C9-02) is never overwritten.
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",timestamp:true,output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
@@ -33076,7 +33194,7 @@ argo_uninstall() {
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         # R31-M1: read through jsonc_strip_comments, like every other
-        # Argo reader (_argo_ws_inbound_present). Sing-box accepts
+        # Argo reader (_argo_ws_inbound_present). sing-box accepts
         # JSONC comments that jq rejects (R6C9-02); a bare jq read
         # fails the uninstall on a legal commented config. Under
         # pipefail a strip failure also fails the pipeline, so a
@@ -35666,10 +35784,13 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
         # independent inbound that merely shares $tag must not be
-        # silently replaced by the merge below; only a genuine SOCKS
-        # inbound proceeds.
-        if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="socks")' "$cfg" >/dev/null 2>&1; then
-            die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        # silently replaced by the merge below; only a single genuine
+        # SOCKS inbound proceeds.
+        # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+        # check -- a duplicated tag refuses, because the merge below
+        # deletes the whole tag group.
+        if ! jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "socks")' "$cfg" >/dev/null 2>&1; then
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
@@ -36607,15 +36728,15 @@ deploy_singbox() {
     SB_PATH="$sb_ext/sing-box"
     extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
     [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
-    chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
-    "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
-    install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+    chmod 755 "$SB_PATH" || die 'sing-box staged binary chmod failed.'
+    "$SB_PATH" version >/dev/null 2>&1 || die 'sing-box staged binary execution check failed.'
+    install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'sing-box binary atomic install failed.'
     rm -rf -- "$sb_tmp"
     ABOX_DEPLOY_TX_TMP=''
     /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
     abox_fetch_guard_stop
 
-    prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+    prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'sing-box config directory preparation failed.'
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
     IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_sb_keyparse)"
     [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die "$(tr_msg dp_sb_keyparse_empty)"
@@ -36634,7 +36755,7 @@ deploy_singbox() {
     fi
 
     build_singbox_config "$MODE_IN"
-    chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
+    chmod 600 /etc/sing-box/config.json || die 'sing-box config permission hardening failed.'
     jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
     standalone_preserve_restore sing-box /etc/sing-box/config.json || { deployment_transaction_rollback; return 1; }
@@ -42159,21 +42280,21 @@ ux_mode_menu() {
             msg "${BOLD}${GREEN}Runtime mode and core version policy${NC}"
             msg "Current mode: ${YELLOW}$(read_fast_mode_label)${NC} | Core order: official stable → fixed recovery mirror"
             msg "${CYAN}1.${NC} Strict mode"
-            msg "${CYAN}2.${NC} Fast mode (non-critical confirmations only)"
+            msg "${CYAN}2.${NC} Fast mode (skips only non-critical confirmations)"
             msg "${CYAN}3.${NC} Show stable version policy and recovery pins"
             msg "${CYAN}0.${NC} Back" ;;
         ru)
             msg "${BOLD}${GREEN}Режим работы и политика версий ядер${NC}"
-            msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → резервная копия"
+            msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → фиксированное резервное зеркало"
             msg "${CYAN}1.${NC} Строгий режим"
-            msg "${CYAN}2.${NC} Быстрый режим"
-            msg "${CYAN}3.${NC} Политика стабильных версий и резервные pins"
+            msg "${CYAN}2.${NC} Быстрый режим (пропускаются только некритичные подтверждения)"
+            msg "${CYAN}3.${NC} Политика стабильных версий и закреплённые резервные версии"
             msg "${CYAN}0.${NC} Назад" ;;
         fa)
             msg "${BOLD}${GREEN}حالت اجرا و سیاست نسخه هسته‌ها${NC}"
             msg "حالت: ${YELLOW}$(read_fast_mode_label)${NC} | منبع: نسخه پایدار upstream سپس نسخه بازیابی"
             msg "${CYAN}1.${NC} حالت سخت‌گیرانه"
-            msg "${CYAN}2.${NC} حالت سریع"
+            msg "${CYAN}2.${NC} حالت سریع (فقط از تأییدهای غیرحیاتی صرف‌نظر می‌شود)"
             msg "${CYAN}3.${NC} سیاست نسخه پایدار و نسخه‌های بازیابی"
             msg "${CYAN}0.${NC} بازگشت" ;;
         zh-tw)
@@ -46316,7 +46437,7 @@ host_network_menu() {
         ru)
             msg "${BOLD}${GREEN}Сеть и региональные настройки${NC}"
             msg "${CYAN}1.${NC} Предпочтение IP"
-            msg "${CYAN}2.${NC} DNS, тест задержки, DoT и DoH"
+            msg "${CYAN}2.${NC} DNS, автоматическое тестирование производительности, DoT и DoH"
             msg "${CYAN}3.${NC} Часовой пояс, локаль и NTP"
             msg "${CYAN}4.${NC} Режим и источник загрузки"
             msg "${CYAN}0.${NC} Назад"
@@ -46324,7 +46445,7 @@ host_network_menu() {
         fa)
             msg "${BOLD}${GREEN}تنظیمات شبکه و منطقه‌ای${NC}"
             msg "${CYAN}1.${NC} ترجیح IP"
-            msg "${CYAN}2.${NC} DNS، آزمون تأخیر، DoT و DoH"
+            msg "${CYAN}2.${NC} DNS، سنجش خودکار عملکرد، DoT و DoH"
             msg "${CYAN}3.${NC} منطقه زمانی، locale و NTP"
             msg "${CYAN}4.${NC} حالت و منبع دانلود"
             msg "${CYAN}0.${NC} بازگشت"
@@ -50349,20 +50470,20 @@ dns_menu() {
             msg "${CYAN}4.${NC} Custom plain DNS"
             msg "${CYAN}5.${NC} DNS over TLS (presets / custom)"
             msg "${CYAN}6.${NC} DNS over HTTPS via dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (plain)"
-            msg "${CYAN}8.${NC} Quad9 DNS (plain)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (unencrypted preset)"
+            msg "${CYAN}8.${NC} Quad9 DNS (unencrypted preset)"
             msg "${CYAN}9.${NC} Restore the previous DNS snapshot"
             msg "${CYAN}10.${NC} DNS tri-mode setup (v4/v6/dual)"
             ;;
         ru)
-            msg "${CYAN}1.${NC} Автоподбор DNS (обычный)"
+            msg "${CYAN}1.${NC} Автоподбор DNS (без шифрования)"
             msg "${CYAN}2.${NC} Автоподбор DNS over TLS (DoT)"
             msg "${CYAN}3.${NC} Автоподбор DNS over HTTPS (DoH)"
-            msg "${CYAN}4.${NC} Пользовательский открытый DNS"
+            msg "${CYAN}4.${NC} Пользовательский DNS без шифрования"
             msg "${CYAN}5.${NC} DNS over TLS (пресеты / свой)"
             msg "${CYAN}6.${NC} DNS over HTTPS через dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (обычный)"
-            msg "${CYAN}8.${NC} Quad9 DNS (обычный)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (предустановленный, без шифрования)"
+            msg "${CYAN}8.${NC} Quad9 DNS (предустановленный, без шифрования)"
             msg "${CYAN}9.${NC} Восстановить предыдущую конфигурацию"
             msg "${CYAN}10.${NC} Настройка DNS (v4/v6/dual)"
             ;;
@@ -50373,10 +50494,10 @@ dns_menu() {
             msg "${CYAN}4.${NC} DNS ساده سفارشی"
             msg "${CYAN}5.${NC} DNS روی TLS (پیش‌فرض / سفارشی)"
             msg "${CYAN}6.${NC} DNS روی HTTPS با dnscrypt-proxy (Cloudflare)"
-            msg "${CYAN}7.${NC} Cloudflare DNS (ساده)"
-            msg "${CYAN}8.${NC} Quad9 DNS (ساده)"
+            msg "${CYAN}7.${NC} DNS Cloudflare (پیش‌تنظیم، بدون رمزنگاری)"
+            msg "${CYAN}8.${NC} DNS Quad9 (پیش‌تنظیم، بدون رمزنگاری)"
             msg "${CYAN}9.${NC} بازگردانی تنظیمات قبلی DNS"
-            msg "${CYAN}10.${NC} تنظیم DNS سه‌حالته"
+            msg "${CYAN}10.${NC} تنظیم DNS سه‌حالته (v4/v6/dual)"
             ;;
         zh-tw)
             msg "${CYAN}1.${NC} 自動實測優選 DNS（明文）"
@@ -50385,8 +50506,8 @@ dns_menu() {
             msg "${CYAN}4.${NC} 自定義明文 DNS（可選 IPv6）"
             msg "${CYAN}5.${NC} 隱私 DNS DoT（預置 / 自定義）"
             msg "${CYAN}6.${NC} 隱私 DNS DoH（dnscrypt-proxy 本地轉發，Cloudflare）"
-            msg "${CYAN}7.${NC} Cloudflare DNS（明文）"
-            msg "${CYAN}8.${NC} Quad9 DNS（明文）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（明文、預設組態）"
+            msg "${CYAN}8.${NC} Quad9 DNS（明文、預設組態）"
             msg "${CYAN}9.${NC} 回滾到上次 DNS 修改前快照"
             msg "${CYAN}10.${NC} DNS 三模式設定（v4/v6/雙棧）"
             ;;
@@ -50397,8 +50518,8 @@ dns_menu() {
             msg "${CYAN}4.${NC} カスタム平文 DNS（IPv6 は任意）"
             msg "${CYAN}5.${NC} プライバシー保護 DNS over TLS（DoT、プリセット / カスタム）"
             msg "${CYAN}6.${NC} プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy ローカル転送、Cloudflare）"
-            msg "${CYAN}7.${NC} Cloudflare DNS（平文）"
-            msg "${CYAN}8.${NC} Quad9 DNS（平文）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（プリセット・暗号化なし）"
+            msg "${CYAN}8.${NC} Quad9 DNS（プリセット・暗号化なし）"
             msg "${CYAN}9.${NC} 前回の DNS 変更前のスナップショットにロールバック"
             msg "${CYAN}10.${NC} DNS 三モード設定 (v4/v6/デュアル)"
             ;;
@@ -51513,10 +51634,17 @@ run_builtin_sni_radar() {
         running=$((running + 1))
         processed=$((processed + 1))
         if (( running >= concurrency )); then
-            wait
-            running=0
+            # PERF (2026-11-25): work-conserving worker pool. The old code
+            # waited for the WHOLE batch here, so one 3 s straggler idled
+            # the other (concurrency-1) slots until the batch drained.
+            # `wait -n` reaps one finished probe and the loop launches the
+            # next domain at once, keeping all slots busy. Bounded
+            # concurrency is unchanged (mini 32 / full 36 defaults);
+            # `wait -n` needs bash 4.3+ and the script requires 4.4+.
+            wait -n || true
+            running=$((running - 1))
             valid_count=$(wc -l < "$raw" 2>/dev/null | tr -d ' ')
-            printf '\r[*] Stage 1 progress: %d/%d tested | valid=%s' "$processed" "$total" "${valid_count:-0}" >&2
+            printf '\r[*] Stage 1 progress: %d/%d tested | valid=%s' "$(( processed - running ))" "$total" "${valid_count:-0}" >&2
         elif (( processed % progress_every == 0 )); then
             valid_count=$(wc -l < "$raw" 2>/dev/null | tr -d ' ')
             printf '\r[*] Stage 1 progress: %d/%d queued | valid=%s' "$processed" "$total" "${valid_count:-0}" >&2
@@ -54737,7 +54865,7 @@ for m in tf:
             elif m.gid != xray_gid: raise SystemExit(1)
         if n == XRAY_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o022) == 0)): raise SystemExit(1)
     elif in_sb:
-        # Sing-box config data may be group-readable by its dedicated runtime
+        # sing-box config data may be group-readable by its dedicated runtime
         # service account. Preserve root:root compatibility, but when a non-root
         # group is present it must be internally consistent within this archive.
         if m.uid != 0: raise SystemExit(1)
@@ -56731,11 +56859,11 @@ run_mirrored_test_script() {
             *) msg "${YELLOW}[!] 上游最新版不可用或校验未通过，回退到 A-Box 钉版校验镜像。${NC}" ;;
         esac
         local sums_dl_ok=0 sig_dl_ok=0
-        if curl -fLsS --connect-timeout 10 --max-time 45 \
+        if curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
             sums_dl_ok=1
         fi
-        if curl -fLsS --connect-timeout 10 --max-time 45 \
+        if curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
             sig_dl_ok=1
         fi
@@ -56747,9 +56875,9 @@ run_mirrored_test_script() {
                 sums_dl_ok=0
             fi
         fi
-        if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
+        if (( sums_dl_ok == 1 )) && curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
-           curl -fLsS --connect-timeout 10 --max-time 180 \
+           curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 180 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
             # Verify manifest digest (manifest is covered by SHA256SUMS signature)
             local manifest_expected manifest_sha
@@ -58335,6 +58463,53 @@ wallos_rebuild_state_from_live() {
     return 0
 }
 
+# LOW-1: a backup trusts the state file's VERSION, but the state
+# is only a record -- a container swapped out-of-band (e.g. a manual
+# docker run of another Wallos image) leaves the state stale, and the
+# backup then embeds a version that does not match the live
+# container (observed: live 5.11.1 with state 5.11.3). Cross-check
+# the live container's version before the backup is taken: the
+# container's own image tag first, else the first bellamy/wallos
+# RepoTag for the live image ID (same sources as
+# wallos_rebuild_state_from_live). No live container, or either
+# version unparseable -> return 0 (old behavior, no opinion).
+# A mismatch warns and attempts a state rebuild from live; a
+# successful rebuild -> 0 (backup proceeds with fresh state), a
+# failed rebuild -> loud message + return 1 (backup refuses rather
+# than embedding a known-stale version). An empty state VERSION
+# with a parseable live version counts as a mismatch (the rebuild
+# fills it). Diagnostics go to stderr: callers capture stdout.
+wallos_backup_state_matches_live() {
+    local _live_img='' _live_img_id='' _live_ver='' _state_ver='' _tags='' _tag=''
+    _live_img=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    [[ -n "$_live_img" ]] || return 0
+    if [[ "$_live_img" =~ ^(docker\.io/)?bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        _live_ver="${BASH_REMATCH[2]}"
+    else
+        _live_img_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
+        [[ -n "$_live_img_id" ]] || return 0
+        _tags=$(docker image inspect -f '{{join .RepoTags "\n"}}' "$_live_img_id" 2>/dev/null || true)
+        while IFS= read -r _tag; do
+            _tag="${_tag#docker.io/}"
+            if [[ "$_tag" =~ ^bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+                _live_ver="${BASH_REMATCH[1]}"
+                break
+            fi
+        done <<< "$_tags"
+    fi
+    [[ -n "$_live_ver" ]] || return 0
+    _state_ver=$(wallos_state_value VERSION 2>/dev/null || true)
+    if [[ "$_state_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$_state_ver" == "$_live_ver" ]]; then
+        return 0
+    fi
+    msg "${YELLOW}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}); rebuilding state from the live container before backup.${NC}" >&2
+    if wallos_rebuild_state_from_live; then
+        return 0
+    fi
+    msg "${RED}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}) and the state could not be rebuilt; refusing to back up a known-stale version.${NC}" >&2
+    return 1
+}
+
 wallos_create_backup() {
     local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
     if ! [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
@@ -58358,6 +58533,10 @@ wallos_create_backup() {
             return 1
         fi
     fi
+    # LOW-1: cross-check the state against the live container
+    # before anything is archived; a stale VERSION must not be
+    # baked into the backup.
+    wallos_backup_state_matches_live || return 1
     # R6C15-02: only create (at 700) when missing; an existing
     # backups dir keeps its mode, a symlink target is refused.
     mkdir_private "$WALLOS_DIR/backups" || return 1
@@ -58577,7 +58756,7 @@ wallos_restore_backup() {
 }
 
 wallos_upgrade_journal_write() {
-    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7" old_image_id="${8:-}" old_container_id="${9:-}"
+    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7" old_image_id="${8:-}" old_container_id="${9:-}" new_container_id="${10:-}"
     local journal="$WALLOS_DIR/.upgrade-transaction"
     [[ "$phase" == active || "$phase" == committed ]] || return 1
     [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
@@ -58593,6 +58772,15 @@ wallos_upgrade_journal_write() {
     if [[ -n "$old_container_id" ]]; then
         old_container_id=$(_wallos_normalize_container_id "$old_container_id" 2>/dev/null) || return 1
     fi
+    # H7-F1: the container ID this transaction created (10th line).
+    # Empty while no replacement exists yet; once docker run has
+    # created B, the journal names B here, so recovery can tell B
+    # (expected, proceed) from a foreign retaker (refuse). Same
+    # normalization as the old ID; an invalid non-empty value
+    # refuses the write.
+    if [[ -n "$new_container_id" ]]; then
+        new_container_id=$(_wallos_normalize_container_id "$new_container_id" 2>/dev/null) || return 1
+    fi
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
 phase=$phase
@@ -58604,7 +58792,47 @@ backup=$backup
 was_running=$was_running
 old_image_id=$old_image_id
 old_container_id=$old_container_id
+new_container_id=$new_container_id
 EOF_WALLOS_TXN
+}
+
+# H7-F1: record the container a (re)build just created in the
+# active journal's new_container_id field. $1 = cidfile path docker
+# was told to write (--cidfile); $2..$9 = the journal's existing
+# fields (old_image old_port old_tz old_bind backup was_running
+# old_image_id old_container_id). The ID comes from the cidfile when
+# usable; when docker left no usable cidfile, the live 'wallos'
+# container is pinned immediately -- but only when it carries the
+# A-Box managed label, so a concurrent foreign retaker is never
+# recorded as this transaction's container. A failed journal write
+# removes the just-created container (label-checked, by ID only)
+# and returns 1, so a retry rebuilds from scratch instead of
+# wedging on a stale new ID. On success the global
+# WALLOS_CREATED_CONTAINER_ID names the recorded container; the
+# caller removes the cidfile (the journal is authoritative then).
+_wallos_record_created_from_cidfile() {
+    local _cidfile="$1" _new_id='' _lbl=''
+    shift
+    if [[ -f "$_cidfile" ]]; then
+        IFS= read -r _new_id < "$_cidfile" || true
+    fi
+    if [[ ! "$_new_id" =~ ^[0-9a-f]{64}$ ]]; then
+        _new_id=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_new_id" ]]; then
+            _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_new_id" 2>/dev/null || true)
+            [[ "$_lbl" == 'true' ]] || _new_id=''
+        fi
+    fi
+    [[ "$_new_id" =~ ^[0-9a-f]{64}$ ]] || return 1
+    if ! wallos_upgrade_journal_write active "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$_new_id"; then
+        _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_new_id" 2>/dev/null || true)
+        if [[ "$_lbl" == 'true' ]]; then
+            docker rm -f "$_new_id" >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+    WALLOS_CREATED_CONTAINER_ID="$_new_id"
+    return 0
 }
 
 wallos_txn_value() {
@@ -58638,7 +58866,9 @@ _wallos_recover_interrupted_upgrade_impl() {
     _lines=$(wc -l < "$journal" | tr -d '[:space:]')
     # H7rest: 9 lines carry old_container_id; 7/8-line journals from
     # before it are still accepted (live pin below is used instead).
-    [[ "$_lines" == 7 || "$_lines" == 8 || "$_lines" == 9 ]] || {
+    # H7-F1: 10 lines carry new_container_id (the container this
+    # transaction created); older journals are still accepted.
+    [[ "$_lines" == 7 || "$_lines" == 8 || "$_lines" == 9 || "$_lines" == 10 ]] || {
         msg "${RED}$(tprintf wl_rc_journal_incomplete "$journal")${NC}"
         return 1
     }
@@ -58662,6 +58892,8 @@ _wallos_recover_interrupted_upgrade_impl() {
         # is the only record that could ever trigger its cleanup, and
         # a failure here must keep the journal so a retry can remove it.
         rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" || return 1
+        # H7-F1: the transaction is done; its cidfile evidence is spent.
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
         rm -f -- "$journal" || return 1
         rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
         msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
@@ -58682,6 +58914,18 @@ _wallos_recover_interrupted_upgrade_impl() {
     if [[ -n "$_journal_container_id" ]]; then
         _journal_container_id=$(_wallos_normalize_container_id "$_journal_container_id" 2>/dev/null) || return 1
     fi
+    # H7-F1: the container this transaction created (10th line).
+    # Empty in journals written before B existed, or before the
+    # field existed at all. A trusted transaction cidfile (docker's
+    # own --cidfile record) is the fallback evidence for the crash
+    # window between docker run and the journal refresh that names B.
+    local _journal_new_id=''
+    _journal_new_id=$(wallos_txn_value "$journal" new_container_id 2>/dev/null || true)
+    if [[ -n "$_journal_new_id" ]]; then
+        _journal_new_id=$(_wallos_normalize_container_id "$_journal_new_id" 2>/dev/null) || return 1
+    fi
+    local _txn_cid=''
+    _txn_cid=$(_wallos_txn_cidfile_id 2>/dev/null || true)
     _run_image="${old_image_id:-$old_image}"
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
@@ -58769,14 +59013,28 @@ _wallos_recover_interrupted_upgrade_impl() {
             return 1
         fi
         # H7rest: pin the container ID next to the ownership gate.
-        # When the journal carries the pre-upgrade ID, the live
-        # container must be that same container; a mismatch means it
-        # was replaced since the journal was written, so refuse.
+        # H7-F1: compare against the container this transaction
+        # stage expects, NOT always the pre-upgrade one -- that was
+        # the wedge: after B was created, live==B no longer equaled
+        # old==A and recovery refused its own replacement. When the
+        # journal names a created container, live must be exactly
+        # that; when it names none, live must be the pre-upgrade
+        # container or the container the transaction cidfile records
+        # (crash window: docker ran, journal refresh never landed).
+        # With neither record, legacy behavior applies (no ID check).
+        # A foreign retaker matches none of them and still refuses.
         local _rc_cid=''
         _rc_cid=$(_wallos_container_id) || return 1
-        if [[ -n "$_journal_container_id" && "$_rc_cid" != "$_journal_container_id" ]]; then
-            msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
-            return 1
+        if [[ -n "$_journal_new_id" ]]; then
+            if [[ "$_rc_cid" != "$_journal_new_id" ]]; then
+                msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
+                return 1
+            fi
+        elif [[ -n "$_journal_container_id" || -n "$_txn_cid" ]]; then
+            if [[ "$_rc_cid" != "$_journal_container_id" && "$_rc_cid" != "$_txn_cid" ]]; then
+                msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
+                return 1
+            fi
         fi
         _wallos_stop_id "$_rc_cid" || true
         _wallos_rm_id "$_rc_cid" || {
@@ -58799,6 +59057,11 @@ _wallos_recover_interrupted_upgrade_impl() {
         _wallos_show_docker_err "$_rc_inspect_err"
         return 1
     fi
+    # H7-F1: the live container (if any) has been removed above, so
+    # the transaction cidfile's evidence is spent -- a retry must not
+    # treat the removed container as the expected one. Best-effort:
+    # a failed removal only leaves a stale file a later run ignores.
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     # B15-1 (durable A): the backup restore below overwrites the live
     # .abox-state with the pre-upgrade mode, so a local->https (or
     # local->cftunnel) switch committed before the interrupt would be
@@ -58960,12 +59223,31 @@ EOF_B15_SIDECAR
     if [[ -n "$old_bind" ]]; then
         wallos_pub_args=(-p "$old_bind:$old_port:80/tcp")
     fi
+    # H7-F1: recovery's own rebuild also binds its created container
+    # to the transaction cidfile, then refreshes the journal with it:
+    # otherwise a retry after this rebuild sees live==B2 (the container
+    # recovery just created) matching neither old A nor new B, and
+    # refuses its own rebuild. A stale cidfile from an earlier attempt
+    # is dropped first; the journal is authoritative once refreshed.
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     if (( was_running == 1 )); then
-        docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        docker run -d --cidfile "$WALLOS_DIR/.upgrade-transaction.cid" --name wallos --label com.alariclin.abox.managed=true \
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+        # H7-F1: record the rebuilt container in the journal BEFORE
+        # the health gate below: a health failure returns 1 with the
+        # journal kept, and a retry must see live==new. old_image is
+        # the FROZEN journal value (_journal_old_image), not the
+        # N-11-rewritten $old_image, so the frontend sidecar binding
+        # (which keys on the journal's old_image) survives a retry.
+        if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
+            rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
+            msg "${RED}Recovery created a container but could not record it in the upgrade journal; refusing to report success, journal kept.${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
         # Same U217 rule as the install path: an omitted -p means the
         # recovered container is unpublished, so the health gate must
         # not demand a publication it will never have.
@@ -58979,11 +59261,18 @@ EOF_B15_SIDECAR
             return 1
         fi
     else
-        docker create --name wallos --label com.alariclin.abox.managed=true \
+        docker create --cidfile "$WALLOS_DIR/.upgrade-transaction.cid" --name wallos --label com.alariclin.abox.managed=true \
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+        # H7-F1: same journal refresh as the run branch above.
+        if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
+            rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
+            msg "${RED}Recovery created a container but could not record it in the upgrade journal; refusing to report success, journal kept.${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     fi
     # R15C15-01: restore the pre-replacement tunnel token (if the
     # upgrade overwrote it) so the recovered tunnel can authenticate.
@@ -59091,6 +59380,9 @@ EOF_B15_SIDECAR
     rm -f -- "$journal" || return 1
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
+    # H7-F1: recovery succeeded; any transaction cidfile left by an
+    # interrupted retry is spent (best-effort).
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     # R5C15-02: refresh the fail2ban jail after rebuild; see
     # the rollback path. _rec_mode is the recovered mode.
     wallos_bruteforce_protection "$old_port" "$old_bind" "$_rec_mode" 2>/dev/null || true
@@ -60200,7 +60492,13 @@ _wallos_rm_id() { local _id=''; _id=$(_wallos_normalize_container_id "${1:-}" 2>
 # A sha256: spelling (e.g. from an old journal) is accepted and
 # stripped, never passed to docker.
 _wallos_normalize_container_id() { # $1 -> canonical ID on stdout
+    # H7-F3: canonical form is bare lowercase hex. Lowercase FIRST
+    # (so a SHA256: prefix normalizes too), then strip the prefix.
+    # Bare uppercase and prefixed uppercase both canonicalize; the
+    # old code accepted prefixed uppercase verbatim (bare only
+    # lowercase) -- an inconsistent case contract.
     local _id="${1:-}"
+    _id="${_id,,}"
     _id="${_id#sha256:}"
     _wallos_valid_container_id "$_id" || return 1
     printf '%s' "$_id"
@@ -60212,13 +60510,30 @@ _wallos_normalize_container_id() { # $1 -> canonical ID on stdout
 # by its pinned ID; a foreign holder refuses (returns 1) instead of
 # being removed by name.
 _wallos_rm_named_id() {
-    local _expected='' _live='' _lbl=''
-    _expected=$(_wallos_normalize_container_id "${1:-}" 2>/dev/null || true)
+    # H7-F2: the old code treated every pin failure as "name free"
+    # (return 0): a daemon error or an illegal ID looked exactly
+    # like "container gone", so callers proceeded as if the name
+    # were free. Tri-state the live pin instead, reusing the
+    # _wallos_container_gone classifier: proven-gone -> 0;
+    # daemon/permission error or an illegal .Id -> 1 (unknown).
+    # H7-F3: a non-empty $1 that does not normalize is an illegal
+    # expected ID -> 1; only an empty $1 means "no expectation".
+    local _expected='' _live='' _lbl='' _inspect_err=''
+    if [[ -n "${1:-}" ]]; then
+        _expected=$(_wallos_normalize_container_id "$1" 2>/dev/null) || return 1
+    fi
     if [[ -n "$_expected" ]]; then
         _wallos_rm_id "$_expected" >/dev/null 2>&1 || true
     fi
+    # H7-F2: the tri-state capture uses `docker container inspect`
+    # (same idiom as the install entry and recovery): its stderr is
+    # what _wallos_container_gone classifies.
+    _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null || true)
     _live=$(_wallos_container_id 2>/dev/null || true)
-    [[ -z "$_live" ]] && return 0
+    if [[ -z "$_live" ]]; then
+        _wallos_container_gone "$_inspect_err" || return 1
+        return 0
+    fi
     [[ "$_live" == "$_expected" ]] && return 1
     _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_live" 2>/dev/null || true)
     [[ "$_lbl" == 'true' ]] || return 1
@@ -60244,6 +60559,27 @@ _wallos_container_gone() {
     _names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) || return 1
     [[ $'\n'"$_names"$'\n' == *$'\n'wallos$'\n'* ]] && return 1
     return 0
+}
+
+# H7-F1: read the upgrade-transaction cidfile
+# ($WALLOS_DIR/.upgrade-transaction.cid) as a trusted container ID.
+# The file is written by docker itself (--cidfile) at container
+# creation, so its content is the ID docker assigned -- but only
+# when the file is a regular file (not a symlink) owned by root.
+# No mode check: docker chooses the cidfile mode, and WALLOS_DIR is
+# 0750 root-only. Prints the normalized (bare lowercase) ID, or
+# returns 1 when absent/untrusted/invalid. The caller treats 1 as
+# "no transaction evidence", never as a refusal by itself.
+_wallos_txn_cidfile_id() {
+    local _f="$WALLOS_DIR/.upgrade-transaction.cid" _id='' _owner=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _owner=$(stat -c %u:%g "$_f" 2>/dev/null || true)
+    [[ "$_owner" == 0:0 ]] || return 1
+    # NB: docker writes the cidfile with NO trailing newline, so
+    # read returns 1 at EOF even when it read the ID; accept the
+    # content anyway and let the normalize below validate it.
+    IFS= read -r _id < "$_f" || true
+    _wallos_normalize_container_id "$_id" 2>/dev/null
 }
 
 # R21-WALLOS: surface the captured docker error text when a teardown
@@ -60543,11 +60879,35 @@ wallos_restore_direct_container() {
     _wallos_rm_named_id "$container_id" || return 1
     local -a _pub_args=()
     [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
-    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+    # H7-F1: record the replacement container's ID (--cidfile) in
+    # WALLOS_CREATED_CONTAINER_ID, so the caller can refresh the
+    # upgrade journal with it: this function removes the container
+    # the attempt created (B) and builds a new one (B2), and a
+    # journal still naming B would wedge the next recovery.
+    WALLOS_CREATED_CONTAINER_ID=''
+    local _rdc_cid_dir='' _rdc_created_id=''
+    _rdc_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX") || return 1
+    docker run -d --cidfile "$_rdc_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { rm -rf -- "$_rdc_cid_dir"; return 1; }
+    if [[ -f "$_rdc_cid_dir/id" ]]; then
+        IFS= read -r _rdc_created_id < "$_rdc_cid_dir/id" || true
+    fi
+    rm -rf -- "$_rdc_cid_dir"
+    if [[ "$_rdc_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+        WALLOS_CREATED_CONTAINER_ID="$_rdc_created_id"
+    else
+        # docker ran but left no usable cidfile: pin the live
+        # container immediately (managed-label only; see
+        # _wallos_record_created_from_cidfile).
+        local _rdc_pin=''
+        _rdc_pin=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_rdc_pin" ]] && [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_rdc_pin" 2>/dev/null || true)" == "true" ]]; then
+            WALLOS_CREATED_CONTAINER_ID="$_rdc_pin"
+        fi
+    fi
     # S8 (R54-M2 follow-up): same U217 rule as the rollback/install
     # paths -- an omitted -p means the rebuilt container is unpublished,
     # so the health gate must not demand a publication it will never
@@ -60562,11 +60922,36 @@ wallos_restore_direct_container() {
 wallos_http_rebind() { # $1=public port $2=image $3=tz $4=container ID (optional): republish the container on 0.0.0.0 (HTTP fallback)
     # H7rest: clear the name by ID only (see wallos_restore_direct_container).
     _wallos_rm_named_id "${4:-}" || return 1
-    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+    # H7-F1: record the replacement container's ID (--cidfile) in
+    # WALLOS_CREATED_CONTAINER_ID, so the caller can refresh the
+    # upgrade journal with it (see wallos_restore_direct_container).
+    # Recorded even when the health gate below fails: a failed
+    # rebind still leaves the replacement live, and the caller's
+    # recovery must see it as this transaction's container.
+    WALLOS_CREATED_CONTAINER_ID=''
+    local _rbd_cid_dir='' _rbd_created_id=''
+    _rbd_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX") || return 1
+    docker run -d --cidfile "$_rbd_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || return 1
+        -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || { rm -rf -- "$_rbd_cid_dir"; return 1; }
+    if [[ -f "$_rbd_cid_dir/id" ]]; then
+        IFS= read -r _rbd_created_id < "$_rbd_cid_dir/id" || true
+    fi
+    rm -rf -- "$_rbd_cid_dir"
+    if [[ "$_rbd_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+        WALLOS_CREATED_CONTAINER_ID="$_rbd_created_id"
+    else
+        # docker ran but left no usable cidfile: pin the live
+        # container immediately (managed-label only; see
+        # _wallos_record_created_from_cidfile).
+        local _rbd_pin=''
+        _rbd_pin=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_rbd_pin" ]] && [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_rbd_pin" 2>/dev/null || true)" == "true" ]]; then
+            WALLOS_CREATED_CONTAINER_ID="$_rbd_pin"
+        fi
+    fi
     wallos_wait_healthy "$1"
 }
 
@@ -62086,29 +62471,65 @@ wallos_install_or_update() {
     # docker run that creates a container and then fails to start
     # it is still recorded (and cleaned up), while a name conflict
     # writes no cidfile and is therefore never deleted.
-    local _wallos_cid_dir='' _wallos_created_id=''
-    if ! _wallos_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX"); then
-        msg "${RED}Cannot allocate Wallos container-ID file.${NC}"
-        if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+    local _wallos_cid_dir='' _wallos_created_id='' _wallos_cid_path=''
+    if (( running == 1 )); then
+        # H7-F1: the upgrade path binds the created container to the
+        # durable transaction cidfile in WALLOS_DIR (not a /tmp mktemp
+        # dir): a crash between docker run and the journal refresh
+        # below must leave evidence recovery can trust. A stale
+        # cidfile from an earlier attempt is dropped first.
+        _wallos_cid_path="$WALLOS_DIR/.upgrade-transaction.cid"
+        rm -f -- "$_wallos_cid_path" 2>/dev/null || true
+    else
+        if ! _wallos_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX"); then
+            msg "${RED}Cannot allocate Wallos container-ID file.${NC}"
+            # R16-F15-06: roll back this attempt's firewall increments,
+            # like the adjacent preseed-failure exit; otherwise the opened
+            # ports (and their ledger) survive a failed install.
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            return 1
         fi
-        # R16-F15-06: roll back this attempt's firewall increments,
-        # like the adjacent preseed-failure exit; otherwise the opened
-        # ports (and their ledger) survive a failed install.
-        wallos_fw_rollback_added "${_fw_added[@]}" || true
-        return 1
+        _wallos_cid_path="$_wallos_cid_dir/id"
     fi
-    docker run -d --cidfile "$_wallos_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
+    docker run -d --cidfile "$_wallos_cid_path" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null
     code=$?
-    if [[ -f "$_wallos_cid_dir/id" ]]; then
-        IFS= read -r _wallos_created_id < "$_wallos_cid_dir/id" || true
+    if [[ -f "$_wallos_cid_path" ]]; then
+        IFS= read -r _wallos_created_id < "$_wallos_cid_path" || true
     fi
-    rm -f -- "$_wallos_cid_dir/id" 2>/dev/null || true
-    rmdir -- "$_wallos_cid_dir" 2>/dev/null || true
+    if (( running == 1 )); then
+        # H7-F1: record B in the journal BEFORE the health gate: a
+        # health failure (or a crash) after this point must leave
+        # recovery able to recognize B as this transaction's own
+        # container. A failed refresh deletes B (inside the helper),
+        # then recovers, exactly like the health-failure branch.
+        if (( code == 0 )) && [[ "$_wallos_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+            if ! _wallos_record_created_from_cidfile "$_wallos_cid_path" "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id"; then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
+                msg "${RED}$(tr_msg wl_iu_health_kept)${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
+                return 1
+            fi
+        elif (( code == 0 )); then
+            # docker run succeeded but left no usable container ID
+            # (no cidfile, no pinnable container): fail closed rather
+            # than run the health gate against an unidentified
+            # container. The container (if any) is left live and the
+            # journal kept, so a later recovery refuses instead of
+            # touching an unidentified container.
+            msg "${RED}Wallos container created but its ID could not be recorded; refusing to proceed without a pinned container.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            return 1
+        fi
+        rm -f -- "$_wallos_cid_path" 2>/dev/null || true
+    else
+        rm -f -- "$_wallos_cid_dir/id" 2>/dev/null || true
+        rmdir -- "$_wallos_cid_dir" 2>/dev/null || true
+    fi
     if (( code != 0 )); then
         :
     elif (( ${#_pub_args[@]} == 0 )); then
@@ -62201,6 +62622,26 @@ wallos_install_or_update() {
             local _rebind_ok=0
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz" "$_wallos_created_id"; then _rebind_ok=1; fi
             if (( _rebind_ok == 1 )); then
+                # H7-F1: the rebind replaced B with B2; the journal
+                # must name B2 before anything commits it. Refresh the
+                # local ID from the global the rebind recorded. A
+                # missing/invalid ID on the upgrade path refuses the
+                # install (the journal still names B, which the rebind
+                # removed) and recovers the old container.
+                if [[ "$WALLOS_CREATED_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+                    _wallos_created_id="$WALLOS_CREATED_CONTAINER_ID"
+                elif (( running == 1 )); then
+                    msg "${RED}Wallos rebind succeeded but the replacement container ID could not be recorded; refusing to commit an unidentified container.${NC}"
+                    wallos_fw_rollback_added "${_fw_added[@]}" || true
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    return 1
+                fi
+                if (( running == 1 )) && ! wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id"; then
+                    msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
+                    wallos_fw_rollback_added "${_fw_added[@]}" || true
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    return 1
+                fi
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
                 # 07h2-H1: a failed state save after the HTTP fallback
                 # must fail the install, not just warn: the live
@@ -62231,6 +62672,18 @@ wallos_install_or_update() {
                     msg "${YELLOW}$(tr_msg wl_iu_fb_restored)${NC}"
                 else
                     msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
+                fi
+                # H7-F1: the restore replaced the (rebind-removed)
+                # container with a fresh one; refresh the journal with
+                # the ID it recorded, so the recovery below sees the
+                # live container as this transaction's own. Best effort
+                # here: the install is already failing, and a failed
+                # refresh must not mask the recovery below.
+                if [[ "$WALLOS_CREATED_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+                    _wallos_created_id="$WALLOS_CREATED_CONTAINER_ID"
+                    if (( running == 1 )); then
+                        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id" || true
+                    fi
                 fi
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
                 if (( running == 1 )); then
@@ -62440,7 +62893,7 @@ wallos_install_or_update() {
     # no journal to recover from. Commit and delete it only now, after
     # all checks passed.
     if (( running == 1 )); then
-        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id"; then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id"; then
             msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
             # 07h2-M2: same R15-F15-02 protection as the health-check
             # failure branch above: delete only the container THIS
@@ -63116,10 +63569,10 @@ run_acheck_tool() {
     # an unsigned main/proxy download is never executed, and a stale cache
     # is never trusted without fresh verification.
     _md=$(abox_mktemp_exec_dir acheck-mirror 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
-    if ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
-       || ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
+    if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
+       || ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
        || ! abox_verify_sig_gate "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" "A-Check SHA256SUMS" \
-       || ! curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
+       || ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
         rm -rf -- "$_md"
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1
@@ -63205,7 +63658,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
             msg " ${CYAN}9.${NC}  بهینه‌سازی SNI محلی                  ${CYAN}13.${NC}  پشتیبان‌گیری / بازیابی"
             msg "${CYAN}10.${NC}  بهینه‌سازی SNI مینی‌هاست             ${CYAN}14.${NC}  کاربران / خروجی لینک اشتراک"
-            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی / پشتیبان Wallos"
+            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی / پشتیبان‌گیری Wallos"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                        ${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
             msg ""
             msg " ${CYAN}0.${NC}  بازگشت                               ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
@@ -68286,6 +68739,11 @@ run_self_tests() {
     # E-2-FIX: Disable Xray binary version probe for all self-tests.
     # effective_xray_version() prefers installed /usr/local/bin/xray over ABOX_XRAY_VERSION,
     # which made ML-KEM tests environment-dependent (fail on hosts with Xray installed).
+    # PERF accounting note (M5): on the S2 reference run the 30.6 s self-test
+    # decomposed as herestring guards ~18.6 s + fetch fixtures ~3.6 s +
+    # python ~0.8 s + `bash -n` ~0.16 s; the ~7.0 s remainder is misc
+    # builtins plus ~99,550 lines of xtrace overhead (~70 us/line) when
+    # tracing -- a reporting gap, not a performance defect.
     local saved_probe_skip="${ABOX_XRAY_VERSION_PROBE_SKIP:-}"
     export ABOX_XRAY_VERSION_PROBE_SKIP=1
     local tmp failures=0 real_abox_sig='' real_abox_exists=0 selftest_prev_exit_trap selftest_prev_umask selftest_sni_seed='' selftest_script_dir=''
@@ -68387,8 +68845,23 @@ PY_ABOX_SIG
     assert_bad() { "$@" >/dev/null 2>&1 && { echo "FAIL expected bad: $*"; failures=$((failures + 1)); } || true; }
     selftest_has() { command -v "$1" >/dev/null 2>&1; }
     selftest_note() { printf 'SELF_TEST_NOTE: %s\n' "$*"; }
-    local source_body=""
-    source_body=$(sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0") || { echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1)); }
+    # PERF (2026-11-25): the 215 static guards below used to grep a 4.5 MB
+    # in-memory copy via `<<< "$source_body"`, and bash materialised a fresh
+    # 4.5 MB here-string for every assertion (~51 ms each in the sandbox,
+    # ~14 s per self-test run). The filtered source is now snapshotted once
+    # to a file inside $tmp (removed by selftest_cleanup / the EXIT trap on
+    # every exit path) and every guard greps the file instead (~3-5 ms each).
+    # The snapshot keeps the same sed filter: lines from `run_self_tests() {`
+    # through `main() {` are excluded, so an assertion can never match its own
+    # assertion line; never grep "$0" directly for these guards. Consistency
+    # is checked below (non-empty, no self-test-region marker).
+    local source_body_file=""
+    source_body_file="$tmp/source-body.txt"
+    if ! sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0" > "$source_body_file"; then
+        echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1))
+    elif [[ ! -s "$source_body_file" ]] || grep -q '^run_self_tests() {$' "$source_body_file"; then
+        echo 'FAIL: static source snapshot inconsistent (empty or contains self-test region)'; failures=$((failures + 1))
+    fi
     # BusyBox tar rejects GNU --owner/--group; prefer GNU flags, else python, else plain tar.
     # Third arg force_root=1 rewrites members to uid/gid 0 (good/bad fixtures). Default preserves
     # on-disk ownership (needed for ACME runtime-owned backup acceptance tests).
@@ -68758,12 +69231,12 @@ PY_SELFTEST_TAR
     elif [[ -f "$ABOX_DIR/A-Box-sni-candidates.txt" && ! -L "$ABOX_DIR/A-Box-sni-candidates.txt" ]]; then
         selftest_sni_seed="$ABOX_DIR/A-Box-sni-candidates.txt"
     fi
-    grep -Fq 'ABOX_SNI_HARD_MAX=16384' <<< "$source_body" || { echo 'FAIL: SNI hard ceiling missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_HARD_MAX=16384' "$source_body_file" || { echo 'FAIL: SNI hard ceiling missing'; failures=$((failures + 1)); }
     ! sed -n '/^write_sni_candidate_library() {$/,/^sni_domain_penalty() {$/p' "$0" | grep -Fq 'cat > "$raw" <<' || { echo 'FAIL: SNI candidates must live outside install.sh'; failures=$((failures + 1)); }
-    grep -Fq 'data/sni-candidates.txt' <<< "$source_body" || { echo 'FAIL: SNI database URL/path missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_store_candidate_cache' <<< "$source_body" || { echo 'FAIL: SNI cache synchronization helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'remove_sni_candidate_cache' <<< "$source_body" || { echo 'FAIL: SNI cache uninstall cleanup helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_normalize_candidate_file() {' <<< "$source_body" || { echo 'FAIL: SNI database validator missing'; failures=$((failures + 1)); }
+    grep -Fq 'data/sni-candidates.txt' "$source_body_file" || { echo 'FAIL: SNI database URL/path missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_store_candidate_cache' "$source_body_file" || { echo 'FAIL: SNI cache synchronization helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'remove_sni_candidate_cache' "$source_body_file" || { echo 'FAIL: SNI cache uninstall cleanup helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_normalize_candidate_file() {' "$source_body_file" || { echo 'FAIL: SNI database validator missing'; failures=$((failures + 1)); }
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:api.example.org, DNS:*.other.example'
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain deep.api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
@@ -68786,26 +69259,26 @@ PY_SELFTEST_TAR
         mini_count=$(wc -l < "$tmp/sni-mini.txt" | tr -d ' ')
         [[ "$mini_count" =~ ^[0-9]+$ && "$mini_count" -eq "$sni_count" ]] || { echo "FAIL: SNI mini library does not match full library ($mini_count vs $sni_count)"; failures=$((failures + 1)); }
     else
-        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; network is not used by self-test)' >&2
+        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; this skipped test uses no network)' >&2
     fi
     declare -f asn_lookup_ip >/dev/null || { echo 'FAIL: ASN lookup function missing'; failures=$((failures + 1)); }
     declare -f sni_org_cdn_penalty >/dev/null || { echo 'FAIL: ASN/CDN scoring function missing'; failures=$((failures + 1)); }
     [[ "$(tr_msg confirm_local_sni_full)" != *'远程执行第三方脚本'* ]] || { echo 'FAIL: local SNI prompt still says remote third-party'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_non443_warn)' <<< "$source_body" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:apple_sni_warn)' <<< "$source_body" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_title)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_title translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_cannot)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_cannot translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_mihomo)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_ok)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_ok translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_xhttp)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_unverified)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
-    grep -Fq 'en:we_old_quota)' <<< "$source_body" || { echo 'FAIL: English write_env we_old_quota translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_non443_warn)' "$source_body_file" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:apple_sni_warn)' "$source_body_file" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_title)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_title translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_cannot)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_cannot translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_ok)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_ok translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_xhttp)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_unverified)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' "$source_body_file" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:we_old_quota)' "$source_body_file" || { echo 'FAIL: English write_env we_old_quota translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
-    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq 'addgroup -S "$group"' <<< "$source_body" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
-    grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' <<< "$source_body" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' "$source_body_file" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' "$source_body_file" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq 'addgroup -S "$group"' "$source_body_file" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
+    grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' "$source_body_file" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
     assert_ok valid_ipv4_cidr 192.0.2.1/24
     assert_bad valid_ipv4_cidr 001.002.003.004/24
     assert_bad valid_ip_address 001.002.003.004
@@ -68864,8 +69337,8 @@ PY_SELFTEST_TAR
     fi
     declare -F backup_current_config >/dev/null 2>&1 || { echo 'FAIL: backup_current_config missing'; failures=$((failures + 1)); }
     declare -F export_diagnostic_bundle >/dev/null 2>&1 || { echo 'FAIL: export_diagnostic_bundle missing'; failures=$((failures + 1)); }
-    grep -Fq 'refusing to report a false Saved state' <<< "$source_body" || { echo 'FAIL: SNI persistence must fail closed'; failures=$((failures + 1)); }
-    grep -Fq 'Diagnostic bundle checksum generation failed' <<< "$source_body" || { echo 'FAIL: diagnostic checksum failures must be blocking'; failures=$((failures + 1)); }
+    grep -Fq 'refusing to report a false Saved state' "$source_body_file" || { echo 'FAIL: SNI persistence must fail closed'; failures=$((failures + 1)); }
+    grep -Fq 'Diagnostic bundle checksum generation failed' "$source_body_file" || { echo 'FAIL: diagnostic checksum failures must be blocking'; failures=$((failures + 1)); }
     declare -F write_diagnostic_checksum >/dev/null 2>&1 || { echo 'FAIL: diagnostic checksum helper missing'; failures=$((failures + 1)); }
     bash -n "$0" >/dev/null 2>&1 || { echo 'FAIL: installer source must pass bash -n'; failures=$((failures + 1)); }
     declare -F confirm_remote_script_hash >/dev/null 2>&1 || { echo 'FAIL: remote script hash gate missing'; failures=$((failures + 1)); }
@@ -68877,10 +69350,10 @@ PY_SELFTEST_TAR
     declare -F record_core_family_ownership >/dev/null 2>&1 || { echo 'FAIL: per-file core ownership missing'; failures=$((failures + 1)); }
     declare -F refresh_dynamic_core_subtree_ownership >/dev/null 2>&1 || { echo 'FAIL: dynamic ACME ownership refresh missing'; failures=$((failures + 1)); }
     declare -F prepare_hysteria_acme_dir_ownership >/dev/null 2>&1 || { echo 'FAIL: Hysteria ACME ownership preparation missing'; failures=$((failures + 1)); }
-    grep -q 'refresh_dynamic_core_subtree_ownership hysteria /etc/hysteria/acme' <<< "$source_body" || { echo 'FAIL: Hysteria cleanup does not refresh dynamic ACME ownership'; failures=$((failures + 1)); }
-    grep -q 'A-Box managed Hysteria ACME directory v1' <<< "$source_body" || { echo 'FAIL: Hysteria ACME ownership marker missing'; failures=$((failures + 1)); }
-    grep -q 'prepare_hysteria_acme_dir_ownership' <<< "$source_body" || { echo 'FAIL: Hysteria ACME ownership gate missing'; failures=$((failures + 1)); }
-    grep -q 'prepare_hysteria_acme_dir_ownership || return 1' <<< "$source_body" || { echo 'FAIL: Hysteria cleanup legacy ownership migration gate missing'; failures=$((failures + 1)); }
+    grep -q 'refresh_dynamic_core_subtree_ownership hysteria /etc/hysteria/acme' "$source_body_file" || { echo 'FAIL: Hysteria cleanup does not refresh dynamic ACME ownership'; failures=$((failures + 1)); }
+    grep -q 'A-Box managed Hysteria ACME directory v1' "$source_body_file" || { echo 'FAIL: Hysteria ACME ownership marker missing'; failures=$((failures + 1)); }
+    grep -q 'prepare_hysteria_acme_dir_ownership' "$source_body_file" || { echo 'FAIL: Hysteria ACME ownership gate missing'; failures=$((failures + 1)); }
+    grep -q 'prepare_hysteria_acme_dir_ownership || return 1' "$source_body_file" || { echo 'FAIL: Hysteria cleanup legacy ownership migration gate missing'; failures=$((failures + 1)); }
     declare -F validate_abox_cron_file >/dev/null 2>&1 || { echo 'FAIL: cron semantic validator missing'; failures=$((failures + 1)); }
     _managed_paths_fixture="$tmp/all-managed-paths.txt"
     _saved_init_for_paths="${INIT_SYS:-}"
@@ -68917,24 +69390,24 @@ PY_SELFTEST_TAR
         printf '%s\n' '# foreign' > "$tmp/foreign-firewall.service"
         ! auxiliary_content_is_abox_managed "$tmp/foreign-firewall.service" /etc/systemd/system/A-Box-firewall.service || { echo 'FAIL: foreign firewall service accepted as managed'; failures=$((failures + 1)); }
     fi
-    grep -Fq 'User=abox-xray' <<< "$source_body" || { echo 'FAIL: Xray systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-xray:abox-xray"' <<< "$source_body" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'capabilities="${HY2_RC_CAPS}"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
-    grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-xray' "$source_body_file" || { echo 'FAIL: Xray systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-xray:abox-xray"' "$source_body_file" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'capabilities="${HY2_RC_CAPS}"' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
+    grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
     # 11 real sites (U35 fix; C2: was 13, the retired xray-latest block
-    # held 2); source_body excludes this assertion line itself.
-    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 11 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
-    grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
-    grep -Fq 'sni_probe_candidate_tier() {' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
-    grep -Fq 'core_latest_stable_release_ref() {' <<< "$source_body" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" <<< "$source_body" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'core_fetch_upstream_release_asset() {' <<< "$source_body" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
+    # held 2); source snapshot excludes this assertion line itself.
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' "$source_body_file")" -ge 11 ]] || { echo 'FAIL: Xray/sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-singbox' "$source_body_file" || { echo 'FAIL: sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-singbox:abox-singbox"' "$source_body_file" || { echo 'FAIL: sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'User=abox-hysteria' "$source_body_file" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq 'command_user="abox-hysteria:abox-hysteria"' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.14.0'" "$source_body_file" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' "$source_body_file" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
+    grep -Fq 'sni_probe_candidate_tier() {' "$source_body_file" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' "$source_body_file" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
+    grep -Fq 'core_latest_stable_release_ref() {' "$source_body_file" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.4'" "$source_body_file" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'core_fetch_upstream_release_asset() {' "$source_body_file" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
     # F-06 fix: default-value assertions must not fail when the user legally
     # overrides via environment. Isolate in a subshell with overrides unset.
@@ -69035,8 +69508,8 @@ PY_SELFTEST_TAR
     ( ABOX_XRAY_VERSION=v26.9.8-rc.1 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.9.8 prerelease must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.9-rc.1 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.9 prerelease must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
-    grep -Fq 'support-x25519mlkem768: $clash_mlkem' <<< "$source_body" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
-    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.14.0 compatibility pin missing'; failures=$((failures + 1)); }
+    grep -Fq 'support-x25519mlkem768: $clash_mlkem' "$source_body_file" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
+    grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' "$source_body_file" || { echo 'FAIL: Hysteria v2.14.0 compatibility pin missing'; failures=$((failures + 1)); }
     # F-06 fix: isolate policy default assertions from user env overrides.
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray update policy must default to auto-stable'; failures=$((failures + 1)); }
@@ -69046,13 +69519,13 @@ PY_SELFTEST_TAR
       [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='pinned'; [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray pinned policy override not honored'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' <<< "$source_body" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' "$source_body_file" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
     # C4 (2026-11-10, no-cooling policy): the cooldown helpers are retired;
     # the resolver must no longer define them, and no cooldown variable
     # may remain in the source.
     ! declare -F core_cooldown_allows_age >/dev/null 2>&1 || { echo 'FAIL: retired cooldown helper still exists'; failures=$((failures + 1)); }
     ! declare -F core_stable_release_age_days >/dev/null 2>&1 || { echo 'FAIL: retired release-age helper still exists'; failures=$((failures + 1)); }
-    ! grep -Fq 'ABOX_STABLE_COOLDOWN_DAYS' <<< "$source_body" || { echo 'FAIL: retired cooldown variable still present'; failures=$((failures + 1)); }
+    ! grep -Fq 'ABOX_STABLE_COOLDOWN_DAYS' "$source_body_file" || { echo 'FAIL: retired cooldown variable still present'; failures=$((failures + 1)); }
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1
@@ -69065,18 +69538,18 @@ PY_SELFTEST_TAR
         echo 'FAIL: build metadata format or epoch mismatch'
         failures=$((failures + 1))
     }
-    grep -Fq 'IP_PREF_FILE=' <<< "$source_body" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
-    grep -Fq 'ip_preference_menu()' <<< "$source_body" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_menu()' <<< "$source_body" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_auto_prefer()' <<< "$source_body" || { echo 'FAIL: DNS auto benchmark missing'; failures=$((failures + 1)); }
-    grep -Fq 'dns_enable_doh()' <<< "$source_body" || { echo 'FAIL: DoH implementation missing'; failures=$((failures + 1)); }
-    grep -Fq 'timezone_choose_from_list()' <<< "$source_body" || { echo 'FAIL: numbered timezone selector missing'; failures=$((failures + 1)); }
-    grep -Fq 'run_mirrored_test_script()' <<< "$source_body" || { echo 'FAIL: test-script disaster fallback missing'; failures=$((failures + 1)); }
-    grep -Fq 'wallos_install_or_update()' <<< "$source_body" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
-    grep -Fq 'timezone_menu()' <<< "$source_body" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' <<< "$source_body" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
+    grep -Fq 'IP_PREF_FILE=' "$source_body_file" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
+    grep -Fq 'ip_preference_menu()' "$source_body_file" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_menu()' "$source_body_file" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_auto_prefer()' "$source_body_file" || { echo 'FAIL: DNS auto benchmark missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_enable_doh()' "$source_body_file" || { echo 'FAIL: DoH implementation missing'; failures=$((failures + 1)); }
+    grep -Fq 'timezone_choose_from_list()' "$source_body_file" || { echo 'FAIL: numbered timezone selector missing'; failures=$((failures + 1)); }
+    grep -Fq 'run_mirrored_test_script()' "$source_body_file" || { echo 'FAIL: test-script disaster fallback missing'; failures=$((failures + 1)); }
+    grep -Fq 'wallos_install_or_update()' "$source_body_file" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
+    grep -Fq 'timezone_menu()' "$source_body_file" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$source_body_file" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$source_body_file" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$source_body_file" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     declare -F fetch_util_mirror_asset >/dev/null 2>&1 || { echo 'FAIL: pinned-utility mirror fetch missing'; failures=$((failures + 1)); }
     # wgcf latest-tracking: the resolver binds one release (version + digest).
     _wgcf_api_json='{"tag_name":"v2.3.1","draft":false,"prerelease":false,"assets":[{"name":"wgcf_2.3.1_linux_amd64","digest":"sha256:4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8"},{"name":"wgcf_2.3.1_linux_arm64","digest":"sha256:710ab2d8ac145d81a4cf0c11bdb0e05914f77ae2a45f67b87e718d84b4cb7301"},{"name":"checksums.txt","digest":"sha256:15ab012ba30009ca2183483b246fc3b805318a91be9f35db89dfd85e7ca635ad"}]}'
@@ -69110,30 +69583,59 @@ PY_SELFTEST_TAR
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
-    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" <<< "$source_body" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
-    grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
-    grep -Fq 'one_click_reality_deploy()' <<< "$source_body" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_is_fast()' <<< "$source_body" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'try_latest_cores_danger()' <<< "$source_body" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
-    grep -Fq 'export_lightweight_subscription()' <<< "$source_body" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
-    grep -Fq 'xray_ensure_stats()' <<< "$source_body" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
-    grep -Fq 'multi_user_menu()' <<< "$source_body" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_sync()' <<< "$source_body" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
-    grep -Fq 'user_guard_tick()' <<< "$source_body" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
-    grep -Fq 'setup_user_guard()' <<< "$source_body" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_hot_remove()' <<< "$source_body" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
-    grep -Fq 'deploy_with_instance_choice()' <<< "$source_body" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
-    grep -Fq 'get_public_ip_swr()' <<< "$source_body" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
-    grep -Fq '_ip_geo_fetch_now()' <<< "$source_body" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
-    grep -Fq '_MI_SNI_LIST' <<< "$source_body" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
-    grep -Fq '_MI_USER_RECS' <<< "$source_body" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_u_blocked' <<< "$source_body" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_users_none' <<< "$source_body" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_u_days' <<< "$source_body" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
-    grep -Fq 'node_sni_menu' <<< "$source_body" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
-    grep -Fq 'sni_prompt_or_auto' <<< "$source_body" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
-    grep -Fq 'statsUserUplink' <<< "$source_body" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
-    grep -Fq 'write_full_uuid_list_to_file' <<< "$source_body" || { echo 'FAIL: extra-UUID full-list writer missing (server-side revocation path)'; failures=$((failures + 1)); }
+    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$source_body_file" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
+    grep -Fq '每月流量管控 / Monthly Traffic' "$source_body_file" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
+    grep -Fq 'one_click_reality_deploy()' "$source_body_file" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_is_fast()' "$source_body_file" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'try_latest_cores_danger()' "$source_body_file" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
+    grep -Fq 'export_lightweight_subscription()' "$source_body_file" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
+    grep -Fq 'xray_ensure_stats()' "$source_body_file" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
+    grep -Fq 'multi_user_menu()' "$source_body_file" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_sync()' "$source_body_file" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
+    grep -Fq 'user_guard_tick()' "$source_body_file" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
+    grep -Fq 'setup_user_guard()' "$source_body_file" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_hot_remove()' "$source_body_file" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
+    grep -Fq 'deploy_with_instance_choice()' "$source_body_file" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
+    grep -Fq 'get_public_ip_swr()' "$source_body_file" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
+    # M2: the fresh-probe round must respect the total budget. Fake clock
+    # (file-backed so it survives command substitution) advances 5 s per
+    # curl call; with a 12 s budget the round must stop after the 3 v4
+    # attempts (caps 6, 6, 2) and never try v6.
+    if ! (
+        _ip_clock="$tmp/ip-fake-clock"
+        _ip_calls="$tmp/ip-calls"
+        _ip_caps="$tmp/ip-caps"
+        printf '1700000000\n' > "$_ip_clock"
+        : > "$_ip_calls"; : > "$_ip_caps"
+        date() {
+            if [[ "${1:-}" == '+%s' ]]; then cat "$_ip_clock"; else command date "$@"; fi
+        }
+        curl() {
+            local _m='' _prev='' _a _n
+            for _a in "$@"; do
+                [[ "$_prev" == '-m' ]] && _m="$_a"
+                _prev="$_a"
+            done
+            printf 'x\n' >> "$_ip_calls"
+            printf '%s\n' "$_m" >> "$_ip_caps"
+            _n=$(cat "$_ip_clock"); printf '%s\n' $(( _n + 5 )) > "$_ip_clock"
+            return 1
+        }
+        PUBLIC_IP_TOTAL_BUDGET=12
+        ! get_public_ip_fresh >/dev/null 2>&1
+        [[ "$(wc -l < "$_ip_calls" | tr -d ' ')" == '3' ]] || exit 1
+        [[ "$(tr '\n' ' ' < "$_ip_caps")" == '6 6 2 ' ]] || exit 1
+    ); then echo 'FAIL: public-IP fresh probe must stop at the total budget (3 v4 attempts, caps 6/6/2, no v6)'; failures=$((failures + 1)); fi
+    grep -Fq '_ip_geo_fetch_now()' "$source_body_file" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_SNI_LIST' "$source_body_file" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_USER_RECS' "$source_body_file" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_blocked' "$source_body_file" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_users_none' "$source_body_file" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_days' "$source_body_file" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
+    grep -Fq 'node_sni_menu' "$source_body_file" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_prompt_or_auto' "$source_body_file" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
+    grep -Fq 'statsUserUplink' "$source_body_file" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
+    grep -Fq 'write_full_uuid_list_to_file' "$source_body_file" || { echo 'FAIL: extra-UUID full-list writer missing (server-side revocation path)'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
     _saved_extra_uuid_file="$EXTRA_UUID_FILE"
     _saved_uuid_set="${UUID+x}"
@@ -69156,15 +69658,15 @@ PY_SELFTEST_TAR
     EXTRA_UUID_FILE="$_saved_extra_uuid_file"
     if [[ "$_saved_uuid_set" == x ]]; then UUID="$_saved_uuid_value"; else unset UUID; fi
     unset _saved_extra_uuid_file _saved_uuid_set _saved_uuid_value _extra_uuid_actual _extra_uuid_expected
-    grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' <<< "$source_body" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
-    grep -Fq 'XHTTP-$client_uuid' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
-    grep -Fq 'probe_core_sources_banner()' <<< "$source_body" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_fetch_guard_start()' <<< "$source_body" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'abox_deploy_watchdog_loop()' <<< "$source_body" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
-    grep -Fq 'preserve_uninstall_transaction_backup()' <<< "$source_body" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
-    grep -Fq 'restore_user_guard_cron_block()' <<< "$source_body" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
-    grep -Fq 'report_restore_cron_status()' <<< "$source_body" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
-    grep -Fq 'fetch_abox_mirror_asset()' <<< "$source_body" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' "$source_body_file" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
+    grep -Fq 'XHTTP-$client_uuid' "$source_body_file" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
+    grep -Fq 'probe_core_sources_banner()' "$source_body_file" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_fetch_guard_start()' "$source_body_file" || { echo 'FAIL: fetch budget guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'abox_deploy_watchdog_loop()' "$source_body_file" || { echo 'FAIL: fetch watchdog missing'; failures=$((failures + 1)); }
+    grep -Fq 'preserve_uninstall_transaction_backup()' "$source_body_file" || { echo 'FAIL: uninstall backup preserve missing'; failures=$((failures + 1)); }
+    grep -Fq 'restore_user_guard_cron_block()' "$source_body_file" || { echo 'FAIL: restore USERGUARD reinstall missing'; failures=$((failures + 1)); }
+    grep -Fq 'report_restore_cron_status()' "$source_body_file" || { echo 'FAIL: restore cron status report missing'; failures=$((failures + 1)); }
+    grep -Fq 'fetch_abox_mirror_asset()' "$source_body_file" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 
     assert_ok valid_ip_pref ipv4
     assert_ok valid_ip_pref ipv6
@@ -69174,7 +69676,7 @@ PY_SELFTEST_TAR
     assert_bad valid_timezone_name '../etc/passwd'
     [[ "$(timezone_for_country CN)" == 'Asia/Shanghai' ]] || { echo 'FAIL: CN timezone heuristic'; failures=$((failures + 1)); }
     [[ "$(timezone_for_country US)" == 'America/New_York' ]] || { echo 'FAIL: US timezone heuristic'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_SNI_DEFAULT_MAX=8192' <<< "$source_body" || { echo 'FAIL: SNI default max missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_DEFAULT_MAX=8192' "$source_body_file" || { echo 'FAIL: SNI default max missing'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.7.28 v26.3.27)" == '1' ]] || { echo 'FAIL: Xray version comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.7.28 v26.7.28)" == '0' ]] || { echo 'FAIL: Xray compatibility pin comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.3.27)" == '0' ]] || { echo 'FAIL: Xray equal version comparison'; failures=$((failures + 1)); }
@@ -69226,28 +69728,39 @@ PY_SELFTEST_TAR
     fi
     assert_bad wallos_resume_after_backup 1 '' 'not-a-container-id'
     # H7rest: the upgrade journal carries the pinned container ID
-    # (9th line); an invalid ID is refused; old 7-arg writes keep
-    # working with an empty container ID.
-    # H7-ID: the journal stores the ID bare-hex; a sha256: input is
+    # (9th line) and the created container ID (10th line, H7-F1); an
+    # invalid ID is refused; old 7-arg writes keep working with empty
+    # container IDs.
+    # H7-ID: the journal stores IDs bare-hex; a sha256: input is
     # normalized on write, never stored.
+    # H7-F3: an uppercase new ID (even SHA256:-prefixed) normalizes
+    # to bare lowercase on write.
     if ! (
         WALLOS_DIR="$tmp/wallos-h7rest-journal"
         mkdir -p "$WALLOS_DIR/backups" || exit 40
         printf 'x' > "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" || exit 41
-        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 42
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' || exit 42
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 43
-        [[ "$(wc -l < "$WALLOS_DIR/.upgrade-transaction" | tr -d '[:space:]')" == 9 ]] || exit 44
-        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 47
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ]] || exit 49
+        [[ "$(wc -l < "$WALLOS_DIR/.upgrade-transaction" | tr -d '[:space:]')" == 10 ]] || exit 44
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' || exit 47
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 48
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ]] || exit 50
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'not-a-container-id' && exit 45
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'not-a-container-id' && exit 51
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 || exit 46
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == '' ]] || exit 52
     ); then
         echo 'FAIL: Wallos upgrade journal must carry the pinned container ID'; failures=$((failures + 1))
     fi
     # H7rest: _wallos_rm_named_id removes by ID (gone expected ID plus
     # no live holder is a no-op success) and refuses a foreign holder.
     # H7-ID: inspect returns bare hex; rm is addressed by bare hex.
-    if ! ( docker() { case "$*" in *'{{.Id}}'*) return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+    # H7-F2: the gone case needs real evidence -- Docker's own
+    # "No such container" wording on inspect stderr, plus an empty
+    # `docker ps -a` listing. A bare inspect failure with no wording
+    # is "state unknown", not "gone".
+    if ! ( docker() { case "$*" in 'container inspect wallos') printf 'Error: No such container: wallos\n' >&2; return 1 ;; *'{{.Id}}'*) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *'ps -a'*) return 0 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must succeed when nothing holds the name'; failures=$((failures + 1))
     fi
     if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'; return 0 ;; *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
@@ -69255,12 +69768,27 @@ PY_SELFTEST_TAR
     fi
     if ! ( : > "$tmp/wallos-rm-calls"; printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-live-id"
         docker() { printf '%s\n' "$*" >> "$tmp/wallos-rm-calls"; case "$*" in
-            *'{{.Id}}'*) if [[ -s "$tmp/wallos-live-id" ]]; then cat "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
+            'container inspect wallos') if [[ -s "$tmp/wallos-live-id" ]]; then return 0; fi; printf 'Error: No such container: wallos\n' >&2; return 1 ;;
+            *'{{.Id}}'*) if [[ -s "$tmp/wallos-live-id" ]]; then cat "$tmp/wallos-live-id"; return 0; fi; printf 'Error: No such container: wallos\n' >&2; return 1 ;;
             'rm -f '*) if [[ "${3:-}" == "$(cat "$tmp/wallos-live-id" 2>/dev/null)" ]]; then : > "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
             *'Config.Labels'*) printf 'true\n'; return 0 ;;
             *) return 0 ;; esac; }
         _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-rm-calls" ); then
         echo 'FAIL: Wallos named-container removal did not address the pinned container ID'; failures=$((failures + 1))
+    fi
+    # H7-F2: a Docker daemon error is "state unknown" (refuse), not
+    # "name free"; an illegal live .Id refuses too; only a proven
+    # "No such container" (plus an empty ps listing) is "gone".
+    if ( docker() { case "$*" in 'container inspect wallos') printf 'Error: Cannot connect to the Docker daemon\n' >&2; return 1 ;; *'{{.Id}}'*) printf 'Error: Cannot connect to the Docker daemon\n' >&2; return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse on a Docker daemon error'; failures=$((failures + 1))
+    fi
+    if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'ZZZ-not-a-container-id'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id '' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse an illegal live container ID'; failures=$((failures + 1))
+    fi
+    # H7-F3: a non-empty expected ID that does not normalize refuses;
+    # only an empty expectation means "no expectation".
+    if ( docker() { return 0; }; _wallos_rm_named_id 'not-a-container-id' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse an illegal expected container ID'; failures=$((failures + 1))
     fi
     # H7rest: the php version probe execs the pinned container ID.
     if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then
@@ -69286,6 +69814,18 @@ PY_SELFTEST_TAR
         ! grep -q 'sha256:' "$tmp/wallos-h7id-calls" || exit 58
     ); then
         echo 'FAIL: Wallos container ID must be bare hex and never reach docker as sha256:'; failures=$((failures + 1))
+    fi
+    # H7-F3: normalize canonicalizes to bare lowercase hex: bare
+    # uppercase, sha256: uppercase and SHA256: uppercase all map to
+    # the same bare lowercase ID; an illegal value still refuses.
+    if ! (
+        [[ "$(_wallos_normalize_container_id 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 61
+        [[ "$(_wallos_normalize_container_id 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 62
+        [[ "$(_wallos_normalize_container_id 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 63
+        ! _wallos_normalize_container_id 'not-a-container-id' >/dev/null 2>&1 || exit 64
+        ! _wallos_normalize_container_id '' >/dev/null 2>&1 || exit 65
+    ); then
+        echo 'FAIL: Wallos container ID normalization must canonicalize to bare lowercase hex'; failures=$((failures + 1))
     fi
     # N-11: versioned history — SHA256SUMS append/sort/prune logic.
     {
@@ -69378,7 +69918,26 @@ N11EOF
                 echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
               chmod 600 "$WALLOS_DIR/.upgrade-transaction"
               _n1_log="$_n1_tmp/pulled"
-              docker() { case "$1" in image) return 1 ;; container) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              docker() { case "$1" in
+                  image) return 1 ;;
+                  container) printf 'Error: No such container: wallos\n' >&2; return 1 ;;
+                  # H7-F1: recovery records the rebuilt container via
+                  # --cidfile, so the stub must write it (real docker
+                  # behavior) and answer the post-create pin.
+                  create|run)
+                      _n1_created=1
+                      local _cidfile='' _prev='' _a=''
+                      for _a in "$@"; do
+                          if [[ "$_prev" == --cidfile ]]; then _cidfile="$_a"; fi
+                          _prev="$_a"
+                      done
+                      [[ -n "$_cidfile" ]] && printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$_cidfile" 2>/dev/null || true
+                      return 0 ;;
+                  inspect)
+                      [[ -n "${_n1_created:-}" ]] && { printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0; }
+                      return 1 ;;
+                  *) return 0 ;;
+              esac; }
               wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { return 0; }
@@ -69406,6 +69965,12 @@ N11EOF
                 echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
               chmod 600 "$WALLOS_DIR/.upgrade-transaction"
               docker() { case "$1" in image) return 1 ;; container) printf 'Cannot connect to the Docker daemon\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              # M1: the recovery path looks the journal tag up in the
+              # mirror version list; without this mock it fetched the
+              # real list (the one real-network call left in self-test
+              # besides the Cloudflare trace probes). 9.9.9 stays absent
+              # from the mocked list, so the refuse path is unchanged.
+              wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { echo 'RESTORED' > "$_n1u_tmp/restored"; return 0; }
               wallos_recover_interrupted_upgrade >/dev/null 2>&1 && exit 1
@@ -69427,26 +69992,26 @@ N11EOF
     }
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" <<< "$source_body" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
-    # 3 real sites each; source_body excludes these assertion lines themselves.
-    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' <<< "$source_body" || true)
+    grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$source_body_file" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
+    # 3 real sites each; source snapshot excludes these assertion lines themselves.
+    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' "$source_body_file" || true)
     [[ "$runtime_guard_impl_count" =~ ^[0-9]+$ && "$runtime_guard_impl_count" -ge 3 ]] || { echo 'FAIL: all background helpers must recreate the runtime lock after /run recreation'; failures=$((failures + 1)); }
-    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' <<< "$source_body" || true)
+    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' "$source_body_file" || true)
     [[ "$runtime_guard_count" =~ ^[0-9]+$ && "$runtime_guard_count" -ge 3 ]] || { echo 'FAIL: all background helpers must honor the global A-Box runtime lock'; failures=$((failures + 1)); }
-    grep -Fq 'systemctl disable "$srv"' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must disable systemd autostart'; failures=$((failures + 1)); }
-    grep -Fq 'rc-update del "$srv" default' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
-    grep -Fq 'start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1' <<< "$source_body" || { echo 'FAIL: OpenRC stop fallback must bind PID to expected executable'; failures=$((failures + 1)); }
+    grep -Fq 'systemctl disable "$srv"' "$source_body_file" || { echo 'FAIL: traffic quota stop path must disable systemd autostart'; failures=$((failures + 1)); }
+    grep -Fq 'rc-update del "$srv" default' "$source_body_file" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
+    grep -Fq 'start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1' "$source_body_file" || { echo 'FAIL: OpenRC stop fallback must bind PID to expected executable'; failures=$((failures + 1)); }
     ( verify_github_asset_digest /dev/null '' ) >/dev/null 2>&1 && { echo 'FAIL: missing GitHub digest must be rejected'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' <<< "$source_body" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' "$source_body_file" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
     ( ABOX_ASSUME_YES_OTA=1 confirm_ota_script_hash 0000000000000000000000000000000000000000000000000000000000000000 https://example.com/script.sh ) >/dev/null 2>&1 && { echo 'FAIL: ABOX_ASSUME_YES_OTA must be rejected without allowlist'; failures=$((failures + 1)); }
     # N-05: assert the REAL env -i call site (not a self-matching pattern).
-    grep -Fq "env -i \\" <<< "$source_body" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
+    grep -Fq "env -i \\" "$source_body_file" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
 
     [[ "$(normalize_port_spec 020000-025000)" == '20000:25000' ]] || { echo 'FAIL: normalize port range'; failures=$((failures + 1)); }
     HY2_DOMAIN=example.com HY2_ACME_TYPE=http CORE_IN=hysteria MODE_IN=HY2 VLESS_PORT=8443 XHTTP_PORT=9443 SS_PORT=2053 HY2_BASE_PORT=443 HY2_HOP=false HY2_HOP_IMPL=none
     [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" == 'tcp/80' ]] || { echo 'FAIL: Hysteria HTTP-01 must reserve TCP/80'; failures=$((failures + 1)); }
     CORE_IN=singbox MODE_IN=HY2
-    [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" != 'tcp/80' ]] || { echo 'FAIL: Sing-box HY2 must not reserve TCP/80'; failures=$((failures + 1)); }
+    [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" != 'tcp/80' ]] || { echo 'FAIL: sing-box HY2 must not reserve TCP/80'; failures=$((failures + 1)); }
     CORE_IN=xray MODE_IN=ALL HY2_ACME_TYPE=http
     [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" == 'tcp/80' ]] || { echo 'FAIL: Xray ALL HTTP-01 must reserve TCP/80'; failures=$((failures + 1)); }
     HY2_ACME_TYPE=dns
@@ -69492,31 +70057,31 @@ N11EOF
     [[ "$(sni_org_cdn_penalty api.cloudflare.com 'AS13335 Cloudflare, Inc.')" -ge 300 ]] || { echo 'FAIL: Cloudflare first-party target must retain CDN-risk label'; failures=$((failures + 1)); }
     [[ "$(sni_org_cdn_penalty api.fastly.com 'AS54113 Fastly, Inc.')" -ge 300 ]] || { echo 'FAIL: Fastly first-party target must retain CDN-risk label'; failures=$((failures + 1)); }
     ! grep -Fq 'NR <= 8' <(sed -n '/^traffic_management_menu() {$/,/^manage_ss_whitelist()/p' "$0") || { echo 'FAIL: monthly vnStat display must not truncate after 8 raw lines'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_SNI_FULL_TOPN:-100' <<< "$source_body" || { echo 'FAIL: full SNI result display count default'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_SNI_FULL_TOPN:-100' "$source_body_file" || { echo 'FAIL: full SNI result display count default'; failures=$((failures + 1)); }
     ! grep -q '^MAIN_LOCK=/run/A-Box.lock$' "$0" || { echo 'FAIL: helper health probe still depends on interactive main lock'; failures=$((failures + 1)); }
     traffic_writer_body=$(sed -n '/write_private_line() {/,/^read_desired() {/p' "$0") || { echo 'FAIL: traffic helper writer static extraction'; failures=$((failures + 1)); }
     ! grep -q 'path_parent_chain_safe "\$dest"' <<< "$traffic_writer_body" || { echo 'FAIL: traffic helper calls main-only function'; failures=$((failures + 1)); }
-    grep -q 'export XRAY_LOCATION_ASSET="/usr/local/share/xray"' <<< "$source_body" || { echo 'FAIL: OpenRC Xray asset path is not exported'; failures=$((failures + 1)); }
+    grep -q 'export XRAY_LOCATION_ASSET="/usr/local/share/xray"' "$source_body_file" || { echo 'FAIL: OpenRC Xray asset path is not exported'; failures=$((failures + 1)); }
     # R11C8-02: the geo updater now resolves the manifest via SCRIPT_DIR
     # (its own location), not a hardcoded /etc/ddr literal.
     grep -q '^ABOX_CORE_OWNERSHIP="$SCRIPT_DIR/.managed-core-files.tsv"$' "$0" || { echo 'FAIL: Geo updater ownership manifest path missing'; failures=$((failures + 1)); }
     grep -q '^update_geo_ownership() {' "$0" || { echo 'FAIL: Geo updater ownership refresh helper missing'; failures=$((failures + 1)); }
-    grep -q 'if ! update_geo_ownership; then' <<< "$source_body" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
-    grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' <<< "$source_body" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }
-    grep -q 'Authorization: Bearer %s' <<< "$source_body" || { echo 'FAIL: GitHub bearer token config support missing'; failures=$((failures + 1)); }
+    grep -q 'if ! update_geo_ownership; then' "$source_body_file" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
+    grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' "$source_body_file" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }
+    grep -q 'Authorization: Bearer %s' "$source_body_file" || { echo 'FAIL: GitHub bearer token config support missing'; failures=$((failures + 1)); }
     # H-19: the old assertion grepped the fabricated 'invalid request
     # from' format Xray never emits; the new failregex covers real
     # '... rejected ... invalid request|invalid user' access.log lines.
-    grep -Fq 'invalid request|invalid user' <<< "$source_body" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
-    grep -q 'backend=\$(firewall_backend)' <<< "$source_body" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
+    grep -Fq 'invalid request|invalid user' "$source_body_file" || { echo 'FAIL: Fail2Ban must cover exact Xray invalid-request scanner logs'; failures=$((failures + 1)); }
+    grep -q 'backend=\$(firewall_backend)' "$source_body_file" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
     grep -q '^remove_abox_native_firewall_rule() {' "$0" || { echo 'FAIL: exact owned firewall port removal helper missing'; failures=$((failures + 1)); }
     grep -q '^forget_native_firewall_rule() {' "$0" || { echo 'FAIL: native firewall ownership-state removal helper missing'; failures=$((failures + 1)); }
     _forget_call_prefix='forget_native_firewall_rule'; _ufw_call_suffix=' "$spec" "$proto" ufw'; _fwd_call_suffix=' "$_spec" "$proto" firewalld'
     grep -Fq -- "${_forget_call_prefix}${_ufw_call_suffix}" "$0" || { echo 'FAIL: UFW firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -Fq -- "${_forget_call_prefix}${_fwd_call_suffix}" "$0" || { echo 'FAIL: firewalld firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -q '^preflight_reset_ownership() {' "$0" || { echo 'FAIL: reset ownership preflight missing'; failures=$((failures + 1)); }
-    grep -Fq 'command clear || true' <<< "$source_body" || { echo 'FAIL: non-interactive clear guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'if [[ -t 0 ]]; then' <<< "$source_body" || { echo 'FAIL: pause_return TTY guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'command clear || true' "$source_body_file" || { echo 'FAIL: non-interactive clear guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'if [[ -t 0 ]]; then' "$source_body_file" || { echo 'FAIL: pause_return TTY guard missing'; failures=$((failures + 1)); }
     _http01_cleanup_call='remove_abox_native_firewall_rule'; _http01_cleanup_args=' 80 tcp'
     ! grep -Fq -- "${_http01_cleanup_call}${_http01_cleanup_args}" "$0" || { echo 'FAIL: HTTP-01 must keep 80/tcp reachable for CertMagic HTTP challenge and renewal'; failures=$((failures + 1)); }
     _hop_udp_regex='-p udp'; _hop_redirect_regex='REDIRECT --to-ports'
@@ -69524,28 +70089,28 @@ N11EOF
     [[ "$_hop_udp_rule_count" -ge 4 ]] || { echo 'FAIL: HY2 official hop iptables checks must require UDP in both verifier copies'; failures=$((failures + 1)); }
     _http01_cleanup_helper='cleanup_http01_port_after_' ; _http01_cleanup_helper+='hy2_start'
     ! grep -Fq -- "$_http01_cleanup_helper" "$0" || { echo 'FAIL: obsolete HTTP-01 post-start cleanup path remains'; failures=$((failures + 1)); }
-    grep -Fq 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙' <<< "$source_body" || { echo 'FAIL: IPv6 whitelist silent-skip guard missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue' <<< "$source_body" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
-    grep -q 'iptables_rule_check() {' <<< "$source_body" || { echo 'FAIL: standalone firewall restore helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙' "$source_body_file" || { echo 'FAIL: IPv6 whitelist silent-skip guard missing'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue' "$source_body_file" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
+    grep -q 'iptables_rule_check() {' "$source_body_file" || { echo 'FAIL: standalone firewall restore helper missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'firewallcmd-multiport'"'"'' "$0" || { echo 'FAIL: Fail2Ban firewalld action mapping missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'ufw'"'"'' "$0" || { echo 'FAIL: Fail2Ban UFW action mapping missing'; failures=$((failures + 1)); }
-    grep -q 'bbr_module_file=' <<< "$source_body" || { echo 'FAIL: BBR module persistence path missing'; failures=$((failures + 1)); }
+    grep -q 'bbr_module_file=' "$source_body_file" || { echo 'FAIL: BBR module persistence path missing'; failures=$((failures + 1)); }
     grep -q '^    local -a pids=() exes=()' "$0" || { echo 'FAIL: parallel residual PID collection missing'; failures=$((failures + 1)); }
-    grep -q 'pid_exe_matches "$pid" "$exe"' <<< "$source_body" || { echo 'FAIL: PID reuse executable recheck missing'; failures=$((failures + 1)); }
+    grep -q 'pid_exe_matches "$pid" "$exe"' "$source_body_file" || { echo 'FAIL: PID reuse executable recheck missing'; failures=$((failures + 1)); }
     declare -F selftest_abox_signature >/dev/null || { echo 'FAIL: live /etc/ddr side-effect regression guard missing'; failures=$((failures + 1)); }
-    grep -q -- '--config -' <<< "$source_body" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
-    grep -q '2300000' <<< "$source_body" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
-    grep -q 'created_by_abox == 1' <<< "$source_body" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
-    grep -Fq 'setup_zram_swap()' <<< "$source_body" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
-    grep -Fq 'users_registries_wipe' <<< "$source_body" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
-    grep -Fq 'users_registry_remove "$core" "$tag"' <<< "$source_body" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy' <<< "$source_body" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy xray' <<< "$source_body" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
-    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' <<< "$source_body" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
-    grep -Fq '6) swap_menu ;;' <<< "$source_body" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
-    grep -Fq '/usr/local/sbin/abox-zram' <<< "$source_body" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
+    grep -q -- '--config -' "$source_body_file" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
+    grep -q '2300000' "$source_body_file" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
+    grep -q 'created_by_abox == 1' "$source_body_file" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
+    grep -Fq 'setup_zram_swap()' "$source_body_file" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_registries_wipe' "$source_body_file" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
+    grep -Fq 'users_registry_remove "$core" "$tag"' "$source_body_file" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy' "$source_body_file" || { echo 'FAIL: stale registry prune after deploy missing (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy xray' "$source_body_file" || { echo 'FAIL: xray deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq 'users_reg_prune_stale_after_deploy sing-box' "$source_body_file" || { echo 'FAIL: sing-box deploy must prune stale registries (O1)'; failures=$((failures + 1)); }
+    grep -Fq '6) swap_menu ;;' "$source_body_file" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
+    grep -Fq '/usr/local/sbin/abox-zram' "$source_body_file" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }
-    grep -Fq '无法可靠判断 /swapfile 当前是否已激活' <<< "$source_body" || { echo 'FAIL: Swap activity query failure must fail closed'; failures=$((failures + 1)); }
+    grep -Fq '无法可靠判断 /swapfile 当前是否已激活' "$source_body_file" || { echo 'FAIL: Swap activity query failure must fail closed'; failures=$((failures + 1)); }
     swapon() { printf '%s\n' '/swapfile'; }
     [[ "$(swapfile_active_state; echo "$?")" == '0' ]] || { echo 'FAIL: Swap activity query active state'; failures=$((failures + 1)); }
     swapon() { :; }
@@ -69558,21 +70123,21 @@ N11EOF
     [[ "$(swapfile_active_state; echo "$?")" == "$_swap_expect" ]] || { echo 'FAIL: Swap activity query swapon-failure fallback'; failures=$((failures + 1)); }
     unset -f swapon
     grep -q '^fstab_path_is_safe() {' "$0" || { echo 'FAIL: swap fstab trust helper missing'; failures=$((failures + 1)); }
-    grep -q 'fstab_path_is_safe || return 1' <<< "$source_body" || { echo 'FAIL: swap removal must validate trusted fstab before mutation'; failures=$((failures + 1)); }
-    grep -q '保留 fstab 备份' <<< "$source_body" || { echo 'FAIL: Swap rollback must retain fstab recovery material when rollback fails'; failures=$((failures + 1)); }
-    grep -q 'Swap 无法安全关闭' <<< "$source_body" || { echo 'FAIL: Swap setup must not delete an active swapfile when swapoff fails'; failures=$((failures + 1)); }
-    grep -q '检测到全局 IPv6' <<< "$source_body" || { echo 'FAIL: IPv6 manual HY2 hop guard missing'; failures=$((failures + 1)); }
-    grep -q 'tr_msg cl_f2b_restart_reset' <<< "$source_body" || { echo 'FAIL: environment reset must restart Fail2Ban after removing A-Box jail'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$value" != *[[:cntrl:]]* ]]' <<< "$source_body" || { echo 'FAIL: secret validator must reject control characters'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$fmt" != *' <<< "$source_body" || { echo 'FAIL: translation printf must reject backslash escapes'; failures=$((failures + 1)); }
+    grep -q 'fstab_path_is_safe || return 1' "$source_body_file" || { echo 'FAIL: swap removal must validate trusted fstab before mutation'; failures=$((failures + 1)); }
+    grep -q '保留 fstab 备份' "$source_body_file" || { echo 'FAIL: Swap rollback must retain fstab recovery material when rollback fails'; failures=$((failures + 1)); }
+    grep -q 'Swap 无法安全关闭' "$source_body_file" || { echo 'FAIL: Swap setup must not delete an active swapfile when swapoff fails'; failures=$((failures + 1)); }
+    grep -q '检测到全局 IPv6' "$source_body_file" || { echo 'FAIL: IPv6 manual HY2 hop guard missing'; failures=$((failures + 1)); }
+    grep -q 'tr_msg cl_f2b_restart_reset' "$source_body_file" || { echo 'FAIL: environment reset must restart Fail2Ban after removing A-Box jail'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$value" != *[[:cntrl:]]* ]]' "$source_body_file" || { echo 'FAIL: secret validator must reject control characters'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$fmt" != *' "$source_body_file" || { echo 'FAIL: translation printf must reject backslash escapes'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' 'bad\q %s'; }; tprintf synthetic test ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted a backslash escape in a translation'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' '%n'; }; tprintf synthetic ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted an unsupported printf conversion'; failures=$((failures + 1)); }
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
-    grep -q 'command -v ss >/dev/null 2>&1 || return 2' <<< "$source_body" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
-    grep -q '2) exit 0 ;;' <<< "$source_body" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_DASH' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
-    grep -q 'PY_VNSTAT_TOTAL_MONITOR' <<< "$source_body" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_COMPARE' <<< "$source_body" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$source_body_file" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
+    grep -q '2) exit 0 ;;' "$source_body_file" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_DASH' "$source_body_file" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$source_body_file" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_COMPARE' "$source_body_file" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }
     cron_guard_in=$(mktemp /tmp/A-Box-selftest-cron-in.XXXXXX) || { echo 'FAIL: cron regression temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
     cron_guard_out=$(mktemp /tmp/A-Box-selftest-cron-out.XXXXXX) || { rm -f "$cron_guard_in"; echo 'FAIL: cron regression temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
@@ -69582,16 +70147,13 @@ N11EOF
     grep -Fxq '* * * * * /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' "$cron_guard_out" || { echo 'FAIL: unmarked legacy-like GEO cron must be preserved'; failures=$((failures + 1)); }
     ! grep -Fxq '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' "$cron_guard_out" || { echo 'FAIL: marked A-Box GEO cron block was not removed'; failures=$((failures + 1)); }
     rm -f "$cron_guard_in" "$cron_guard_out"
-    static_body=$(mktemp /tmp/A-Box-selftest-static.XXXXXX) || { echo 'FAIL: self-test static filter temp creation'; failures=$((failures + 1)); selftest_cleanup; return 1; }
-    awk '
-      /^run_self_tests\(\)/ {skip=1}
-      /^main\(\) \{/ {skip=0}
-      !skip {print}
-    ' "$0" > "$static_body" || { rm -f "$static_body"; echo 'FAIL: self-test static filter'; failures=$((failures + 1)); return 1; }
-    grep -Eq 'crontab -l[^\n]*\|.*\|\| true' "$static_body" && { rm -f "$static_body"; echo 'FAIL: crontab read failure must not be swallowed'; failures=$((failures + 1)); return 1; }
-    grep -Eq 'remove_abox_cron_block GEO 2>/dev/null \|\| true' "$static_body" && { rm -f "$static_body"; echo 'FAIL: Geo cron removal failure must not be swallowed'; failures=$((failures + 1)); return 1; }
-    rm -f "$static_body"
-    _devfd_pattern='/dev/''fd/3'; ! grep -q "python3 ${_devfd_pattern}" <<< "$source_body" || { echo 'FAIL: /dev/fd/3 portability dependency remains'; failures=$((failures + 1)); }
+    # The source snapshot above is the same filtered body (self-test region
+    # excluded, except that it also omits the `main() {` line itself, which
+    # neither crontab pattern can match); reuse it instead of building a
+    # second filtered copy.
+    grep -Eq 'crontab -l[^\n]*\|.*\|\| true' "$source_body_file" && { echo 'FAIL: crontab read failure must not be swallowed'; failures=$((failures + 1)); return 1; }
+    grep -Eq 'remove_abox_cron_block GEO 2>/dev/null \|\| true' "$source_body_file" && { echo 'FAIL: Geo cron removal failure must not be swallowed'; failures=$((failures + 1)); return 1; }
+    _devfd_pattern='/dev/''fd/3'; ! grep -q "python3 ${_devfd_pattern}" "$source_body_file" || { echo 'FAIL: /dev/fd/3 portability dependency remains'; failures=$((failures + 1)); }
     unset _devfd_pattern
     [[ "$(port_spec_for_firewalld 20000:25000)" == '20000-25000' ]] || { echo 'FAIL: firewalld range conversion'; failures=$((failures + 1)); }
     [[ "$(port_list_for_firewalld '443,2053:2500')" == '443,2053-2500' ]] || { echo 'FAIL: firewalld comma-separated port/range conversion'; failures=$((failures + 1)); }
@@ -69693,7 +70255,7 @@ N11EOF
     ( ip() { printf '%s\n' '8.8.8.8 dev CloudflareWARP src 192.0.2.2'; }; default_route_uses_warp ) || { echo 'FAIL: CloudflareWARP default-route detector'; failures=$((failures + 1)); }
     ! ( ip() { printf '%s\n' '8.8.8.8 dev eth0 src 192.0.2.2'; }; default_route_uses_warp ) || { echo 'FAIL: ordinary default-route detector false positive'; failures=$((failures + 1)); }
     grep -q '^hysteria_official_hop_firewall_ok() {' "$0" || { echo 'FAIL: official HY2 hop firewall verifier missing'; failures=$((failures + 1)); }
-    grep -Fq 'hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"' <<< "$source_body" || { echo 'FAIL: official HY2 deployment must verify hop firewall rules after startup'; failures=$((failures + 1)); }
+    grep -Fq 'hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"' "$source_body_file" || { echo 'FAIL: official HY2 deployment must verify hop firewall rules after startup'; failures=$((failures + 1)); }
     CORE=singbox MODE=HY2 HY2_BASE_PORT=443 HY2_UP=100 HY2_DOWN=1000 HY2_HOP=false HY2_HOP_IMPL=none
     validate_abox_env_semantics >/dev/null 2>&1 || { echo 'FAIL: valid HY2 bandwidth state'; failures=$((failures + 1)); }
     HY2_UP='not-a-number'
@@ -69723,6 +70285,13 @@ N11EOF
     fi
     [[ "$(cat "$geo_existing" 2>/dev/null)" == 'OLD-GEO-CONTENT' ]] || { echo 'FAIL: refused Geo update deleted/replaced valid old file'; failures=$((failures + 1)); }
 
+    # M4: the two Geo fixtures below share one immutable 600 KB zero
+    # payload and its SHA-256 (the success mock hashes it for the API
+    # reply and writes it as the download). Generate once and share;
+    # each fixture keeps its own destination file and assertions.
+    geo_payload="$tmp/geo-payload-600k.bin"
+    dd if=/dev/zero of="$geo_payload" bs=600000 count=1 status=none || { echo 'FAIL: shared Geo fixture payload'; failures=$((failures + 1)); }
+    geo_payload_sha=$(sha256sum < "$geo_payload" 2>/dev/null | awk '{print $1}')
     # GitHub Geo path: digest must fail closed and preserve old content.
     geo_bad_digest="$tmp/geo-bad-digest.dat"
     printf '%s' 'OLD-GEO-CONTENT' > "$geo_bad_digest"
@@ -69751,16 +70320,14 @@ N11EOF
     printf '%s' 'OLD-GEO-CONTENT' > "$geo_success"
     if ! (
         github_api_get() {
-            local dig
-            dig=$(dd if=/dev/zero bs=600000 count=1 status=none | sha256sum | awk '{print $1}')
-            jq -nc --arg dig "$dig" '{tag_name:"latest",assets:[{name:"geosite.dat",browser_download_url:"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/latest/geosite.dat",digest:("sha256:"+$dig)}]}'
+            jq -nc --arg dig "$geo_payload_sha" '{tag_name:"latest",assets:[{name:"geosite.dat",browser_download_url:"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/latest/geosite.dat",digest:("sha256:"+$dig)}]}'
         }
         curl() {
             local out=''
             while (($#)); do
                 case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac
             done
-            dd if=/dev/zero of="$out" bs=600000 count=1 status=none
+            cat "$geo_payload" > "$out"
         }
         fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$geo_success" >/dev/null 2>&1
     ); then
@@ -69768,6 +70335,23 @@ N11EOF
         failures=$((failures + 1))
     fi
     [[ "$(stat -c %s "$geo_success" 2>/dev/null || echo 0)" == '600000' ]] || { echo 'FAIL: valid Geo replacement was not atomically committed'; failures=$((failures + 1)); }
+
+    # GEO-F4: validate_geo_payload accepts a large non-HTML payload
+    # and rejects small, HTML-headed and missing ones.
+    if ! (
+        _vgp_tmp=$(umask 077; mktemp -d) || exit 71
+        dd if=/dev/zero of="$_vgp_tmp/big" bs=600000 count=1 status=none || exit 72
+        validate_geo_payload "$_vgp_tmp/big" || exit 73
+        dd if=/dev/zero of="$_vgp_tmp/small" bs=100 count=1 status=none || exit 74
+        validate_geo_payload "$_vgp_tmp/small" && exit 75
+        printf '<!DOCTYPE html><html></html>' > "$_vgp_tmp/html-head" || exit 76
+        dd if=/dev/zero bs=600000 count=1 status=none >> "$_vgp_tmp/html-head" || exit 77
+        validate_geo_payload "$_vgp_tmp/html-head" && exit 78
+        validate_geo_payload "$_vgp_tmp/missing" && exit 79
+        rm -rf -- "$_vgp_tmp"
+    ); then
+        echo 'FAIL: validate_geo_payload must accept a large non-HTML payload and reject small/HTML/missing ones'; failures=$((failures + 1))
+    fi
 
     # Core download helper must preserve an existing destination until the replacement
     # has passed structural and digest validation.
@@ -69778,18 +70362,36 @@ N11EOF
             printf '%s\n' '{"assets":[{"name":"Xray-linux-64.zip","browser_download_url":"https://github.com/XTLS/Xray-core/releases/download/v26.9.30/Xray-linux-64.zip","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}'
         }
         curl() {
-            local out=''
+            local out='' _w=''
             while (($#)); do
-                case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac
+                case "$1" in
+                    -o) out="$2"; shift 2 ;;
+                    -w) _w=1; shift 2 ;;
+                    -w*) _w=1; shift ;;
+                    *) shift ;;
+                esac
             done
+            # M1: the fetch banner probes availability with `curl -w
+            # '%{http_code}'` and retries 3x with `sleep 1` on a non-200
+            # code. A mock that prints nothing made the probe read an empty
+            # code and burn 2 s of sleep (the 2.37 s S2 hotspot was the
+            # sleeps, not network: the mock does intercept the calls).
+            # Emit 200 for -w probes (banner text only; the invalid-asset
+            # verdict below is unchanged). Download legs carry no -w, so
+            # their stdout stays empty as before.
+            [[ -n "$_w" ]] && printf '200'
             printf '%s' 'invalid-archive' > "$out"
             return 0
         }
-        XRAY_ARCH=64 ABOX_XRAY_VERSION=v26.9.30 fetch_github_release XTLS/Xray-core xray_core.zip "$github_existing" >/dev/null 2>&1
+        XRAY_ARCH=64 ABOX_XRAY_VERSION=v26.9.30 fetch_github_release XTLS/Xray-core xray_core.zip "$github_existing" > "$tmp/github-fixture-out" 2>&1
     ); then
         echo 'FAIL: invalid GitHub asset injection unexpectedly succeeded'
         failures=$((failures + 1))
     fi
+    # M1: the banner above must have seen the mocked HTTP 200s. If it
+    # reports unavailable, either the mock regressed or production added
+    # an unmocked probe (real network inside self-test).
+    grep -q 'release tag XTLS/Xray-core@v26.9.30: available (HTTP 200)' "$tmp/github-fixture-out" 2>/dev/null || { echo 'FAIL: self-test fetch banner must see mocked HTTP 200 (real network or mock regression)'; failures=$((failures + 1)); }
     [[ "$(cat "$github_existing" 2>/dev/null)" == 'OLD-CORE' ]] || { echo 'FAIL: failed core download deleted/replaced existing destination'; failures=$((failures + 1)); }
     [[ "$(msg 'literal\nbackslash\ttext')" == $'literal\\nbackslash\\ttext' ]] || { echo 'FAIL: msg must not reinterpret backslash escapes'; failures=$((failures + 1)); }
     [[ "$(msg "${RED}X${NC}")" == $'\033[0;31mX\033[0m' ]] || { echo 'FAIL: ANSI color escapes must remain functional'; failures=$((failures + 1)); }
@@ -70112,16 +70714,16 @@ EOF_SELFTEST_IPT
     printf '%s\n' 'sentinel' > "$tmp/sing-box/sentinel.txt"
     ln -s "$tmp/sing-box/sentinel.txt" "$tmp/sing-box/config.json.tmp.$$"
     ( build_singbox_config ALL "$tmp/sing-box/config.json" ) || { echo 'FAIL: build_singbox_config ALL'; failures=$((failures + 1)); }
-    [[ "$(cat "$tmp/sing-box/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: Sing-box config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
-    [[ -L "$tmp/sing-box/config.json.tmp.$$" ]] || { echo 'FAIL: Sing-box config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
+    [[ "$(cat "$tmp/sing-box/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: sing-box config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
+    [[ -L "$tmp/sing-box/config.json.tmp.$$" ]] || { echo 'FAIL: sing-box config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
     rm -f "$tmp/sing-box/config.json.tmp.$$"
     jq empty "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: build_singbox_config JSON'; failures=$((failures + 1)); }
-    [[ "$(stat -c %a "$tmp/sing-box/config.json" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Sing-box config permissions must be 0600'; failures=$((failures + 1)); }
-    jq -e '.inbounds[] | select(.type=="shadowsocks" and .listen_port==2053 and (.network|not))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box SS-2022 2053 default network'; failures=$((failures + 1)); }
-    jq -e 'all(.inbounds[]; .type != "xhttp")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box ALL must not include XHTTP'; failures=$((failures + 1)); }
-    jq -e '(.route.rules[] | select(.action=="sniff")) and (.route.rules[] | select(.protocol=="bittorrent" and .action=="reject"))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box sniff/reject route action'; failures=$((failures + 1)); }
-    jq -e '.route.rules[0].action=="sniff" and .route.rules[0].network==["tcp"]' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box sniff must remain TCP-only to avoid HY2 UDP sniff coupling'; failures=$((failures + 1)); }
-    jq -e 'all(.outbounds[]; .type != "block")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box legacy block outbound remains'; failures=$((failures + 1)); }
+    [[ "$(stat -c %a "$tmp/sing-box/config.json" 2>/dev/null)" == '600' ]] || { echo 'FAIL: sing-box config permissions must be 0600'; failures=$((failures + 1)); }
+    jq -e '.inbounds[] | select(.type=="shadowsocks" and .listen_port==2053 and (.network|not))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box SS-2022 2053 default network'; failures=$((failures + 1)); }
+    jq -e 'all(.inbounds[]; .type != "xhttp")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box ALL must not include XHTTP'; failures=$((failures + 1)); }
+    jq -e '(.route.rules[] | select(.action=="sniff")) and (.route.rules[] | select(.protocol=="bittorrent" and .action=="reject"))' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box sniff/reject route action'; failures=$((failures + 1)); }
+    jq -e '.route.rules[0].action=="sniff" and .route.rules[0].network==["tcp"]' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box sniff must remain TCP-only to avoid HY2 UDP sniff coupling'; failures=$((failures + 1)); }
+    jq -e 'all(.outbounds[]; .type != "block")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: sing-box legacy block outbound remains'; failures=$((failures + 1)); }
     fi
     # Parent-directory traversal regression for the dedicated runtime user.
     # R15C17-01: local init so an inherited environment value can never
@@ -70142,11 +70744,11 @@ EOF_SELFTEST_IPT
         chmod 700 "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         chown root:nogroup "$runtime_traverse/sing-box/config.json" "$runtime_traverse/hysteria/config.yaml"
         chmod 640 "$runtime_traverse/sing-box/config.json" "$runtime_traverse/hysteria/config.yaml"
-        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 && { echo 'FAIL: 0700 Sing-box parent directory was readable by runtime user'; failures=$((failures + 1)); }
+        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 && { echo 'FAIL: 0700 sing-box parent directory was readable by runtime user'; failures=$((failures + 1)); }
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 && { echo 'FAIL: 0700 Hysteria parent directory was readable by runtime user'; failures=$((failures + 1)); }
         chown root:nogroup "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         chmod 750 "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
-        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: 0750 Sing-box parent directory blocked runtime user'; failures=$((failures + 1)); }
+        runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: 0750 sing-box parent directory blocked runtime user'; failures=$((failures + 1)); }
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 || { echo 'FAIL: 0750 Hysteria parent directory blocked runtime user'; failures=$((failures + 1)); }
         fi
     fi
@@ -70157,7 +70759,7 @@ EOF_SELFTEST_IPT
         # S9 (R65 follow-up): the ML-KEM warning check is static (it only
         # greps the source), so it stays outside the python3 gate below
         # and still runs when python3 is missing.
-        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
+        grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' "$source_body_file" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         # Gate the whole Clash YAML generation segment on python3:
         # write_clash_yaml / write_mihomo_user_yaml need it internally
         # (realpath), so without it every generation would count as a
@@ -70169,6 +70771,11 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
+        # M1: self-test must not do real network I/O. write_clash_yaml
+        # probes the VPS country via a Cloudflare trace fetch; these
+        # fixtures only check YAML structure, so fail the detection here
+        # and exercise the global-nameserver fallback (1.1.1.1/8.8.8.8).
+        _detect_vps_country() { return 1; }
         ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(stat -c %a "$clash_dir/A-Box-clash.yaml" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Clash YAML permissions must be 0600'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=HY2 PUBLIC_KEY=publickey LINK_IP=203.0.113.10 HY2_DOMAIN=hy2.example.com HY2_HOP=true HY2_BASE_PORT=443 HY2_RANGE_START=20000 HY2_RANGE_END=25000 HY2_CLASH_PORTS=20000-25000 HY2_CERT_SHA256_FP=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-hop.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash Hysteria2 hop YAML generation'; failures=$((failures + 1)); }
@@ -70216,12 +70823,13 @@ PY_SELFTEST_YAML
         else
             selftest_note 'Clash YAML secret escaping check skipped (python3 missing)'
         fi
+        unset -f _detect_vps_country
         fi
     else
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
     fi
-    CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: Sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
-    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
+    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
     # N-18: invalid fingerprint must be rejected.
     CORE=singbox HY2_CERT_PUBKEY_SHA256_B64='abcdef"; evil' singbox_hy2_tls_json >/dev/null 2>&1 && { echo 'FAIL: singbox_hy2_tls_json accepted invalid fingerprint'; failures=$((failures + 1)); }
     local _saved_release="${release:-}" _saved_sb_arch="${SB_ARCH:-}" _regex
@@ -70260,25 +70868,25 @@ PY_SELFTEST_YAML
     # The old assertion grepped the policy comment itself, so it passed
     # even if the Alpine deps array installed cronie. Check the logic:
     # the alpine) branch's deps array must not contain cronie.
-    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/ {g=1} g{print} g && /\)/{exit}' <<< "$source_body")
+    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/ {g=1} g{print} g && /\)/{exit}' "$source_body_file")
     [[ -n "$_alpine_deps" && "$_alpine_deps" != *'cronie'* ]] || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
-    grep -Fq 'curl-minimal' <<< "$source_body" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
+    grep -Fq 'curl-minimal' "$source_body_file" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
     release="$_saved_release"
     SB_ARCH="$_saved_sb_arch"
 
-    grep -q 'traffic_error() {' <<< "$source_body" || { echo 'FAIL: safe traffic error logger missing'; failures=$((failures + 1)); }
-    grep -Fq '非交互部署检测到 wg/warp/tun 默认出口' <<< "$source_body" || { echo 'FAIL: WARP default-route deployment gate missing'; failures=$((failures + 1)); }
-    grep -q 'A-Box-traffic.log' <<< "$source_body" || { echo 'FAIL: traffic log path missing'; failures=$((failures + 1)); }
+    grep -q 'traffic_error() {' "$source_body_file" || { echo 'FAIL: safe traffic error logger missing'; failures=$((failures + 1)); }
+    grep -Fq '非交互部署检测到 wg/warp/tun 默认出口' "$source_body_file" || { echo 'FAIL: WARP default-route deployment gate missing'; failures=$((failures + 1)); }
+    grep -q 'A-Box-traffic.log' "$source_body_file" || { echo 'FAIL: traffic log path missing'; failures=$((failures + 1)); }
     ! grep -Eq 'deps=\([^\n]*\bvnstat\b' "$0" || { echo 'FAIL: vnStat must not be a baseline hard dependency'; failures=$((failures + 1)); }
     ! grep -Eq '^    need_cmd_pkg vnstat ' "$0" || { echo 'FAIL: vnStat must not be an unconditional command dependency'; failures=$((failures + 1)); }
     ! grep -Eq '^    need_cmd_pkg (qrencode|fail2ban-client) ' "$0" || { echo 'FAIL: optional qrencode/Fail2Ban must not be hard dependencies'; failures=$((failures + 1)); }
-    grep -Fq 'if ! remove_abox_swap; then' <<< "$source_body" || { echo 'FAIL: full uninstall must retain ownership marker when swap cleanup fails'; failures=$((failures + 1)); }
+    grep -Fq 'if ! remove_abox_swap; then' "$source_body_file" || { echo 'FAIL: full uninstall must retain ownership marker when swap cleanup fails'; failures=$((failures + 1)); }
     grep -q '^rollback_new_swap_activation_only() {' "$0" || { echo 'FAIL: early Swap rollback must have fstab-independent activation-only helper'; failures=$((failures + 1)); }
-    grep -Fq 'fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。' <<< "$source_body" || { echo 'FAIL: early Swap backup failure must not invoke fstab-modifying rollback'; failures=$((failures + 1)); }
-    grep -Fq 'rm -rf -- "$ABOX_DIR" || die' <<< "$source_body" || { echo 'FAIL: full uninstall must verify A-Box directory removal'; failures=$((failures + 1)); }
+    grep -Fq 'fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。' "$source_body_file" || { echo 'FAIL: early Swap backup failure must not invoke fstab-modifying rollback'; failures=$((failures + 1)); }
+    grep -Fq 'rm -rf -- "$ABOX_DIR" || die' "$source_body_file" || { echo 'FAIL: full uninstall must verify A-Box directory removal'; failures=$((failures + 1)); }
     ! grep -Eq 'mapfile -t rules < <\(\"\$cmd\" -w -S INPUT|done < <\(\"\$cmd\" -w -S INPUT' "$0" || { echo 'FAIL: firewall reorder must propagate iptables -S failure'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"' <<< "$source_body" || { echo 'FAIL: full uninstall rollback must use an external transaction backup'; failures=$((failures + 1)); }
-    grep -Fq 'backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file"' <<< "$source_body" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"' "$source_body_file" || { echo 'FAIL: full uninstall rollback must use an external transaction backup'; failures=$((failures + 1)); }
+    grep -Fq 'backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file"' "$source_body_file" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
     if (( EUID == 0 )); then
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi
@@ -70289,10 +70897,10 @@ PY_SELFTEST_YAML
             echo 'FAIL: --self-test changed live /etc/ddr directory state'; failures=$((failures + 1))
         fi
     fi
-    ! grep -Fq "asn_cache='/tmp'" <<< "$source_body" || { echo 'FAIL: ASN cache must never fall back to shared /tmp'; failures=$((failures + 1)); }
-    ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' <<< "$source_body" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
-    ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' <<< "$source_body" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
-    grep -q '^traffic_fail_closed() {' <<< "$source_body" || { echo 'FAIL: traffic monitor fail-closed enforcement helper missing'; failures=$((failures + 1)); }
+    ! grep -Fq "asn_cache='/tmp'" "$source_body_file" || { echo 'FAIL: ASN cache must never fall back to shared /tmp'; failures=$((failures + 1)); }
+    ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' "$source_body_file" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
+    ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' "$source_body_file" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
+    grep -q '^traffic_fail_closed() {' "$source_body_file" || { echo 'FAIL: traffic monitor fail-closed enforcement helper missing'; failures=$((failures + 1)); }
     traffic_body=$(sed -n '/cat > \"\$_tm_tmp\" <<'"'"'EOF_TRAFFIC'"'"'/,/^EOF_TRAFFIC$/p' "$0") || traffic_body=''
     ! grep -Fq 'load_state || exit 0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor must not silently exit on persisted state load failure'; failures=$((failures + 1)); }
     grep -Fq 'state_load_failed=0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor persisted-state failure handling missing'; failures=$((failures + 1)); }
@@ -70307,46 +70915,46 @@ PY_SELFTEST_YAML
         [[ -n "$_main_fn" && "$_main_fn" == "$_tmpl_fn" ]] || { echo "FAIL: stop family drift: $_sf differs between main script and traffic_monitor template"; failures=$((failures + 1)); }
     done
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
-    grep -q '^reorder_ss_whitelist_rules_one() {' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
-    grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
-    grep -Fq 'flock -s -n 8' <<< "$source_body" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
-    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
-    ! grep -Fq 'mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must not use .sh suffix (BusyBox mktemp requires template to end with XXXXXX)'; failures=$((failures + 1)); }
-    grep -Fq 'unset ABOX_DIE_HOOK' <<< "$source_body" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
+    grep -q '^reorder_ss_whitelist_rules_one() {' "$source_body_file" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
+    grep -Fq 'exec {lock_fd}>>"$lock_file"' "$source_body_file" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' "$source_body_file" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
+    grep -Fq 'flock -s -n 8' "$source_body_file" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
+    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX' "$source_body_file" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
+    ! grep -Fq 'mktemp /tmp/A-Box-remote.XXXXXX.sh' "$source_body_file" || { echo 'FAIL: remote script temp must not use .sh suffix (BusyBox mktemp requires template to end with XXXXXX)'; failures=$((failures + 1)); }
+    grep -Fq 'unset ABOX_DIE_HOOK' "$source_body_file" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
 
-    grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'recovery snapshot preserved at $recovery_snapshot' <<< "$source_body" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
-    grep -Fq "_restore_input+=$'\\n-D INPUT '" <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
-    grep -Fq 'iptables-restore backend mismatch' <<< "$source_body" || { echo 'FAIL: firewall rollback must match iptables-restore backend before atomic rollback'; failures=$((failures + 1)); }
-    grep -Fq 'current_foreign_lines' <<< "$source_body" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
-    grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
-    grep -Fq 'previous_state=$(get_desired_state)' <<< "$source_body" || { echo 'FAIL: manual service transitions must snapshot desired state'; failures=$((failures + 1)); }
-    grep -Fq 'local pre_state=' <<< "$source_body" || { echo 'FAIL: manual service transactions must capture pre-state'; failures=$((failures + 1)); }
+    grep -Fq 'firewall_rollback() {' "$source_body_file" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'recovery snapshot preserved at $recovery_snapshot' "$source_body_file" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
+    grep -Fq "_restore_input+=$'\\n-D INPUT '" "$source_body_file" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq 'iptables-restore backend mismatch' "$source_body_file" || { echo 'FAIL: firewall rollback must match iptables-restore backend before atomic rollback'; failures=$((failures + 1)); }
+    grep -Fq 'current_foreign_lines' "$source_body_file" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' "$source_body_file" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
+    grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' "$source_body_file" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
+    grep -Fq 'previous_state=$(get_desired_state)' "$source_body_file" || { echo 'FAIL: manual service transitions must snapshot desired state'; failures=$((failures + 1)); }
+    grep -Fq 'local pre_state=' "$source_body_file" || { echo 'FAIL: manual service transactions must capture pre-state'; failures=$((failures + 1)); }
     # R16-05: per-service restore routes each changed service through
     # restore_managed_service_state with its own singleton journals
     # (the old whole-journal call shape is gone; the guard is the same
     # function, so the expected-state conflict preflight still applies).
-    grep -Fq 'restore_managed_service_state "$_rb_sp" "$_rb_se"' <<< "$source_body" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
-    grep -Fq 'current_state_before=$(managed_service_state_value' <<< "$source_body" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
-    grep -Fq 'start_abox_service_soft "$srv"' <<< "$source_body" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
+    grep -Fq 'restore_managed_service_state "$_rb_sp" "$_rb_se"' "$source_body_file" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
+    grep -Fq 'current_state_before=$(managed_service_state_value' "$source_body_file" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
+    grep -Fq 'start_abox_service_soft "$srv"' "$source_body_file" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
     declare -p redacted_json >/dev/null 2>&1 && declare -p redacted_headers >/dev/null 2>&1 || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
-    grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' <<< "$source_body" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
+    grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' "$source_body_file" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
     # L15 (R62-L02): the health gate now lives in _core_upgrade_commit_install
     # (shared by all three cores); check the wiring instead of the old
     # inline call sites: the helper must enforce the gate, and the xray /
     # sing-box call sites must pass their own health argument through.
-    grep -Fq 'core_post_upgrade_health_gate "$health_arg"' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
-    grep -Fq '_core_upgrade_commit_install xray xray' <<< "$source_body" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
-    grep -Fq '_core_upgrade_commit_install sing-box singbox' <<< "$source_body" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq 'core_post_upgrade_health_gate "$health_arg"' "$source_body_file" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install xray xray' "$source_body_file" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    grep -Fq '_core_upgrade_commit_install sing-box singbox' "$source_body_file" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     # Audit 2026-10-14: regression guards for P1-1/P1-2/P2/P3 fixes.
     declare -F stop_abox_service_soft >/dev/null || { echo 'FAIL: stop_abox_service_soft must be defined'; failures=$((failures + 1)); }
     # B9-02: core_tls_listen_ports removed (was dead code).
-    grep -Fq "svc='sing-box'" <<< "$source_body" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
-    grep -Fq "ota_choice=''" <<< "$source_body" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
-    grep -Fq "Policy: latest-first (user directive)" <<< "$source_body" || { echo 'FAIL: test-script must stay latest-first with verified-mirror fallback'; failures=$((failures + 1)); }
+    grep -Fq "svc='sing-box'" "$source_body_file" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
+    grep -Fq "ota_choice=''" "$source_body_file" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
+    grep -Fq "Policy: latest-first (user directive)" "$source_body_file" || { echo 'FAIL: test-script must stay latest-first with verified-mirror fallback'; failures=$((failures + 1)); }
     _traffic_menu=$(sed -n '/^traffic_management_menu() {$/,/^manage_ss_whitelist()/p' "$0") || _traffic_menu=''
     _setup_line=$(grep -n -m1 'setup_traffic_monitor' <<< "$_traffic_menu" | cut -d: -f1 || true)
     _update_line=$(grep -n -m1 'update_traffic_state_atomically "$limit_gb" "$mode_choice"' <<< "$_traffic_menu" | cut -d: -f1 || true)
@@ -70354,21 +70962,21 @@ PY_SELFTEST_YAML
     grep -q '^capture_vnstat_runtime_state() {' "$0" || { echo 'FAIL: traffic transaction vnStat snapshot helper missing'; failures=$((failures + 1)); }
     grep -q '^traffic_restore_cron_block() {' "$0" || { echo 'FAIL: traffic transaction must restore only the A-Box TRAFFIC cron block'; failures=$((failures + 1)); }
     grep -q '^traffic_quota_transaction_rollback() {' "$0" || { echo 'FAIL: traffic quota rollback helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'expected_vnstat' <<< "$source_body" || { echo 'FAIL: traffic rollback must not reuse cron expected-state variable for vnStat'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_DIE_HOOK=traffic_quota_menu_die_rollback' <<< "$source_body" || { echo 'FAIL: traffic setup/commit failure must trigger transaction rollback'; failures=$((failures + 1)); }
-    grep -q '^firewall_snapshot_is_abox_managed() {' <<< "$source_body" || { echo 'FAIL: firewall persistence ownership gate missing'; failures=$((failures + 1)); }
-    grep -Fq 'auxiliary_content_is_abox_managed "$fw_file" /etc/ddr/firewall_restore.sh || return 1' <<< "$source_body" || { echo 'FAIL: firewall persistence must preflight ownership before service deletion'; failures=$((failures + 1)); }
-    grep -Fq '(( uid != 0 && gid != 0 )) || return 1' <<< "$source_body" || { echo 'FAIL: runtime service identity must never resolve to root UID/GID'; failures=$((failures + 1)); }
-    grep -Fq 'prepare_abox_runtime_permissions "$srv" || return 1' <<< "$source_body" || { echo 'FAIL: restore must reapply runtime service permissions before start'; failures=$((failures + 1)); }
+    grep -Fq 'expected_vnstat' "$source_body_file" || { echo 'FAIL: traffic rollback must not reuse cron expected-state variable for vnStat'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_DIE_HOOK=traffic_quota_menu_die_rollback' "$source_body_file" || { echo 'FAIL: traffic setup/commit failure must trigger transaction rollback'; failures=$((failures + 1)); }
+    grep -q '^firewall_snapshot_is_abox_managed() {' "$source_body_file" || { echo 'FAIL: firewall persistence ownership gate missing'; failures=$((failures + 1)); }
+    grep -Fq 'auxiliary_content_is_abox_managed "$fw_file" /etc/ddr/firewall_restore.sh || return 1' "$source_body_file" || { echo 'FAIL: firewall persistence must preflight ownership before service deletion'; failures=$((failures + 1)); }
+    grep -Fq '(( uid != 0 && gid != 0 )) || return 1' "$source_body_file" || { echo 'FAIL: runtime service identity must never resolve to root UID/GID'; failures=$((failures + 1)); }
+    grep -Fq 'prepare_abox_runtime_permissions "$srv" || return 1' "$source_body_file" || { echo 'FAIL: restore must reapply runtime service permissions before start'; failures=$((failures + 1)); }
     grep -q '^install_optional_package() {' "$0" || { echo 'FAIL: optional package installer missing'; failures=$((failures + 1)); }
     grep -q '^ensure_abox_log_file() {' "$0" || { echo 'FAIL: safe A-Box log file gate missing'; failures=$((failures + 1)); }
-    grep -q 'firewalld_zone_for_abox' <<< "$source_body" || { echo 'FAIL: firewalld zone-aware routing missing'; failures=$((failures + 1)); }
-    grep -Fq 'read -r -p "$(tr_msg main_command)" choice || exit 0' <<< "$source_body" || { echo 'FAIL: main menu must use EOF-safe non-readline input'; failures=$((failures + 1)); }
+    grep -q 'firewalld_zone_for_abox' "$source_body_file" || { echo 'FAIL: firewalld zone-aware routing missing'; failures=$((failures + 1)); }
+    grep -Fq 'read -r -p "$(tr_msg main_command)" choice || exit 0' "$source_body_file" || { echo 'FAIL: main menu must use EOF-safe non-readline input'; failures=$((failures + 1)); }
     grep -q '^prompt_hy2_bandwidth_mbps_input() {' "$0" || { echo 'FAIL: HY2 bandwidth prompt helper missing'; failures=$((failures + 1)); }
-    grep -Fq 'valid_traffic_limit_gb "$limit_gb"' <<< "$source_body" || { echo 'FAIL: traffic-limit prompt must use the persisted traffic-limit validator'; failures=$((failures + 1)); }
-    grep -Fq 'read -r -p "$prompt" input || return 1' <<< "$source_body" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
-    grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' <<< "$source_body" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
-    grep -Fq 'exec < /dev/tty || die' <<< "$source_body" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    grep -Fq 'valid_traffic_limit_gb "$limit_gb"' "$source_body_file" || { echo 'FAIL: traffic-limit prompt must use the persisted traffic-limit validator'; failures=$((failures + 1)); }
+    grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
+    grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
+    grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))
@@ -70377,12 +70985,12 @@ PY_SELFTEST_YAML
         echo 'FAIL: core path enumeration failure must abort forced cleanup'
         failures=$((failures + 1))
     fi
-    grep -Fq 'local -a paths=()' <<< "$source_body" || { echo 'FAIL: forced core cleanup must preflight all paths before deletion'; failures=$((failures + 1)); }
-    grep -Fq 'core_paths=$(core_family_paths "$srv") || return 1' <<< "$source_body" || { echo 'FAIL: ownership recording must not swallow core path enumeration errors'; failures=$((failures + 1)); }
+    grep -Fq 'local -a paths=()' "$source_body_file" || { echo 'FAIL: forced core cleanup must preflight all paths before deletion'; failures=$((failures + 1)); }
+    grep -Fq 'core_paths=$(core_family_paths "$srv") || return 1' "$source_body_file" || { echo 'FAIL: ownership recording must not swallow core path enumeration errors'; failures=$((failures + 1)); }
     grep -q '^backup_root_contains_service() {' "$0" || { echo 'FAIL: backup service path checker missing'; failures=$((failures + 1)); }
-    grep -Fq 'core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }' <<< "$source_body" || { echo 'FAIL: backup core path enumeration must fail closed'; failures=$((failures + 1)); }
-    grep -Fq 'def path_is_mountpoint(path):' <<< "$source_body" || { echo 'FAIL: core ownership recording must use mountinfo-aware mount detection'; failures=$((failures + 1)); }
-    grep -Fq 'fail closed instead of using the weaker ismount()' <<< "$source_body" || { echo 'FAIL: destructive manifest removal must not fall back to weak mount detection'; failures=$((failures + 1)); }
+    grep -Fq 'core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }' "$source_body_file" || { echo 'FAIL: backup core path enumeration must fail closed'; failures=$((failures + 1)); }
+    grep -Fq 'def path_is_mountpoint(path):' "$source_body_file" || { echo 'FAIL: core ownership recording must use mountinfo-aware mount detection'; failures=$((failures + 1)); }
+    grep -Fq 'fail closed instead of using the weaker ismount()' "$source_body_file" || { echo 'FAIL: destructive manifest removal must not fall back to weak mount detection'; failures=$((failures + 1)); }
     if sed -n "/^python3 -I - \"\$srv\" \"\$ABOX_CORE_OWNERSHIP\" <<'PY_CORE_REMOVE'$/,/^PY_CORE_REMOVE$/p" "$0" | grep -Fq 'return os.path.ismount(path)'; then
         echo 'FAIL: destructive manifest removal still contains fail-open mountinfo fallback'
         failures=$((failures + 1))
@@ -70449,24 +71057,24 @@ PY_MOUNTINFO_DECODE_CONSISTENCY
         rm -f -- "$tmp/python3" "$_guard_fail_bin"
         rm -rf -- "$_guard_fail_fixture"
     fi
-    grep -Fq '/proc/self/mountinfo' <<< "$source_body" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
-    grep -q 'Restore cleanup encountered a mountpoint' <<< "$source_body" || { echo 'FAIL: restore cleanup mountpoint guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_tree_has_mountpoint "$path" && return 1' <<< "$source_body" || { echo 'FAIL: source-absent restore must guard the entire target tree for nested mounts'; failures=$((failures + 1)); }
-    grep -Fq 'remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh"' <<< "$source_body" || { echo 'FAIL: Geo helper deletion must be ownership-gated'; failures=$((failures + 1)); }
-    grep -q 'validate_backup_core_init_compatibility' <<< "$source_body" || { echo 'FAIL: restore must preflight backup/current init compatibility before destructive changes'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf' <<< "$source_body" || { echo 'FAIL: Fail2Ban filter parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local' <<< "$source_body" || { echo 'FAIL: Fail2Ban jail parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/sysctl.d/99-A-Box-tune.conf || return 1' <<< "$source_body" || { echo 'FAIL: tune restore must check sysctl parent chain before restore'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/security/limits.d/A-Box.conf || return 1' <<< "$source_body" || { echo 'FAIL: tune restore must check limits parent chain before restore'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/hysteria || die' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/xray || die' <<< "$source_body" || { echo 'FAIL: Xray OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'path_parent_chain_safe /etc/conf.d/sing-box || die' <<< "$source_body" || { echo 'FAIL: sing-box OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'aux_paths=$(managed_auxiliary_paths) ||' <<< "$source_body" || { echo 'FAIL: backup must not swallow managed auxiliary path enumeration errors through process substitution'; failures=$((failures + 1)); }
+    grep -Fq '/proc/self/mountinfo' "$source_body_file" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
+    grep -q 'Restore cleanup encountered a mountpoint' "$source_body_file" || { echo 'FAIL: restore cleanup mountpoint guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_tree_has_mountpoint "$path" && return 1' "$source_body_file" || { echo 'FAIL: source-absent restore must guard the entire target tree for nested mounts'; failures=$((failures + 1)); }
+    grep -Fq 'remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh"' "$source_body_file" || { echo 'FAIL: Geo helper deletion must be ownership-gated'; failures=$((failures + 1)); }
+    grep -q 'validate_backup_core_init_compatibility' "$source_body_file" || { echo 'FAIL: restore must preflight backup/current init compatibility before destructive changes'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf' "$source_body_file" || { echo 'FAIL: Fail2Ban filter parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local' "$source_body_file" || { echo 'FAIL: Fail2Ban jail parent chain must be checked before mkdir/write'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/sysctl.d/99-A-Box-tune.conf || return 1' "$source_body_file" || { echo 'FAIL: tune restore must check sysctl parent chain before restore'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/security/limits.d/A-Box.conf || return 1' "$source_body_file" || { echo 'FAIL: tune restore must check limits parent chain before restore'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/hysteria || die' "$source_body_file" || { echo 'FAIL: Hysteria OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/xray || die' "$source_body_file" || { echo 'FAIL: Xray OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'path_parent_chain_safe /etc/conf.d/sing-box || die' "$source_body_file" || { echo 'FAIL: sing-box OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'aux_paths=$(managed_auxiliary_paths) ||' "$source_body_file" || { echo 'FAIL: backup must not swallow managed auxiliary path enumeration errors through process substitution'; failures=$((failures + 1)); }
     # R16-03: the reclaim branches (and their lock_dir_created flag)
     # are gone; creation ownership is now tracked by the identity pin
     # (_fb_id: dev:ino captured at mkdir, verified before any cleanup
     # touches the dir), which the failure cleanup below still checks.
-    grep -Fq '_fb_id=$(stat -Lc' <<< "$source_body" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
+    grep -Fq '_fb_id=$(stat -Lc' "$source_body_file" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
     if command -v flock >/dev/null 2>&1; then
         (
             _saved_lock_fallback="$LOCK_FALLBACK_DIR"
@@ -70476,8 +71084,8 @@ PY_MOUNTINFO_DECODE_CONSISTENCY
             [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]
         ) || { echo 'FAIL: fallback runtime lock failure must clean newly created lock directory'; failures=$((failures + 1)); }
     fi
-    grep -Fq 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.' <<< "$source_body" || { echo 'FAIL: manual restore must abort cross-init backups before destructive changes'; failures=$((failures + 1)); }
-    grep -Fq 'service_active_state_value() {' <<< "$source_body" || { echo 'FAIL: service active-state helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.' "$source_body_file" || { echo 'FAIL: manual restore must abort cross-init backups before destructive changes'; failures=$((failures + 1)); }
+    grep -Fq 'service_active_state_value() {' "$source_body_file" || { echo 'FAIL: service active-state helper missing'; failures=$((failures + 1)); }
     _svc_test_bin="$tmp/service-state-bin"
     mkdir -m 700 "$_svc_test_bin" || { echo 'FAIL: service-state test directory'; failures=$((failures + 1)); }
     cat > "$_svc_test_bin/systemctl" <<'EOF_SVC_TEST_SYSTEMCTL' || { echo 'FAIL: service-state systemctl fixture'; failures=$((failures + 1)); }
@@ -70611,13 +71219,13 @@ EOF_SVC_TEST_RCUPDATE
     fi
     # P2-03: Return code contract — 0=success, 1=general failure, 2=preflight failure.
     # Applies to CLI top-level and rollback orchestrators; NOT to polymorphic internals.
-    grep -Fq 'P2-03 Return Code Contract' <<< "$source_body" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
+    grep -Fq 'P2-03 Return Code Contract' "$source_body_file" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
     # traffic_quota_transaction_rollback: missing tx_dir is a preflight failure (return 2).
     traffic_quota_transaction_rollback "/nonexistent-tx-dir-$$" >/dev/null 2>&1; _rc=$?
     (( _rc == 2 )) || { echo "FAIL: traffic rollback preflight must return 2, got $_rc"; failures=$((failures + 1)); }
     # Polymorphic internals must NOT be standardized (callers depend on case $?):
     # remove_recorded_core_family uses 2/3/4; core_version_upgrade_decision uses 2/3/4.
-    grep -Fq 'remove_recorded_core_family() {' <<< "$source_body" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
+    grep -Fq 'remove_recorded_core_family() {' "$source_body_file" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup
@@ -70946,6 +71554,10 @@ main() {
             # Hidden test hook: run SNI radar non-interactively for A/B testing.
             # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \
             #          ABOX_SNI_MINI_MAX=500 bash install.sh --sni-test
+            # Timing note: a driver-side timeout (e.g. 540 s) is not the radar
+            # wall clock -- if the driver kills the parent, orphaned probes
+            # may run on (observed 592 s total on S2); read stage timings
+            # from workdir file mtimes, not the driver clock.
             prepare_noninteractive_file_operation
             run_builtin_sni_radar "${ABOX_SNI_TEST_PROFILE:-mini}" "SNI test (${ABOX_SNI_TEST_PROFILE:-mini})"
             exit 0
@@ -71018,12 +71630,12 @@ main_loop() {
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
+                msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ sing-box Deployment ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (Official)               ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  All-in-one (Xray+Hy2)               ${CYAN}10.${NC} All-in-one (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (Official)               ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  All protocols: 4-in-1 (Xray+Hy2)    ${CYAN}10.${NC} All protocols: 3-in-1 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${CYAN}11.${NC}  Toolbox                            ${CYAN}16.${NC}  Wipe Nodes & Reset Env"
@@ -71041,14 +71653,14 @@ main_loop() {
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2 (официальный)            ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${CYAN}5.${NC}  Комплексная установка               ${CYAN}10.${NC} Комплексная установка"
+                msg "${CYAN}5.${NC}  Все протоколы: 4 в 1 (Xray+Hy2)      ${CYAN}10.${NC} Все протоколы: 3 в 1 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
                 msg "${CYAN}11.${NC}  Панель инструментов                ${CYAN}16.${NC}  Сброс узлов и окружения"
                 msg "${CYAN}12.${NC}  Просмотр параметров узлов          ${CYAN}17.${NC}  Лимит месячного трафика"
                 msg "${CYAN}13.${NC}  Справка и руководство              ${CYAN}18.${NC}  Ещё протоколы"
                 msg "${CYAN}14.${NC}  Обновление ядра и скрипта          ${CYAN}19.${NC}  Язык / Language"
-                msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.${NC}  Полное удаление скрипта${NC}"
+                msg "${CYAN}15.${NC}  Оптимизация VPS             ${CYAN}20.${NC}  Полное удаление скрипта и ядер${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}0.${NC}  Выход"
                 ;;
@@ -71059,7 +71671,7 @@ main_loop() {
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2 (رسمی)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${CYAN}5.${NC}  نصب ترکیبی                          ${CYAN}10.${NC} نصب ترکیبی"
+                msg "${CYAN}5.${NC}  همهٔ پروتکل‌ها، ۴ در ۱ (Xray+Hy2)   ${CYAN}10.${NC} همهٔ پروتکل‌ها، ۳ در ۱ (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${CYAN}11.${NC}  جعبه ابزار                         ${CYAN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
@@ -71072,12 +71684,12 @@ main_loop() {
                 ;;
             zh-tw)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ sing-box 部署 ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  全協議四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全協議三合一 (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  全協議四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全協議三合一 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${CYAN}11.${NC}  綜合工具箱                         ${CYAN}16.${NC}  清空節點與重置環境"
@@ -71090,12 +71702,12 @@ main_loop() {
                 ;;
             ja)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 導入 ]${NC}                ${CYAN}[ Sing-box 導入 ]${NC}"
+                msg "${CYAN}[ Xray-core デプロイ ]${NC}                ${CYAN}[ sing-box デプロイ ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
                 msg "${CYAN}4.${NC}  Hysteria 2（公式）                  ${CYAN}9.${NC}  Hysteria 2（sing-box）"
-                msg "${CYAN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${CYAN}10.${NC} 全プロトコル統合（Sing-box）"
+                msg "${CYAN}5.${NC}  全プロトコル・4-in-1（Xray+Hy2）  ${CYAN}10.${NC} 全プロトコル・3-in-1（sing-box）"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${CYAN}11.${NC}  総合ツールボックス                 ${CYAN}16.${NC}  全ノード削除と環境初期化"
@@ -71108,12 +71720,12 @@ main_loop() {
                 ;;
             *)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ sing-box 部署 ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
-                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${CYAN}5.${NC}  全协议四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全协议三合一 (Sing-box)"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  全协议四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全协议三合一 (sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${CYAN}11.${NC}  综合工具箱                         ${CYAN}16.${NC}  清空节点与重置环境"

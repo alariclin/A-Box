@@ -369,6 +369,12 @@ WALLOS_DOCKER_HARDENING=(
 )
 # D-04: top-level init (set -u is active; rollback reads this before any writer runs).
 WALLOS_IMAGE_RESULT=''
+# H7-F1: the container ID most recently created by a Wallos (re)build
+# helper (wallos_http_rebind / wallos_restore_direct_container), so the
+# installer can refresh the upgrade journal with it. Same idiom as
+# WALLOS_IMAGE_RESULT (a global because the helpers cannot return a
+# value through a command substitution without losing side effects).
+WALLOS_CREATED_CONTAINER_ID=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Geo mirror fallback (fetch_geo_data): A-Box-signed mirror of the
@@ -24407,7 +24413,9 @@ fetch_github_release() {
 # verifying the official API digest. Prints the failure reason to stderr
 # and returns 1 on any failure; the caller decides whether to fall back.
 # Never dies: a failure here must not abort the install before the mirror
-# leg has been tried. $3 is removed on failure.
+# leg has been tried. GEO-F3: $3 is left in place on failure -- the
+# caller owns it (mktemp, 0600); deleting it here would make the mirror
+# leg's curl -o recreate it under the ambient umask.
 fetch_geo_upstream_data() {
     local file_name="${1:-}" official_url="${2:-}" tmp_out="${3:-}"
     local repo asset release_json asset_json asset_name download_url digest release_ref _geo_max_time=90
@@ -24416,27 +24424,26 @@ fetch_geo_upstream_data() {
     repo="${BASH_REMATCH[1]}"
     asset="${BASH_REMATCH[2]}"
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-        abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || { rm -f -- "$tmp_out"; return 1; }
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (release metadata)" || return 1
     fi
     release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
-    [[ -n "$release_json" ]] || { printf '%s\n' "$(tprintf gd_api "$repo")" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$release_json" ]] || { printf '%s\n' "$(tprintf gd_api "$repo")" >&2; return 1; }
     asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
-    [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { printf '%s\n' "$(tprintf gd_asset_missing "$asset")" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { printf '%s\n' "$(tprintf gd_asset_missing "$asset")" >&2; return 1; }
     asset_name=$(jq -r '.name // ""' <<< "$asset_json")
     release_ref=$(jq -r '.tag_name // ""' <<< "$release_json")
     download_url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ -n "$asset_name" && -n "$release_ref" ]] || { printf '%s\n' 'Geo Release metadata missing asset name or tag.' >&2; rm -f -- "$tmp_out"; return 1; }
-    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { printf '%s\n' "$(tr_msg gd_url_mismatch)" >&2; rm -f -- "$tmp_out"; return 1; }
+    [[ -n "$asset_name" && -n "$release_ref" ]] || { printf '%s\n' 'Geo Release metadata missing asset name or tag.' >&2; return 1; }
+    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { printf '%s\n' "$(tr_msg gd_url_mismatch)" >&2; return 1; }
     _geo_max_time=90
     if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
-        abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || { rm -f -- "$tmp_out"; return 1; }
-        _geo_max_time=$(abox_fetch_curl_max_time 90) || { rm -f -- "$tmp_out"; return 1; }
+        abox_fetch_deadline_check "fetch_geo_data ${file_name} (download)" || return 1
+        _geo_max_time=$(abox_fetch_curl_max_time 90) || return 1
     fi
-    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; rm -f -- "$tmp_out"; return 1; }
+    abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m "$_geo_max_time" "$download_url" -o "$tmp_out" || { printf '%s\n' "$(tprintf gd_download "$file_name")" >&2; return 1; }
     if ! verify_github_asset_digest "$tmp_out" "$digest"; then
         printf '%s\n' "$(tprintf gd_digest "$file_name")" >&2
-        rm -f -- "$tmp_out"
         return 1
     fi
 }
@@ -24471,10 +24478,19 @@ fetch_geo_mirror_data() {
     fi
     sum_dir=$(mktemp -d /tmp/A-Box-geo-mirror.XXXXXX) || return 1
     sums="$sum_dir/SHA256SUMS"; sums_sig="$sum_dir/SHA256SUMS.sig"
-    if ! curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS" -o "$sums" 2>/dev/null; then
+    if ! curl -fLsS --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS" -o "$sums" 2>/dev/null; then
         rm -rf -- "$sum_dir"; return 1
     fi
-    curl -fLsS --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS.sig" -o "$sums_sig" 2>/dev/null || true
+    # GEO-F1: re-check the budget and recompute the per-call cap
+    # before the .sig request: the manifest fetch above may have
+    # consumed most of it, and reusing the pre-manifest value lets
+    # this request overrun by up to one _m_max_time (<=90s). The
+    # asset stage below already recomputes the same way.
+    if [[ -n "${ABOX_FETCH_DEADLINE_EPOCH:-}" ]]; then
+        abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (SHA256SUMS.sig)" || { rm -rf -- "$sum_dir"; return 1; }
+        _m_max_time=$(abox_fetch_curl_max_time 90) || { rm -rf -- "$sum_dir"; return 1; }
+    fi
+    curl -fLsS --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/SHA256SUMS.sig" -o "$sums_sig" 2>/dev/null || true
     if [[ -L "$sums" || ( -e "$sums_sig" && -L "$sums_sig" ) ]]; then rm -rf -- "$sum_dir"; return 1; fi
     if ! verify_ed25519_detached "$sums" "$sums_sig" >/dev/null 2>&1; then
         printf '%s\n' "[fetch] geo mirror SHA256SUMS signature verification failed; refusing mirror ${file_name}." >&2
@@ -24486,19 +24502,35 @@ fetch_geo_mirror_data() {
         abox_fetch_deadline_check "fetch_geo_mirror_data ${file_name} (asset)" || { rm -rf -- "$sum_dir"; return 1; }
         _m_max_time=$(abox_fetch_curl_max_time 90) || { rm -rf -- "$sum_dir"; return 1; }
     fi
-    if ! abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/${file_name}" -o "$tmp_out"; then
+    if ! abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --proto =https --proto-redir =https --retry "$_m_retry" --retry-delay 2 --connect-timeout 10 -m "$_m_max_time" "${base%/}/${file_name}" -o "$tmp_out"; then
         rm -rf -- "$sum_dir"; return 1
     fi
     rm -rf -- "$sum_dir"
     actual=$(sha256sum < "$tmp_out" 2>/dev/null | awk '{print $1}') || actual=''
     if [[ "${actual,,}" != "${expected,,}" ]]; then
         printf '%s\n' "[fetch] geo mirror SHA-256 mismatch for ${file_name}; refusing." >&2
-        rm -f -- "$tmp_out"; return 1
+        return 1
     fi
 }
 
+# GEO-F4: payload gate shared by both legs. Returns 0 iff $1 is a
+# regular file larger than 500000 bytes whose first 256 bytes are not
+# an HTML error page. Never dies: the caller decides whether to try
+# the other leg. A failed validation is a leg failure, not a local
+# error -- only the atomic commit below still dies.
+validate_geo_payload() {
+    local _f="${1:-}" _size
+    [[ -n "$_f" && -f "$_f" && ! -L "$_f" ]] || return 1
+    _size=$(wc -c < "$_f" 2>/dev/null | tr -d ' ')
+    [[ -n "$_size" && "$_size" -gt 500000 ]] || return 1
+    if head -c 256 "$_f" 2>/dev/null | grep -Eiq '<(html|!doctype)'; then
+        return 1
+    fi
+    return 0
+}
+
 fetch_geo_data() {
-    local file_name official_url out tmp_out size out_created=0 _geo_t0 _geo_now
+    local file_name official_url out tmp_out out_created=0 _geo_t0 _geo_now _geo_leg_ok=0
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
@@ -24519,24 +24551,32 @@ fetch_geo_data() {
         # Upstream first; on ANY upstream failure (API rate-limit included)
         # fall back to the A-Box signed mirror before giving up. A non-GitHub
         # URL still refuses outright below (URL contract unchanged).
+        # GEO-F4: a leg only counts when its payload passes
+        # validate_geo_payload (size + HTML gates). A digest-valid but
+        # too-small/HTML upstream payload falls back to the mirror
+        # instead of dying here; only both legs failing dies.
         if fetch_geo_upstream_data "$file_name" "$official_url" "$tmp_out"; then
-            :
-        elif fetch_geo_mirror_data "$file_name" "$tmp_out"; then
-            msg "[fetch] geo ${file_name}: recovered from A-Box signed mirror (${ABOX_GEO_MIRROR_RELEASE:-geo-mirror})"
-        else
+            if validate_geo_payload "$tmp_out"; then
+                _geo_leg_ok=1
+            else
+                msg "[fetch] geo ${file_name}: upstream payload failed validation (size or HTML); trying the signed mirror."
+            fi
+        fi
+        if (( _geo_leg_ok == 0 )) && fetch_geo_mirror_data "$file_name" "$tmp_out"; then
+            if validate_geo_payload "$tmp_out"; then
+                _geo_leg_ok=1
+                msg "[fetch] geo ${file_name}: recovered from A-Box signed mirror (${ABOX_GEO_MIRROR_RELEASE:-geo-mirror})"
+            else
+                msg "[fetch] geo ${file_name}: mirror payload failed validation (size or HTML)."
+            fi
+        fi
+        if (( _geo_leg_ok == 0 )); then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
             die "$(tprintf gd_both_failed "$file_name")"
         fi
     else
         rm -f -- "$tmp_out"
         die "$(tprintf gd_no_digest "$file_name")"
-    fi
-
-    size=$(wc -c < "$tmp_out" 2>/dev/null | tr -d ' ')
-    [[ -n "$size" && "$size" -gt 500000 ]] || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_size "$file_name")"; }
-    if head -c 256 "$tmp_out" 2>/dev/null | grep -Eiq '<(html|!doctype)'; then
-        rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
-        die "$(tprintf gd_html "$file_name")"
     fi
     # R9C7-01: re-check the target just before commit: $out may have
     # been swapped for a directory during the (up to 90s) download, and a
@@ -30406,6 +30446,21 @@ _recycle_port_rules_if_unused() {
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
+    # SX-TMP: $tmp_json holds the cleartext SOCKS5 password and
+    # $cfg_bak a copy of the live config (all credentials); die()
+    # exits the process, so only an EXIT trap cleans them on the
+    # type-gate die path (same chained idiom as
+    # deploy_socks5_landing). Restored on the success path below,
+    # once both files are removed explicitly.
+    local _sb_socks5_prev_trap_exit='' _sb_socks5_exit_trap_cmd='' _sb_socks5_old_cmd=''
+    _sb_socks5_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_socks5_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_sb_socks5_prev_trap_exit" ]]; then
+        _sb_socks5_old_cmd="${_sb_socks5_prev_trap_exit#trap -- }"
+        _sb_socks5_old_cmd="${_sb_socks5_old_cmd% EXIT}"
+        _sb_socks5_exit_trap_cmd="$_sb_socks5_exit_trap_cmd; eval $_sb_socks5_old_cmd"
+    fi
+    trap "$_sb_socks5_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -30552,13 +30607,17 @@ EOF_SVC
     fi
     # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
     # independent inbound that merely shares $tag must not be
-    # silently replaced by the merge below; only a genuine SOCKS5
-    # inbound (type socks or mixed) proceeds.
+    # silently replaced by the merge below; only a single genuine
+    # SOCKS5 inbound (type socks or mixed) proceeds. SX-F1: the
+    # gate is a uniqueness gate, not an existence check -- a
+    # duplicated tag (two inbounds sharing $tag, whatever their
+    # types) refuses, because the merge below deletes the whole
+    # tag group and would silently drop the alien inbound.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and (.type=="socks" or .type=="mixed"))' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and ($same[0].type == "socks" or $same[0].type == "mixed"))' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a SOCKS5 inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     # R4C8-04: the seed above only runs when the binary was
@@ -30623,6 +30682,8 @@ EOF_SVC
 
     # Ensure the service is running (minimal-install path).
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_socks5_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -30863,12 +30924,15 @@ deploy_xray_trojan_landing() {
         local tmp_cfg
         # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
         # that merely shares $tag must not be silently replaced by the
-        # merge below; only a genuine Trojan inbound proceeds.
+        # merge below; only a single genuine Trojan inbound proceeds.
+        # SX-F1: uniqueness gate, not an existence check -- a
+        # duplicated tag refuses, because the merge below deletes
+        # the whole tag group.
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .protocol=="trojan")' "$cfg" >/dev/null 2>&1; then
+            if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].protocol == "trojan")' "$cfg" >/dev/null 2>&1; then
                 msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
             else
-                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+                die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
             fi
         fi
         # R29b-M3: capture the replaced inbound's port before the merge
@@ -30956,6 +31020,21 @@ deploy_xray_trojan_landing() {
 deploy_singbox_trojan_landing() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
+    # SX-TMP: $tmp_json holds the cleartext Trojan password and
+    # $cfg_bak a copy of the live config (all credentials); die()
+    # exits the process, so only an EXIT trap cleans them on the
+    # type-gate die path (same chained idiom as
+    # deploy_socks5_landing). Restored on the success path below,
+    # once both files are removed explicitly.
+    local _sb_trojan_prev_trap_exit='' _sb_trojan_exit_trap_cmd='' _sb_trojan_old_cmd=''
+    _sb_trojan_prev_trap_exit=$(trap -p EXIT || true)
+    _sb_trojan_exit_trap_cmd='[[ -n "${tmp_json:-}" ]] && rm -f -- "$tmp_json" 2>/dev/null; [[ -n "${cfg_bak:-}" ]] && rm -f -- "$cfg_bak" 2>/dev/null; [[ -n "${tmp_cfg:-}" ]] && rm -f -- "$tmp_cfg" 2>/dev/null; true'
+    if [[ -n "$_sb_trojan_prev_trap_exit" ]]; then
+        _sb_trojan_old_cmd="${_sb_trojan_prev_trap_exit#trap -- }"
+        _sb_trojan_old_cmd="${_sb_trojan_old_cmd% EXIT}"
+        _sb_trojan_exit_trap_cmd="$_sb_trojan_exit_trap_cmd; eval $_sb_trojan_old_cmd"
+    fi
+    trap "$_sb_trojan_exit_trap_cmd" EXIT
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -31098,13 +31177,15 @@ EOF_SVC
     local tmp_cfg
     # S-X (R30-M02 same-shape): same guard as ShadowTLS (2dh): an
     # independent inbound that merely shares $tag must not be
-    # silently replaced by the merge below; only a genuine Trojan
-    # inbound proceeds.
+    # silently replaced by the merge below; only a single genuine
+    # Trojan inbound proceeds. SX-F1: uniqueness gate, not an
+    # existence check -- a duplicated tag refuses, because the
+    # merge below deletes the whole tag group.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t and .type=="trojan")' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "trojan")' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         else
-            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+            die "Tag '$tag' is already used by an independent inbound (not a Trojan inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
         fi
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -31143,6 +31224,8 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; _recycle_port_rules_if_unused "$port" "$cfg" 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    trap - EXIT
+    restore_saved_trap EXIT "$_sb_trojan_prev_trap_exit"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -56731,11 +56814,11 @@ run_mirrored_test_script() {
             *) msg "${YELLOW}[!] 上游最新版不可用或校验未通过，回退到 A-Box 钉版校验镜像。${NC}" ;;
         esac
         local sums_dl_ok=0 sig_dl_ok=0
-        if curl -fLsS --connect-timeout 10 --max-time 45 \
+        if curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
             sums_dl_ok=1
         fi
-        if curl -fLsS --connect-timeout 10 --max-time 45 \
+        if curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
             sig_dl_ok=1
         fi
@@ -56747,9 +56830,9 @@ run_mirrored_test_script() {
                 sums_dl_ok=0
             fi
         fi
-        if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
+        if (( sums_dl_ok == 1 )) && curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 45 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
-           curl -fLsS --connect-timeout 10 --max-time 180 \
+           curl -fLsS --proto =https --proto-redir =https --connect-timeout 10 --max-time 180 \
             "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
             # Verify manifest digest (manifest is covered by SHA256SUMS signature)
             local manifest_expected manifest_sha
@@ -58335,6 +58418,53 @@ wallos_rebuild_state_from_live() {
     return 0
 }
 
+# LOW-1: a backup trusts the state file's VERSION, but the state
+# is only a record -- a container swapped out-of-band (e.g. a manual
+# docker run of another Wallos image) leaves the state stale, and the
+# backup then embeds a version that does not match the live
+# container (observed: live 5.11.1 with state 5.11.3). Cross-check
+# the live container's version before the backup is taken: the
+# container's own image tag first, else the first bellamy/wallos
+# RepoTag for the live image ID (same sources as
+# wallos_rebuild_state_from_live). No live container, or either
+# version unparseable -> return 0 (old behavior, no opinion).
+# A mismatch warns and attempts a state rebuild from live; a
+# successful rebuild -> 0 (backup proceeds with fresh state), a
+# failed rebuild -> loud message + return 1 (backup refuses rather
+# than embedding a known-stale version). An empty state VERSION
+# with a parseable live version counts as a mismatch (the rebuild
+# fills it). Diagnostics go to stderr: callers capture stdout.
+wallos_backup_state_matches_live() {
+    local _live_img='' _live_img_id='' _live_ver='' _state_ver='' _tags='' _tag=''
+    _live_img=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    [[ -n "$_live_img" ]] || return 0
+    if [[ "$_live_img" =~ ^(docker\.io/)?bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        _live_ver="${BASH_REMATCH[2]}"
+    else
+        _live_img_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
+        [[ -n "$_live_img_id" ]] || return 0
+        _tags=$(docker image inspect -f '{{join .RepoTags "\n"}}' "$_live_img_id" 2>/dev/null || true)
+        while IFS= read -r _tag; do
+            _tag="${_tag#docker.io/}"
+            if [[ "$_tag" =~ ^bellamy/wallos:([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+                _live_ver="${BASH_REMATCH[1]}"
+                break
+            fi
+        done <<< "$_tags"
+    fi
+    [[ -n "$_live_ver" ]] || return 0
+    _state_ver=$(wallos_state_value VERSION 2>/dev/null || true)
+    if [[ "$_state_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$_state_ver" == "$_live_ver" ]]; then
+        return 0
+    fi
+    msg "${YELLOW}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}); rebuilding state from the live container before backup.${NC}" >&2
+    if wallos_rebuild_state_from_live; then
+        return 0
+    fi
+    msg "${RED}[!] Wallos state VERSION (${_state_ver:-empty}) does not match the live container (${_live_ver}) and the state could not be rebuilt; refusing to back up a known-stale version.${NC}" >&2
+    return 1
+}
+
 wallos_create_backup() {
     local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
     if ! [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
@@ -58358,6 +58488,10 @@ wallos_create_backup() {
             return 1
         fi
     fi
+    # LOW-1: cross-check the state against the live container
+    # before anything is archived; a stale VERSION must not be
+    # baked into the backup.
+    wallos_backup_state_matches_live || return 1
     # R6C15-02: only create (at 700) when missing; an existing
     # backups dir keeps its mode, a symlink target is refused.
     mkdir_private "$WALLOS_DIR/backups" || return 1
@@ -58577,7 +58711,7 @@ wallos_restore_backup() {
 }
 
 wallos_upgrade_journal_write() {
-    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7" old_image_id="${8:-}" old_container_id="${9:-}"
+    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7" old_image_id="${8:-}" old_container_id="${9:-}" new_container_id="${10:-}"
     local journal="$WALLOS_DIR/.upgrade-transaction"
     [[ "$phase" == active || "$phase" == committed ]] || return 1
     [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
@@ -58593,6 +58727,15 @@ wallos_upgrade_journal_write() {
     if [[ -n "$old_container_id" ]]; then
         old_container_id=$(_wallos_normalize_container_id "$old_container_id" 2>/dev/null) || return 1
     fi
+    # H7-F1: the container ID this transaction created (10th line).
+    # Empty while no replacement exists yet; once docker run has
+    # created B, the journal names B here, so recovery can tell B
+    # (expected, proceed) from a foreign retaker (refuse). Same
+    # normalization as the old ID; an invalid non-empty value
+    # refuses the write.
+    if [[ -n "$new_container_id" ]]; then
+        new_container_id=$(_wallos_normalize_container_id "$new_container_id" 2>/dev/null) || return 1
+    fi
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
 phase=$phase
@@ -58604,7 +58747,47 @@ backup=$backup
 was_running=$was_running
 old_image_id=$old_image_id
 old_container_id=$old_container_id
+new_container_id=$new_container_id
 EOF_WALLOS_TXN
+}
+
+# H7-F1: record the container a (re)build just created in the
+# active journal's new_container_id field. $1 = cidfile path docker
+# was told to write (--cidfile); $2..$9 = the journal's existing
+# fields (old_image old_port old_tz old_bind backup was_running
+# old_image_id old_container_id). The ID comes from the cidfile when
+# usable; when docker left no usable cidfile, the live 'wallos'
+# container is pinned immediately -- but only when it carries the
+# A-Box managed label, so a concurrent foreign retaker is never
+# recorded as this transaction's container. A failed journal write
+# removes the just-created container (label-checked, by ID only)
+# and returns 1, so a retry rebuilds from scratch instead of
+# wedging on a stale new ID. On success the global
+# WALLOS_CREATED_CONTAINER_ID names the recorded container; the
+# caller removes the cidfile (the journal is authoritative then).
+_wallos_record_created_from_cidfile() {
+    local _cidfile="$1" _new_id='' _lbl=''
+    shift
+    if [[ -f "$_cidfile" ]]; then
+        IFS= read -r _new_id < "$_cidfile" || true
+    fi
+    if [[ ! "$_new_id" =~ ^[0-9a-f]{64}$ ]]; then
+        _new_id=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_new_id" ]]; then
+            _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_new_id" 2>/dev/null || true)
+            [[ "$_lbl" == 'true' ]] || _new_id=''
+        fi
+    fi
+    [[ "$_new_id" =~ ^[0-9a-f]{64}$ ]] || return 1
+    if ! wallos_upgrade_journal_write active "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$_new_id"; then
+        _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_new_id" 2>/dev/null || true)
+        if [[ "$_lbl" == 'true' ]]; then
+            docker rm -f "$_new_id" >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+    WALLOS_CREATED_CONTAINER_ID="$_new_id"
+    return 0
 }
 
 wallos_txn_value() {
@@ -58638,7 +58821,9 @@ _wallos_recover_interrupted_upgrade_impl() {
     _lines=$(wc -l < "$journal" | tr -d '[:space:]')
     # H7rest: 9 lines carry old_container_id; 7/8-line journals from
     # before it are still accepted (live pin below is used instead).
-    [[ "$_lines" == 7 || "$_lines" == 8 || "$_lines" == 9 ]] || {
+    # H7-F1: 10 lines carry new_container_id (the container this
+    # transaction created); older journals are still accepted.
+    [[ "$_lines" == 7 || "$_lines" == 8 || "$_lines" == 9 || "$_lines" == 10 ]] || {
         msg "${RED}$(tprintf wl_rc_journal_incomplete "$journal")${NC}"
         return 1
     }
@@ -58662,6 +58847,8 @@ _wallos_recover_interrupted_upgrade_impl() {
         # is the only record that could ever trigger its cleanup, and
         # a failure here must keep the journal so a retry can remove it.
         rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" || return 1
+        # H7-F1: the transaction is done; its cidfile evidence is spent.
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
         rm -f -- "$journal" || return 1
         rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
         msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
@@ -58682,6 +58869,18 @@ _wallos_recover_interrupted_upgrade_impl() {
     if [[ -n "$_journal_container_id" ]]; then
         _journal_container_id=$(_wallos_normalize_container_id "$_journal_container_id" 2>/dev/null) || return 1
     fi
+    # H7-F1: the container this transaction created (10th line).
+    # Empty in journals written before B existed, or before the
+    # field existed at all. A trusted transaction cidfile (docker's
+    # own --cidfile record) is the fallback evidence for the crash
+    # window between docker run and the journal refresh that names B.
+    local _journal_new_id=''
+    _journal_new_id=$(wallos_txn_value "$journal" new_container_id 2>/dev/null || true)
+    if [[ -n "$_journal_new_id" ]]; then
+        _journal_new_id=$(_wallos_normalize_container_id "$_journal_new_id" 2>/dev/null) || return 1
+    fi
+    local _txn_cid=''
+    _txn_cid=$(_wallos_txn_cidfile_id 2>/dev/null || true)
     _run_image="${old_image_id:-$old_image}"
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
@@ -58769,14 +58968,28 @@ _wallos_recover_interrupted_upgrade_impl() {
             return 1
         fi
         # H7rest: pin the container ID next to the ownership gate.
-        # When the journal carries the pre-upgrade ID, the live
-        # container must be that same container; a mismatch means it
-        # was replaced since the journal was written, so refuse.
+        # H7-F1: compare against the container this transaction
+        # stage expects, NOT always the pre-upgrade one -- that was
+        # the wedge: after B was created, live==B no longer equaled
+        # old==A and recovery refused its own replacement. When the
+        # journal names a created container, live must be exactly
+        # that; when it names none, live must be the pre-upgrade
+        # container or the container the transaction cidfile records
+        # (crash window: docker ran, journal refresh never landed).
+        # With neither record, legacy behavior applies (no ID check).
+        # A foreign retaker matches none of them and still refuses.
         local _rc_cid=''
         _rc_cid=$(_wallos_container_id) || return 1
-        if [[ -n "$_journal_container_id" && "$_rc_cid" != "$_journal_container_id" ]]; then
-            msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
-            return 1
+        if [[ -n "$_journal_new_id" ]]; then
+            if [[ "$_rc_cid" != "$_journal_new_id" ]]; then
+                msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
+                return 1
+            fi
+        elif [[ -n "$_journal_container_id" || -n "$_txn_cid" ]]; then
+            if [[ "$_rc_cid" != "$_journal_container_id" && "$_rc_cid" != "$_txn_cid" ]]; then
+                msg "${RED}Refusing recovery: the 'wallos' container changed since the upgrade journal was written; refusing to stop/remove a different container.${NC}"
+                return 1
+            fi
         fi
         _wallos_stop_id "$_rc_cid" || true
         _wallos_rm_id "$_rc_cid" || {
@@ -58799,6 +59012,11 @@ _wallos_recover_interrupted_upgrade_impl() {
         _wallos_show_docker_err "$_rc_inspect_err"
         return 1
     fi
+    # H7-F1: the live container (if any) has been removed above, so
+    # the transaction cidfile's evidence is spent -- a retry must not
+    # treat the removed container as the expected one. Best-effort:
+    # a failed removal only leaves a stale file a later run ignores.
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     # B15-1 (durable A): the backup restore below overwrites the live
     # .abox-state with the pre-upgrade mode, so a local->https (or
     # local->cftunnel) switch committed before the interrupt would be
@@ -58960,12 +59178,31 @@ EOF_B15_SIDECAR
     if [[ -n "$old_bind" ]]; then
         wallos_pub_args=(-p "$old_bind:$old_port:80/tcp")
     fi
+    # H7-F1: recovery's own rebuild also binds its created container
+    # to the transaction cidfile, then refreshes the journal with it:
+    # otherwise a retry after this rebuild sees live==B2 (the container
+    # recovery just created) matching neither old A nor new B, and
+    # refuses its own rebuild. A stale cidfile from an earlier attempt
+    # is dropped first; the journal is authoritative once refreshed.
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     if (( was_running == 1 )); then
-        docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        docker run -d --cidfile "$WALLOS_DIR/.upgrade-transaction.cid" --name wallos --label com.alariclin.abox.managed=true \
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+        # H7-F1: record the rebuilt container in the journal BEFORE
+        # the health gate below: a health failure returns 1 with the
+        # journal kept, and a retry must see live==new. old_image is
+        # the FROZEN journal value (_journal_old_image), not the
+        # N-11-rewritten $old_image, so the frontend sidecar binding
+        # (which keys on the journal's old_image) survives a retry.
+        if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
+            rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
+            msg "${RED}Recovery created a container but could not record it in the upgrade journal; refusing to report success, journal kept.${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
         # Same U217 rule as the install path: an omitted -p means the
         # recovered container is unpublished, so the health gate must
         # not demand a publication it will never have.
@@ -58979,11 +59216,18 @@ EOF_B15_SIDECAR
             return 1
         fi
     else
-        docker create --name wallos --label com.alariclin.abox.managed=true \
+        docker create --cidfile "$WALLOS_DIR/.upgrade-transaction.cid" --name wallos --label com.alariclin.abox.managed=true \
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+        # H7-F1: same journal refresh as the run branch above.
+        if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
+            rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
+            msg "${RED}Recovery created a container but could not record it in the upgrade journal; refusing to report success, journal kept.${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     fi
     # R15C15-01: restore the pre-replacement tunnel token (if the
     # upgrade overwrote it) so the recovered tunnel can authenticate.
@@ -59091,6 +59335,9 @@ EOF_B15_SIDECAR
     rm -f -- "$journal" || return 1
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
+    # H7-F1: recovery succeeded; any transaction cidfile left by an
+    # interrupted retry is spent (best-effort).
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
     # R5C15-02: refresh the fail2ban jail after rebuild; see
     # the rollback path. _rec_mode is the recovered mode.
     wallos_bruteforce_protection "$old_port" "$old_bind" "$_rec_mode" 2>/dev/null || true
@@ -60200,7 +60447,13 @@ _wallos_rm_id() { local _id=''; _id=$(_wallos_normalize_container_id "${1:-}" 2>
 # A sha256: spelling (e.g. from an old journal) is accepted and
 # stripped, never passed to docker.
 _wallos_normalize_container_id() { # $1 -> canonical ID on stdout
+    # H7-F3: canonical form is bare lowercase hex. Lowercase FIRST
+    # (so a SHA256: prefix normalizes too), then strip the prefix.
+    # Bare uppercase and prefixed uppercase both canonicalize; the
+    # old code accepted prefixed uppercase verbatim (bare only
+    # lowercase) -- an inconsistent case contract.
     local _id="${1:-}"
+    _id="${_id,,}"
     _id="${_id#sha256:}"
     _wallos_valid_container_id "$_id" || return 1
     printf '%s' "$_id"
@@ -60212,13 +60465,30 @@ _wallos_normalize_container_id() { # $1 -> canonical ID on stdout
 # by its pinned ID; a foreign holder refuses (returns 1) instead of
 # being removed by name.
 _wallos_rm_named_id() {
-    local _expected='' _live='' _lbl=''
-    _expected=$(_wallos_normalize_container_id "${1:-}" 2>/dev/null || true)
+    # H7-F2: the old code treated every pin failure as "name free"
+    # (return 0): a daemon error or an illegal ID looked exactly
+    # like "container gone", so callers proceeded as if the name
+    # were free. Tri-state the live pin instead, reusing the
+    # _wallos_container_gone classifier: proven-gone -> 0;
+    # daemon/permission error or an illegal .Id -> 1 (unknown).
+    # H7-F3: a non-empty $1 that does not normalize is an illegal
+    # expected ID -> 1; only an empty $1 means "no expectation".
+    local _expected='' _live='' _lbl='' _inspect_err=''
+    if [[ -n "${1:-}" ]]; then
+        _expected=$(_wallos_normalize_container_id "$1" 2>/dev/null) || return 1
+    fi
     if [[ -n "$_expected" ]]; then
         _wallos_rm_id "$_expected" >/dev/null 2>&1 || true
     fi
+    # H7-F2: the tri-state capture uses `docker container inspect`
+    # (same idiom as the install entry and recovery): its stderr is
+    # what _wallos_container_gone classifies.
+    _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null || true)
     _live=$(_wallos_container_id 2>/dev/null || true)
-    [[ -z "$_live" ]] && return 0
+    if [[ -z "$_live" ]]; then
+        _wallos_container_gone "$_inspect_err" || return 1
+        return 0
+    fi
     [[ "$_live" == "$_expected" ]] && return 1
     _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_live" 2>/dev/null || true)
     [[ "$_lbl" == 'true' ]] || return 1
@@ -60244,6 +60514,27 @@ _wallos_container_gone() {
     _names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) || return 1
     [[ $'\n'"$_names"$'\n' == *$'\n'wallos$'\n'* ]] && return 1
     return 0
+}
+
+# H7-F1: read the upgrade-transaction cidfile
+# ($WALLOS_DIR/.upgrade-transaction.cid) as a trusted container ID.
+# The file is written by docker itself (--cidfile) at container
+# creation, so its content is the ID docker assigned -- but only
+# when the file is a regular file (not a symlink) owned by root.
+# No mode check: docker chooses the cidfile mode, and WALLOS_DIR is
+# 0750 root-only. Prints the normalized (bare lowercase) ID, or
+# returns 1 when absent/untrusted/invalid. The caller treats 1 as
+# "no transaction evidence", never as a refusal by itself.
+_wallos_txn_cidfile_id() {
+    local _f="$WALLOS_DIR/.upgrade-transaction.cid" _id='' _owner=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _owner=$(stat -c %u:%g "$_f" 2>/dev/null || true)
+    [[ "$_owner" == 0:0 ]] || return 1
+    # NB: docker writes the cidfile with NO trailing newline, so
+    # read returns 1 at EOF even when it read the ID; accept the
+    # content anyway and let the normalize below validate it.
+    IFS= read -r _id < "$_f" || true
+    _wallos_normalize_container_id "$_id" 2>/dev/null
 }
 
 # R21-WALLOS: surface the captured docker error text when a teardown
@@ -60543,11 +60834,35 @@ wallos_restore_direct_container() {
     _wallos_rm_named_id "$container_id" || return 1
     local -a _pub_args=()
     [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
-    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+    # H7-F1: record the replacement container's ID (--cidfile) in
+    # WALLOS_CREATED_CONTAINER_ID, so the caller can refresh the
+    # upgrade journal with it: this function removes the container
+    # the attempt created (B) and builds a new one (B2), and a
+    # journal still naming B would wedge the next recovery.
+    WALLOS_CREATED_CONTAINER_ID=''
+    local _rdc_cid_dir='' _rdc_created_id=''
+    _rdc_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX") || return 1
+    docker run -d --cidfile "$_rdc_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { rm -rf -- "$_rdc_cid_dir"; return 1; }
+    if [[ -f "$_rdc_cid_dir/id" ]]; then
+        IFS= read -r _rdc_created_id < "$_rdc_cid_dir/id" || true
+    fi
+    rm -rf -- "$_rdc_cid_dir"
+    if [[ "$_rdc_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+        WALLOS_CREATED_CONTAINER_ID="$_rdc_created_id"
+    else
+        # docker ran but left no usable cidfile: pin the live
+        # container immediately (managed-label only; see
+        # _wallos_record_created_from_cidfile).
+        local _rdc_pin=''
+        _rdc_pin=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_rdc_pin" ]] && [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_rdc_pin" 2>/dev/null || true)" == "true" ]]; then
+            WALLOS_CREATED_CONTAINER_ID="$_rdc_pin"
+        fi
+    fi
     # S8 (R54-M2 follow-up): same U217 rule as the rollback/install
     # paths -- an omitted -p means the rebuilt container is unpublished,
     # so the health gate must not demand a publication it will never
@@ -60562,11 +60877,36 @@ wallos_restore_direct_container() {
 wallos_http_rebind() { # $1=public port $2=image $3=tz $4=container ID (optional): republish the container on 0.0.0.0 (HTTP fallback)
     # H7rest: clear the name by ID only (see wallos_restore_direct_container).
     _wallos_rm_named_id "${4:-}" || return 1
-    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+    # H7-F1: record the replacement container's ID (--cidfile) in
+    # WALLOS_CREATED_CONTAINER_ID, so the caller can refresh the
+    # upgrade journal with it (see wallos_restore_direct_container).
+    # Recorded even when the health gate below fails: a failed
+    # rebind still leaves the replacement live, and the caller's
+    # recovery must see it as this transaction's container.
+    WALLOS_CREATED_CONTAINER_ID=''
+    local _rbd_cid_dir='' _rbd_created_id=''
+    _rbd_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX") || return 1
+    docker run -d --cidfile "$_rbd_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || return 1
+        -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || { rm -rf -- "$_rbd_cid_dir"; return 1; }
+    if [[ -f "$_rbd_cid_dir/id" ]]; then
+        IFS= read -r _rbd_created_id < "$_rbd_cid_dir/id" || true
+    fi
+    rm -rf -- "$_rbd_cid_dir"
+    if [[ "$_rbd_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+        WALLOS_CREATED_CONTAINER_ID="$_rbd_created_id"
+    else
+        # docker ran but left no usable cidfile: pin the live
+        # container immediately (managed-label only; see
+        # _wallos_record_created_from_cidfile).
+        local _rbd_pin=''
+        _rbd_pin=$(_wallos_container_id 2>/dev/null || true)
+        if [[ -n "$_rbd_pin" ]] && [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_rbd_pin" 2>/dev/null || true)" == "true" ]]; then
+            WALLOS_CREATED_CONTAINER_ID="$_rbd_pin"
+        fi
+    fi
     wallos_wait_healthy "$1"
 }
 
@@ -62086,29 +62426,65 @@ wallos_install_or_update() {
     # docker run that creates a container and then fails to start
     # it is still recorded (and cleaned up), while a name conflict
     # writes no cidfile and is therefore never deleted.
-    local _wallos_cid_dir='' _wallos_created_id=''
-    if ! _wallos_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX"); then
-        msg "${RED}Cannot allocate Wallos container-ID file.${NC}"
-        if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+    local _wallos_cid_dir='' _wallos_created_id='' _wallos_cid_path=''
+    if (( running == 1 )); then
+        # H7-F1: the upgrade path binds the created container to the
+        # durable transaction cidfile in WALLOS_DIR (not a /tmp mktemp
+        # dir): a crash between docker run and the journal refresh
+        # below must leave evidence recovery can trust. A stale
+        # cidfile from an earlier attempt is dropped first.
+        _wallos_cid_path="$WALLOS_DIR/.upgrade-transaction.cid"
+        rm -f -- "$_wallos_cid_path" 2>/dev/null || true
+    else
+        if ! _wallos_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX"); then
+            msg "${RED}Cannot allocate Wallos container-ID file.${NC}"
+            # R16-F15-06: roll back this attempt's firewall increments,
+            # like the adjacent preseed-failure exit; otherwise the opened
+            # ports (and their ledger) survive a failed install.
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            return 1
         fi
-        # R16-F15-06: roll back this attempt's firewall increments,
-        # like the adjacent preseed-failure exit; otherwise the opened
-        # ports (and their ledger) survive a failed install.
-        wallos_fw_rollback_added "${_fw_added[@]}" || true
-        return 1
+        _wallos_cid_path="$_wallos_cid_dir/id"
     fi
-    docker run -d --cidfile "$_wallos_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
+    docker run -d --cidfile "$_wallos_cid_path" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null
     code=$?
-    if [[ -f "$_wallos_cid_dir/id" ]]; then
-        IFS= read -r _wallos_created_id < "$_wallos_cid_dir/id" || true
+    if [[ -f "$_wallos_cid_path" ]]; then
+        IFS= read -r _wallos_created_id < "$_wallos_cid_path" || true
     fi
-    rm -f -- "$_wallos_cid_dir/id" 2>/dev/null || true
-    rmdir -- "$_wallos_cid_dir" 2>/dev/null || true
+    if (( running == 1 )); then
+        # H7-F1: record B in the journal BEFORE the health gate: a
+        # health failure (or a crash) after this point must leave
+        # recovery able to recognize B as this transaction's own
+        # container. A failed refresh deletes B (inside the helper),
+        # then recovers, exactly like the health-failure branch.
+        if (( code == 0 )) && [[ "$_wallos_created_id" =~ ^[0-9a-f]{64}$ ]]; then
+            if ! _wallos_record_created_from_cidfile "$_wallos_cid_path" "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id"; then
+                wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
+                msg "${RED}$(tr_msg wl_iu_health_kept)${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
+                return 1
+            fi
+        elif (( code == 0 )); then
+            # docker run succeeded but left no usable container ID
+            # (no cidfile, no pinnable container): fail closed rather
+            # than run the health gate against an unidentified
+            # container. The container (if any) is left live and the
+            # journal kept, so a later recovery refuses instead of
+            # touching an unidentified container.
+            msg "${RED}Wallos container created but its ID could not be recorded; refusing to proceed without a pinned container.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
+            return 1
+        fi
+        rm -f -- "$_wallos_cid_path" 2>/dev/null || true
+    else
+        rm -f -- "$_wallos_cid_dir/id" 2>/dev/null || true
+        rmdir -- "$_wallos_cid_dir" 2>/dev/null || true
+    fi
     if (( code != 0 )); then
         :
     elif (( ${#_pub_args[@]} == 0 )); then
@@ -62201,6 +62577,26 @@ wallos_install_or_update() {
             local _rebind_ok=0
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz" "$_wallos_created_id"; then _rebind_ok=1; fi
             if (( _rebind_ok == 1 )); then
+                # H7-F1: the rebind replaced B with B2; the journal
+                # must name B2 before anything commits it. Refresh the
+                # local ID from the global the rebind recorded. A
+                # missing/invalid ID on the upgrade path refuses the
+                # install (the journal still names B, which the rebind
+                # removed) and recovers the old container.
+                if [[ "$WALLOS_CREATED_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+                    _wallos_created_id="$WALLOS_CREATED_CONTAINER_ID"
+                elif (( running == 1 )); then
+                    msg "${RED}Wallos rebind succeeded but the replacement container ID could not be recorded; refusing to commit an unidentified container.${NC}"
+                    wallos_fw_rollback_added "${_fw_added[@]}" || true
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    return 1
+                fi
+                if (( running == 1 )) && ! wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id"; then
+                    msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
+                    wallos_fw_rollback_added "${_fw_added[@]}" || true
+                    wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+                    return 1
+                fi
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
                 # 07h2-H1: a failed state save after the HTTP fallback
                 # must fail the install, not just warn: the live
@@ -62231,6 +62627,18 @@ wallos_install_or_update() {
                     msg "${YELLOW}$(tr_msg wl_iu_fb_restored)${NC}"
                 else
                     msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
+                fi
+                # H7-F1: the restore replaced the (rebind-removed)
+                # container with a fresh one; refresh the journal with
+                # the ID it recorded, so the recovery below sees the
+                # live container as this transaction's own. Best effort
+                # here: the install is already failing, and a failed
+                # refresh must not mask the recovery below.
+                if [[ "$WALLOS_CREATED_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+                    _wallos_created_id="$WALLOS_CREATED_CONTAINER_ID"
+                    if (( running == 1 )); then
+                        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id" || true
+                    fi
                 fi
                 wallos_fw_rollback_added "${_fw_added[@]}" || true
                 if (( running == 1 )); then
@@ -62440,7 +62848,7 @@ wallos_install_or_update() {
     # no journal to recover from. Commit and delete it only now, after
     # all checks passed.
     if (( running == 1 )); then
-        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id"; then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$old_container_id" "$_wallos_created_id"; then
             msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
             # 07h2-M2: same R15-F15-02 protection as the health-check
             # failure branch above: delete only the container THIS
@@ -69226,28 +69634,39 @@ PY_SELFTEST_TAR
     fi
     assert_bad wallos_resume_after_backup 1 '' 'not-a-container-id'
     # H7rest: the upgrade journal carries the pinned container ID
-    # (9th line); an invalid ID is refused; old 7-arg writes keep
-    # working with an empty container ID.
-    # H7-ID: the journal stores the ID bare-hex; a sha256: input is
+    # (9th line) and the created container ID (10th line, H7-F1); an
+    # invalid ID is refused; old 7-arg writes keep working with empty
+    # container IDs.
+    # H7-ID: the journal stores IDs bare-hex; a sha256: input is
     # normalized on write, never stored.
+    # H7-F3: an uppercase new ID (even SHA256:-prefixed) normalizes
+    # to bare lowercase on write.
     if ! (
         WALLOS_DIR="$tmp/wallos-h7rest-journal"
         mkdir -p "$WALLOS_DIR/backups" || exit 40
         printf 'x' > "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" || exit 41
-        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 42
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' || exit 42
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 43
-        [[ "$(wc -l < "$WALLOS_DIR/.upgrade-transaction" | tr -d '[:space:]')" == 9 ]] || exit 44
-        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' || exit 47
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ]] || exit 49
+        [[ "$(wc -l < "$WALLOS_DIR/.upgrade-transaction" | tr -d '[:space:]')" == 10 ]] || exit 44
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' || exit 47
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" old_container_id)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 48
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ]] || exit 50
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'not-a-container-id' && exit 45
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 '' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'not-a-container-id' && exit 51
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$WALLOS_DIR/backups/wallos-1.2.3.tar.gz" 1 || exit 46
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" new_container_id)" == '' ]] || exit 52
     ); then
         echo 'FAIL: Wallos upgrade journal must carry the pinned container ID'; failures=$((failures + 1))
     fi
     # H7rest: _wallos_rm_named_id removes by ID (gone expected ID plus
     # no live holder is a no-op success) and refuses a foreign holder.
     # H7-ID: inspect returns bare hex; rm is addressed by bare hex.
-    if ! ( docker() { case "$*" in *'{{.Id}}'*) return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+    # H7-F2: the gone case needs real evidence -- Docker's own
+    # "No such container" wording on inspect stderr, plus an empty
+    # `docker ps -a` listing. A bare inspect failure with no wording
+    # is "state unknown", not "gone".
+    if ! ( docker() { case "$*" in 'container inspect wallos') printf 'Error: No such container: wallos\n' >&2; return 1 ;; *'{{.Id}}'*) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *'ps -a'*) return 0 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must succeed when nothing holds the name'; failures=$((failures + 1))
     fi
     if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'; return 0 ;; *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
@@ -69255,12 +69674,27 @@ PY_SELFTEST_TAR
     fi
     if ! ( : > "$tmp/wallos-rm-calls"; printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-live-id"
         docker() { printf '%s\n' "$*" >> "$tmp/wallos-rm-calls"; case "$*" in
-            *'{{.Id}}'*) if [[ -s "$tmp/wallos-live-id" ]]; then cat "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
+            'container inspect wallos') if [[ -s "$tmp/wallos-live-id" ]]; then return 0; fi; printf 'Error: No such container: wallos\n' >&2; return 1 ;;
+            *'{{.Id}}'*) if [[ -s "$tmp/wallos-live-id" ]]; then cat "$tmp/wallos-live-id"; return 0; fi; printf 'Error: No such container: wallos\n' >&2; return 1 ;;
             'rm -f '*) if [[ "${3:-}" == "$(cat "$tmp/wallos-live-id" 2>/dev/null)" ]]; then : > "$tmp/wallos-live-id"; return 0; fi; return 1 ;;
             *'Config.Labels'*) printf 'true\n'; return 0 ;;
             *) return 0 ;; esac; }
         _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 && grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-rm-calls" ); then
         echo 'FAIL: Wallos named-container removal did not address the pinned container ID'; failures=$((failures + 1))
+    fi
+    # H7-F2: a Docker daemon error is "state unknown" (refuse), not
+    # "name free"; an illegal live .Id refuses too; only a proven
+    # "No such container" (plus an empty ps listing) is "gone".
+    if ( docker() { case "$*" in 'container inspect wallos') printf 'Error: Cannot connect to the Docker daemon\n' >&2; return 1 ;; *'{{.Id}}'*) printf 'Error: Cannot connect to the Docker daemon\n' >&2; return 1 ;; 'rm -f '*) return 1 ;; *) return 0 ;; esac; }; _wallos_rm_named_id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse on a Docker daemon error'; failures=$((failures + 1))
+    fi
+    if ( docker() { case "$*" in *'{{.Id}}'*) printf '%s\n' 'ZZZ-not-a-container-id'; return 0 ;; *) return 0 ;; esac; }; _wallos_rm_named_id '' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse an illegal live container ID'; failures=$((failures + 1))
+    fi
+    # H7-F3: a non-empty expected ID that does not normalize refuses;
+    # only an empty expectation means "no expectation".
+    if ( docker() { return 0; }; _wallos_rm_named_id 'not-a-container-id' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos named-container removal must refuse an illegal expected container ID'; failures=$((failures + 1))
     fi
     # H7rest: the php version probe execs the pinned container ID.
     if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then
@@ -69286,6 +69720,18 @@ PY_SELFTEST_TAR
         ! grep -q 'sha256:' "$tmp/wallos-h7id-calls" || exit 58
     ); then
         echo 'FAIL: Wallos container ID must be bare hex and never reach docker as sha256:'; failures=$((failures + 1))
+    fi
+    # H7-F3: normalize canonicalizes to bare lowercase hex: bare
+    # uppercase, sha256: uppercase and SHA256: uppercase all map to
+    # the same bare lowercase ID; an illegal value still refuses.
+    if ! (
+        [[ "$(_wallos_normalize_container_id 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 61
+        [[ "$(_wallos_normalize_container_id 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 62
+        [[ "$(_wallos_normalize_container_id 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' 2>/dev/null)" == 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ]] || exit 63
+        ! _wallos_normalize_container_id 'not-a-container-id' >/dev/null 2>&1 || exit 64
+        ! _wallos_normalize_container_id '' >/dev/null 2>&1 || exit 65
+    ); then
+        echo 'FAIL: Wallos container ID normalization must canonicalize to bare lowercase hex'; failures=$((failures + 1))
     fi
     # N-11: versioned history — SHA256SUMS append/sort/prune logic.
     {
@@ -69378,7 +69824,26 @@ N11EOF
                 echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
               chmod 600 "$WALLOS_DIR/.upgrade-transaction"
               _n1_log="$_n1_tmp/pulled"
-              docker() { case "$1" in image) return 1 ;; container) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              docker() { case "$1" in
+                  image) return 1 ;;
+                  container) printf 'Error: No such container: wallos\n' >&2; return 1 ;;
+                  # H7-F1: recovery records the rebuilt container via
+                  # --cidfile, so the stub must write it (real docker
+                  # behavior) and answer the post-create pin.
+                  create|run)
+                      _n1_created=1
+                      local _cidfile='' _prev='' _a=''
+                      for _a in "$@"; do
+                          if [[ "$_prev" == --cidfile ]]; then _cidfile="$_a"; fi
+                          _prev="$_a"
+                      done
+                      [[ -n "$_cidfile" ]] && printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$_cidfile" 2>/dev/null || true
+                      return 0 ;;
+                  inspect)
+                      [[ -n "${_n1_created:-}" ]] && { printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0; }
+                      return 1 ;;
+                  *) return 0 ;;
+              esac; }
               wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { return 0; }
@@ -69768,6 +70233,23 @@ N11EOF
         failures=$((failures + 1))
     fi
     [[ "$(stat -c %s "$geo_success" 2>/dev/null || echo 0)" == '600000' ]] || { echo 'FAIL: valid Geo replacement was not atomically committed'; failures=$((failures + 1)); }
+
+    # GEO-F4: validate_geo_payload accepts a large non-HTML payload
+    # and rejects small, HTML-headed and missing ones.
+    if ! (
+        _vgp_tmp=$(umask 077; mktemp -d) || exit 71
+        dd if=/dev/zero of="$_vgp_tmp/big" bs=600000 count=1 status=none || exit 72
+        validate_geo_payload "$_vgp_tmp/big" || exit 73
+        dd if=/dev/zero of="$_vgp_tmp/small" bs=100 count=1 status=none || exit 74
+        validate_geo_payload "$_vgp_tmp/small" && exit 75
+        printf '<!DOCTYPE html><html></html>' > "$_vgp_tmp/html-head" || exit 76
+        dd if=/dev/zero bs=600000 count=1 status=none >> "$_vgp_tmp/html-head" || exit 77
+        validate_geo_payload "$_vgp_tmp/html-head" && exit 78
+        validate_geo_payload "$_vgp_tmp/missing" && exit 79
+        rm -rf -- "$_vgp_tmp"
+    ); then
+        echo 'FAIL: validate_geo_payload must accept a large non-HTML payload and reject small/HTML/missing ones'; failures=$((failures + 1))
+    fi
 
     # Core download helper must preserve an existing destination until the replacement
     # has passed structural and digest validation.

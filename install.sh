@@ -21396,7 +21396,10 @@ reorder_ss_whitelist_rules_one() {
     # (RETURN trap fires once, when this function returns -- not on
     # nested calls -- and unset -f on an undefined name is harmless,
     # so early returns before the definitions below are safe).
-    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback firewall_rollback_inner _marked_line_for _expected_remove_first' RETURN
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    local _reorder_caller_trap=''
+    _reorder_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback firewall_rollback_inner _marked_line_for _expected_remove_first; if [[ -n "${_reorder_caller_trap:-}" ]]; then eval "$_reorder_caller_trap"; else trap - RETURN; fi; true' RETURN
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
@@ -34701,7 +34704,10 @@ routing_apply_live() {
             # a commented live config fails and aborts the apply.
             local _jq_cfg=''
             _jq_cfg=$(mktemp /tmp/A-Box-routing-json.XXXXXX) || return 1
-            trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+            # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+            local _jq_caller_trap=''
+            _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+            trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
             jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$_jq_cfg"; return 1; }
             tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
@@ -35370,7 +35376,10 @@ split_add_socks_outbound() {
     workdir=$(mktemp -d) || return 1
     # M-37: hardened trap -- ${workdir:-} so a refire on an outer return
     # cannot abort under set -u; silent and rc-safe.
-    trap 'rm -rf -- "${workdir:-}" 2>/dev/null || true' RETURN
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    local _workdir_caller_trap=''
+    _workdir_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_workdir_caller_trap:-}" ]]; then eval "$_workdir_caller_trap"; else trap - RETURN; fi; true' RETURN
     jq -n --arg tag "$tag" --arg ip "$ip" --argjson port "$port" --arg u "$user" --rawfile p <(printf '%s' "$pass") '{
         protocol:"socks", tag:$tag,
         settings:{servers:[{address:$ip, port:$port,
@@ -37341,6 +37350,66 @@ force_stop_owned_openrc() {
     # OpenRC's own process helper verifies both the pidfile and executable
     # before signaling. Never fall back to an unqualified kill by PID.
     start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1 >/dev/null 2>&1 || return 1
+}
+
+# C-1 (Gemini): the generated traffic_monitor.sh runs standalone -- it
+# never sources the main script, so the four helpers below are
+# self-contained copies of the main-script definitions (same bodies, no
+# other main-script dependency). stop_owned / core_family_unit_registered
+# call them; without these copies every call failed with rc 127 and the
+# quota stop path silently no-op'd.
+
+systemd_available() {
+    command -v systemctl >/dev/null 2>&1 || return 1
+    [[ -r /proc/1/comm ]] || return 1
+    [[ "$(cat /proc/1/comm 2>/dev/null || true)" == 'systemd' ]] || return 1
+}
+
+pid_exe_matches() {
+    local pid="$1" expect="$2" exe
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+    # The kernel reports a deleted executable as "<path> (deleted)".
+    # Accept the live path and the deleted form; the caller verifies
+    # the PID is the managed service's own PID (and, in
+    # kill_managed_residual_pids, its starttime), so a deleted suffix
+    # alone never authorises a kill.
+    [[ "$exe" == "$expect" || "$exe" == "$expect (deleted)" ]]
+}
+
+# Process starttime (field 22 of /proc/pid/stat), robust to a comm
+# containing spaces or parens: strip through the last ')' then take
+# position 20 (field 22 minus pid and comm). Empty output = unreadable.
+proc_starttime() {
+    local pid="$1" st
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    st=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+    st=${st##*) }
+    set -- $st
+    [[ -n "${20:-}" ]] || return 1
+    printf '%s\n' "${20}"
+}
+
+_manifest_rows_valid() {
+    local file="$1" line t f p h rest TAB=$'\t'
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    if ! tr -d '\000' < "$file" | cmp -s - "$file"; then return 1; fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # SYD-B7: TAB is IFS whitespace, so a plain read folds empty fields
+        # away; require exactly 3 TABs (4 fields) before splitting.
+        local _notabs="${line//$TAB/}"
+        [[ "$(( ${#line} - ${#_notabs} ))" -eq 3 ]] || return 1
+        IFS=$'\t' read -r t f p h rest <<< "$line"
+        [[ -z "${rest:-}" ]] || return 1
+        case "$t" in F|D) ;; *) return 1 ;; esac
+        case "$f" in xray|sing-box|hysteria|xray-latest) ;; *) return 1 ;; esac
+        [[ "$p" == /* ]] || return 1
+        case "$t" in
+            F) [[ "$h" =~ ^[0-9a-f]{64}$ ]] || return 1 ;;
+            D) [[ "$h" == '-' ]] || return 1 ;;
+        esac
+    done < "$file"
+    return 0
 }
 
 # R3-NEW-04: a family recorded in the ownership manifest was deployed by
@@ -41163,6 +41232,20 @@ _core_exe_and_config() {
     esac
 }
 
+_cmdline_has_arg() {
+    # R35b-M2: match one whole argv token by its NUL boundary. The old
+    # `tr '\0' '\n'` + grep -Fxq erased the boundary, so a single argv
+    # containing a newline (e.g. $'/tmp/foreign\n<cfg>\nsuffix') matched
+    # as if <cfg> were a standalone argument, and a foreign process
+    # could be mistaken for ours. Unreadable cmdline refuses (rc 1).
+    local _pid="$1" _want="$2" _arg=''
+    [[ "$_pid" =~ ^[0-9]+$ && "$_pid" -gt 1 && -n "$_want" ]] || return 1
+    while IFS= read -r -d '' _arg; do
+        [[ "$_arg" == "$_want" ]] && return 0
+    done < "/proc/$_pid/cmdline" 2>/dev/null
+    return 1
+}
+
 core_process_matches() {
     local srv="$1" pid="$2" exe='' cfg='' cmdline=''
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
@@ -42916,7 +42999,7 @@ users_commit_cfg() {
 # is not a vision node and stays untagged). Duplicate candidates get a
 # numeric suffix (vision-2, ...) so tags stay unique.
 users_xray_ensure_tags() {
-    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg='' _jq_caller_trap=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     # R40-M2: read through a JSONC-stripped view (same approach as
     # users_adopt): raw jq on a commented config fails the probe and
@@ -42924,7 +43007,9 @@ users_xray_ensure_tags() {
     # transformed JSON over the original file, with the original kept
     # as backup.
     _jq_cfg=$(mktemp /tmp/A-Box-utag-json.XXXXXX) || return 1
-    trap 'rm -f -- "$_jq_cfg"' RETURN
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
     jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
     jq empty "$_jq_cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || return 0
@@ -42961,7 +43046,7 @@ users_xray_ensure_tags() {
 }
 
 users_sb_ensure_tags() {
-    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc='' _jq_cfg='' _jq_caller_trap=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     # R40-M2: read through a JSONC-stripped view (same approach as
     # users_adopt): raw jq on a commented config fails the probe and
@@ -42969,7 +43054,9 @@ users_sb_ensure_tags() {
     # transformed JSON over the original file, with the original kept
     # as backup.
     _jq_cfg=$(mktemp /tmp/A-Box-utag-json.XXXXXX) || return 1
-    trap 'rm -f -- "$_jq_cfg"' RETURN
+    # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+    _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
     jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
     jq empty "$_jq_cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$_jq_cfg" >/dev/null 2>&1 || return 0
@@ -45884,7 +45971,10 @@ _nsni_apply() {
     local _jq_cfg="$cfg"
     if [[ "$core" == xray ]]; then
         _jq_cfg=$(mktemp /tmp/A-Box-nsni-json.XXXXXX) || { rm -f "$tmp" "$bak"; return 1; }
-        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+        # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
+        local _jq_caller_trap=''
+        _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+        trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
         jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$tmp" "$bak"; return 1; }
     fi
     if ! jq --arg t "$tag" --arg s "$new" "$filter" "$_jq_cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
@@ -45924,10 +46014,29 @@ _nsni_apply() {
         # construction; the link must stop trusting it as a CA cert.
         _tuic_cert_regen=1
     fi
+    # C-3 (Gemini): the regenerated key/crt are 0600 root:root (see
+    # generate_self_signed_cert_atomically); the sing-box service user
+    # cannot read them, so the service crash-loops under Restart=always
+    # while _nsni_apply reports success. Restore the runtime permissions
+    # BEFORE restarting; failure rolls back (old cert + config + modes).
+    if (( _tuic_cert_regen == 1 )); then
+        if ! prepare_abox_runtime_permissions "$core"; then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+    fi
     if is_service_running "$core" 2>/dev/null; then
-        local _restart_ok=0
-        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 9>&- 10>&- && _restart_ok=1; fi
-        if (( _restart_ok == 0 )); then
+        # C-3 (Gemini): restart through restart_service_soft (daemon-reload
+        # + restart + is-active check + ownership record) and confirm the
+        # process is actually alive with ensure_service_running_soft (PID
+        # liveness). A bare systemctl restart returns 0 for a Type=simple
+        # job even while the service crash-loops, and the old code never
+        # checked afterwards. Either failing rolls back.
+        if ! restart_service_soft "$core"; then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+        if ! ensure_service_running_soft "$core"; then
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
@@ -70912,11 +71021,80 @@ PY_SELFTEST_YAML
     # clear_all_protocols) must stay byte-identical to the template
     # copies in traffic_monitor.sh; a drift means one side was edited
     # without the other.
-    for _sf in managed_unit_path owned force_stop_owned_openrc core_family_unit_registered _core_exe_and_config core_process_matches find_core_residual_pid stop_core_residual_process stop_owned; do
+    for _sf in managed_unit_path owned force_stop_owned_openrc core_family_unit_registered _core_exe_and_config _cmdline_has_arg core_process_matches find_core_residual_pid stop_core_residual_process stop_owned; do
         _main_fn=$(sed -n '/^# BEGIN MAIN STOP FAMILY/,/^# END MAIN STOP FAMILY/p' "$0" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}')
         _tmpl_fn=$(printf '%s\n' "$traffic_body" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}')
         [[ -n "$_main_fn" && "$_main_fn" == "$_tmpl_fn" ]] || { echo "FAIL: stop family drift: $_sf differs between main script and traffic_monitor template"; failures=$((failures + 1)); }
     done
+    # C-1 (Gemini): behaviour-level stop-family check with a fake core
+    # process. The drift guard above only proves the two copies match; a
+    # helper missing from BOTH sides would still pass it. Source the
+    # extracted traffic-template family (standalone, as the cron script
+    # runs it) and the main-script family (with the main-script helpers),
+    # then prove core_process_matches / find_core_residual_pid /
+    # stop_core_residual_process actually kill a fake xray process (exe +
+    # whole-argv config token). The fake-process part runs only as root,
+    # only when no real /usr/local/bin/xray exists (never clobber a real
+    # install), and only when /usr/local/bin is writable; the dependency
+    # behaviour checks below it always run.
+    local _c1_tmp='' _c1_pid='' _c1_fake=0 _c1_out='' _c1_rc=0 _c1_yes=''
+    _c1_tmp=$(mktemp -d /tmp/A-Box-c1-selftest.XXXXXX) || { echo 'FAIL: C-1 self-test temp dir creation failed'; failures=$((failures + 1)); }
+    if [[ -n "$_c1_tmp" ]]; then
+        : > "$_c1_tmp/traffic_fns.sh"
+        for _sf in managed_unit_path owned force_stop_owned_openrc core_family_unit_registered _core_exe_and_config _cmdline_has_arg core_process_matches find_core_residual_pid stop_core_residual_process stop_owned systemd_available pid_exe_matches proc_starttime _manifest_rows_valid; do
+            printf '%s\n' "$traffic_body" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}' >> "$_c1_tmp/traffic_fns.sh"
+        done
+        : > "$_c1_tmp/main_fns.sh"
+        for _sf in managed_unit_path owned force_stop_owned_openrc core_family_unit_registered _core_exe_and_config _cmdline_has_arg core_process_matches find_core_residual_pid stop_core_residual_process stop_owned; do
+            sed -n '/^# BEGIN MAIN STOP FAMILY/,/^# END MAIN STOP FAMILY/p' "$0" | awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}' >> "$_c1_tmp/main_fns.sh"
+        done
+        for _sf in systemd_available pid_exe_matches proc_starttime _manifest_rows_valid; do
+            awk -v fn="$_sf" '$0 ~ "^" fn "\\(\\) \\{" {on=1} on {print} /^}$/ && on {exit}' "$source_body_file" >> "$_c1_tmp/main_fns.sh"
+        done
+        bash -n "$_c1_tmp/traffic_fns.sh" || { echo 'FAIL: C-1 self-test traffic family extraction is not valid bash'; failures=$((failures + 1)); }
+        bash -n "$_c1_tmp/main_fns.sh" || { echo 'FAIL: C-1 self-test main family extraction is not valid bash'; failures=$((failures + 1)); }
+        # Dependency behaviour (no fake process, always runs): each helper
+        # must be defined AND behave, not merely exist as a name.
+        bash -c 'source "$0"; pid_exe_matches "$$" "$(readlink "/proc/$$/exe")"' "$_c1_tmp/traffic_fns.sh" || { echo 'FAIL: C-1 traffic pid_exe_matches self-check failed'; failures=$((failures + 1)); }
+        bash -u -c 'source "$0"; pid_exe_matches "$$" "$(readlink "/proc/$$/exe")"' "$_c1_tmp/main_fns.sh" || { echo 'FAIL: C-1 main pid_exe_matches self-check failed'; failures=$((failures + 1)); }
+        _c1_out=$(bash -c 'source "$0"; proc_starttime "$$"' "$_c1_tmp/traffic_fns.sh" 2>/dev/null) || { echo 'FAIL: C-1 traffic proc_starttime self-check failed'; failures=$((failures + 1)); }
+        [[ "$_c1_out" =~ ^[0-9]+$ ]] || { echo 'FAIL: C-1 traffic proc_starttime did not print digits'; failures=$((failures + 1)); }
+        printf 'F\txray\t/etc/systemd/system/xray.service\t%s\n' "$(printf '0%.0s' {1..64})" > "$_c1_tmp/valid.tsv"
+        bash -c 'source "$0"; _manifest_rows_valid "$1"' "$_c1_tmp/traffic_fns.sh" "$_c1_tmp/valid.tsv" || { echo 'FAIL: C-1 traffic _manifest_rows_valid on a valid row failed'; failures=$((failures + 1)); }
+        bash -c 'source "$0"; _manifest_rows_valid "$1"' "$_c1_tmp/traffic_fns.sh" "$_c1_tmp/does-not-exist" 2>/dev/null && { echo 'FAIL: C-1 traffic _manifest_rows_valid must fail on a missing file'; failures=$((failures + 1)); } || true
+        bash -c 'source "$0"; systemd_available' "$_c1_tmp/traffic_fns.sh" 2>/dev/null; _c1_rc=$?; (( _c1_rc == 0 || _c1_rc == 1 )) || { echo 'FAIL: C-1 traffic systemd_available must return 0/1, not 127'; failures=$((failures + 1)); }
+        _c1_yes=$(command -v yes 2>/dev/null || true)
+        if (( EUID == 0 )) && [[ -n "$_c1_yes" && -d /usr/local/bin && -w /usr/local/bin && ! -e /usr/local/bin/xray ]]; then
+            cp -f "$_c1_yes" /usr/local/bin/xray || { echo 'FAIL: C-1 self-test fake core install failed'; failures=$((failures + 1)); }
+            if [[ -e /usr/local/bin/xray ]]; then
+                _c1_fake=1
+                /usr/local/bin/xray /usr/local/etc/xray/config.json >/dev/null 2>&1 &
+                _c1_pid=$!
+                sleep 0.3
+                bash -c 'source "$0"; core_process_matches "$1" "$2"' "$_c1_tmp/traffic_fns.sh" xray "$_c1_pid" || { echo 'FAIL: C-1 traffic core_process_matches missed the fake core'; failures=$((failures + 1)); }
+                _c1_out=$(bash -c 'source "$0"; find_core_residual_pid "$1"' "$_c1_tmp/traffic_fns.sh" xray 2>/dev/null) || { echo 'FAIL: C-1 traffic find_core_residual_pid missed the fake core'; failures=$((failures + 1)); }
+                [[ "$_c1_out" == "$_c1_pid" ]] || { echo 'FAIL: C-1 traffic find_core_residual_pid returned the wrong pid'; failures=$((failures + 1)); }
+                bash -c 'source "$0"; stop_core_residual_process "$1"' "$_c1_tmp/traffic_fns.sh" xray || { echo 'FAIL: C-1 traffic stop_core_residual_process failed'; failures=$((failures + 1)); }
+                sleep 0.5
+                if kill -0 "$_c1_pid" 2>/dev/null; then echo 'FAIL: C-1 traffic stop reported success but the fake core is still alive'; failures=$((failures + 1)); kill -KILL "$_c1_pid" 2>/dev/null || true; fi
+                wait "$_c1_pid" 2>/dev/null || true
+                /usr/local/bin/xray /usr/local/etc/xray/config.json >/dev/null 2>&1 &
+                _c1_pid=$!
+                sleep 0.3
+                bash -u -c 'source "$0"; core_process_matches "$1" "$2"' "$_c1_tmp/main_fns.sh" xray "$_c1_pid" || { echo 'FAIL: C-1 main core_process_matches missed the fake core'; failures=$((failures + 1)); }
+                _c1_out=$(bash -u -c 'source "$0"; find_core_residual_pid "$1"' "$_c1_tmp/main_fns.sh" xray 2>/dev/null) || { echo 'FAIL: C-1 main find_core_residual_pid missed the fake core'; failures=$((failures + 1)); }
+                [[ "$_c1_out" == "$_c1_pid" ]] || { echo 'FAIL: C-1 main find_core_residual_pid returned the wrong pid'; failures=$((failures + 1)); }
+                bash -u -c 'source "$0"; stop_core_residual_process "$1"' "$_c1_tmp/main_fns.sh" xray || { echo 'FAIL: C-1 main stop_core_residual_process failed'; failures=$((failures + 1)); }
+                sleep 0.5
+                if kill -0 "$_c1_pid" 2>/dev/null; then echo 'FAIL: C-1 main stop reported success but the fake core is still alive'; failures=$((failures + 1)); kill -KILL "$_c1_pid" 2>/dev/null || true; fi
+                wait "$_c1_pid" 2>/dev/null || true
+                rm -f /usr/local/bin/xray
+                _c1_fake=0
+            fi
+        fi
+        if (( _c1_fake == 1 )); then [[ -n "$_c1_pid" ]] && { kill -KILL "$_c1_pid" 2>/dev/null || true; wait "$_c1_pid" 2>/dev/null || true; }; rm -f /usr/local/bin/xray; fi
+        rm -rf "$_c1_tmp"
+    fi
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
     grep -q '^reorder_ss_whitelist_rules_one() {' "$source_body_file" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
     grep -Fq 'exec {lock_fd}>>"$lock_file"' "$source_body_file" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }

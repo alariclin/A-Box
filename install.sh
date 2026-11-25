@@ -31419,6 +31419,22 @@ EOF_SVC
     # rollback is needed on this path.
     local listen_addr
     listen_addr=$(wildcard_listen_address) || die 'Failed to determine the wildcard listen address.'
+    # LOW-2: uniqueness gate runs BEFORE any cert backup/generation, so
+    # a refused redeploy leaves the live cert/key byte-identical and no
+    # rollback is needed on this path.
+    # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
+    # that merely shares $tag must not be silently replaced by the
+    # merge below; only a single genuine TUIC inbound proceeds.
+    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
+    # check -- a duplicated tag refuses, because the merge below
+    # deletes the whole tag group.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
+    fi
     # Back up any existing cert pair before regenerating: sing-box
     # check requires the new cert in place, so generation cannot be
     # deferred past the commit point. An existing .bak is kept (it
@@ -31444,19 +31460,6 @@ EOF_SVC
         > "$tmp_json" || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_json)"; }
 
     local tmp_cfg
-    # R30-M02: same guard as ShadowTLS (2dh): an independent inbound
-    # that merely shares $tag must not be silently replaced by the
-    # merge below; only a single genuine TUIC inbound proceeds.
-    # R-1 (SX-F1 same-shape): uniqueness gate, not an existence
-    # check -- a duplicated tag refuses, because the merge below
-    # deletes the whole tag group.
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if jq -e --arg t "$tag" '[.inbounds[]? | select(.tag==$t)] as $same | (($same | length) == 1 and $same[0].type == "tuic")' "$cfg" >/dev/null 2>&1; then
-            msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
-        else
-            die "Tag '$tag' is already used by an independent inbound (not a TUIC inbound) or appears more than once; refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
-        fi
-    fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
             '.inbounds = (.inbounds // [])

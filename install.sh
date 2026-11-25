@@ -13670,6 +13670,17 @@ _abox_mv_t_ok() {
     mv --help 2>&1 | grep -q -- '-T'
 }
 
+_abox_mktemp_json_ok() {
+    # H-6: BusyBox mktemp rejects a suffix after the XXXXXX template
+    # (e.g. /tmp/X.XXXXXX.json fails rc=1); GNU mktemp accepts it.
+    # Probe the exact template the deploy paths used to use.
+    command -v mktemp >/dev/null 2>&1 || return 1
+    local _probe=''
+    _probe=$(mktemp /tmp/A-Box-mktemp-probe.XXXXXX.json 2>/dev/null) || return 1
+    rm -f -- "$_probe"
+    return 0
+}
+
 _abox_base64_w_ok() {
     command -v base64 >/dev/null 2>&1 || return 1
     base64 -w0 </dev/null >/dev/null 2>&1
@@ -13740,6 +13751,9 @@ ensure_commands() {
         case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("coreutils") ;; esac
     fi
     if command -v mv >/dev/null 2>&1 && ! _abox_mv_t_ok; then
+        case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("coreutils") ;; esac
+    fi
+    if command -v mktemp >/dev/null 2>&1 && ! _abox_mktemp_json_ok; then
         case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("coreutils") ;; esac
     fi
     if (( ${#missing_pkgs[@]} > 0 )); then
@@ -17982,6 +17996,12 @@ deployment_evidence_exists() {
 confirm_deployment_replacement() {
     local next_core="$1" next_mode="$2" answer current="none" active_rc=1 _other_stacks='' _next_norm='' _c='' _answer2=''
     ABOX_PRESERVE_STANDALONE=0
+    # M-5: a previous deploy in this process may have recorded drops
+    # (ABOX_PRESERVE_DROP_PORTS); a stale value would filter this
+    # deploy's snapshot. Drops are collected again below, in
+    # pre_install_setup, so reset here and in cleanup.
+    ABOX_PRESERVE_DROP_PORTS=''
+    export ABOX_PRESERVE_DROP_PORTS
     [[ -n "${CORE:-}" || -n "${MODE:-}" ]] && current="${CORE:-unknown}-${MODE:-unknown}"
     if [[ "$current" == 'none' ]]; then
         # Do not trust ambient globals alone: reload the recorded
@@ -18133,59 +18153,16 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
     return 0
 }
 
-standalone_preserve_snapshot() { # $1 = core, $2 = config path
-    # Carbon H-11(4): a previous snapshot's /tmp dir is orphaned once
-    # this function overwrites ABOX_PRESERVE_DIR below. Reap it first
-    # (diagnostics copy, then remove) so a failed earlier deploy cannot
-    # leave a plaintext preserve.json behind.
-    standalone_preserve_cleanup
-    ABOX_PRESERVE_FILE=''
-    [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
-    local cfg="$2" pat='' out='' n=0 tmpd=''
-    [[ -f "$cfg" ]] || return 0
-    if ! command -v jq >/dev/null 2>&1; then
-        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
-        return 1
-    fi
-    pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
-    [[ -n "$pat" ]] || return 0
-    # S2-NEW-01: numbered second instances (tag-N) are standalone
-    # inbounds too, but the base tag set never names them, so a -2
-    # inbound was silently dropped from the snapshot and lost on the
-    # next deploy. Match the -N form of every base tag as well (any N,
-    # no hardcoded cap); only tags actually present in the live config
-    # can match, so this stays live-config-driven. The detour capture
-    # below keys off the same match, so a numbered inbound's detour
-    # target (e.g. shadowtls-ss-2) is kept as well. Still a single jq
-    # pass, so its failure still fail-closes (return 1) as before.
-    local patn="^(${pat})-[0-9]+$"
-    if ! tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX); then
-        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
-        return 1
-    fi
-    out="$tmpd/preserve.json"
-    # R15C6-01: also capture each preserved inbound's detour target
-    # (e.g. shadowtls-in -> shadowtls-ss); snapshotting only the outer
-    # inbound makes full restore fail validation on the missing target
-    # and the nost retry then drops the node.
-    # R16-F05-04: strip JSONC comments before jq: the live config may
-    # legally carry // or /* */ comments (the same R14-F01-01 class as
-    # the other live-config readers, which all strip first).
-    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})(-[0-9]+)?$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
-        rm -f -- "$out"; rm -rf -- "$tmpd"
-        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
-        return 1
-    fi
-    # H-26(2): drop inbounds the wizard user explicitly released for a
-    # port conflict (ABOX_PRESERVE_DROP_PORTS holds "proto:port"
-    # entries). An inbound with an unparseable binding is kept
-    # (fail-closed); only an inbound whose transports cover the dropped
-    # proto AND whose port range covers the dropped port is filtered
-    # out. A dropped inbound's detour target goes with it only when no
-    # surviving inbound still references it: a detour shared with a kept
-    # inbound survives (it was captured as that inbound's detour too).
-    if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
-        if ! jq --arg drops "$ABOX_PRESERVE_DROP_PORTS" '
+# M-5: apply ABOX_PRESERVE_DROP_PORTS to a JSON array of inbounds
+# ($1 -> $2). The parse_range / transport_set / binding / is_dropped
+# definitions are the same rule as standalone_preserve_snapshot
+# (03b-M1 shared transport rule); a dropped inbound's detour target
+# goes with it only when no surviving inbound still references it.
+# With no drops recorded the filter is the identity (nothing dropped).
+_preserve_apply_drop_ports() { # $1 = in file (JSON array), $2 = out file
+    local _in="$1" _out="$2"
+    [[ -n "$_in" && -n "$_out" ]] || return 1
+    jq --arg drops "${ABOX_PRESERVE_DROP_PORTS:-}" '
             def parse_range:
               if type == "number" then [., .]
               elif type == "string" then
@@ -18240,7 +18217,62 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
             | ([.[] | select(is_dropped($drop)) | (.detour // empty)] | map(select(. != ""))) as $dd
             | ([.[] | select(is_dropped($drop) | not) | (.detour // empty)] | map(select(. != ""))) as $still
             | ($dd - $still) as $ddx
-            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($ddx | index($t)) == null))))' "$out" > "$out.drop" 2>/dev/null; then
+            | map(select((is_dropped($drop) | not) and (((.tag // "") as $t | ($ddx | index($t)) == null))))' "$_in" > "$_out" 2>/dev/null
+}
+
+standalone_preserve_snapshot() { # $1 = core, $2 = config path
+    # Carbon H-11(4): a previous snapshot's /tmp dir is orphaned once
+    # this function overwrites ABOX_PRESERVE_DIR below. Reap it first
+    # (diagnostics copy, then remove) so a failed earlier deploy cannot
+    # leave a plaintext preserve.json behind.
+    standalone_preserve_cleanup
+    ABOX_PRESERVE_FILE=''
+    [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
+    local cfg="$2" pat='' out='' n=0 tmpd=''
+    [[ -f "$cfg" ]] || return 0
+    if ! command -v jq >/dev/null 2>&1; then
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
+    pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
+    [[ -n "$pat" ]] || return 0
+    # S2-NEW-01: numbered second instances (tag-N) are standalone
+    # inbounds too, but the base tag set never names them, so a -2
+    # inbound was silently dropped from the snapshot and lost on the
+    # next deploy. Match the -N form of every base tag as well (any N,
+    # no hardcoded cap); only tags actually present in the live config
+    # can match, so this stays live-config-driven. The detour capture
+    # below keys off the same match, so a numbered inbound's detour
+    # target (e.g. shadowtls-ss-2) is kept as well. Still a single jq
+    # pass, so its failure still fail-closes (return 1) as before.
+    local patn="^(${pat})-[0-9]+$"
+    if ! tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX); then
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
+    out="$tmpd/preserve.json"
+    # R15C6-01: also capture each preserved inbound's detour target
+    # (e.g. shadowtls-in -> shadowtls-ss); snapshotting only the outer
+    # inbound makes full restore fail validation on the missing target
+    # and the nost retry then drops the node.
+    # R16-F05-04: strip JSONC comments before jq: the live config may
+    # legally carry // or /* */ comments (the same R14-F01-01 class as
+    # the other live-config readers, which all strip first).
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})(-[0-9]+)?$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
+        rm -f -- "$out"; rm -rf -- "$tmpd"
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
+    # H-26(2): drop inbounds the wizard user explicitly released for a
+    # port conflict (ABOX_PRESERVE_DROP_PORTS holds "proto:port"
+    # entries). An inbound with an unparseable binding is kept
+    # (fail-closed); only an inbound whose transports cover the dropped
+    # proto AND whose port range covers the dropped port is filtered
+    # out. A dropped inbound's detour target goes with it only when no
+    # surviving inbound still references it: a detour shared with a kept
+    # inbound survives (it was captured as that inbound's detour too).
+    if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
+        if ! _preserve_apply_drop_ports "$out" "$out.drop"; then
             rm -f -- "$out" "$out.drop"; rm -rf -- "$tmpd"
             msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
             return 1
@@ -18333,6 +18365,10 @@ standalone_preserve_cleanup() {
     fi
     ABOX_PRESERVE_FILE=''
     ABOX_PRESERVE_DIR=''
+    # M-5: drops belong to one deploy only; a stale value must never
+    # survive into the next snapshot/restore in this process.
+    ABOX_PRESERVE_DROP_PORTS=''
+    export ABOX_PRESERVE_DROP_PORTS
 }
 
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
@@ -18369,6 +18405,15 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             jq '[.[] | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$") | not)]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
         else
             cp -- "$ABOX_PRESERVE_FILE" "$keepf" || continue
+        fi
+        # M-5: drops are collected by pre_install_setup AFTER the
+        # snapshot, so the snapshot-time filter never saw them.
+        # Apply the same drop filter to this attempt's $keepf so a
+        # released inbound is silently excluded instead of
+        # surfacing as a restore conflict (dp_preserve_conflict).
+        if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]]; then
+            _preserve_apply_drop_ports "$keepf" "$keepf.drop" || continue
+            mv -- "$keepf.drop" "$keepf" || continue
         fi
         jq --slurpfile keep "$keepf" '
             def parse_range:
@@ -18485,7 +18530,15 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         before=$(jq '.inbounds | length' "$stripped" 2>/dev/null || printf '0')
         after=$(jq '.inbounds | length' "$cfg" 2>/dev/null || printf '0')
         added=$(( after - before ))
-        dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
+        # M-5: count drops against the post-drop-filter candidate
+        # set, so a user-released inbound is not reported as a
+        # conflict; the nost-attempt shadowtls exclusion is
+        # unaffected (the drop filter never removes shadowtls).
+        local _drop_src="$ABOX_PRESERVE_FILE"
+        if [[ -n "${ABOX_PRESERVE_DROP_PORTS:-}" ]] && _preserve_apply_drop_ports "$ABOX_PRESERVE_FILE" "$tmpd/drop-keep.json" 2>/dev/null; then
+            _drop_src="$tmpd/drop-keep.json"
+        fi
+        dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$_drop_src" 2>/dev/null || printf '')
         if (( added > 0 )); then msg "${GREEN}$(tprintf dp_preserve_ok "$added")${NC}"; fi
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
@@ -24211,8 +24264,8 @@ clash_reality_mlkem_enabled() {
 xray_config_reality_flags() {
     local cfg="${1:-$XRAY_SLOT_CFG}" _r='0' _x='0'
     if [[ -n "$cfg" && -r "$cfg" ]] && command -v jq >/dev/null 2>&1; then
-        if jq -e 'any(.inbounds[]?; (.protocol == "vless" or .protocol == "trojan") and .streamSettings.security == "reality")' "$cfg" >/dev/null 2>&1; then _r='1'; fi
-        if jq -e 'any(.inbounds[]?; .protocol == "vless" and .streamSettings.security == "reality" and .streamSettings.network == "xhttp")' "$cfg" >/dev/null 2>&1; then _x='1'; fi
+        if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e 'any(.inbounds[]?; (.protocol == "vless" or .protocol == "trojan") and .streamSettings.security == "reality")' >/dev/null 2>&1; then _r='1'; fi
+        if jsonc_strip_comments "$cfg" 2>/dev/null | jq -e 'any(.inbounds[]?; .protocol == "vless" and .streamSettings.security == "reality" and .streamSettings.network == "xhttp")' >/dev/null 2>&1; then _x='1'; fi
     fi
     printf '%s %s\n' "$_r" "$_x"
 }
@@ -26196,7 +26249,7 @@ _xrc_config_has_expected_data_inbound() {
     done
     (( ${#_expected[@]} )) || return 0
     command -v jq >/dev/null 2>&1 || return 2
-    _ports=$(jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' "$cfg" 2>/dev/null) || return 2
+    _ports=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' 2>/dev/null) || return 2
     while IFS= read -r _p; do
         [[ "$_p" =~ ^[0-9]+$ ]] || continue
         [[ "${#_p}" -le 5 ]] || continue
@@ -26238,7 +26291,7 @@ _xrc_restore_divergence_check() {
             _expected+=("$((10#$_val))")
         done
     fi
-    _ports=$(jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' "$_cfg" 2>/dev/null) || return 2
+    _ports=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' 2>/dev/null) || return 2
     while IFS= read -r _p; do
         [[ "$_p" =~ ^[0-9]+$ ]] || continue
         [[ "${#_p}" -le 5 ]] || continue
@@ -28427,11 +28480,13 @@ xray_api_add_inbound() {
     # (O_CREAT|O_EXCL, random suffix). The old reserve+mv derived a
     # predictable "$doc.json" name from the bare mktemp path, and a
     # pre-planted FIFO there blocked the noclobber redirect forever.
-    doc=$(mktemp /tmp/A-Box-xray-adi.XXXXXX.json) || return 1
-    if ! jq -s '{inbounds: .}' "$json_file" > "$doc" 2>/dev/null; then rm -f "$doc"; return 1; fi
-    if ! jq -e '.inbounds | length == 1' "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
-    if ! /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
-    rm -f "$doc"
+    local _adi_d=''
+    _adi_d=$(mktemp -d /tmp/A-Box-xray-adi.XXXXXX) || return 1
+    doc="$_adi_d/adi.json"
+    if ! jq -s '{inbounds: .}' "$json_file" > "$doc" 2>/dev/null; then rm -f "$doc"; rm -rf -- "$_adi_d"; return 1; fi
+    if ! jq -e '.inbounds | length == 1' "$doc" >/dev/null 2>&1; then rm -f "$doc"; rm -rf -- "$_adi_d"; return 1; fi
+    if ! /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$doc" >/dev/null 2>&1; then rm -f "$doc"; rm -rf -- "$_adi_d"; return 1; fi
+    rm -f "$doc"; rm -rf -- "$_adi_d"
     return 0
 }
 
@@ -29568,6 +29623,11 @@ EOF_SVC
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
+        # R27-H-NF-06 (M-6): same post-deployment snapshot as the
+        # xray and sing-box deployers (NORMAL mode only: a SILENT
+        # sub-deploy commits nothing here). Best-effort: warns,
+        # never fails the deploy.
+        auto_backup_silent "post-deployment snapshot: hysteria2 HY2" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
         # S2-NEW-03: refresh the subscription export so the deployed node
         # set is what subscribers see; without this the files keep serving
         # dead links until menu E. Best-effort (see helper): the deploy
@@ -31031,7 +31091,9 @@ deploy_xray_trojan_landing() {
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX.json) || die "$(tr_msg dp_tmpfile)"
+        local _tcfg_d=''
+        _tcfg_d=$(mktemp -d /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        tmp_cfg="$_tcfg_d/config.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
@@ -31050,21 +31112,21 @@ deploy_xray_trojan_landing() {
                        ]
                    )' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
-            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
+            rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_trojan_update)"
         fi
-        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_xray_json)"; }
         # H-07: enforce the loopback guard on the merged config before
         # validation; refuse to install an unguarded config.
-        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
+        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
         if ! XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1; then
             msg "${RED}$(tr_msg deploy_xray_trojan_landing_config_check_failed)${NC}"
             XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
-            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"
+            rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_xray_check)"
         fi
         cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
-        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
-        rm -f "$tmp_cfg"
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_tcfg_d"; die "$(tr_msg dp_xray_cfg)"; }
+        rm -f "$tmp_cfg"; rm -rf -- "$_tcfg_d"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
         restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
     fi
@@ -34872,7 +34934,9 @@ routing_apply_live() {
             _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
             trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
             jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$_jq_cfg"; return 1; }
-            tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
+            local _routing_d=''
+            _routing_d=$(mktemp -d /tmp/A-Box-routing.XXXXXX) || return 1
+            tmp="$_routing_d/routing.json"
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | ((($prev - $managed) + $force) | unique) as $retired
@@ -34884,8 +34948,8 @@ routing_apply_live() {
                     | ($orig | map((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
                     | (($orig | map(select((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not))))) as $kept
                         | $kept[0:$splice] + [$st[0].rules[]?.xray_rule] + $kept[$splice:])))
-            ' "$_jq_cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
-            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            ' "$_jq_cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
+            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
                 local _xray_check_err=''
                 if ! _xray_check_err=$(XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" 2>&1 >/dev/null); then
@@ -34893,14 +34957,14 @@ routing_apply_live() {
                     if [[ -n "$_xray_check_err" ]]; then
                         printf '%s\n' "$_xray_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
                     fi
-                    rm -f "$tmp"; return 1
+                    rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1
                 fi
             fi
             local live_bak=''
-            live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
-            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
-            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
-            rm -f "$tmp"
+            live_bak=$(mktemp) || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
+            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; rm -rf -- "$_routing_d"; return 1; }
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; rm -rf -- "$_routing_d"; return 1; }
+            rm -f "$tmp"; rm -rf -- "$_routing_d"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
                 applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
@@ -34911,7 +34975,9 @@ routing_apply_live() {
         singbox|sing-box)
             cfg='/etc/sing-box/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-            tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
+            local _routing_d=''
+            _routing_d=$(mktemp -d /tmp/A-Box-routing.XXXXXX) || return 1
+            tmp="$_routing_d/routing.json"
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_singbox" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | ((($prev - $managed) + $force) | unique) as $retired
@@ -34947,9 +35013,9 @@ routing_apply_live() {
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
                     http_client:"abox-dl"})))
                 | (if ($tags | length) > 0 then .http_clients = (((.http_clients // []) | map(select(.tag != "abox-dl"))) + [{tag:"abox-dl"}]) else . end)
-            ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
-            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
-            singbox_apply_loopback_guard "$tmp" || { rm -f "$tmp"; return 1; }
+            ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
+            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
+            singbox_apply_loopback_guard "$tmp" || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
                 local _sb_check_err=''
                 if ! _sb_check_err=$(/usr/local/bin/sing-box check -c "$tmp" 2>&1 >/dev/null); then
@@ -34957,15 +35023,15 @@ routing_apply_live() {
                     if [[ -n "$_sb_check_err" ]]; then
                         printf '%s\n' "$_sb_check_err" | head -n 5 | while IFS= read -r _l; do msg "$_l"; done
                     fi
-                    rm -f "$tmp"; return 1
+                    rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1
                 fi
             fi
-            routing_ruleset_urls_ok "$tmp" || { rm -f "$tmp"; return 1; }
+            routing_ruleset_urls_ok "$tmp" || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
             local live_bak=''
-            live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
-            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
-            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
-            rm -f "$tmp"
+            live_bak=$(mktemp) || { rm -f "$tmp"; rm -rf -- "$_routing_d"; return 1; }
+            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; rm -rf -- "$_routing_d"; return 1; }
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; rm -rf -- "$_routing_d"; return 1; }
+            rm -f "$tmp"; rm -rf -- "$_routing_d"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
                 applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
@@ -35040,19 +35106,21 @@ warp_scrub_live_config() {
         # step and never reached the sing-box config on any box with an
         # xray binary. Give the temp file a .json suffix (same pattern
         # as the other xray validation sites in this file).
-        tmp=$(mktemp /tmp/A-Box-scrub.XXXXXX.json) || { rm -f "$stripped"; return 1; }
+        local _scrub_d=''
+        _scrub_d=$(mktemp -d /tmp/A-Box-scrub.XXXXXX) || { rm -f "$stripped"; return 1; }
+        tmp="$_scrub_d/scrub.json"
         if ! jsonc_strip_comments "$cfg" > "$stripped" 2>/dev/null; then
-            rm -f "$stripped" "$tmp"; return 1
+            rm -f "$stripped" "$tmp"; rm -rf -- "$_scrub_d"; return 1
         fi
         if ! jq 'del(.outbounds[]? | select(.tag == "warp-out"))
                 | del(.endpoints[]? | select(.tag == "warp-out"))
                 | del(.routing.rules[]? | select(.outboundTag == "warp-out"))
                 | del(.route.rules[]? | select(.outbound == "warp-out"))' \
                 "$stripped" > "$tmp" 2>/dev/null; then
-            rm -f "$stripped" "$tmp"; return 1
+            rm -f "$stripped" "$tmp"; rm -rf -- "$_scrub_d"; return 1
         fi
         rm -f "$stripped"
-        jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf -- "$_scrub_d"; return 1; }
         # S1-NEW-06: the jq filter above only deletes the
         # reference shapes it knows (outbounds/endpoints/rules).
         # Any other live reference to warp-out (e.g. an
@@ -35062,20 +35130,20 @@ warp_scrub_live_config() {
         # installing: no exact "warp-out" string may remain
         # anywhere in the new config.
         if jq -e '[.. | strings | select(. == "warp-out")] | length > 0' "$tmp" >/dev/null 2>&1; then
-            rm -f "$tmp"; return 1
+            rm -f "$tmp"; rm -rf -- "$_scrub_d"; return 1
         fi
         case "$cfg" in
             *xray*)
                 if [[ -x /usr/local/bin/xray ]]; then
-                    XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                    XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf -- "$_scrub_d"; return 1; }
                 fi ;;
             *sing-box*)
                 if [[ -x /usr/local/bin/sing-box ]]; then
-                    /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+                    /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf -- "$_scrub_d"; return 1; }
                 fi ;;
         esac
-        if ! install_file_atomically "$tmp" "$cfg" 600; then rm -f "$tmp"; return 1; fi
-        rm -f "$tmp"
+        if ! install_file_atomically "$tmp" "$cfg" 600; then rm -f "$tmp"; rm -rf -- "$_scrub_d"; return 1; fi
+        rm -f "$tmp"; rm -rf -- "$_scrub_d"
         case "$cfg" in
             *xray*) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
             *sing-box*) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
@@ -35970,7 +36038,9 @@ EOF_SVC
         # R16-F08-02: create the .json target directly with mktemp
         # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
         # a predictable name a pre-planted FIFO could block forever.
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX.json) || die "$(tr_msg dp_tmpfile)"
+        local _scfg_d=''
+        _scfg_d=$(mktemp -d /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        tmp_cfg="$_scfg_d/config.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
@@ -35989,16 +36059,16 @@ EOF_SVC
                        ]
                    )' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
-            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
+            rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_socks5_update)"
         fi
-        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_xray_json)"; }
         # H-07: enforce the loopback guard on the merged config before
         # validation; refuse to install an unguarded config.
-        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
+        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
-            || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"; }
-        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
-        rm -f "$tmp_cfg"
+            || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_xray_check)"; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; rm -rf -- "$_scfg_d"; die "$(tr_msg dp_xray_cfg)"; }
+        rm -f "$tmp_cfg"; rm -rf -- "$_scfg_d"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
         if service_restart_permitted xray; then restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; if service_restart_permitted xray; then restart_service_soft xray 2>/dev/null || true; fi; die "$(tr_msg dp_xray_restart)"; }; fi
     else
@@ -37046,6 +37116,12 @@ EOF_SVC
     _singbox_cleanup_tuic_certs_when_none_remain || true
     setup_geo_cron
     commit_deployment_transaction
+    # R27-H-NF-06 (M-6): snapshot the just-deployed config so the
+    # newest trusted backup is no longer the pre-deployment empty
+    # one (same posture as deploy_xray above). Best-effort: the
+    # deploy already committed, so a snapshot failure warns but
+    # must not fail it.
+    auto_backup_silent "post-deployment snapshot: sing-box ${MODE_IN}" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # OBS-S1-08: an overwrite redeploy writes fresh credentials into
     # live config but never touched the user registries; re-adopt every
     # existing registry of this core from live before any link is
@@ -40209,9 +40285,11 @@ _remove_inbounds_from_config() {
     # R16-F08-02: create the jq output directly with mktemp
     # (O_CREAT|O_EXCL, random suffix); the old reserve derived a
     # predictable "$src_cfg.json" name a pre-planted FIFO could block.
-    tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX.json) || { rm -f "$src_cfg" "$bak"; return 1; }
+    local _rm_cfg_d=''
+    _rm_cfg_d=$(mktemp -d /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$src_cfg" "$bak"; return 1; }
+    tmp_cfg="$_rm_cfg_d/config.json"
     if ! jsonc_strip_comments "$bak" > "$src_cfg" 2>/dev/null; then
-        rm -f "$src_cfg" "$tmp_cfg" "$bak"
+        rm -f "$src_cfg" "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"
         return 1
     fi
     if [[ "${1:-}" == '--all' ]]; then
@@ -40219,9 +40297,9 @@ _remove_inbounds_from_config() {
         # infrastructure, not a node protocol) and drops everything else.
         filter='.inbounds |= map(select(.tag == "api"))'
         # Routing cleanup needs the removed set: every non-api tag.
-        tags_json=$(set -o pipefail; jq -r '.inbounds[]? | .tag // empty | select(. != "api")' "$src_cfg" 2>/dev/null | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1; }
+        tags_json=$(set -o pipefail; jq -r '.inbounds[]? | .tag // empty | select(. != "api")' "$src_cfg" 2>/dev/null | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1; }
     else
-        tags_json=$(set -o pipefail; printf '%s\n' "$@" | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1; }
+        tags_json=$(set -o pipefail; printf '%s\n' "$@" | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1; }
         filter='.inbounds |= map(select(.tag as $t | ($tags | index($t)) == null))'
     fi
     # U147: drop/strip routing rules that reference a removed inbound.
@@ -40258,17 +40336,17 @@ _remove_inbounds_from_config() {
     filter="$filter | $route_filter"
     routes_before=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$src_cfg" 2>/dev/null || echo 0)
     if ! jq --argjson tags "$tags_json" "$filter" "$src_cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1
+        rm -f "$src_cfg" "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1
     fi
     rm -f "$src_cfg"
     routes_after=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$tmp_cfg" 2>/dev/null || echo 0)
     if [[ "$core" == 'sing-box' ]]; then
-        "$bin" check -c "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
+        "$bin" check -c "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1; }
     else
-        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1; }
     fi
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$bak"; return 1; }
-    rm -f "$tmp_cfg"
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$bak"; rm -rf -- "$_rm_cfg_d"; return 1; }
+    rm -f "$tmp_cfg"; rm -rf -- "$_rm_cfg_d"
     case "$core" in
         xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
         sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
@@ -46120,41 +46198,43 @@ _nsni_apply() {
     _cfgowner=$(stat -c %U:%G "$cfg" 2>/dev/null || printf 'root:root')
     local _was_running=0
     is_service_running "$core" 2>/dev/null && _was_running=1
-    tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX.json) || { rm -f "$bak"; return 1; }
+    local _nsni_d=''
+    _nsni_d=$(mktemp -d /tmp/A-Box-nsni.XXXXXX) || { rm -f "$bak"; return 1; }
+    tmp="$_nsni_d/config.json"
     case "$kind" in
         reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then (if (.target | type) == "string" then (if (.target | test("^[/@]")) then .target else ($s + (.target | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) end) else .target end) else .target end) | .dest = (if .dest then (if (.dest | type) == "string" then (if (.dest | test("^[/@]")) then .dest else ($s + (.dest | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) end) else .dest end) else .dest end))) else . end)' ;;
         reality-sb) filter='.inbounds |= map(if .tag == $t then (.tls.reality.handshake.server = $s | if .tls.server_name then .tls.server_name = $s else . end) else . end)' ;;
         tuic) filter='.inbounds |= map(if .tag == $t then .tls.server_name = $s else . end)' ;;
         shadowtls) filter='.inbounds |= map(if .tag == $t then .handshake.server = $s else . end)' ;;
-        *) rm -f "$tmp" "$bak"; return 1 ;;
+        *) rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1 ;;
     esac
     # L-01 (顺带): Xray configs are JSONC; read through the stripped
     # view like users_adopt/users_sync, so a commented config does not
     # fail the transform. sing-box configs are strict JSON: read raw.
     local _jq_cfg="$cfg"
     if [[ "$core" == xray ]]; then
-        _jq_cfg=$(mktemp /tmp/A-Box-nsni-json.XXXXXX) || { rm -f "$tmp" "$bak"; return 1; }
+        _jq_cfg=$(mktemp /tmp/A-Box-nsni-json.XXXXXX) || { rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1; }
         # C-2 (Gemini): save/restore the caller's RETURN trap (L10-fix pattern): a lingering trap refires on ancestor returns (fatal under set -u) and can delete an ancestor's live temp file.
         local _jq_caller_trap=''
         _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
         trap 'rm -f -- "$_jq_cfg" 2>/dev/null || true; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
-        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$tmp" "$bak"; return 1; }
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1; }
     fi
-    if ! jq --arg t "$tag" --arg s "$new" "$filter" "$_jq_cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
+    if ! jq --arg t "$tag" --arg s "$new" "$filter" "$_jq_cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1; fi
     case "$core" in
-        xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
-        sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
-        *) rm -f "$tmp" "$bak"; return 1 ;;
+        xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1; }; fi ;;
+        sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1; }; fi ;;
+        *) rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; return 1 ;;
     esac
     # H-06(3b): atomic commit via install_file_atomically (mv), with the
     # recorded mode/owner restored explicitly; the rollback write below
     # is atomic the same way. A failed rollback keeps $bak for manual
     # recovery, as before.
     if ! install_file_atomically "$tmp" "$cfg" "$_cfgmode" || ! chown "$_cfgowner" "$cfg" 2>/dev/null; then
-        if [[ -f "$bak" && -r "$bak" ]] && install_file_atomically "$bak" "$cfg" "$_cfgmode" && chown "$_cfgowner" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi
+        if [[ -f "$bak" && -r "$bak" ]] && install_file_atomically "$bak" "$cfg" "$_cfgmode" && chown "$_cfgowner" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; rm -rf -- "$_nsni_d"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; rm -rf -- "$_nsni_d"; fi
         return 1
     fi
-    rm -f "$tmp"
+    rm -f "$tmp"; rm -rf -- "$_nsni_d"
     local _kebak='' _crtbak='' _kemode='' _crtmode='' _tuic_cert_regen=0
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
@@ -51584,12 +51664,32 @@ sni_verify_raw_report() {
     rm -rf "$asn_cache" 2>/dev/null || true
 }
 
+# M-7: pad Stage-1 (8-column) rows to the 17-column verified shape so a
+# Stage-2 fallback keeps its Stage-1 score instead of misgrading as D.
+# Rows that already carry 17 columns pass through unchanged; the
+# tls13/alpn/san markers read as tier U (unverified), never A/B/C.
+_sni_pad_unverified_rows() { # $1 = 8-col raw_sorted, $2 = out file
+    local _in="$1" _out="$2"
+    [[ -f "$_in" && -s "$_in" && -n "$_out" ]] || return 1
+    awk -F'\t' 'NF == 8 { print $0 "\ttls13=unknown\talpn=unknown\tsan=unknown\tasn=unknown\tcountry=unknown\tasnmatch=0\tsamecountry=0\torg=unknown\tcdnpenalty=0"; next } { print }' "$_in" > "$_out" 2>/dev/null || return 1
+    [[ -s "$_out" ]] || return 1
+}
+
 sni_report_fit_tier() {
     local tls13="${1#tls13=}" alpn="${2#alpn=}" san="${3#san=}" \
         asn_match="${4#asnmatch=}" same_country="${5#samecountry=}" \
         cdn_penalty="${6#cdnpenalty=}"
     [[ "$cdn_penalty" =~ ^-?[0-9]+$ ]] || cdn_penalty=0
-    if [[ "$tls13" != '1' || "$alpn" != 'h2' || "$san" != '1' ]]; then
+    if [[ "$tls13" == 'unknown' || "$alpn" == 'unknown' || "$san" == 'unknown' ]]; then
+        # M-7: Stage 2 never ran for this row (fallback padding, or
+        # openssl unavailable): it is unverified, not a failure.
+        # Grade U (visible, never a safe fit) instead of the hard D
+        # the check below would give. U is skipped by auto-select and
+        # refused by the Amazon fallback, so no unverified SNI is
+        # ever adopted on this path. (R would mislabel: its messages
+        # claim the protocol checks passed.)
+        printf 'U\n'
+    elif [[ "$tls13" != '1' || "$alpn" != 'h2' || "$san" != '1' ]]; then
         printf 'D\n'
     elif (( cdn_penalty >= 300 )); then
         # Keep risky targets visible for analysis, but do not label them a safe fit.
@@ -51654,6 +51754,21 @@ sni_auto_select_default() {
     command -v openssl >/dev/null 2>&1 || { sni_verified_amazon_fallback; return $?; }
     workdir=$(mktemp -d /tmp/A-Box-sni-auto.XXXXXX) || { sni_verified_amazon_fallback; return $?; }
     chmod 700 "$workdir" 2>/dev/null || { rm -rf -- "$workdir"; sni_verified_amazon_fallback; return $?; }
+    # M-7: save/restore traps (L10-fix pattern). Every return path
+    # below already removes $workdir; the RETURN trap guarantees the
+    # probe jobs are killed and the workdir reaped even on a return
+    # taken before the explicit cleanup, and restores the caller's
+    # traps so nothing persists after this function returns. The EXIT
+    # trap covers die()/exit inside a callee (e.g. sni_verify_raw_report).
+    local _sni_auto_caller_return_trap='' _sni_auto_caller_exit_trap='' _sni_auto_caller_int_trap='' _sni_auto_caller_term_trap=''
+    _sni_auto_caller_return_trap=$(trap -p RETURN 2>/dev/null || true)
+    _sni_auto_caller_exit_trap=$(trap -p EXIT 2>/dev/null || true)
+    _sni_auto_caller_int_trap=$(trap -p INT 2>/dev/null || true)
+    _sni_auto_caller_term_trap=$(trap -p TERM 2>/dev/null || true)
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_return_trap:-}" ]]; then eval "$_sni_auto_caller_return_trap"; fi; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi' EXIT
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 130' INT
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 143' TERM
 
     seed="$workdir/seed.txt"
     pool="$workdir/pool.txt"
@@ -51726,9 +51841,16 @@ sni_auto_select_default() {
     }
     # Deep verification is intentionally bounded to keep the install wizard usable.
     if ! sni_verify_raw_report "$raw_sorted" "$verified" "$verify_limit" 3 >&2; then
-        rm -rf -- "$workdir"
-        sni_verified_amazon_fallback
-        return $?
+        # M-7: same fallback as run_builtin_sni_radar: keep the Stage-1
+        # rows (padded to 17 columns) instead of discarding them. The
+        # padded rows grade U, never A/B/C, so the tier loop below still
+        # falls through to the verified Amazon fallback when nothing
+        # verified.
+        if ! _sni_pad_unverified_rows "$raw_sorted" "$verified"; then
+            rm -rf -- "$workdir"
+            sni_verified_amazon_fallback
+            return $?
+        fi
     fi
 
     while IFS=$'\t' read -r score domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty; do
@@ -51809,7 +51931,7 @@ sni_render_ranked_report() {
     display_dir=$(mktemp -d /tmp/A-Box-sni-display.XXXXXX) || return 1
     selected_file="$display_dir/selected.tsv"
     head -n "$requested_limit" "$report_file" > "$selected_file" || { rm -rf -- "$display_dir"; return 1; }
-    for bucket in A R B C D; do : > "$display_dir/$bucket.tsv"; done
+    for bucket in A R B C D U; do : > "$display_dir/$bucket.tsv"; done
     while IFS= read -r row; do
         IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty <<< "$row"
         [[ "$score" =~ ^-?[0-9]+$ && -n "$domain" ]] || continue
@@ -51817,7 +51939,7 @@ sni_render_ranked_report() {
         printf '%s\n' "$row" >> "$display_dir/$tier.tsv"
     done < "$selected_file"
     msg "${CYAN}$(tprintf sni_show_first "$requested_limit")${NC}"
-    for bucket in A R B C D; do
+    for bucket in A R B C D U; do
         local_bucket_file="$display_dir/$bucket.tsv"
         count=$(wc -l < "$local_bucket_file" | tr -d ' ')
         (( count > 0 )) || continue
@@ -51827,6 +51949,7 @@ sni_render_ranked_report() {
             B) color="$CYAN"; heading="$(tr_msg sni_tier_B)" ;;
             C) color="$BLUE"; heading="$(tr_msg sni_tier_C)" ;;
             D) color="$RED"; heading="$(tr_msg sni_tier_D)" ;;
+            U) color="$YELLOW"; heading="$(tr_msg sni_untestable)" ;;
         esac
         msg "${color}[${heading}｜${count} $(tr_msg sni_count_unit)]${NC}"
         rank=0
@@ -51847,6 +51970,19 @@ sni_render_ranked_report() {
 run_builtin_sni_radar() {
     local profile="${1:-full}" title="${2:-Local SNI selection}" workdir candidates raw raw_sorted report total concurrency timeout_s running=0 domain topn verify_limit processed=0 valid_count=0 progress_every
     workdir=$(mktemp -d /tmp/A-Box-sni-radar.XXXXXX) || die "$(tr_msg sn_tmp_fail)"
+    # M-7: save/restore EXIT/INT/TERM traps (L10-fix pattern). die()
+    # exits mid-function and background probes survive Ctrl-C unless
+    # the probe jobs are killed and the workdir reaped here. Each body
+    # clears the traps first so cleanup fires exactly once, then
+    # re-installs the caller's EXIT trap so a caller cleanup still
+    # runs on exit; INT/TERM exit 130/143 after cleanup.
+    local _sni_radar_caller_exit_trap='' _sni_radar_caller_int_trap='' _sni_radar_caller_term_trap=''
+    _sni_radar_caller_exit_trap=$(trap -p EXIT 2>/dev/null || true)
+    _sni_radar_caller_int_trap=$(trap -p INT 2>/dev/null || true)
+    _sni_radar_caller_term_trap=$(trap -p TERM 2>/dev/null || true)
+    trap 'trap - EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_radar_caller_exit_trap:-}" ]]; then eval "$_sni_radar_caller_exit_trap"; fi' EXIT
+    trap 'trap - EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_radar_caller_exit_trap:-}" ]]; then eval "$_sni_radar_caller_exit_trap"; fi; exit 130' INT
+    trap 'trap - EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_radar_caller_exit_trap:-}" ]]; then eval "$_sni_radar_caller_exit_trap"; fi; exit 143' TERM
     candidates="$workdir/candidates.txt"
     raw="$workdir/results.raw.tsv"
     raw_sorted="$workdir/results.raw.sorted.tsv"
@@ -51871,7 +52007,7 @@ run_builtin_sni_radar() {
         concurrency="${ABOX_SNI_MINI_CONCURRENCY:-32}"
         timeout_s="${ABOX_SNI_MINI_TIMEOUT:-3}"
         topn="${ABOX_SNI_MINI_TOPN:-60}"
-        verify_limit="${ABOX_SNI_MINI_VERIFY:-240}"
+        verify_limit="${ABOX_SNI_MINI_VERIFY:-60}"
     else
         concurrency="${ABOX_SNI_FULL_CONCURRENCY:-36}"
         timeout_s="${ABOX_SNI_FULL_TIMEOUT:-6}"
@@ -51934,10 +52070,10 @@ run_builtin_sni_radar() {
     fi
     LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted"
     if ! sni_verify_raw_report "$raw_sorted" "$report" "$verify_limit" "$timeout_s"; then
-        cp -f "$raw_sorted" "$report"
+        _sni_pad_unverified_rows "$raw_sorted" "$report" || cp -f "$raw_sorted" "$report"
     fi
     if [[ ! -s "$report" ]]; then
-        cp -f "$raw_sorted" "$report"
+        _sni_pad_unverified_rows "$raw_sorted" "$report" || cp -f "$raw_sorted" "$report"
     fi
     ensure_abox_dir_owned "$ABOX_DIR" || die "$(tr_msg sn_dir_untrusted)"
     local saved_report="$ABOX_DIR/A-Box-sni-${profile}.tsv"
@@ -51952,6 +52088,11 @@ run_builtin_sni_radar() {
     msg "${GREEN}$(tprintf sn_saved "${ABOX_DIR}/A-Box-sni-${profile}.tsv")${NC}"
     msg "${YELLOW}$(tr_msg sn_grade_note)${NC}"
     rm -rf "$workdir"
+    # M-7: normal exit already reaped the workdir above; restore the
+    # caller's traps so a later script exit does not re-run this cleanup.
+    if [[ -n "$_sni_radar_caller_exit_trap" ]]; then eval "$_sni_radar_caller_exit_trap"; else trap - EXIT; fi
+    if [[ -n "$_sni_radar_caller_int_trap" ]]; then eval "$_sni_radar_caller_int_trap"; else trap - INT; fi
+    if [[ -n "$_sni_radar_caller_term_trap" ]]; then eval "$_sni_radar_caller_term_trap"; else trap - TERM; fi
     # Drain keystrokes typed during the long run; otherwise pause_return would
     # consume them instantly and the ranked results would flash by.
     while read -r -t 0 _ 2>/dev/null; do
@@ -53056,7 +53197,7 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user)(?:$|[_-])",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|username|user)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess)://\S+")
@@ -53173,12 +53314,12 @@ inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:
 _INLINE_KEY_HEAD = (
     r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 _TEXT_KEY_HEAD = (
     r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 
 
@@ -53433,7 +53574,7 @@ def _skip_id_gap(text, pos):
 _TEXT_KEY_CANDIDATE = (
     r"""["']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)["']?"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)["']?"""
 )
 _INLINE_KEY_CANDIDATE = (
     r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
@@ -53652,7 +53793,7 @@ except Exception:
         sys.stdout.write(_SUPPRESS_NOTICE + "\n")
         raise SystemExit(2)
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|user|socks_user|socks_pass)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key|username|user|socks_user|socks_pass)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
         text,
     )

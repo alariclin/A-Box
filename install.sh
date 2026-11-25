@@ -663,29 +663,6 @@ _tsv_unescape() {
 # before '?') carrying a shadow-tls parameter is likewise
 # proven-bad: it is the "ss://?shadow-tls=<nonempty>" the old
 # unchecked _ub step published.
-_standalone_link_is_empty_shadowtls() {
-    local _f="$1" _uri='' _q='' _part='' _n=0 _empty=0 _has_tls=0 _head=''
-    [[ -f "$_f" && ! -L "$_f" ]] || return 1
-    [[ "$(grep -c '^ss://' "$_f" 2>/dev/null || true)" == 1 ]] || return 1
-    _uri=$(grep -m1 '^ss://' "$_f" 2>/dev/null) || return 1
-    [[ "$_uri" == *'?'* ]] || return 1
-    _q="${_uri#*\?}"
-    _q="${_q%%#*}"
-    _head="${_uri#ss://}"
-    _head="${_head%%\?*}"
-    while [[ -n "$_q" ]]; do
-        _part="${_q%%&*}"
-        case "$_part" in
-            'shadow-tls=') _n=$((_n + 1)); _empty=1; _has_tls=1 ;;
-            'shadow-tls='*) _n=$((_n + 1)); _has_tls=1 ;;
-        esac
-        [[ "$_q" == *'&'* ]] || break
-        _q="${_q#*&}"
-    done
-    (( _n == 1 && _empty == 1 )) && return 0
-    (( _has_tls == 1 )) && [[ -z "$_head" ]]
-}
-
 # Rebuild missing standalone registry entries from the live core configs
 # (nodes deployed before the registry existed). Best-effort: a node with
 # no data at all for a link is skipped silently; partial data warns. Argo is registry-only - its
@@ -1016,11 +993,9 @@ rebuild_standalone_links() {
             fi
             done <<< "$_anytls_rows"
         fi
-        # R8-F1-3: an existing link is trusted, except a
-        # proven-empty shadow-tls parameter (see
-        # _standalone_link_is_empty_shadowtls): that is the bad
-        # link the old unchecked pipeline published, and the
-        # next rebuild must retry it instead of skipping forever.
+        # R8-F1-3: an existing link is trusted. The old
+        # empty-shadow-tls exception was subsumed by S1-NEW-02
+        # (always refresh from the live survivor).
         if true; then  # S1-NEW-02 (ported): always refresh from the live survivor (empty-shadowtls retry subsumed)
             # B01-01: iterate every matching inbound (same rows loop
             # as Trojan/SOCKS5 above); first(...) only rebuilt the
@@ -7156,12 +7131,6 @@ tr_msg() {
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
         zh-tw:bad_port) echo '連接埠無效: %s' ;;
         ja:bad_port) echo '無効なポート: %s' ;;
-        zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
-        en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
-        ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
-        fa:confirm_remote) echo 'اسکریپت شخص ثالث دریافت می‌شود: %s. مقدار SHA256 نمایش داده و پیش از اجرا تأیید خواسته می‌شود. ادامه؟ [Y/N]: ' ;;
-        zh-tw:confirm_remote) echo '即將下載第三方遠程腳本：%s。下載後會顯示 SHA256 並要求強確認。繼續下載？[Y/N]: ' ;;
-        ja:confirm_remote) echo 'サードパーティのリモートスクリプトをダウンロードします：%s。ダウンロード後に SHA256 を表示し、強い確認を求めます。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
         en:confirm_local_sni_full) echo 'About to run the local built-in full SNI selection library (no remote script execution). Continue? [Y/N]: ' ;;
         ru:confirm_local_sni_full) echo 'Будет запущен встроенный полный подбор SNI; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
@@ -8734,12 +8703,6 @@ tr_msg() {
         ru:pr_stop) echo 'Невозможно остановить управляемую службу A-Box: %s' ;;
         fa:pr_stop) echo 'توقف سرویس مدیریت‌شده A-Box ممکن نیست: %s' ;;
         ja:pr_stop) echo 'A-Box 管理サービスを停止できません： %s' ;;
-        zh:sc_refuse) echo '拒绝覆盖非 A-Box 快捷入口： %s' ;;
-        zh-tw:sc_refuse) echo '拒絕覆寫非 A-Box 快捷入口： %s' ;;
-        en:sc_refuse) echo 'Refusing to overwrite a non-A-Box shortcut: %s' ;;
-        ru:sc_refuse) echo 'Отказ от перезаписи ярлыка, не принадлежащего A-Box: %s' ;;
-        fa:sc_refuse) echo 'بازنویسی میانبر غیر A-Box رد شد: %s' ;;
-        ja:sc_refuse) echo 'A-Box でないショートカットの上書きを拒否します： %s' ;;
         zh:sc_prompt_head) echo '快捷键 %s 冲突：%s' ;;
         en:sc_prompt_head) echo 'Shortcut %s conflicts: %s' ;;
         ru:sc_prompt_head) echo 'Конфликт ярлыка %s: %s' ;;
@@ -11422,12 +11385,6 @@ tr_msg() {
         fa:run_remote_bash_script_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت راه دور ناموفق بود.' ;;
         zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端腳本的暫存檔建立失敗。' ;;
         ja:run_remote_bash_script_tmpfile_failed) echo 'リモートスクリプト用の一時ファイルの作成に失敗しました。' ;;
-        zh:save_mirror_prefer_fixed_order) echo '核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。' ;;
-        en:save_mirror_prefer_fixed_order) echo 'The core download order is fixed: official upstream stable release → pinned A-Box fallback release.' ;;
-        ru:save_mirror_prefer_fixed_order) echo 'Порядок загрузки ядер фиксирован: официальный стабильный выпуск разработчиков → закреплённый резервный выпуск A-Box.' ;;
-        fa:save_mirror_prefer_fixed_order) echo 'ترتیب دانلود هسته ثابت است: نسخه پایدار رسمی بالادستی → نسخه پشتیبان ثابت A-Box.' ;;
-        zh-tw:save_mirror_prefer_fixed_order) echo '核心下載順序固定為：上游正式穩定版 → 固定的 A-Box 備援版本。' ;;
-        ja:save_mirror_prefer_fixed_order) echo 'コアのダウンロード順序は固定です：上流の正式安定版 → 固定された A-Box のフォールバック版。' ;;
         zh:setup_geo_cron_flock_missing) echo 'flock 命令不可用：Geo 更新脚本依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。' ;;
         en:setup_geo_cron_flock_missing) echo 'flock is unavailable: the Geo update script requires a flock lock and will exit silently without it. Installation refused.' ;;
         ru:setup_geo_cron_flock_missing) echo 'Команда flock недоступна: скрипт обновления Geo требует блокировки flock и без неё завершится без сообщений. Установка отклонена.' ;;
@@ -12842,18 +12799,6 @@ valid_interface_name() {
     [[ "$iface" =~ ^[a-zA-Z0-9_.:-]+$ && ${#iface} -le 15 ]]
 }
 
-shell_quote() {
-    local v=${1:-} q
-    q=${v//\\/\\\\}
-    q=${q//\"/\\\"}
-    q=${q//\$/\\\$}
-    q=${q//\`/\\\`}
-    q=${q//!/\\!}
-    q=${q//$'\n'/\\n}
-    q=${q//$'\r'/\\r}
-    printf '\"%s\"' "$q"
-}
-
 # M-08(3): single-quote a value for a shell/crontab command line.
 # Single quotes defeat $/backtick/command substitution entirely; an
 # embedded ' is closed, escaped, and reopened ('\'').
@@ -12865,14 +12810,14 @@ shell_single_quote() {
 # (load_abox_env), NOT by bash. Inside double quotes shlex only
 # unescapes backslash-quote and backslash-backslash; a backslash
 # before $, backtick, ! or n survives, so the bash double-quote style
-# (shell_quote) corrupts those values on load (see fixture
+# corrupts those values on load (see fixture
 # fx-quoter-roundtrip.sh). env_quote therefore uses the shlex-correct
 # single-quote form: everything inside single quotes is literal to
 # shlex, and an embedded single quote is spliced as '\'' (same
 # algorithm as shell_single_quote, kept as a separate function because
-# the two have different readers: shlex vs bash). NEVER use shell_quote
-# for .env values; shell_quote stays the quoter for bash-evaluated
-# contexts (cron command lines) only.
+# the two have different readers: shlex vs bash). NEVER use a
+# double-quote quoter for .env values; bash-evaluated contexts
+# (cron command lines) use shell_single_quote.
 env_quote() {
     local v=${1:-}
     printf "'%s'" "${v//\'/\'\\\'\'}"
@@ -16617,13 +16562,6 @@ shortcut_is_abox_managed() {
     [[ "$_mode" =~ ^[0-7]{3,4}$ ]] || return 1
     (( (8#$_mode & 8#100) != 0 )) || return 1
     auxiliary_content_is_abox_managed "$path" "$path"
-}
-
-assert_abox_shortcut_safe() {
-    local path="${1:-/usr/local/bin/sb}"
-    [[ ! -e "$path" && ! -L "$path" ]] && return 0
-    shortcut_is_abox_managed "$path" && return 0
-    die "$(tprintf sc_refuse "$path")"
 }
 
 remove_abox_shortcut() {
@@ -28712,70 +28650,6 @@ PY_HOT_BIND
 # $1 = inbound tag (never "api").
 # Fallback: if the API call fails, restart_service_soft picks up the persisted
 # config, so the change is never lost and existing behavior is preserved.
-xray_hot_remove_inbound() {
-    local tag="$1"
-    local cfg='/usr/local/etc/xray/config.json' tmp tmpd
-    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
-    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    # A corrupt config must never be reported as "nothing to delete":
-    # parse it first, then distinguish "tag absent" from "read failed".
-    jsonc_strip_comments "$cfg" 2>/dev/null | jq empty >/dev/null 2>&1 || return 1
-    local routes_reference_tag
-    routes_reference_tag=$(jsonc_strip_comments "$cfg" 2>/dev/null | jq -r --arg t "$tag" '
-        any(.routing.rules[]?;
-            if (.inboundTag | type) == "array" then
-                (.inboundTag | index($t)) != null
-            elif (.inboundTag | type) == "string" then
-                .inboundTag == $t
-            else
-                false
-            end)
-    ') || return 1
-    # Skip if tag not in config (avoid unnecessary restart)
-    if [[ "$routes_reference_tag" == false ]] \
-       && ! jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' >/dev/null 2>&1; then
-        # Tag absent from disk and no route references it: the API
-        # cannot prove the running config is clean, so restart and
-        # report a failed restart instead of false success.
-        restart_service_soft xray
-        return $?
-    fi
-    tmpd=$(mktemp -d /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
-    tmp="$tmpd/config.json"
-    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg t "$tag" '
-        .inbounds = ((.inbounds // []) | map(select(.tag != $t)))
-        | if (.routing.rules // null) then
-            .routing.rules |= map(
-                if (.inboundTag | type) == "array" then
-                    (if (.inboundTag | index($t)) then (.inboundTag |= map(select(. != $t)) | select(.inboundTag | length > 0)) else . end)
-                elif (.inboundTag | type) == "string" then
-                    select(.inboundTag != $t)
-                else . end)
-          else . end
-    ' > "$tmp" 2>/dev/null; then
-        rm -f "$tmp"; rm -rf "$tmpd"; return 1
-    fi
-    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
-    if [[ -x /usr/local/bin/xray ]]; then
-        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
-    fi
-    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
-    prepare_abox_runtime_permissions xray || {
-        rm -f "$tmp"
-        rm -rf "$tmpd"
-        return 1
-    }
-    rm -f "$tmp"; rm -rf "$tmpd"
-    if xray_api_available && xray_api_remove_inbound "$tag"; then
-        if [[ "$routes_reference_tag" == true ]]; then
-            restart_service_soft xray
-            return $?
-        fi
-        return 0
-    fi
-    restart_service_soft xray
-}
-
 # R7-05B: enforce the loopback guard on a sing-box config file in place.
 # Prepends [{action:"resolve"}, {ip_cidr:[loopbacks], action:"reject"}]
 # to .route.rules (idempotent: no-op when the guard pair is already
@@ -30532,14 +30406,14 @@ _recycle_port_rules_if_unused() {
     # Xray config: a missing file counts as free; a present one must
     # parse and explicitly show the port free.
     if [[ -f /usr/local/etc/xray/config.json ]]; then
-        jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 || return 0
-        jq -e --argjson p "$port" '
+        jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e . >/dev/null 2>&1 || return 0
+        jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e --argjson p "$port" '
             def covers($p): ((if type == "object" then .port else null end) as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end);
             if type != "object" then false
             elif (.inbounds | type) == "array" then
                 ([.inbounds[] | select(covers($p))] | length) == 0
             elif (.inbounds | type) == "null" then true
-            else false end' /usr/local/etc/xray/config.json >/dev/null 2>&1 || return 0
+            else false end' >/dev/null 2>&1 || return 0
     fi
     # Hysteria returns 1 only when non-coverage is established; 0
     # (covered or unknown) keeps the rules.
@@ -33887,7 +33761,7 @@ _menu_info_collect() {
         done <<< "$_tags"
     fi
     if [[ "$tjt" != 'run' && -r /usr/local/etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
-        _p=$(jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' /usr/local/etc/xray/config.json 2>/dev/null | head -1)
+        _p=$(jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' 2>/dev/null | head -1)
         if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" "tcp" && tjt=run; fi
     fi
     if [[ -f /etc/ddr/.argo-state ]]; then
@@ -34048,7 +33922,7 @@ _menu_info_collect() {
         local _ocore='' _otags='' _ot='' _orf=''
         for _ocore in xray sing-box hy2; do
             case "$_ocore" in
-                xray) _otags=$(jq -r '.inbounds[]?.tag' /usr/local/etc/xray/config.json 2>/dev/null) ;;
+                xray) _otags=$(jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -r '.inbounds[]?.tag' 2>/dev/null) ;;
                 sing-box) _otags=$(jq -r '.inbounds[]?.tag' /etc/sing-box/config.json 2>/dev/null) ;;
                 hy2) _otags='hy2' ;;
             esac
@@ -34078,7 +33952,7 @@ _menu_info_collect() {
                 xray)
                     _rcfg='/usr/local/etc/xray/config.json'
                     if [[ -f "$_rcfg" ]]; then
-                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
+                        _rseg=$(jsonc_strip_comments "$_rcfg" 2>/dev/null | jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
                             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
                              elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
                              elif .protocol == "vless" then "VLESS:\(.port)"
@@ -34148,11 +34022,11 @@ _menu_info_collect() {
     # (The old nodes gate only collected live configs while a core was
     # running, so a stopped core read as "not deployed".)
     _MI_SOCKS_ST='none'
-    if { [[ -f /usr/local/etc/xray/config.json ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' /usr/local/etc/xray/config.json >/dev/null 2>&1; } \
+    if { [[ -f /usr/local/etc/xray/config.json ]] && jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e '.inbounds[]? | select(.protocol == "socks")' >/dev/null 2>&1; } \
        || { [[ -f /etc/sing-box/config.json ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; }; then
         _MI_SOCKS_ST='stop'
         if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]] \
-           && jq -e '.inbounds[]? | select(.protocol == "socks")' /usr/local/etc/xray/config.json >/dev/null 2>&1; then
+           && jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e '.inbounds[]? | select(.protocol == "socks")' >/dev/null 2>&1; then
             _MI_SOCKS_ST='run'
         elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]] \
              && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; then
@@ -34674,10 +34548,6 @@ routing_rules_clear() {
     tmp=$(mktemp) || return 1
     jq '.rules = []' "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
-}
-
-routing_state_clear() {
-    printf '%s\n' '{"version":1,"outbounds":[],"rules":[]}' | routing_state_put
 }
 
 # F-NEW-02: refuse a remote rule-set URL that provably does not exist
@@ -35302,7 +35172,7 @@ warp_deploy_inner() {
     # routing_apply_all_managed below applies to every managed core.
     # Abort only when no core at all is known.
     if [[ -z "$core" ]]; then
-        if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray && ! service_is_abox_managed hysteria; then
+        if ! abox_owns_service sing-box && ! abox_owns_service xray && ! abox_owns_service hysteria; then
             msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
             # 05a-M1: do NOT delete 'warp-out' here. This deploy has
             # not registered anything yet, so any warp-out in the
@@ -35373,7 +35243,7 @@ warp_undeploy() {
         # a running service via its own gate). Hysteria is excluded:
         # it cannot carry routing, so a hysteria-only box keeps the
         # scrub path instead of failing the apply.
-        if ! service_is_abox_managed sing-box && ! service_is_abox_managed xray; then
+        if ! abox_owns_service sing-box && ! abox_owns_service xray; then
             # L6-NEW-01: no core means no routing_apply_live to retire
             # the endpoint/rules through, but the residue is still on
             # disk and the menu has no other way to clear it (every
@@ -36233,7 +36103,7 @@ _xl_legacy_adopt() {
     [[ "$_slot_uid" == '0' ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is not root-owned.${NC}" >&2; return 1; }
     path_mode_has_no_group_other_write "$_slot_bin" || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is group- or other-writable; manual review required.${NC}" >&2; return 1; }
     [[ -f "$_slot_cfg" && ! -L "$_slot_cfg" ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray config is missing.${NC}" >&2; return 1; }
-    jq empty "$_slot_cfg" >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config is not valid JSON.${NC}" >&2; return 1; }
+    jsonc_strip_comments "$_slot_cfg" 2>/dev/null | jq empty >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config is not valid JSON.${NC}" >&2; return 1; }
     # Config test with the normal Xray runtime identity.
     XRAY_LOCATION_ASSET=/usr/local/share/xray "$_slot_bin" run -test -config "$_slot_cfg" >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config fails the core self-test.${NC}" >&2; return 1; }
     # Service: A-Box-owned, ExecStart points at the normal slot.
@@ -36780,7 +36650,7 @@ deploy_xray() {
 
     build_xray_config "$MODE_IN"
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
-    jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
+    jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq empty >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
     XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
     standalone_preserve_restore xray /usr/local/etc/xray/config.json || { deployment_transaction_rollback; return 1; }
 
@@ -42308,17 +42178,6 @@ save_fast_mode() {
     ensure_abox_dir_owned "$ABOX_DIR" || die "$(tr_msg state_dir_prep)"
     write_file_atomically_from_stdin "$FAST_MODE_FILE" 600 <<< "$v" || die "$(tr_msg fm_write)"
 }
-
-abox_prefer_mirror() {
-    # Compatibility shim; official stable releases always have priority.
-    return 1
-}
-
-save_mirror_prefer() {
-    msg "${YELLOW}$(tr_msg save_mirror_prefer_fixed_order)${NC}"
-    return 1
-}
-
 
 confirm_soft() {
     # Non-critical confirm: auto-yes in fast mode. Never use for uninstall/digest/destructive wipe.
@@ -52077,13 +51936,6 @@ run_local_sni_mini_benchmark() {
 }
 
 
-
-run_warp_manager() {
-    if confirm_yes_no "$(tprintf confirm_remote 'fscarmen/warp Cloudflare WARP menu')"; then
-        run_remote_bash_script 'fscarmen/warp Cloudflare WARP menu' 'https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh'
-    fi
-    pause_return
-}
 
 swapfile_active_state() {
     # Return 0=active, 1=definitely inactive, 2=query failure.

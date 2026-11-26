@@ -908,9 +908,18 @@ write_sni_candidate_library() {
         awk '!seen[$0]++' > "$generated"
 
     append_tmp=$(umask 077; mktemp /tmp/A-Box-sni-lib-append.XXXXXX) || { rm -f "$raw" "$generated" "$tmp"; die 'SNI candidate append temporary file creation failed.'; }
-    if ! awk -F. 'NF>=2 {
+    # D10: match strong apexes by table lookup, not one giant
+    # alternation regex: mawk 1.3.3 (Debian 10 buster) rejects regexes
+    # over its implementation size limit, which aborted the whole
+    # script via die (self-test printed no marker). Table lookup is
+    # exact-match, identical semantics, and portable across mawk/gawk.
+    if ! awk -F. 'BEGIN {
+        n = split("github cloudflare microsoft google apache mozilla docker kubernetes linuxfoundation cncf python rust-lang golang go oracle ibm redhat ubuntu debian nginx postgresql mongodb elastic hashicorp terraform confluent fastly akamai digitalocean linode vultr hetzner ovhcloud scaleway openai anthropic huggingface pytorch tensorflow ietf w3 rfc-editor openssl curl gnu kernel freebsd openbsd netbsd eclipse jetbrains npmjs nodejs typescriptlang redis sqlite mysql wikimedia wikipedia archive stackoverflow stackexchange nasa nist cisa stanford mit berkeley cambridge ox ethz epfl unimelb sydney unsw monash auckland cloudfront amazonaws", _strong, " ")
+        for (i = 1; i <= n; i++) strong[_strong[i]] = 1
+    }
+    NF>=2 {
         base=$(NF-1); apex=base "." $NF
-        if (base ~ /^(github|cloudflare|microsoft|google|apache|mozilla|docker|kubernetes|linuxfoundation|cncf|python|rust-lang|golang|go|oracle|ibm|redhat|ubuntu|debian|nginx|postgresql|mongodb|elastic|hashicorp|terraform|confluent|fastly|akamai|digitalocean|linode|vultr|hetzner|ovhcloud|scaleway|openai|anthropic|huggingface|pytorch|tensorflow|ietf|w3|rfc-editor|openssl|curl|gnu|kernel|freebsd|openbsd|netbsd|eclipse|jetbrains|npmjs|nodejs|typescriptlang|redis|sqlite|mysql|wikimedia|wikipedia|archive|stackoverflow|stackexchange|nasa|nist|cisa|stanford|mit|berkeley|cambridge|ox|ethz|epfl|unimelb|sydney|unsw|monash|auckland|cloudfront|amazonaws)$/) print apex
+        if (base in strong) print apex
     }' "$generated" | awk '!seen[$0]++' | while IFS= read -r apex; do
         for p in www docs doc developer developers api status support blog cdn static assets download downloads registry repo packages pkg files raw resources community help learn training security; do
             printf '%s.%s\n' "$p" "$apex"

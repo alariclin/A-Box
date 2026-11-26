@@ -30396,13 +30396,18 @@ _recycle_port_rules_if_unused() {
     local port="$1" sb_cfg="${2:-/etc/sing-box/config.json}"
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
     # sing-box config must parse and explicitly show the port free.
-    jq -e . "$sb_cfg" >/dev/null 2>&1 || return 0
-    jq -e --argjson p "$port" '
+    # AP-01 residual (A-leg): strip JSONC comments first -- the live
+    # config may legally carry // or /* */ comments, which bare jq
+    # rejects; the probe then failed and the rules were silently
+    # never recycled on commented configs. Same strip-once idiom as
+    # the Xray side below.
+    jsonc_strip_comments "$sb_cfg" 2>/dev/null | jq -e . >/dev/null 2>&1 || return 0
+    jsonc_strip_comments "$sb_cfg" 2>/dev/null | jq -e --argjson p "$port" '
         if type != "object" then false
         elif (.inbounds | type) == "array" then
             ([.inbounds[] | select(if type == "object" then .listen_port == $p else true end)] | length) == 0
         elif (.inbounds | type) == "null" then true
-        else false end' "$sb_cfg" >/dev/null 2>&1 || return 0
+        else false end' >/dev/null 2>&1 || return 0
     # Xray config: a missing file counts as free; a present one must
     # parse and explicitly show the port free.
     if [[ -f /usr/local/etc/xray/config.json ]]; then
@@ -33802,6 +33807,35 @@ _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
 
+    # AP-01-residual (B-leg): strip-once JSONC views of the two live
+    # core configs. Both files may legally carry // or /* */ comments
+    # (R16-F05-04/R14-F01-01 class; both cores parse JSONC natively),
+    # so every jq below reads the stripped view, never the live file.
+    # On strip failure fall back to the raw file (strip failure !=
+    # read failure). The views are temp files, removed at the single
+    # exit at the end of this function (the only early return is the
+    # _MI_COLLECTED guard above, before the views exist).
+    local _mi_sb_cfg='/etc/sing-box/config.json' _mi_xr_cfg='/usr/local/etc/xray/config.json'
+    local _mi_sb_tmp='' _mi_xr_tmp=''
+    if [[ -f "$_mi_sb_cfg" && ! -L "$_mi_sb_cfg" ]]; then
+        _mi_sb_tmp=$(mktemp /tmp/A-Box-mi-sb-json.XXXXXX 2>/dev/null || true)
+        if [[ -n "$_mi_sb_tmp" ]] && jsonc_strip_comments "$_mi_sb_cfg" > "$_mi_sb_tmp" 2>/dev/null; then
+            _mi_sb_cfg="$_mi_sb_tmp"
+        else
+            [[ -n "$_mi_sb_tmp" ]] && rm -f -- "$_mi_sb_tmp"
+            _mi_sb_tmp=''
+        fi
+    fi
+    if [[ -f "$_mi_xr_cfg" && ! -L "$_mi_xr_cfg" ]]; then
+        _mi_xr_tmp=$(mktemp /tmp/A-Box-mi-xr-json.XXXXXX 2>/dev/null || true)
+        if [[ -n "$_mi_xr_tmp" ]] && jsonc_strip_comments "$_mi_xr_cfg" > "$_mi_xr_tmp" 2>/dev/null; then
+            _mi_xr_cfg="$_mi_xr_tmp"
+        else
+            [[ -n "$_mi_xr_tmp" ]] && rm -f -- "$_mi_xr_tmp"
+            _mi_xr_tmp=''
+        fi
+    fi
+
     # Slow probes (fail2ban-client/docker/ufw are interpreter CLIs with
     # 0.2-0.8s cold starts) launch concurrently here; results are read
     # back at the original consumption points below. If the temp dir
@@ -33869,7 +33903,7 @@ _menu_info_collect() {
     local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
     if command -v ss >/dev/null 2>&1; then _ss=$(ss -tuln 2>/dev/null); fi
     if [[ -r /etc/sing-box/config.json ]] && command -v jq >/dev/null 2>&1; then
-        _tags=$(jq -r '(.inbounds // [])[] | select((.tag // "") | test("^(tuic-in|anytls-in|shadowtls-in|trojan-landing)(-[0-9]+)?$")) | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
+        _tags=$(jq -r '(.inbounds // [])[] | select((.tag // "") | test("^(tuic-in|anytls-in|shadowtls-in|trojan-landing)(-[0-9]+)?$")) | "\(.tag) \(.listen_port // empty)"' "$_mi_sb_cfg" 2>/dev/null)
         while read -r _t _p; do
             [[ -n "$_p" ]] || continue
             # Any listening instance wins: a surviving tuic-in-2 must
@@ -33884,7 +33918,7 @@ _menu_info_collect() {
         done <<< "$_tags"
     fi
     if [[ "$tjt" != 'run' && -r /usr/local/etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
-        _p=$(jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' 2>/dev/null | head -1)
+        _p=$(jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' "$_mi_xr_cfg" 2>/dev/null | head -1)
         if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" "tcp" && tjt=run; fi
     fi
     if [[ -f /etc/ddr/.argo-state ]]; then
@@ -33969,16 +34003,16 @@ _menu_info_collect() {
              elif .protocol == "socks" then "SOCKS5"
              else .protocol end) as $n
             | "\($n):\(.port)"' \
-            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
+            "$_mi_xr_cfg" 2>/dev/null | tr '\n' '|' | sed 's/|$//')
         sni=$(jq -r '[.inbounds[]? | select(.tag != "api") | .streamSettings.realitySettings.serverNames[0] // empty][0] // empty' \
-            /usr/local/etc/xray/config.json 2>/dev/null)
+            "$_mi_xr_cfg" 2>/dev/null)
     fi
     if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
         nodes_s=$(jq -r '.inbounds[]? | select(((.tag // "") | test("^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$") | not) and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
              elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end) as $n
-            | "\($n):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
+            | "\($n):\(.listen_port)"' "$_mi_sb_cfg" 2>/dev/null | tr '\n' '|' | sed 's/|$//')
     fi
     nodes="${nodes_x:+$nodes_x|}${nodes_s}"
     nodes="${nodes%|}"
@@ -34005,7 +34039,7 @@ _menu_info_collect() {
                  elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
                  elif .protocol == "vless" then "VLESS:\(.port)"
                  elif .protocol == "trojan" then "Trojan:\(.port)"
-                 elif .protocol == "vmess" then "VMess:\(.port)" else empty end) + "\t" + $sn' /usr/local/etc/xray/config.json 2>/dev/null
+                 elif .protocol == "vmess" then "VMess:\(.port)" else empty end) + "\t" + $sn' "$_mi_xr_cfg" 2>/dev/null
         fi
         if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
             jq -r '.inbounds[]? | select(((.tag // "") | test("^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$") | not)) |
@@ -34014,7 +34048,7 @@ _menu_info_collect() {
              elif .type == "trojan" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "Trojan:\(.listen_port)\t\($sn)"
                  elif .type == "tuic" then ((.tls.server_name // empty)) as $sn | select($sn != "") | "TUIC:\(.listen_port)\t\($sn)"
                  elif .type == "shadowtls" then ((.handshake.server // empty)) as $sn | select($sn != "") | "ShadowTLS:\(.listen_port)\t\($sn)"
-                 else empty end)' /etc/sing-box/config.json 2>/dev/null
+                 else empty end)' "$_mi_sb_cfg" 2>/dev/null
         fi
     } 2>/dev/null )
     if [[ -n "$_sni_rows" ]]; then
@@ -34045,8 +34079,8 @@ _menu_info_collect() {
         local _ocore='' _otags='' _ot='' _orf=''
         for _ocore in xray sing-box hy2; do
             case "$_ocore" in
-                xray) _otags=$(jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -r '.inbounds[]?.tag' 2>/dev/null) ;;
-                sing-box) _otags=$(jq -r '.inbounds[]?.tag' /etc/sing-box/config.json 2>/dev/null) ;;
+                xray) _otags=$(jq -r '.inbounds[]?.tag' "$_mi_xr_cfg" 2>/dev/null) ;;
+                sing-box) _otags=$(jq -r '.inbounds[]?.tag' "$_mi_sb_cfg" 2>/dev/null) ;;
                 hy2) _otags='hy2' ;;
             esac
             for _ot in $_otags; do
@@ -34075,14 +34109,14 @@ _menu_info_collect() {
                 xray)
                     _rcfg='/usr/local/etc/xray/config.json'
                     if [[ -f "$_rcfg" ]]; then
-                        _rseg=$(jsonc_strip_comments "$_rcfg" 2>/dev/null | jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
+                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
                             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
                              elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
                              elif .protocol == "vless" then "VLESS:\(.port)"
                              elif .protocol == "shadowsocks" then "SS:\(.port)"
                              elif .protocol == "trojan" then "Trojan:\(.port)"
                              elif .protocol == "hysteria2" then "Hy2:\(.port)"
-                             else "\(.protocol):\(.port)" end)' "$_rcfg" 2>/dev/null)
+                             else "\(.protocol):\(.port)" end)' "$_mi_xr_cfg" 2>/dev/null)
                         [[ -z "$_rseg" ]] && _rseg="$_rtag"
                     fi ;;
                 sing-box)
@@ -34094,12 +34128,12 @@ _menu_info_collect() {
                              elif .type == "anytls" then "AnyTLS:\(.listen_port)"
                              elif .type == "shadowtls" then "ShadowTLS:\(.listen_port)"
                              elif .type == "hysteria2" then "Hy2:\(.listen_port)"
-                             else "\(.type):\(.listen_port)" end)' /etc/sing-box/config.json 2>/dev/null)
+                             else "\(.type):\(.listen_port)" end)' "$_mi_sb_cfg" 2>/dev/null)
                         [[ -z "$_rseg" ]] && _rseg="$_rtag"
                         if [[ "$_rtag" == 'shadowtls-ss' ]]; then
                             local _stp=''
-                            _stp=$(jq -r '[.inbounds[]? | select(.type == "shadowtls") | .listen_port // empty][0] // empty' /etc/sing-box/config.json 2>/dev/null)
-                            [[ -z "$_stp" ]] && _stp=$(jq -r --arg t "$_rtag" '[.inbounds[]? | select(.tag == $t) | .listen_port // empty][0] // empty' /etc/sing-box/config.json 2>/dev/null)
+                            _stp=$(jq -r '[.inbounds[]? | select(.type == "shadowtls") | .listen_port // empty][0] // empty' "$_mi_sb_cfg" 2>/dev/null)
+                            [[ -z "$_stp" ]] && _stp=$(jq -r --arg t "$_rtag" '[.inbounds[]? | select(.tag == $t) | .listen_port // empty][0] // empty' "$_mi_sb_cfg" 2>/dev/null)
                             [[ -n "$_stp" ]] && _rseg="ShadowTLS:$_stp"
                         fi
                     fi ;;
@@ -34145,14 +34179,14 @@ _menu_info_collect() {
     # (The old nodes gate only collected live configs while a core was
     # running, so a stopped core read as "not deployed".)
     _MI_SOCKS_ST='none'
-    if { [[ -f /usr/local/etc/xray/config.json ]] && jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e '.inbounds[]? | select(.protocol == "socks")' >/dev/null 2>&1; } \
-       || { [[ -f /etc/sing-box/config.json ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; }; then
+    if { [[ -f /usr/local/etc/xray/config.json ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' "$_mi_xr_cfg" >/dev/null 2>&1; } \
+       || { [[ -f /etc/sing-box/config.json ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' "$_mi_sb_cfg" >/dev/null 2>&1; }; then
         _MI_SOCKS_ST='stop'
         if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]] \
-           && jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e '.inbounds[]? | select(.protocol == "socks")' >/dev/null 2>&1; then
+           && jq -e '.inbounds[]? | select(.protocol == "socks")' "$_mi_xr_cfg" >/dev/null 2>&1; then
             _MI_SOCKS_ST='run'
         elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]] \
-             && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; then
+             && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' "$_mi_sb_cfg" >/dev/null 2>&1; then
             _MI_SOCKS_ST='run'
         fi
     fi
@@ -34244,6 +34278,10 @@ _menu_info_collect() {
             esac
         fi
     fi
+
+    # AP-01-residual (B-leg): drop the strip-once views built at the top.
+    [[ -n "$_mi_sb_tmp" ]] && rm -f -- "$_mi_sb_tmp" 2>/dev/null
+    [[ -n "$_mi_xr_tmp" ]] && rm -f -- "$_mi_xr_tmp" 2>/dev/null
 }
 
 # One matrix cell: [ name(padded) dot ]
@@ -58820,7 +58858,7 @@ wallos_wait_healthy() {
 # NOTE: this writes no stdout -- wallos_create_backup's output is
 # captured as the backup path, so diagnostics go to stderr.
 wallos_rebuild_state_from_live() {
-    local image='' image_id='' port='' tz='' bind='' mode='' pubport='' cfhost='' version='' ver_src=''
+    local image='' image_id='' port='' tz='' bind='' mode='' pubport='' cfhost='' version='' ver_src='' _jq_caddy=''
     local _label='' _env='' _tags='' _tag=''
     # R14-07 idiom: only a container carrying the A-Box managed label
     # may donate its metadata; a foreign same-name holder refuses.
@@ -58874,7 +58912,13 @@ wallos_rebuild_state_from_live() {
         mode='cftunnel'
     elif is_service_running abox-wallos-caddy 2>/dev/null && [[ -f /etc/ddr/wallos-caddy.json && ! -L /etc/ddr/wallos-caddy.json ]]; then
         mode='https'
-        pubport=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' /etc/ddr/wallos-caddy.json 2>/dev/null || true)
+        # M-6 (AP-01 C-leg): this file is a persistent live file, read
+        # in a later invocation than the install that wrote it; a hand
+        # edit or backup restore can leave comments in it, so bare jq
+        # fails and PUBPORT is silently lost (stale/omitted in the
+        # rebuilt state). Strip once, read the stripped view.
+        _jq_caddy=$(jsonc_strip_comments /etc/ddr/wallos-caddy.json 2>/dev/null || true)
+        pubport=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.listen[0] // empty' 2>/dev/null || true)
         pubport="${pubport#:}"
         [[ "$pubport" =~ ^[0-9]+$ ]] || pubport=''
     elif [[ "$bind" == 0.0.0.0 ]]; then
@@ -60664,13 +60708,18 @@ wallos_https_80_rollback() {
 # public port $1 to internal 127.0.0.1:$2. A missing/unreadable file,
 # missing jq, bad JSON, or any mismatch returns 1 (setup must run).
 _wallos_caddy_config_matches() { # $1=public port $2=internal port
-    local pubport="${1:-}" internal="${2:-}" cfg='/etc/ddr/wallos-caddy.json' listen='' dial=''
+    local pubport="${1:-}" internal="${2:-}" cfg='/etc/ddr/wallos-caddy.json' listen='' dial='' _jq_caddy=''
     [[ "$pubport" =~ ^[0-9]+$ ]] || return 1
     [[ "$internal" =~ ^[0-9]+$ ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     command -v jq >/dev/null 2>&1 || return 1
-    listen=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' "$cfg" 2>/dev/null) || return 1
-    dial=$(jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' "$cfg" 2>/dev/null) || return 1
+    # M-6 (AP-01 C-leg): $cfg is a persistent live file, not installed
+    # in this invocation; comments (hand edit / restore) make bare jq
+    # fail, so a matching config misreports as no-match and the caller
+    # tears down and redoes the whole HTTPS setup. Strip once.
+    _jq_caddy=$(jsonc_strip_comments "$cfg" 2>/dev/null || true)
+    listen=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.listen[0] // empty' 2>/dev/null) || return 1
+    dial=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' 2>/dev/null) || return 1
     [[ "$listen" == ":$pubport" && "$dial" == "127.0.0.1:$internal" ]]
 }
 

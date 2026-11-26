@@ -1448,7 +1448,7 @@ wallos_wait_healthy() {
 # NOTE: this writes no stdout -- wallos_create_backup's output is
 # captured as the backup path, so diagnostics go to stderr.
 wallos_rebuild_state_from_live() {
-    local image='' image_id='' port='' tz='' bind='' mode='' pubport='' cfhost='' version='' ver_src=''
+    local image='' image_id='' port='' tz='' bind='' mode='' pubport='' cfhost='' version='' ver_src='' _jq_caddy=''
     local _label='' _env='' _tags='' _tag=''
     # R14-07 idiom: only a container carrying the A-Box managed label
     # may donate its metadata; a foreign same-name holder refuses.
@@ -1502,7 +1502,13 @@ wallos_rebuild_state_from_live() {
         mode='cftunnel'
     elif is_service_running abox-wallos-caddy 2>/dev/null && [[ -f /etc/ddr/wallos-caddy.json && ! -L /etc/ddr/wallos-caddy.json ]]; then
         mode='https'
-        pubport=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' /etc/ddr/wallos-caddy.json 2>/dev/null || true)
+        # M-6 (AP-01 C-leg): this file is a persistent live file, read
+        # in a later invocation than the install that wrote it; a hand
+        # edit or backup restore can leave comments in it, so bare jq
+        # fails and PUBPORT is silently lost (stale/omitted in the
+        # rebuilt state). Strip once, read the stripped view.
+        _jq_caddy=$(jsonc_strip_comments /etc/ddr/wallos-caddy.json 2>/dev/null || true)
+        pubport=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.listen[0] // empty' 2>/dev/null || true)
         pubport="${pubport#:}"
         [[ "$pubport" =~ ^[0-9]+$ ]] || pubport=''
     elif [[ "$bind" == 0.0.0.0 ]]; then
@@ -3292,13 +3298,18 @@ wallos_https_80_rollback() {
 # public port $1 to internal 127.0.0.1:$2. A missing/unreadable file,
 # missing jq, bad JSON, or any mismatch returns 1 (setup must run).
 _wallos_caddy_config_matches() { # $1=public port $2=internal port
-    local pubport="${1:-}" internal="${2:-}" cfg='/etc/ddr/wallos-caddy.json' listen='' dial=''
+    local pubport="${1:-}" internal="${2:-}" cfg='/etc/ddr/wallos-caddy.json' listen='' dial='' _jq_caddy=''
     [[ "$pubport" =~ ^[0-9]+$ ]] || return 1
     [[ "$internal" =~ ^[0-9]+$ ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     command -v jq >/dev/null 2>&1 || return 1
-    listen=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' "$cfg" 2>/dev/null) || return 1
-    dial=$(jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' "$cfg" 2>/dev/null) || return 1
+    # M-6 (AP-01 C-leg): $cfg is a persistent live file, not installed
+    # in this invocation; comments (hand edit / restore) make bare jq
+    # fail, so a matching config misreports as no-match and the caller
+    # tears down and redoes the whole HTTPS setup. Strip once.
+    _jq_caddy=$(jsonc_strip_comments "$cfg" 2>/dev/null || true)
+    listen=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.listen[0] // empty' 2>/dev/null) || return 1
+    dial=$(printf '%s' "$_jq_caddy" | jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' 2>/dev/null) || return 1
     [[ "$listen" == ":$pubport" && "$dial" == "127.0.0.1:$internal" ]]
 }
 

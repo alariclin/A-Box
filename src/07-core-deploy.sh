@@ -2487,13 +2487,18 @@ _recycle_port_rules_if_unused() {
     local port="$1" sb_cfg="${2:-/etc/sing-box/config.json}"
     [[ "$port" =~ ^[0-9]+$ ]] || return 0
     # sing-box config must parse and explicitly show the port free.
-    jq -e . "$sb_cfg" >/dev/null 2>&1 || return 0
-    jq -e --argjson p "$port" '
+    # AP-01 residual (A-leg): strip JSONC comments first -- the live
+    # config may legally carry // or /* */ comments, which bare jq
+    # rejects; the probe then failed and the rules were silently
+    # never recycled on commented configs. Same strip-once idiom as
+    # the Xray side below.
+    jsonc_strip_comments "$sb_cfg" 2>/dev/null | jq -e . >/dev/null 2>&1 || return 0
+    jsonc_strip_comments "$sb_cfg" 2>/dev/null | jq -e --argjson p "$port" '
         if type != "object" then false
         elif (.inbounds | type) == "array" then
             ([.inbounds[] | select(if type == "object" then .listen_port == $p else true end)] | length) == 0
         elif (.inbounds | type) == "null" then true
-        else false end' "$sb_cfg" >/dev/null 2>&1 || return 0
+        else false end' >/dev/null 2>&1 || return 0
     # Xray config: a missing file counts as free; a present one must
     # parse and explicitly show the port free.
     if [[ -f /usr/local/etc/xray/config.json ]]; then

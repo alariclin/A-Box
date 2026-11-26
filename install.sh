@@ -59261,6 +59261,30 @@ _wallos_record_created_from_cidfile() {
     return 0
 }
 
+# H7-C (H7-F1 residual): a docker run/create that fails AFTER creating
+# the container leaves a legitimate transaction container holding the
+# 'wallos' name while the journal still names the previous one; the
+# next recovery then refuses its own rebuild (live != journal
+# new_container_id, journal kept forever). Remove only the container
+# THIS attempt created, by its --cidfile ID (label-checked, same idiom
+# as the install path's run-failure cleanup and the helper above), so
+# a retry rebuilds from scratch. No cidfile (e.g. a name conflict
+# created nothing) means nothing to remove: leave it alone
+# (fail-closed); a non-managed holder is likewise never removed.
+# $1 = cidfile path docker was told to write. Always returns 0.
+_wallos_cleanup_failed_create() {
+    local _f="${1:-}" _id='' _lbl=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 0
+    IFS= read -r _id < "$_f" || true
+    _id=$(_wallos_normalize_container_id "$_id" 2>/dev/null || true)
+    [[ -n "$_id" ]] || return 0
+    _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_id" 2>/dev/null || true)
+    [[ "$_lbl" == 'true' ]] || return 0
+    docker rm -f "$_id" >/dev/null 2>&1 || true
+    rm -f -- "$_f" 2>/dev/null || true
+    return 0
+}
+
 wallos_txn_value() {
     local file="$1" key="$2"
     awk -F= -v key="$key" '
@@ -59661,7 +59685,7 @@ EOF_B15_SIDECAR
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || { _wallos_cleanup_failed_create "$WALLOS_DIR/.upgrade-transaction.cid"; return 1; }
         # H7-F1: record the rebuilt container in the journal BEFORE
         # the health gate below: a health failure returns 1 with the
         # journal kept, and a retry must see live==new. old_image is
@@ -59691,7 +59715,7 @@ EOF_B15_SIDECAR
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || { _wallos_cleanup_failed_create "$WALLOS_DIR/.upgrade-transaction.cid"; return 1; }
         # H7-F1: same journal refresh as the run branch above.
         if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
             rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
@@ -61317,7 +61341,7 @@ wallos_restore_direct_container() {
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { rm -rf -- "$_rdc_cid_dir"; return 1; }
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { _wallos_cleanup_failed_create "$_rdc_cid_dir/id"; rm -rf -- "$_rdc_cid_dir"; return 1; }
     if [[ -f "$_rdc_cid_dir/id" ]]; then
         IFS= read -r _rdc_created_id < "$_rdc_cid_dir/id" || true
     fi
@@ -70235,6 +70259,25 @@ PY_SELFTEST_TAR
     # only an empty expectation means "no expectation".
     if ( docker() { return 0; }; _wallos_rm_named_id 'not-a-container-id' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must refuse an illegal expected container ID'; failures=$((failures + 1))
+    fi
+    # H7-C: a run/create that fails after creating the container must
+    # not strand it: the failed-create cleanup removes only the
+    # --cidfile container (label-checked, by ID), so a retry rebuilds
+    # instead of wedging on a stale journal new_container_id.
+    if ! ( : > "$tmp/wallos-h7c-calls"; printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-h7c-cid"
+        docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; case "$*" in *'Config.Labels'*) printf 'true\n'; return 0 ;; 'rm -f '*) return 0 ;; *) return 0 ;; esac; }
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-cid" >/dev/null 2>&1 && [[ ! -e "$tmp/wallos-h7c-cid" ]] && grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup did not remove the cidfile container by ID'; failures=$((failures + 1))
+    fi
+    if ! ( : > "$tmp/wallos-h7c-calls"
+        docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; case "$*" in *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }
+        printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-h7c-cid2"
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-cid2" >/dev/null 2>&1 && [[ -e "$tmp/wallos-h7c-cid2" ]] && ! grep -q 'rm -f ' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup must leave a non-managed cidfile container alone'; failures=$((failures + 1))
+    fi
+    if ! ( : > "$tmp/wallos-h7c-calls"; docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; return 0; }
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-missing" >/dev/null 2>&1 && ! grep -q 'rm -f ' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup must be a no-op without a cidfile'; failures=$((failures + 1))
     fi
     # H7rest: the php version probe execs the pinned container ID.
     if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then

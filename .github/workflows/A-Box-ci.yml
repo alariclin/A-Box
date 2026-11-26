@@ -23,8 +23,18 @@ jobs:
       - name: Bash syntax
         run: |
           bash -n install.sh
+          bash -n build.sh
           bash -n scripts/update-core-mirror.sh
           bash -n scripts/prune-core-mirror.sh
+      - name: Verify install.sh matches modular build
+        # Roadmap step 3 (split leg): install.sh is a build artifact
+        # assembled by build.sh from src/ modules. Rebuild to a temp
+        # path (the checkout tree is untouched) and require byte
+        # identity with the committed install.sh, so a stale generated
+        # file can never ship silently.
+        run: |
+          bash build.sh /tmp/install.sh.rebuilt
+          cmp /tmp/install.sh.rebuilt install.sh
       - name: Add swap for ShellCheck on large install.sh
         # shellcheck on the 63k-line install.sh needs >5 GB RSS and keeps
         # growing; the ubuntu-latest runner (7 GB RAM) kills the runner

@@ -54975,7 +54975,13 @@ convert_legacy_backup_archive() {
     # created) would pass the ! -L gate below, which only ever sees the
     # resolved target. A symlink input is refused outright.
     [[ ! -L "$out_dir" ]] || die 'Legacy conversion output directory must not be a symbolic link.'
-    out_dir=$(realpath -m -- "$out_dir" 2>/dev/null || printf '%s' "$out_dir")
+    # G2: BusyBox realpath has no -m/-- and still prints the resolved
+    # path to stdout while failing (rc=1); the old $(realpath ... ||
+    # printf) shape then concatenated the partial output with the
+    # fallback, doubling the path with an embedded newline. Only use
+    # the realpath output when it succeeds; on failure keep the
+    # original value (the partial output is discarded by the overwrite).
+    out_dir=$(realpath -m -- "$out_dir" 2>/dev/null) || out_dir="$out_dir"
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
     # R6C14-01: private root-only copy BEFORE any validation; every
     # later read uses the copy, so a swap of $selected afterwards
@@ -72167,6 +72173,92 @@ PY_F05_TPUB
     else
         selftest_note 'F-05 Ed25519 tests skipped (openssl/python3 missing)'
     fi
+    # G2 (roadmap step 3, gate 4): seven high-risk scenarios from the
+    # 2026-11-25/26 arbitrations. Each guard below FAILS on the pre-fix
+    # code named in legs/g2/high-risk-scenarios.md and PASSES on the fixed
+    # code; per-item对照 logs live in legs/g2/gate4/.
+    # g2_ordered_in_func FN BEFORE AFTER: both fixed strings must occur in
+    # FN's body, BEFORE earlier than AFTER. g2_func_contains FN PAT: PAT
+    # must occur in FN's body. Single-process awk on purpose: the script
+    # runs under `set -o pipefail`, so a `sed | grep -q` pipeline reports
+    # 141 (SIGPIPE) when grep -q exits early on a long function body
+    # while sed is still writing -- the match is found yet the guard
+    # fails (measured: rc=141 on 539- and 224-line bodies, 0 on short
+    # ones). The source snapshot excludes this region, so these patterns
+    # can never match their own assertion lines. The closing brace is
+    # matched as a bare `}` line: deploy_singbox embeds lines starting
+    # with }" inside a quoted string, which a /^}/ end would mistake
+    # for the function's closing brace.
+    g2_ordered_in_func() {
+        awk -v fn="$1" -v before="$2" -v after="$3" '
+            $0 == fn "() {" { in_fn = 1; next }
+            in_fn && $0 == "}" { exit }
+            in_fn && bl == 0 && index($0, before) { bl = NR }
+            in_fn && al == 0 && index($0, after) { al = NR }
+            END { exit (bl > 0 && al > 0 && bl < al) ? 0 : 1 }
+        ' "$source_body_file"
+    }
+    g2_func_contains() {
+        awk -v fn="$1" -v pat="$2" '
+            $0 == fn "() {" { in_fn = 1; next }
+            in_fn && $0 == "}" { exit }
+            in_fn && index($0, pat) { found = 1; exit 0 }
+            END { exit(found ? 0 : 1) }
+        ' "$source_body_file"
+    }
+    # 1. H7-F1 (33b): recovery must accept the container this transaction
+    # created. The journal's new_container_id is the expected live pin
+    # after B is built; comparing live only against the old container A
+    # refused recovery of its own replacement.
+    g2_func_contains _wallos_recover_interrupted_upgrade_impl '[[ "$_rc_cid" != "$_journal_new_id" ]]' || { echo 'FAIL: H7-F1 Wallos recovery must compare the live container against the journal new_container_id'; failures=$((failures + 1)); }
+    # 2. LOW-2 / H-2 dim 1 (Gemini): the TUIC uniqueness gate must run
+    # before any certificate is generated, so a duplicate/foreign tag
+    # dies before it can mint a key/cert pair.
+    g2_ordered_in_func deploy_singbox_tuic 'length) == 1 and $same[0].type == "tuic"' 'generate_self_signed_cert_atomically "$_tuic_key" "$_tuic_crt"' || { echo 'FAIL: LOW-2 TUIC uniqueness gate must precede certificate generation'; failures=$((failures + 1)); }
+    # 3. H-2 dim 2 (Gemini): a restored TUIC key/cert comes back 0600 and
+    # sing-box runs as abox-singbox (needs 0640 root:abox-singbox);
+    # restore_tuic_backups must re-apply runtime permissions after the
+    # copy, before any caller restarts the service.
+    g2_ordered_in_func restore_tuic_backups 'restore_cfg_backup "$cfg_bak" "$cfg"' 'prepare_abox_runtime_permissions sing-box' || { echo 'FAIL: H-2 TUIC restore must re-apply runtime permissions after the copy'; failures=$((failures + 1)); }
+    # 4. M-6 (Gemini): deploy must snapshot before mutating config, and jq
+    # must never read a JSONC config raw (a // comment breaks the parse
+    # and the check silently passes or dies). The jq guards are scoped to
+    # their functions: the same stripped-view prefix occurs in other
+    # functions, so a whole-file grep would pass on pre-fix code.
+    g2_func_contains deploy_singbox 'auto_backup_silent' || { echo 'FAIL: M-6 deploy_singbox must snapshot before mutating config'; failures=$((failures + 1)); }
+    g2_func_contains deploy_official_hy2 'auto_backup_silent' || { echo 'FAIL: M-6 deploy_official_hy2 must snapshot before mutating config'; failures=$((failures + 1)); }
+    g2_func_contains xray_config_reality_flags 'jsonc_strip_comments "$cfg" 2>/dev/null | jq -e' || { echo 'FAIL: M-6 reality flag probes must strip JSONC comments before jq'; failures=$((failures + 1)); }
+    g2_func_contains _xrc_config_has_expected_data_inbound 'jsonc_strip_comments "$cfg" 2>/dev/null | jq -r' || { echo 'FAIL: M-6 xray port probe must strip JSONC comments before jq'; failures=$((failures + 1)); }
+    g2_func_contains _xrc_restore_divergence_check 'jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r' || { echo 'FAIL: M-6 xray divergence check must strip JSONC comments before jq'; failures=$((failures + 1)); }
+    # 5. Manifest NUL (Gemini C-1): a NUL byte in the ownership manifest
+    # must fail closed -- a truncated or injected row must never be
+    # treated as a valid manifest.
+    printf 'F\txray\t/etc/xray/config.json\t%064d\n' 0 > "$tmp/g2-manifest-good"
+    assert_ok _manifest_rows_valid "$tmp/g2-manifest-good"
+    { printf 'F\txray\t/etc/xray/config.json\t%064d' 0; printf '\x00\n'; } > "$tmp/g2-manifest-nul"
+    assert_bad _manifest_rows_valid "$tmp/g2-manifest-nul"
+    # #205 changed the mechanism, not the behavior: the pre-#205 check
+    # piped through `cmp` (diffutils, absent on minimal RPM images), so
+    # with cmp broken it rejects even a good manifest. The byte-count
+    # check must accept a good manifest with cmp stubbed out.
+    ( cmp() { return 1; }; _manifest_rows_valid "$tmp/g2-manifest-good" ) >/dev/null 2>&1 || { echo 'FAIL: manifest validation must not depend on cmp'; failures=$((failures + 1)); }
+    # 6. S-X (33b): the uniqueness guard must demand exactly one same-tag
+    # object of the right type, and it must run before the merge that
+    # deletes the whole tag group -- otherwise a duplicate or foreign
+    # inbound is silently wiped with the group.
+    g2_ordered_in_func deploy_singbox_socks5_landing 'length) == 1 and ($same[0].type == "socks" or $same[0].type == "mixed")' 'map(select(.tag!=$t))' || { echo 'FAIL: S-X socks5 uniqueness guard must precede the tag-group merge'; failures=$((failures + 1)); }
+    g2_ordered_in_func deploy_xray_trojan_landing 'length) == 1 and $same[0].protocol == "trojan"' 'map(select(.tag!=$t))' || { echo 'FAIL: S-X xray trojan uniqueness guard must precede the tag-group merge'; failures=$((failures + 1)); }
+    g2_ordered_in_func deploy_singbox_trojan_landing 'length) == 1 and $same[0].type == "trojan"' 'map(select(.tag!=$t))' || { echo 'FAIL: S-X sing-box trojan uniqueness guard must precede the tag-group merge'; failures=$((failures + 1)); }
+    g2_ordered_in_func deploy_singbox_tuic 'length) == 1 and $same[0].type == "tuic"' 'map(select(.tag!=$t))' || { echo 'FAIL: S-X TUIC uniqueness guard must precede the tag-group merge'; failures=$((failures + 1)); }
+    g2_ordered_in_func argo_deploy_ws 'length) == 1 and $same[0].type == "vmess"' 'map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))' || { echo 'FAIL: S-X argo vmess uniqueness guard must precede the ws merge'; failures=$((failures + 1)); }
+    g2_ordered_in_func argo_deploy_ws 'length) == 1 and $same[0].type == "vless"' 'map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))' || { echo 'FAIL: S-X argo vless uniqueness guard must precede the ws merge'; failures=$((failures + 1)); }
+    # 7. C-2 (Gemini): a RETURN trap that cleans up a temp file must save
+    # and restore the caller's RETURN trap first -- a bare `trap - RETURN`
+    # in the cleanup kills the caller's trap chain and aborts the session.
+    g2_func_contains users_xray_ensure_tags '_jq_caller_trap=$(trap -p RETURN' || { echo 'FAIL: C-2 users_xray_ensure_tags must save the caller RETURN trap'; failures=$((failures + 1)); }
+    g2_func_contains users_xray_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_xray_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
+    g2_func_contains users_sb_ensure_tags '_jq_caller_trap=$(trap -p RETURN' || { echo 'FAIL: C-2 users_sb_ensure_tags must save the caller RETURN trap'; failures=$((failures + 1)); }
+    g2_func_contains users_sb_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_sb_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup
@@ -72181,7 +72273,7 @@ main() {
     case "${1:-}" in
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
-        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; [[ ! -L "$_conv_out" ]] || die 'Legacy conversion output directory must not be a symbolic link.'; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null || printf '%s' "$_conv_out"); convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
+        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; _conv_out="${2:-$(dirname -- "${1:-.}")}"; [[ ! -L "$_conv_out" ]] || die 'Legacy conversion output directory must not be a symbolic link.'; _conv_out=$(realpath -m -- "$_conv_out" 2>/dev/null) || _conv_out="$_conv_out"; convert_legacy_backup_archive "${1:-}" "$_conv_out"; exit $? ;;
         --xray-config-autorecover) shift; prepare_noninteractive_file_operation; xray_config_autorecover; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;

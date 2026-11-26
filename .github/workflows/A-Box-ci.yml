@@ -23,8 +23,18 @@ jobs:
       - name: Bash syntax
         run: |
           bash -n install.sh
+          bash -n build.sh
           bash -n scripts/update-core-mirror.sh
           bash -n scripts/prune-core-mirror.sh
+      - name: Verify install.sh matches modular build
+        # Roadmap step 3 (split leg): install.sh is a build artifact
+        # assembled by build.sh from src/ modules. Rebuild to a temp
+        # path (the checkout tree is untouched) and require byte
+        # identity with the committed install.sh, so a stale generated
+        # file can never ship silently.
+        run: |
+          bash build.sh /tmp/install.sh.rebuilt
+          cmp /tmp/install.sh.rebuilt install.sh
       - name: Add swap for ShellCheck on large install.sh
         # shellcheck on the 63k-line install.sh needs >5 GB RSS and keeps
         # growing; the ubuntu-latest runner (7 GB RAM) kills the runner
@@ -169,6 +179,38 @@ jobs:
               sys.exit(1)
           print("OK: six-language i18n gate passed")
           PY
+  cross-boundary-check:
+    # Roadmap step 3, G1 leg, gate 1: main must not call a function
+    # defined only inside a heredoc (H-7), and a heredoc-generated
+    # standalone script must not call a function defined only in main.
+    # Pure Python, no docker. Does not conflict with the
+    # "Verify normalize_managed_rule_line definitions" step above:
+    # that step pins one definition in main and one in the heredoc,
+    # and this checker treats a function defined on both sides as
+    # intentional sharing, not a violation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Cross-boundary function completeness
+        run: python3 scripts/ci-check-cross-boundary.py install.sh
+  anti-pattern-gate:
+    # Roadmap step 3, G1 leg, gate 2: static anti-pattern gate
+    # (AP-01 bare jq on live JSONC config, AP-02 bare cmp for NUL
+    # validation, AP-03 curl -L without --proto/--proto-redir,
+    # AP-04 RETURN trap without save/restore, AP-05 mktemp template
+    # with a suffix after XXXXXX). Pure Python, no docker.
+    # Rules and allowlist evidence: scripts/ci-anti-pattern-rules.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Static anti-pattern gate
+        run: python3 scripts/ci-check-anti-patterns.py install.sh
   fixture-compat-matrix:
     # P1-06 (GPT A'): minimal cross-distro fixture-compatibility matrix.
     # NOT a real runtime matrix: --self-test is fixture/static assertions,
@@ -234,3 +276,77 @@ jobs:
         env:
           MATRIX_RESULT: ${{ needs.fixture-compat-matrix.result }}
         run: test "$MATRIX_RESULT" = success
+
+  alpine-pure-cli:
+    # G2 (roadmap step 3, gate 3): the three non-interactive CLI entries
+    # (--export-backup-key, --convert-legacy-backup, --self-test) must run
+    # under a pure Alpine BusyBox userland. Only bash plus the packages
+    # the entries genuinely need are installed; coreutils is never
+    # installed, so a GNU-only construct (e.g. an mktemp template with a
+    # non-X suffix, H-6) fails here instead of slipping through the GNU
+    # matrix. Minimal set, each with a demonstrated failure without it:
+    #   bash     - the entry point itself (bash install.sh; BusyBox sh
+    #              cannot run the script).
+    #   python3  - convert hard-requires it (validate/copy/extract and
+    #              .env load are python3 heredocs); the runtime-lock
+    #              fallback probe needs it because BusyBox flock has no
+    #              -w (without it export/convert die fail-closed at the
+    #              lock); self-test load_abox_env/write_env need it.
+    #   jq       - self-test JSON builders and assertions need it
+    #              (build_xray_config, build_singbox_config, Clash YAML,
+    #              version resolvers, Geo replacement stubs).
+    #   tzdata   - valid_timezone_name UTC needs /usr/share/zoneinfo/UTC.
+    #   openssl  - export needs `openssl rand -hex 32` for key
+    #              generation; self-test standalone Clash export needs
+    #              `openssl pkey` (x25519_pub_from_priv derives the
+    #              Reality public key; without it both Trojan-Reality
+    #              nodes are omitted with a P6 comment).
+    # Everything else (timeout, sha256sum, tar, gzip, awk, find, sed,
+    # grep, realpath, flock, stat, install, ln, mv, mktemp, cmp, diff,
+    # sort, uniq, xargs) comes from BusyBox applets.
+    # The legacy fixture is built in-job (same shape as the recipe in
+    # run_self_tests(): root/etc/ddr/.env + meta/metadata.txt, uid/gid 0,
+    # dirs 0755, files 0600); .env carries a valid CORE/MODE pair because
+    # load_abox_env rejects a half-present pair as corrupt.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
+      - name: Pure Alpine CLI entries (alpine:3.22, minimal apk set)
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /tmp --user 0:0 "alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8" sh -ec '
+            set -eu
+            umask 022
+            apk add --no-cache bash python3 jq tzdata openssl
+            apk info | sort
+            if apk info | grep -qx coreutils; then echo "coreutils must not be installed in the pure-BusyBox job" >&2; exit 1; fi
+            command -v timeout sha256sum tar gzip awk find sed grep realpath flock stat install ln mv mktemp
+            bash -n /src/install.sh
+            rm -rf /tmp/legacy-fixture
+            mkdir -p /tmp/legacy-fixture/root/etc/ddr /tmp/legacy-fixture/meta
+            printf "%s\n" "CORE=xray" "MODE=ALL" > /tmp/legacy-fixture/root/etc/ddr/.env
+            printf "%s\n" "legacy fixture" > /tmp/legacy-fixture/meta/metadata.txt
+            chmod 600 /tmp/legacy-fixture/root/etc/ddr/.env /tmp/legacy-fixture/meta/metadata.txt
+            tar -czf /tmp/legacy.tar.gz -C /tmp/legacy-fixture root meta
+            sha256sum /tmp/legacy.tar.gz | awk "{print \$1\"  legacy.tar.gz\"}" > /tmp/legacy.tar.gz.sha256
+            chmod 600 /tmp/legacy.tar.gz /tmp/legacy.tar.gz.sha256
+            timeout -k 5 60 bash /src/install.sh --export-backup-key /tmp/A-Box-recovery.key
+            test -s /tmp/A-Box-recovery.key
+            test "$(stat -c %a /tmp/A-Box-recovery.key)" = 600
+            grep -Eq "^[A-Fa-f0-9]{64}$" /tmp/A-Box-recovery.key
+            mkdir -p /tmp/converted
+            timeout -k 5 120 bash /src/install.sh --convert-legacy-backup /tmp/legacy.tar.gz /tmp/converted
+            test -s /tmp/converted/legacy-v3-imported.tar.gz
+            test -s /tmp/converted/legacy-v3-imported.tar.gz.sha256
+            test -s /tmp/converted/legacy-v3-imported.tar.gz.hmac
+            log=$(mktemp)
+            trap "rm -f $log" EXIT
+            rc=0
+            timeout -k 5 180 bash /src/install.sh --self-test >"$log" 2>&1 || rc=$?
+            cat "$log"
+            test "$rc" -eq 0
+            grep -Fxq "SELF_TEST_OK" "$log"
+            if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
+          '

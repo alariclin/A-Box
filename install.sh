@@ -40974,7 +40974,7 @@ firewall_recycle_freed_ports() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -41053,7 +41053,22 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             # hysteria2 inbound remains (one-pass Boolean, rc 1);
             # a jq failure or an empty config keeps it.
             local _hy2_jq_rc=0
-            jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
+            # M-6-residual (A-leg): jq -s over the stripped view; raw jq
+            # on a commented config fails with a parse error (rc 5),
+            # neither 0 nor 1, so the cert pair would wrongly survive
+            # when no hysteria2 inbound remains. Strip once here; the
+            # M-12 block below reuses the same view (the config is not
+            # rewritten between the two blocks). An empty-after-strip
+            # config is unverifiable, not a confirmation: keep the pair
+            # (rc 5, same as a jq failure).
+            if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
+                _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
+            fi
+            if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+                printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hy2_jq_rc=$?
+            else
+                _hy2_jq_rc=5
+            fi
             if [[ "$_hy2_jq_rc" == 1 ]]; then
                 # 05f-H-05f-02: delete each file only when no inbound
                 # of ANY protocol still references it (a manual or
@@ -41131,7 +41146,18 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # next deploy regenerates the unit.
     if [[ "$core" == 'sing-box' && -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
         local _hop_left_rc=0
-        jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hop_left_rc=$?
+        # M-6-residual (A-leg): reuse the stripped view from the Hy2
+        # block above (strip-once); re-strip only if it is still blank
+        # (Hy2 block never ran, or the config strips to nothing -- the
+        # blank case stays unverifiable, rc 5, same as a jq failure).
+        if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
+            _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
+        fi
+        if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hop_left_rc=$?
+        else
+            _hop_left_rc=5
+        fi
         if [[ "$_hop_left_rc" == 1 && "$_hop_on" == 'true' && -n "$_hop_start" && -n "$_hop_end" && -n "$_hop_base" && -n "$_hop_iface" ]]; then
             if remove_hy2_hop_nat_rules "$_hop_start" "$_hop_end" "$_hop_base" "$_hop_iface"; then
                 save_firewall_rules >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to persist firewall rules after removing Hy2 hop NAT rules.${NC}"
@@ -41140,7 +41166,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             fi
         fi
         local _tuic_left_rc=0
-        jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _tuic_left_rc=$?
+        # M-6-residual (A-leg): same stripped view as the hop check
+        # above; blank-after-strip stays unverifiable (rc 5).
+        if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' >/dev/null 2>&1 || _tuic_left_rc=$?
+        else
+            _tuic_left_rc=5
+        fi
         if [[ "$_tuic_left_rc" == 1 ]]; then
             for tag in "$@"; do
                 case "$tag" in

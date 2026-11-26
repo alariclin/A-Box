@@ -32250,6 +32250,30 @@ argo_deploy_ws() {
     local _cfg_stripped=''
     _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
+    # S-X (R30-M02 same-shape, double-tag): same guard as the other
+    # seven deploy sites (e.g. deploy_singbox_trojan_landing, and the
+    # ShadowTLS companion gate): an independent inbound that merely
+    # shares vmess-ws-in / vless-ws-in must not be silently replaced by
+    # the merge below; only a single genuine argo WS inbound of each
+    # type proceeds. SX-F1: uniqueness gate, not an existence check --
+    # a duplicated tag refuses, because the merge below deletes the
+    # whole tag group. An unoccupied tag proceeds as before. Genuine
+    # here means type vmess / vless, the same type-only test the other
+    # seven gates use (ShadowTLS additionally checks its detour pair,
+    # which argo has none of). A jq read failure (invalid config)
+    # skips the check and lets the merge fail closed as before. The
+    # "deploy with a different tag" clause of the other gates is
+    # dropped here: these two tags are function-owned constants.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e '.inbounds[]? | select(.tag=="vmess-ws-in")' "$_cfg_stripped" >/dev/null 2>&1; then
+        if ! jq -e '[.inbounds[]? | select(.tag=="vmess-ws-in")] as $same | (($same | length) == 1 and $same[0].type == "vmess")' "$_cfg_stripped" >/dev/null 2>&1; then
+            die "Tag 'vmess-ws-in' is already used by an independent inbound (not a VMess inbound) or appears more than once; refusing to replace it. Remove or rename that inbound."
+        fi
+    fi
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e '.inbounds[]? | select(.tag=="vless-ws-in")' "$_cfg_stripped" >/dev/null 2>&1; then
+        if ! jq -e '[.inbounds[]? | select(.tag=="vless-ws-in")] as $same | (($same | length) == 1 and $same[0].type == "vless")' "$_cfg_stripped" >/dev/null 2>&1; then
+            die "Tag 'vless-ws-in' is already used by an independent inbound (not a VLESS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound."
+        fi
+    fi
     if ! jq --slurpfile nb "$tmp_json" --rawfile uuid <(printf '%s' "$ARGO_UUID") \
             '(.inbounds | map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))) as $old
              | .inbounds |= (
@@ -40974,7 +40998,7 @@ firewall_recycle_freed_ports() {
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -41053,7 +41077,22 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             # hysteria2 inbound remains (one-pass Boolean, rc 1);
             # a jq failure or an empty config keeps it.
             local _hy2_jq_rc=0
-            jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
+            # M-6-residual (A-leg): jq -s over the stripped view; raw jq
+            # on a commented config fails with a parse error (rc 5),
+            # neither 0 nor 1, so the cert pair would wrongly survive
+            # when no hysteria2 inbound remains. Strip once here; the
+            # M-12 block below reuses the same view (the config is not
+            # rewritten between the two blocks). An empty-after-strip
+            # config is unverifiable, not a confirmation: keep the pair
+            # (rc 5, same as a jq failure).
+            if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
+                _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
+            fi
+            if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+                printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hy2_jq_rc=$?
+            else
+                _hy2_jq_rc=5
+            fi
             if [[ "$_hy2_jq_rc" == 1 ]]; then
                 # 05f-H-05f-02: delete each file only when no inbound
                 # of ANY protocol still references it (a manual or
@@ -41131,7 +41170,18 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # next deploy regenerates the unit.
     if [[ "$core" == 'sing-box' && -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
         local _hop_left_rc=0
-        jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hop_left_rc=$?
+        # M-6-residual (A-leg): reuse the stripped view from the Hy2
+        # block above (strip-once); re-strip only if it is still blank
+        # (Hy2 block never ran, or the config strips to nothing -- the
+        # blank case stays unverifiable, rc 5, same as a jq failure).
+        if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
+            _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
+        fi
+        if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hop_left_rc=$?
+        else
+            _hop_left_rc=5
+        fi
         if [[ "$_hop_left_rc" == 1 && "$_hop_on" == 'true' && -n "$_hop_start" && -n "$_hop_end" && -n "$_hop_base" && -n "$_hop_iface" ]]; then
             if remove_hy2_hop_nat_rules "$_hop_start" "$_hop_end" "$_hop_base" "$_hop_iface"; then
                 save_firewall_rules >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to persist firewall rules after removing Hy2 hop NAT rules.${NC}"
@@ -41140,7 +41190,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             fi
         fi
         local _tuic_left_rc=0
-        jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _tuic_left_rc=$?
+        # M-6-residual (A-leg): same stripped view as the hop check
+        # above; blank-after-strip stays unverifiable (rc 5).
+        if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
+            printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "tuic")] | length) > 0' >/dev/null 2>&1 || _tuic_left_rc=$?
+        else
+            _tuic_left_rc=5
+        fi
         if [[ "$_tuic_left_rc" == 1 ]]; then
             for tag in "$@"; do
                 case "$tag" in
@@ -59261,6 +59317,30 @@ _wallos_record_created_from_cidfile() {
     return 0
 }
 
+# H7-C (H7-F1 residual): a docker run/create that fails AFTER creating
+# the container leaves a legitimate transaction container holding the
+# 'wallos' name while the journal still names the previous one; the
+# next recovery then refuses its own rebuild (live != journal
+# new_container_id, journal kept forever). Remove only the container
+# THIS attempt created, by its --cidfile ID (label-checked, same idiom
+# as the install path's run-failure cleanup and the helper above), so
+# a retry rebuilds from scratch. No cidfile (e.g. a name conflict
+# created nothing) means nothing to remove: leave it alone
+# (fail-closed); a non-managed holder is likewise never removed.
+# $1 = cidfile path docker was told to write. Always returns 0.
+_wallos_cleanup_failed_create() {
+    local _f="${1:-}" _id='' _lbl=''
+    [[ -f "$_f" && ! -L "$_f" ]] || return 0
+    IFS= read -r _id < "$_f" || true
+    _id=$(_wallos_normalize_container_id "$_id" 2>/dev/null || true)
+    [[ -n "$_id" ]] || return 0
+    _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_id" 2>/dev/null || true)
+    [[ "$_lbl" == 'true' ]] || return 0
+    docker rm -f "$_id" >/dev/null 2>&1 || true
+    rm -f -- "$_f" 2>/dev/null || true
+    return 0
+}
+
 wallos_txn_value() {
     local file="$1" key="$2"
     awk -F= -v key="$key" '
@@ -59661,7 +59741,7 @@ EOF_B15_SIDECAR
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || { _wallos_cleanup_failed_create "$WALLOS_DIR/.upgrade-transaction.cid"; return 1; }
         # H7-F1: record the rebuilt container in the journal BEFORE
         # the health gate below: a health failure returns 1 with the
         # journal kept, and a retry must see live==new. old_image is
@@ -59691,7 +59771,7 @@ EOF_B15_SIDECAR
             "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || { _wallos_cleanup_failed_create "$WALLOS_DIR/.upgrade-transaction.cid"; return 1; }
         # H7-F1: same journal refresh as the run branch above.
         if ! _wallos_record_created_from_cidfile "$WALLOS_DIR/.upgrade-transaction.cid" "$_journal_old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" "$_journal_container_id"; then
             rm -f -- "$WALLOS_DIR/.upgrade-transaction.cid" 2>/dev/null || true
@@ -61317,7 +61397,7 @@ wallos_restore_direct_container() {
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { rm -rf -- "$_rdc_cid_dir"; return 1; }
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || { _wallos_cleanup_failed_create "$_rdc_cid_dir/id"; rm -rf -- "$_rdc_cid_dir"; return 1; }
     if [[ -f "$_rdc_cid_dir/id" ]]; then
         IFS= read -r _rdc_created_id < "$_rdc_cid_dir/id" || true
     fi
@@ -70235,6 +70315,25 @@ PY_SELFTEST_TAR
     # only an empty expectation means "no expectation".
     if ( docker() { return 0; }; _wallos_rm_named_id 'not-a-container-id' >/dev/null 2>&1 ); then
         echo 'FAIL: Wallos named-container removal must refuse an illegal expected container ID'; failures=$((failures + 1))
+    fi
+    # H7-C: a run/create that fails after creating the container must
+    # not strand it: the failed-create cleanup removes only the
+    # --cidfile container (label-checked, by ID), so a retry rebuilds
+    # instead of wedging on a stale journal new_container_id.
+    if ! ( : > "$tmp/wallos-h7c-calls"; printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-h7c-cid"
+        docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; case "$*" in *'Config.Labels'*) printf 'true\n'; return 0 ;; 'rm -f '*) return 0 ;; *) return 0 ;; esac; }
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-cid" >/dev/null 2>&1 && [[ ! -e "$tmp/wallos-h7c-cid" ]] && grep -qx 'rm -f aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup did not remove the cidfile container by ID'; failures=$((failures + 1))
+    fi
+    if ! ( : > "$tmp/wallos-h7c-calls"
+        docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; case "$*" in *'Config.Labels'*) printf '\n'; return 0 ;; *) return 0 ;; esac; }
+        printf '%s' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$tmp/wallos-h7c-cid2"
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-cid2" >/dev/null 2>&1 && [[ -e "$tmp/wallos-h7c-cid2" ]] && ! grep -q 'rm -f ' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup must leave a non-managed cidfile container alone'; failures=$((failures + 1))
+    fi
+    if ! ( : > "$tmp/wallos-h7c-calls"; docker() { printf '%s\n' "$*" >> "$tmp/wallos-h7c-calls"; return 0; }
+        _wallos_cleanup_failed_create "$tmp/wallos-h7c-missing" >/dev/null 2>&1 && ! grep -q 'rm -f ' "$tmp/wallos-h7c-calls" ); then
+        echo 'FAIL: Wallos failed-create cleanup must be a no-op without a cidfile'; failures=$((failures + 1))
     fi
     # H7rest: the php version probe execs the pinned container ID.
     if ! ( docker() { printf '%s\n' "$*" >> "$tmp/wallos-php-calls"; case "$*" in *'{{.Id}}'*) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0 ;; 'exec '*) printf 'PHP 8.3.10 (cli)\n'; return 0 ;; *) return 1 ;; esac; }; [[ "$(wallos_container_php_version 2>/dev/null)" == '8.3.10' ]] && grep -qx 'exec aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa php -v' "$tmp/wallos-php-calls" ); then

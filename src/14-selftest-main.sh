@@ -508,6 +508,33 @@ PY_SELFTEST_TAR
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain deep.api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:apiXexampleXorg'
+    if [[ -z "$selftest_sni_seed" ]]; then
+        # B-leg cleanup (2026-11-26): a standalone install.sh has no
+        # adjacent data/sni-candidates.txt and no validated cache, so
+        # this integration test used to skip on every single-file run
+        # (including S1 sudo runs). Generate a self-contained synthetic
+        # seed in $tmp instead: 2 real apexes (variant generation must
+        # yield www.apache.org / www.confluent.io) + 2500 synthetic
+        # candidateNNNN.example.org rows. The assertions below run
+        # unchanged with the same thresholds (>= 2500 rows, mini == full,
+        # blocked-domain scan), exercising load / normalize / variant /
+        # filter end to end with no network and no real host data. A real
+        # adjacent database/cache still wins when present (see above).
+        if {
+            printf '%s\n' '# synthetic SNI seed (self-test fixture only; no network, no real host data)'
+            printf '%s\n' 'apache.org' 'confluent.io'
+            for ((i = 1; i <= 2500; i++)); do printf 'candidate%04d.example.org\n' "$i"; done
+        } > "$tmp/sni-synthetic-seed.txt"; then
+            if sni_normalize_candidate_file "$tmp/sni-synthetic-seed.txt" "$tmp/sni-synthetic-normalized.txt"; then
+                selftest_sni_seed="$tmp/sni-synthetic-seed.txt"
+                echo 'SELF_TEST_NOTE: SNI candidate integration test using self-contained synthetic seed (no adjacent database/cache; no network)' >&2
+            else
+                echo 'FAIL: synthetic SNI seed failed validation'; failures=$((failures + 1))
+            fi
+        else
+            echo 'FAIL: synthetic SNI seed generation failed'; failures=$((failures + 1))
+        fi
+    fi
     if [[ -n "$selftest_sni_seed" ]]; then
         ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE="$selftest_sni_seed" ABOX_SNI_FULL_MAX=0 write_sni_candidate_library full "$tmp/sni-full.txt"
         sni_count=$(wc -l < "$tmp/sni-full.txt" | tr -d ' ')
@@ -525,8 +552,6 @@ PY_SELFTEST_TAR
         ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE="$selftest_sni_seed" ABOX_SNI_MINI_MAX=0 write_sni_candidate_library mini "$tmp/sni-mini.txt"
         mini_count=$(wc -l < "$tmp/sni-mini.txt" | tr -d ' ')
         [[ "$mini_count" =~ ^[0-9]+$ && "$mini_count" -eq "$sni_count" ]] || { echo "FAIL: SNI mini library does not match full library ($mini_count vs $sni_count)"; failures=$((failures + 1)); }
-    else
-        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; this skipped test uses no network)' >&2
     fi
     declare -f asn_lookup_ip >/dev/null || { echo 'FAIL: ASN lookup function missing'; failures=$((failures + 1)); }
     declare -f sni_org_cdn_penalty >/dev/null || { echo 'FAIL: ASN/CDN scoring function missing'; failures=$((failures + 1)); }

@@ -38262,15 +38262,6 @@ valid_traffic_limit_gb() {
     [[ "$input" =~ ^[1-9][0-9]{0,9}$ ]] || return 1
     (( 10#$input <= 8589934591 ))
 }
-valid_backup_retention_count() {
-    local input="${1:-}"
-    [[ "$input" =~ ^[0-9]{1,4}$ ]] || return 1
-    (( 10#$input <= 1000 ))
-}
-valid_hy2_bandwidth_mbps() {
-    # Keep the interactive HY2 bandwidth domain identical to the persisted .env validator.
-    valid_traffic_limit_gb "${1:-}"
-}
 [[ -z "${TRAFFIC_LIMIT_GB:-}" ]] || valid_traffic_limit_gb "$TRAFFIC_LIMIT_GB" || {
     traffic_fail_closed 'persisted traffic limit is invalid' || traffic_error 'invalid persisted traffic limit could not be fail-closed enforced'
     exit 1
@@ -51412,9 +51403,18 @@ write_sni_candidate_library() {
         awk '!seen[$0]++' > "$generated"
 
     append_tmp=$(umask 077; mktemp /tmp/A-Box-sni-lib-append.XXXXXX) || { rm -f "$raw" "$generated" "$tmp"; die 'SNI candidate append temporary file creation failed.'; }
-    if ! awk -F. 'NF>=2 {
+    # D10: match strong apexes by table lookup, not one giant
+    # alternation regex: mawk 1.3.3 (Debian 10 buster) rejects regexes
+    # over its implementation size limit, which aborted the whole
+    # script via die (self-test printed no marker). Table lookup is
+    # exact-match, identical semantics, and portable across mawk/gawk.
+    if ! awk -F. 'BEGIN {
+        n = split("github cloudflare microsoft google apache mozilla docker kubernetes linuxfoundation cncf python rust-lang golang go oracle ibm redhat ubuntu debian nginx postgresql mongodb elastic hashicorp terraform confluent fastly akamai digitalocean linode vultr hetzner ovhcloud scaleway openai anthropic huggingface pytorch tensorflow ietf w3 rfc-editor openssl curl gnu kernel freebsd openbsd netbsd eclipse jetbrains npmjs nodejs typescriptlang redis sqlite mysql wikimedia wikipedia archive stackoverflow stackexchange nasa nist cisa stanford mit berkeley cambridge ox ethz epfl unimelb sydney unsw monash auckland cloudfront amazonaws", _strong, " ")
+        for (i = 1; i <= n; i++) strong[_strong[i]] = 1
+    }
+    NF>=2 {
         base=$(NF-1); apex=base "." $NF
-        if (base ~ /^(github|cloudflare|microsoft|google|apache|mozilla|docker|kubernetes|linuxfoundation|cncf|python|rust-lang|golang|go|oracle|ibm|redhat|ubuntu|debian|nginx|postgresql|mongodb|elastic|hashicorp|terraform|confluent|fastly|akamai|digitalocean|linode|vultr|hetzner|ovhcloud|scaleway|openai|anthropic|huggingface|pytorch|tensorflow|ietf|w3|rfc-editor|openssl|curl|gnu|kernel|freebsd|openbsd|netbsd|eclipse|jetbrains|npmjs|nodejs|typescriptlang|redis|sqlite|mysql|wikimedia|wikipedia|archive|stackoverflow|stackexchange|nasa|nist|cisa|stanford|mit|berkeley|cambridge|ox|ethz|epfl|unimelb|sydney|unsw|monash|auckland|cloudfront|amazonaws)$/) print apex
+        if (base in strong) print apex
     }' "$generated" | awk '!seen[$0]++' | while IFS= read -r apex; do
         for p in www docs doc developer developers api status support blog cdn static assets download downloads registry repo packages pkg files raw resources community help learn training security; do
             printf '%s.%s\n' "$p" "$apex"
@@ -61338,7 +61338,6 @@ wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
     _iport=$(wallos_state_value PORT 2>/dev/null || true)
     msg "${RED}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
     return 1
-    return 0
 }
 
 wallos_write_state() {
@@ -68914,6 +68913,12 @@ enter_runtime() {
     unset ABOX_HEAL_MISSING_MANIFEST 2>/dev/null || true
     # Die-hooks are installed only by in-script transactions; ignore ambient export.
     unset ABOX_DIE_HOOK 2>/dev/null || true
+    # A-leg (TTY guard i18n): resolve the language BEFORE the TTY guard.
+    # detect_lang() honors --lang (ABOX_LANG_OVERRIDE), then ABOX_LANG,
+    # then LANG_FILE; need_interactive_tty() dies with tr_msg tp_tty_menu /
+    # tp_tty_open, so calling it first left ABOX_LANG at the 'zh' default
+    # and the refusal was always Chinese regardless of --lang / LANG_FILE.
+    detect_lang
     need_interactive_tty
     mkdir -p /var/run || die "$(tr_msg enter_runtime_var_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
@@ -68921,7 +68926,6 @@ enter_runtime() {
     # Registry rewrites (default-name normalization) must run under
     # the runtime lock, not before it.
     users_normalize_all_default_names >/dev/null 2>&1 || true
-    detect_lang
     initial_language_select
 }
 
@@ -69822,6 +69826,33 @@ PY_SELFTEST_TAR
     assert_ok sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain deep.api.example.org $'X509v3 Subject Alternative Name:\n DNS:*.example.org'
     assert_bad sni_san_matches_domain api.example.org $'X509v3 Subject Alternative Name:\n DNS:apiXexampleXorg'
+    if [[ -z "$selftest_sni_seed" ]]; then
+        # B-leg cleanup (2026-11-26): a standalone install.sh has no
+        # adjacent data/sni-candidates.txt and no validated cache, so
+        # this integration test used to skip on every single-file run
+        # (including S1 sudo runs). Generate a self-contained synthetic
+        # seed in $tmp instead: 2 real apexes (variant generation must
+        # yield www.apache.org / www.confluent.io) + 2500 synthetic
+        # candidateNNNN.example.org rows. The assertions below run
+        # unchanged with the same thresholds (>= 2500 rows, mini == full,
+        # blocked-domain scan), exercising load / normalize / variant /
+        # filter end to end with no network and no real host data. A real
+        # adjacent database/cache still wins when present (see above).
+        if {
+            printf '%s\n' '# synthetic SNI seed (self-test fixture only; no network, no real host data)'
+            printf '%s\n' 'apache.org' 'confluent.io'
+            for ((i = 1; i <= 2500; i++)); do printf 'candidate%04d.example.org\n' "$i"; done
+        } > "$tmp/sni-synthetic-seed.txt"; then
+            if sni_normalize_candidate_file "$tmp/sni-synthetic-seed.txt" "$tmp/sni-synthetic-normalized.txt"; then
+                selftest_sni_seed="$tmp/sni-synthetic-seed.txt"
+                echo 'SELF_TEST_NOTE: SNI candidate integration test using self-contained synthetic seed (no adjacent database/cache; no network)' >&2
+            else
+                echo 'FAIL: synthetic SNI seed failed validation'; failures=$((failures + 1))
+            fi
+        else
+            echo 'FAIL: synthetic SNI seed generation failed'; failures=$((failures + 1))
+        fi
+    fi
     if [[ -n "$selftest_sni_seed" ]]; then
         ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE="$selftest_sni_seed" ABOX_SNI_FULL_MAX=0 write_sni_candidate_library full "$tmp/sni-full.txt"
         sni_count=$(wc -l < "$tmp/sni-full.txt" | tr -d ' ')
@@ -69839,8 +69870,6 @@ PY_SELFTEST_TAR
         ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE="$selftest_sni_seed" ABOX_SNI_MINI_MAX=0 write_sni_candidate_library mini "$tmp/sni-mini.txt"
         mini_count=$(wc -l < "$tmp/sni-mini.txt" | tr -d ' ')
         [[ "$mini_count" =~ ^[0-9]+$ && "$mini_count" -eq "$sni_count" ]] || { echo "FAIL: SNI mini library does not match full library ($mini_count vs $sni_count)"; failures=$((failures + 1)); }
-    else
-        echo 'SELF_TEST_NOTE: SNI candidate integration test skipped (no adjacent database/cache; this skipped test uses no network)' >&2
     fi
     declare -f asn_lookup_ip >/dev/null || { echo 'FAIL: ASN lookup function missing'; failures=$((failures + 1)); }
     declare -f sni_org_cdn_penalty >/dev/null || { echo 'FAIL: ASN/CDN scoring function missing'; failures=$((failures + 1)); }

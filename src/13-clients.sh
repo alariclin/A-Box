@@ -4330,6 +4330,12 @@ enter_runtime() {
     unset ABOX_HEAL_MISSING_MANIFEST 2>/dev/null || true
     # Die-hooks are installed only by in-script transactions; ignore ambient export.
     unset ABOX_DIE_HOOK 2>/dev/null || true
+    # A-leg (TTY guard i18n): resolve the language BEFORE the TTY guard.
+    # detect_lang() honors --lang (ABOX_LANG_OVERRIDE), then ABOX_LANG,
+    # then LANG_FILE; need_interactive_tty() dies with tr_msg tp_tty_menu /
+    # tp_tty_open, so calling it first left ABOX_LANG at the 'zh' default
+    # and the refusal was always Chinese regardless of --lang / LANG_FILE.
+    detect_lang
     need_interactive_tty
     mkdir -p /var/run || die "$(tr_msg enter_runtime_var_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
@@ -4337,7 +4343,6 @@ enter_runtime() {
     # Registry rewrites (default-name normalization) must run under
     # the runtime lock, not before it.
     users_normalize_all_default_names >/dev/null 2>&1 || true
-    detect_lang
     initial_language_select
 }
 

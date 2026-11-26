@@ -3928,7 +3928,6 @@ wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
     _iport=$(wallos_state_value PORT 2>/dev/null || true)
     msg "${RED}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
     return 1
-    return 0
 }
 
 wallos_write_state() {

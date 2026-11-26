@@ -5841,15 +5841,6 @@ valid_traffic_limit_gb() {
     [[ "$input" =~ ^[1-9][0-9]{0,9}$ ]] || return 1
     (( 10#$input <= 8589934591 ))
 }
-valid_backup_retention_count() {
-    local input="${1:-}"
-    [[ "$input" =~ ^[0-9]{1,4}$ ]] || return 1
-    (( 10#$input <= 1000 ))
-}
-valid_hy2_bandwidth_mbps() {
-    # Keep the interactive HY2 bandwidth domain identical to the persisted .env validator.
-    valid_traffic_limit_gb "${1:-}"
-}
 [[ -z "${TRAFFIC_LIMIT_GB:-}" ]] || valid_traffic_limit_gb "$TRAFFIC_LIMIT_GB" || {
     traffic_fail_closed 'persisted traffic limit is invalid' || traffic_error 'invalid persisted traffic limit could not be fail-closed enforced'
     exit 1

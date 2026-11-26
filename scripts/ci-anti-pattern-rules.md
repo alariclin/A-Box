@@ -28,10 +28,13 @@ for the self-test exclusion are missing.
   `$tmp_json`, `$reg`, `$ROUTING_STATE_FILE`, `$applied_src`); a
   caller-supplied temp object (`$json_file` in `xray_api_add_inbound`).
 - **Allowlist:** `AP01_ALLOWLIST` in the script, per function, each
-  entry with the evidence for why that read is safe (post-restore
-  inventory, best-effort display, file just installed from
-  jq-generated output, …). 17 live-config reads on current main, all
-  allowlisted, 0 violations.
+  entry with the evidence for why that read is safe (file just
+  installed from jq-generated output, …). 7 live-config reads on
+  current main, all allowlisted, 0 violations. (Was 17 before the
+  2026-11-26 AP-01 residual batch fixed 10: `_menu_info_collect` 6,
+  `wallos_rebuild_state_from_live` 1, `_wallos_caddy_config_matches`
+  2, `_recycle_port_rules_if_unused` 1; the remaining 7 are verified
+  comment-free by construction.)
 
 ## AP-02 — bare `cmp` for NUL-byte validation
 

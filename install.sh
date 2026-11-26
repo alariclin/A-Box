@@ -32250,6 +32250,30 @@ argo_deploy_ws() {
     local _cfg_stripped=''
     _cfg_stripped=$(mktemp /tmp/A-Box-cfg-stripped.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jsonc_strip_comments "$cfg" 2>/dev/null > "$_cfg_stripped" || true
+    # S-X (R30-M02 same-shape, double-tag): same guard as the other
+    # seven deploy sites (e.g. deploy_singbox_trojan_landing, and the
+    # ShadowTLS companion gate): an independent inbound that merely
+    # shares vmess-ws-in / vless-ws-in must not be silently replaced by
+    # the merge below; only a single genuine argo WS inbound of each
+    # type proceeds. SX-F1: uniqueness gate, not an existence check --
+    # a duplicated tag refuses, because the merge below deletes the
+    # whole tag group. An unoccupied tag proceeds as before. Genuine
+    # here means type vmess / vless, the same type-only test the other
+    # seven gates use (ShadowTLS additionally checks its detour pair,
+    # which argo has none of). A jq read failure (invalid config)
+    # skips the check and lets the merge fail closed as before. The
+    # "deploy with a different tag" clause of the other gates is
+    # dropped here: these two tags are function-owned constants.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e '.inbounds[]? | select(.tag=="vmess-ws-in")' "$_cfg_stripped" >/dev/null 2>&1; then
+        if ! jq -e '[.inbounds[]? | select(.tag=="vmess-ws-in")] as $same | (($same | length) == 1 and $same[0].type == "vmess")' "$_cfg_stripped" >/dev/null 2>&1; then
+            die "Tag 'vmess-ws-in' is already used by an independent inbound (not a VMess inbound) or appears more than once; refusing to replace it. Remove or rename that inbound."
+        fi
+    fi
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e '.inbounds[]? | select(.tag=="vless-ws-in")' "$_cfg_stripped" >/dev/null 2>&1; then
+        if ! jq -e '[.inbounds[]? | select(.tag=="vless-ws-in")] as $same | (($same | length) == 1 and $same[0].type == "vless")' "$_cfg_stripped" >/dev/null 2>&1; then
+            die "Tag 'vless-ws-in' is already used by an independent inbound (not a VLESS inbound) or appears more than once; refusing to replace it. Remove or rename that inbound."
+        fi
+    fi
     if ! jq --slurpfile nb "$tmp_json" --rawfile uuid <(printf '%s' "$ARGO_UUID") \
             '(.inbounds | map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))) as $old
              | .inbounds |= (

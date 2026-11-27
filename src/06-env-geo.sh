@@ -1275,6 +1275,58 @@ _xrc_restore_divergence_check() {
     return 0
 }
 
+# W2-FAIL-1: decide whether the published desired config may serve as
+# the auto-recovery source. $1 = work file to stage the candidate into.
+# The file is trusted only when it is a root-owned 0600 regular file
+# (not a symlink) of sane size, passes the xray offline test, AND its
+# data-inbound port set EQUALS the current .env expected set exactly.
+# Exact equality (not the subset cover the backup gate uses) is what
+# makes a stale file harmless: a deploy or a manual restore the file
+# does not describe can neither gain nor lose a port through it, so a
+# non-matching file is ignored and backup enumeration decides.
+# rc 0 = staged and usable, 1 = not usable (any reason).
+_xrc_desired_config_usable() {
+    local dest="$1" src='' _sz='' _mode='' _test_rc=0
+    local _expected='' _have='' _var='' _val=''
+    local bin="${XRAY_BIN:-/usr/local/bin/xray}"
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    [[ -n "$dest" ]] || return 1
+    src=$(_xrc_desired_config_path) || return 1
+    [[ -f "$src" && ! -L "$src" && -r "$src" ]] || return 1
+    [[ "$(stat -c %u:%g "$src" 2>/dev/null || true)" == '0:0' ]] || return 1
+    _mode=$(stat -c %a "$src" 2>/dev/null || echo '')
+    [[ "$_mode" =~ ^0?600$ ]] || return 1
+    _sz=$(stat -c %s -- "$src" 2>/dev/null || echo 0)
+    [[ "$_sz" =~ ^[0-9]+$ && "$_sz" -gt 0 && "$_sz" -le 1048576 ]] || return 1
+    cp -f -- "$src" "$dest" 2>/dev/null || return 1
+    chmod 600 -- "$dest" 2>/dev/null || return 1
+    [[ -x "$bin" ]] || return 1
+    if command -v timeout >/dev/null 2>&1; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray timeout 30 "$bin" run -test -config "$dest" >/dev/null 2>&1; _test_rc=$?
+    else
+        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$dest" >/dev/null 2>&1; _test_rc=$?
+    fi
+    (( _test_rc == 0 )) || return 1
+    # Expected set: same var list and parsing as
+    # _xrc_config_has_expected_data_inbound.
+    if [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]]; then
+        for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
+            _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+            [[ "$_val" =~ ^[0-9]+$ ]] || continue
+            [[ "${#_val}" -le 5 ]] || continue
+            (( 10#$_val >= 1 && 10#$_val <= 65535 )) || continue
+            _expected+="$((10#$_val))"$'\n'
+        done
+    fi
+    # Only numeric ports count (a string port is invalid xray input
+    # and the offline test above already rejected such a file).
+    _have=$(jsonc_strip_comments "$dest" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != "api") | .port // empty | select(type == "number")' 2>/dev/null) || return 1
+    _expected=$(printf '%s' "$_expected" | sort -n -u | tr '\n' ' ' || true)
+    _have=$(printf '%s' "$_have" | sort -n -u | tr '\n' ' ' || true)
+    [[ "$_expected" == "$_have" ]] || return 1
+    return 0
+}
+
 xray_config_autorecover() {
     local cfg="${XRAY_CFG:-/usr/local/etc/xray/config.json}"
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
@@ -1418,6 +1470,16 @@ xray_config_autorecover() {
         return 1
     }
     local _cand_file="$_work/candidates"
+    # W2-FAIL-1: prefer the published desired state over historical
+    # backups. A usable desired file describes exactly the current
+    # intent, so a genuine fault after deletions restores the deleted
+    # state instead of resurrecting protocols from a deploy-time
+    # backup. Any doubt falls through to backup enumeration below.
+    if _xrc_desired_config_usable "$_work/desired-config.json"; then
+        _good="$_work/desired-config.json"
+        _good_src="$(_xrc_desired_config_path)"
+    fi
+    if [[ -z "$_good" ]]; then
     # R16-F07-01: BusyBox find (Alpine) has no -printf; python3 is already
     # a hard dependency, so enumerate by mtime in python (newest first),
     # as restore_from_backup does (D-07). An enumeration failure is NOT a
@@ -1519,6 +1581,7 @@ PY_XRC_ENUM
                 ;;
         esac
     done < "$_cand_file"
+    fi # W2-FAIL-1: end of backup enumeration (skipped when the desired file was usable)
     if [[ -z "$_good" && -n "${_fallback_good:-}" ]]; then
         # F-NEW-04/CD: no candidate covers the full expected set; fall
         # back to the newest trusted, valid backup instead of stopping

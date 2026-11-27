@@ -2302,7 +2302,7 @@ failed_srv=''
 service_active_owned "$MAIN_SRV" || failed_srv="$MAIN_SRV"
 MAIN_PID=${SERVICE_PID:-}
 HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
-# H-probe (2026-11-27): Hy2 is a sidecar of xray+ALL only while its
+# H-probe (2026-11-27): Hy2 is a sidecar of xray while its
 # A-Box-managed unit exists. MODE stays ALL after Hy2 is deleted, so
 # demanding hysteria on MODE alone reports a deleted service failed
 # every minute (STATE churn + futile restart-gate trips). The unit
@@ -2311,12 +2311,16 @@ HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
 # _remove_hy2_official), while the .env HY2_* keys are only a proxy
 # (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
 # cleared while Hy2 still lives). A managed-but-dead hysteria is
-# still reported (negative control). Downstream Hy2 branches (hop
-# firewall, HY2_MONITOR_PORT socket) are gated the same way by
-# H2-probe below: the supported delete path clears those keys with
-# the unit, but a failed cleanup leaves them stale and the branches
-# would otherwise blame a healthy xray (T5b).
-if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
+# still reported (negative control). MODE only describes deployment
+# intent: it must not overrule the unit file, so the gate below is a
+# pure unit check, aligned with the H2-probe gate — a managed unit
+# present under a non-ALL MODE (hand-edited .env, interrupted
+# redeploy, partial restore) is still the sidecar this probe owns.
+# Downstream Hy2 branches (hop firewall, HY2_MONITOR_PORT socket) are
+# gated the same way by H2-probe below: the supported delete path
+# clears those keys with the unit, but a failed cleanup leaves them
+# stale and the branches would otherwise blame a healthy xray (T5b).
+if [[ "$CORE" == xray ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi

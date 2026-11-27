@@ -34280,8 +34280,18 @@ _menu_info_collect() {
     fi
 
     # AP-01-residual (B-leg): drop the strip-once views built at the top.
+    # Cleanup is best-effort only: a failed rm must not decide whether
+    # the panel renders, and there is no log channel in this render
+    # path that could carry it without corrupting menu output.
     [[ -n "$_mi_sb_tmp" ]] && rm -f -- "$_mi_sb_tmp" 2>/dev/null
     [[ -n "$_mi_xr_tmp" ]] && rm -f -- "$_mi_xr_tmp" 2>/dev/null
+    # W1-FAIL-1: without this, the function inherits the status of the
+    # last [[ -n ... ]] test above: in virgin state both temps are
+    # empty, the test is false, rc=1, and _menu_info_display's
+    # `_menu_info_collect || return 0` gate skips the whole panel.
+    # Collection itself never fails here (every fallible step above
+    # is guarded); success is explicit.
+    return 0
 }
 
 # One matrix cell: [ name(padded) dot ]

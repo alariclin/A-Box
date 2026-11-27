@@ -5314,8 +5314,18 @@ restore_dns_snapshot_body() {
         [[ "$_sock_listen_now" == "$_sock_listen_want" ]] || return 1
     fi
     if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
-        local _dnscrypt_units=''
-        _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
+        local _dnscrypt_units='' _dnscrypt_list_rc=0
+        # W5-FAIL-1 (matrix4-D): list-unit-files with a unit-name filter
+        # exits 1 when the unit does not exist, so a box that never
+        # installed dnscrypt-proxy failed the whole rollback even though
+        # resolv.conf was already restored. List unfiltered instead and
+        # check the exit status explicitly: a listing error fails closed
+        # (return 1, snapshot preserved for retry), while an absent unit
+        # in a successful listing simply skips this optional step via
+        # the awk gate below (empty input exits 1, branch not taken).
+        # The rc capture is ||-guarded, so it is safe under errexit too.
+        _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null) || _dnscrypt_list_rc=$?
+        if (( _dnscrypt_list_rc != 0 )); then return 1; fi
         if awk -v wanted='dnscrypt-proxy.service' '$1 == wanted { found=1 } END { exit !found }' <<< "$_dnscrypt_units"; then
         state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
         local enabled_state _got_ens _link_target='' _cur_ens='' _got_link=''

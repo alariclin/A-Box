@@ -149,16 +149,35 @@ nftables_native_rules_present() {
     # f2b_... whose chains are all f2b-named) before classifying,
     # so the backend falls through to iptables instead of routing
     # the backup into the nftables-unsupported dead end.
+    # G (2026-11-27, W2-FAIL-1 re-verify): same for hysteria's own
+    # port-hop tables. The deploy starts hop-mode hysteria first
+    # (it creates table ip/ip6 hysteria_<hex> with prerouting/output
+    # redirect chains), and setup_active_defense then asks
+    # firewall_backend: without this exclusion the classifier saw
+    # our own hysteria tables as native nftables and refused with
+    # nftables-unsupported, rolling the deploy back -- a self-made
+    # deadlock. Drop a table only when BOTH hold: (a) the name
+    # matches the hysteria-generated pattern ^hysteria_[0-9a-fA-F]+$
+    # (same pattern as the F-leg hop checker in src/06), and
+    # (b) every chain in it is one of hysteria's own
+    # (prerouting/output -- the exact shape in the 2026-11-27
+    # InstaBox real ruleset, ip/ip6 and inet alike). A table that
+    # merely squats the name but carries any other chain (e.g. an
+    # input base chain with real rules) is kept, so a genuine
+    # native ruleset can never be masked by this exclusion; the
+    # stage-2 classifier below still sees it. f2b logic untouched.
     ruleset=$(printf '%s\n' "$ruleset" | awk '
         function flush() {
-            if (buf != "" && !(f2b_table && f2b_only)) printf "%s", buf
-            buf=""; f2b_table=0; f2b_only=1
+            if (buf != "" && !((f2b_table && f2b_only) || (hy_table && hy_only))) printf "%s", buf
+            buf=""; f2b_table=0; f2b_only=1; hy_table=0; hy_only=1
         }
         /^[ \t\r]*table[ \t\r]+/ {
             flush()
             nm=$3; gsub(/[{}]/, "", nm)
             f2b_table = (nm == "f2b" || nm ~ /^f2b[-_]/)
             f2b_only = 1
+            hy_table = (nm ~ /^hysteria_[0-9a-fA-F]+$/)
+            hy_only = 1
             buf = buf $0 "\n"
             in_table = 1
             next
@@ -166,6 +185,7 @@ nftables_native_rules_present() {
         in_table && /^[ \t\r]*chain[ \t\r]+/ {
             cn=$2; gsub(/\{/, "", cn)
             if (!(cn == "f2b" || cn ~ /^f2b[-_]/)) f2b_only = 0
+            if (!(cn == "prerouting" || cn == "output")) hy_only = 0
             buf = buf $0 "\n"
             next
         }

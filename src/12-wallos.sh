@@ -6535,10 +6535,17 @@ wallos_menu() {
                 # R14-07: only a container carrying the A-Box ownership
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
-                # absent container keeps the existing failure outcome.
+                # absent container is reported as already-gone, not as
+                # a removal failure (W6-OBS-2).
                 local _wl_label='' _wl_names='' _wl_id=''
+                # W6-OBS-2: an absent container is not a removal
+                # failure -- it is already gone (e.g. this option was
+                # run once already). Say so instead of the misleading
+                # wl_remove_fail ("may still exist"). The R14-07
+                # outcome below (removal attempted but not verified
+                # gone) keeps the failure message.
                 if ! docker container inspect wallos >/dev/null 2>&1; then
-                    msg "${RED}$(tr_msg wl_remove_fail)${NC}"
+                    msg "${YELLOW}$(tr_msg wl_remove_absent)${NC}"
                 elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]] || ! _wl_id=$(_wallos_container_id); then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.

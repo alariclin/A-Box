@@ -2001,6 +2001,12 @@ tr_msg() {
         fa:update_script_ota_url_not_immutable) echo 'نشانی URL مربوط به OTA به یک commit تغییرناپذیر A-Box اشاره نمی‌کند؛ به‌روزرسانی رد شد.' ;;
         zh-tw:update_script_ota_url_not_immutable) echo 'OTA URL 未指向不可變的 A-Box commit；已拒絕更新。' ;;
         ja:update_script_ota_url_not_immutable) echo 'OTA URL が A-Box の不変の commit を指していません。更新を拒否しました。' ;;
+        zh:update_script_already_latest) echo '已是最新版本，无需更新。' ;;
+        en:update_script_already_latest) echo 'Already on the latest version; no update needed.' ;;
+        ru:update_script_already_latest) echo 'Установлена последняя версия; обновление не требуется.' ;;
+        fa:update_script_already_latest) echo 'در حال حاضر آخرین نسخه نصب است؛ نیازی به به‌روزرسانی نیست.' ;;
+        zh-tw:update_script_already_latest) echo '已是最新版本，無需更新。' ;;
+        ja:update_script_already_latest) echo '最新バージョンです。更新は不要です。' ;;
         zh:update_script_tmp_create_failed) echo '更新脚本临时文件创建失败。' ;;
         en:update_script_tmp_create_failed) echo 'Failed to create a temporary file for the update script.' ;;
         ru:update_script_tmp_create_failed) echo 'Не удалось создать временный файл для скрипта обновления.' ;;
@@ -3765,6 +3771,12 @@ tr_msg() {
         fa:wl_remove_fail) echo '[!] حذف کانتینر wallos ناموفق بود.' ;;
         zh-tw:wl_remove_fail) echo '[!] 刪除 wallos 容器失敗，容器可能仍然存在。' ;;
         ja:wl_remove_fail) echo '[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。' ;;
+        zh:wl_remove_absent) echo 'Wallos 容器不存在，无需删除。' ;;
+        en:wl_remove_absent) echo 'Wallos container does not exist; nothing to remove.' ;;
+        ru:wl_remove_absent) echo 'Контейнер Wallos отсутствует; удалять нечего.' ;;
+        fa:wl_remove_absent) echo 'کانتینر Wallos وجود ندارد؛ چیزی برای حذف نیست.' ;;
+        zh-tw:wl_remove_absent) echo 'Wallos 容器不存在，無需刪除。' ;;
+        ja:wl_remove_absent) echo 'Wallos コンテナは存在しません。削除するものはありません。' ;;
         zh:wl_backup) echo '升级前备份：%s' ;;
         en:wl_backup) echo 'Pre-upgrade backup: %s' ;;
         ru:wl_backup) echo 'Резервная копия перед обновлением: %s' ;;
@@ -11523,6 +11535,12 @@ tr_msg() {
         fa:swap_menu_no_disk_swap) echo 'هیچ فایل Swap دیسکی که توسط A-Box ساخته شده باشد وجود ندارد.' ;;
         zh-tw:swap_menu_no_disk_swap) echo '沒有 A-Box 建立的磁碟 Swap 檔案。' ;;
         ja:swap_menu_no_disk_swap) echo 'A-Box が作成したディスクの Swap ファイルはありません。' ;;
+        zh:swap_menu_no_zram) echo '没有 A-Box 创建的 zram。' ;;
+        en:swap_menu_no_zram) echo 'No zram created by A-Box exists.' ;;
+        ru:swap_menu_no_zram) echo 'Нет zram, созданного A-Box.' ;;
+        fa:swap_menu_no_zram) echo 'هیچ zram ساخته‌شده توسط A-Box وجود ندارد.' ;;
+        zh-tw:swap_menu_no_zram) echo '沒有 A-Box 建立的 zram。' ;;
+        ja:swap_menu_no_zram) echo 'A-Box が作成した zram はありません。' ;;
         zh:swap_menu_remove_failed) echo '移除失败，请检查 /swapfile 与 /etc/fstab。' ;;
         en:swap_menu_remove_failed) echo 'Removal failed. Check /swapfile and /etc/fstab.' ;;
         ru:swap_menu_remove_failed) echo 'Удаление не удалось. Проверьте /swapfile и /etc/fstab.' ;;
@@ -12034,7 +12052,10 @@ tprintf() {
         fi
     done
     (( placeholder_count == $# )) || die "tprintf: argument count mismatch in translation '$key'"
-    printf "$fmt" "$@"
+    # W7-OBS-3: a format starting with dashes (e.g. tl_trying's "--- ...")
+    # is parsed as printf options without `--` ("printf: --: invalid
+    # option", stderr noise, empty output). `--` ends option parsing.
+    printf -- "$fmt" "$@"
 }
 
 proto_label() {
@@ -17622,6 +17643,30 @@ shortcut_custom_menu() {
                 if ! shortcut_resolve_desired ab abox; then
                     printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
                 fi
+                # W6-OBS-3: already the default set with every wrapper
+                # installed and managed: nothing to do. Previously the
+                # transaction re-ran and re-announced completion.
+                # Only a readable state counts: a corrupt state also
+                # prints the default but must still go through the
+                # M-34 heal path below, and missing/foreign wrappers
+                # must still be (re)installed by the transaction.
+                _names=$(shortcut_primary_names); _rc=$?
+                if (( _rc == 0 )) && [[ "$_names" == "$SHORTCUT_RESOLVED" ]]; then
+                    local _sc_all_managed=1
+                    for _n in $_names; do
+                        # shortcut_is_abox_managed already requires a
+                        # regular file (plus root ownership, safe mode
+                        # and the A-Box marker); no separate -f test.
+                        if shortcut_is_abox_managed "/usr/local/bin/$_n"; then
+                            :
+                        else
+                            _sc_all_managed=0; break
+                        fi
+                    done
+                    if (( _sc_all_managed == 1 )); then
+                        printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                    fi
+                fi
                 # M-34: a corrupt live state makes the transaction
                 # fail closed with no menu-reachable recovery;
                 # heal it to the default first (the reset is what
@@ -20148,16 +20193,35 @@ nftables_native_rules_present() {
     # f2b_... whose chains are all f2b-named) before classifying,
     # so the backend falls through to iptables instead of routing
     # the backup into the nftables-unsupported dead end.
+    # G (2026-11-27, W2-FAIL-1 re-verify): same for hysteria's own
+    # port-hop tables. The deploy starts hop-mode hysteria first
+    # (it creates table ip/ip6 hysteria_<hex> with prerouting/output
+    # redirect chains), and setup_active_defense then asks
+    # firewall_backend: without this exclusion the classifier saw
+    # our own hysteria tables as native nftables and refused with
+    # nftables-unsupported, rolling the deploy back -- a self-made
+    # deadlock. Drop a table only when BOTH hold: (a) the name
+    # matches the hysteria-generated pattern ^hysteria_[0-9a-fA-F]+$
+    # (same pattern as the F-leg hop checker in src/06), and
+    # (b) every chain in it is one of hysteria's own
+    # (prerouting/output -- the exact shape in the 2026-11-27
+    # InstaBox real ruleset, ip/ip6 and inet alike). A table that
+    # merely squats the name but carries any other chain (e.g. an
+    # input base chain with real rules) is kept, so a genuine
+    # native ruleset can never be masked by this exclusion; the
+    # stage-2 classifier below still sees it. f2b logic untouched.
     ruleset=$(printf '%s\n' "$ruleset" | awk '
         function flush() {
-            if (buf != "" && !(f2b_table && f2b_only)) printf "%s", buf
-            buf=""; f2b_table=0; f2b_only=1
+            if (buf != "" && !((f2b_table && f2b_only) || (hy_table && hy_only))) printf "%s", buf
+            buf=""; f2b_table=0; f2b_only=1; hy_table=0; hy_only=1
         }
         /^[ \t\r]*table[ \t\r]+/ {
             flush()
             nm=$3; gsub(/[{}]/, "", nm)
             f2b_table = (nm == "f2b" || nm ~ /^f2b[-_]/)
             f2b_only = 1
+            hy_table = (nm ~ /^hysteria_[0-9a-fA-F]+$/)
+            hy_only = 1
             buf = buf $0 "\n"
             in_table = 1
             next
@@ -20165,6 +20229,7 @@ nftables_native_rules_present() {
         in_table && /^[ \t\r]*chain[ \t\r]+/ {
             cn=$2; gsub(/\{/, "", cn)
             if (!(cn == "f2b" || cn ~ /^f2b[-_]/)) f2b_only = 0
+            if (!(cn == "prerouting" || cn == "output")) hy_only = 0
             buf = buf $0 "\n"
             next
         }
@@ -25984,6 +26049,14 @@ hysteria_official_hop_firewall_ok() {
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
         # counts per its rules' meta nfproto (unrestricted counts for both)).
+        # F-hop (2026-11-27): Hysteria 2.14.0 official hop builds its
+        # own per-family tables `hysteria_<hash>` (ip + ip6) with a
+        # lowercase `prerouting` base chain (`type nat hook prerouting`),
+        # invisible to iptables-nft and to the old `tbl == "nat" &&
+        # chain == "PREROUTING"` gate — every official-hop deploy on a
+        # nft-default host failed on it. Accept those tables too, with
+        # the same hook + saddr + family accounting below; any other
+        # table still does not count.
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -26001,7 +26074,7 @@ hysteria_official_hop_firewall_ok() {
             # only that source, not the whole hop range; it must not count.
             # (A negated dport cannot match `pat`: the range must follow
             # `udp dport ` directly, so `udp dport != ...` never matches.)
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
+            tolower(chain) == "prerouting" && (tbl == "nat" || tbl ~ /^hysteria_[0-9a-fA-F]+$/) && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {
@@ -26239,6 +26312,58 @@ _xrc_restore_divergence_check() {
     return 0
 }
 
+# W2-FAIL-1: decide whether the published desired config may serve as
+# the auto-recovery source. $1 = work file to stage the candidate into.
+# The file is trusted only when it is a root-owned 0600 regular file
+# (not a symlink) of sane size, passes the xray offline test, AND its
+# data-inbound port set EQUALS the current .env expected set exactly.
+# Exact equality (not the subset cover the backup gate uses) is what
+# makes a stale file harmless: a deploy or a manual restore the file
+# does not describe can neither gain nor lose a port through it, so a
+# non-matching file is ignored and backup enumeration decides.
+# rc 0 = staged and usable, 1 = not usable (any reason).
+_xrc_desired_config_usable() {
+    local dest="$1" src='' _sz='' _mode='' _test_rc=0
+    local _expected='' _have='' _var='' _val=''
+    local bin="${XRAY_BIN:-/usr/local/bin/xray}"
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    [[ -n "$dest" ]] || return 1
+    src=$(_xrc_desired_config_path) || return 1
+    [[ -f "$src" && ! -L "$src" && -r "$src" ]] || return 1
+    [[ "$(stat -c %u:%g "$src" 2>/dev/null || true)" == '0:0' ]] || return 1
+    _mode=$(stat -c %a "$src" 2>/dev/null || echo '')
+    [[ "$_mode" =~ ^0?600$ ]] || return 1
+    _sz=$(stat -c %s -- "$src" 2>/dev/null || echo 0)
+    [[ "$_sz" =~ ^[0-9]+$ && "$_sz" -gt 0 && "$_sz" -le 1048576 ]] || return 1
+    cp -f -- "$src" "$dest" 2>/dev/null || return 1
+    chmod 600 -- "$dest" 2>/dev/null || return 1
+    [[ -x "$bin" ]] || return 1
+    if command -v timeout >/dev/null 2>&1; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray timeout 30 "$bin" run -test -config "$dest" >/dev/null 2>&1; _test_rc=$?
+    else
+        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$dest" >/dev/null 2>&1; _test_rc=$?
+    fi
+    (( _test_rc == 0 )) || return 1
+    # Expected set: same var list and parsing as
+    # _xrc_config_has_expected_data_inbound.
+    if [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]]; then
+        for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT TROJAN_PORT; do
+            _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+            [[ "$_val" =~ ^[0-9]+$ ]] || continue
+            [[ "${#_val}" -le 5 ]] || continue
+            (( 10#$_val >= 1 && 10#$_val <= 65535 )) || continue
+            _expected+="$((10#$_val))"$'\n'
+        done
+    fi
+    # Only numeric ports count (a string port is invalid xray input
+    # and the offline test above already rejected such a file).
+    _have=$(jsonc_strip_comments "$dest" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != "api") | .port // empty | select(type == "number")' 2>/dev/null) || return 1
+    _expected=$(printf '%s' "$_expected" | sort -n -u | tr '\n' ' ' || true)
+    _have=$(printf '%s' "$_have" | sort -n -u | tr '\n' ' ' || true)
+    [[ "$_expected" == "$_have" ]] || return 1
+    return 0
+}
+
 xray_config_autorecover() {
     local cfg="${XRAY_CFG:-/usr/local/etc/xray/config.json}"
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
@@ -26382,6 +26507,16 @@ xray_config_autorecover() {
         return 1
     }
     local _cand_file="$_work/candidates"
+    # W2-FAIL-1: prefer the published desired state over historical
+    # backups. A usable desired file describes exactly the current
+    # intent, so a genuine fault after deletions restores the deleted
+    # state instead of resurrecting protocols from a deploy-time
+    # backup. Any doubt falls through to backup enumeration below.
+    if _xrc_desired_config_usable "$_work/desired-config.json"; then
+        _good="$_work/desired-config.json"
+        _good_src="$(_xrc_desired_config_path)"
+    fi
+    if [[ -z "$_good" ]]; then
     # R16-F07-01: BusyBox find (Alpine) has no -printf; python3 is already
     # a hard dependency, so enumerate by mtime in python (newest first),
     # as restore_from_backup does (D-07). An enumeration failure is NOT a
@@ -26483,6 +26618,7 @@ PY_XRC_ENUM
                 ;;
         esac
     done < "$_cand_file"
+    fi # W2-FAIL-1: end of backup enumeration (skipped when the desired file was usable)
     if [[ -z "$_good" && -n "${_fallback_good:-}" ]]; then
         # F-NEW-04/CD: no candidate covers the full expected set; fall
         # back to the newest trusted, valid backup instead of stopping
@@ -27133,6 +27269,14 @@ hysteria_official_hop_firewall_ok() {
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
         # counts per its rules' meta nfproto (unrestricted counts for both)).
+        # F-hop (2026-11-27): Hysteria 2.14.0 official hop builds its
+        # own per-family tables `hysteria_<hash>` (ip + ip6) with a
+        # lowercase `prerouting` base chain (`type nat hook prerouting`),
+        # invisible to iptables-nft and to the old `tbl == "nat" &&
+        # chain == "PREROUTING"` gate — every official-hop deploy on a
+        # nft-default host failed on it. Accept those tables too, with
+        # the same hook + saddr + family accounting below; any other
+        # table still does not count.
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -27150,7 +27294,7 @@ hysteria_official_hop_firewall_ok() {
             # only that source, not the whole hop range; it must not count.
             # (A negated dport cannot match `pat`: the range must follow
             # `udp dport ` directly, so `udp dport != ...` never matches.)
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
+            tolower(chain) == "prerouting" && (tbl == "nat" || tbl ~ /^hysteria_[0-9a-fA-F]+$/) && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {
@@ -27187,14 +27331,40 @@ failed_srv=''
 service_active_owned "$MAIN_SRV" || failed_srv="$MAIN_SRV"
 MAIN_PID=${SERVICE_PID:-}
 HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
-if [[ "$CORE" == xray && "$MODE" == *ALL* ]]; then
+# H-probe (2026-11-27): Hy2 is a sidecar of xray+ALL only while its
+# A-Box-managed unit exists. MODE stays ALL after Hy2 is deleted, so
+# demanding hysteria on MODE alone reports a deleted service failed
+# every minute (STATE churn + futile restart-gate trips). The unit
+# file is the deployment truth: deploy writes it with
+# '# Managed by A-Box' (src/07) and delete removes it (src/09
+# _remove_hy2_official), while the .env HY2_* keys are only a proxy
+# (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
+# cleared while Hy2 still lives). A managed-but-dead hysteria is
+# still reported (negative control). Downstream Hy2 branches (hop
+# firewall, HY2_MONITOR_PORT socket) are gated the same way by
+# H2-probe below: the supported delete path clears those keys with
+# the unit, but a failed cleanup leaves them stale and the branches
+# would otherwise blame a healthy xray (T5b).
+if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi
-if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == official && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
+# H2-probe (2026-11-27): the hop-firewall and HY2_MONITOR_PORT checks
+# below are Hy2 checks, not xray checks. In xray mode Hy2 is the
+# separate A-Box-managed hysteria sidecar (H-probe gate above), so when
+# its unit is gone those checks must not run at all: with stale HY2_*
+# keys left by a failed delete cleanup they would fail and be blamed on
+# HY2_SRV=xray, restarting a healthy xray every 10 minutes (T5b).
+# A managed-but-dead hysteria still fails the checks and is blamed on
+# hysteria (HY2_SRV=hysteria above). In sing-box mode Hy2 lives inside
+# sing-box itself — no sidecar unit ever exists — so the checks stay
+# key-gated exactly as before.
+HY2_PROBE_GATE=1
+if [[ "$CORE" == xray ]] && ! service_is_abox_managed hysteria; then HY2_PROBE_GATE=0; fi
+if [[ -z "$failed_srv" && "$HY2_PROBE_GATE" == 1 && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == official && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
     hysteria_official_hop_firewall_ok || failed_srv="$HY2_SRV"
 fi
-if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
+if [[ -z "$failed_srv" && "$HY2_PROBE_GATE" == 1 && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
     redirect_port="${HY2_MONITOR_PORT:-${HY2_BASE_PORT:-${HY2_RANGE_START}}}"
     _iptables_q "$IPT" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     if has_ipv6 && ipv6_nat_redirect_usable; then
@@ -27203,7 +27373,7 @@ if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manua
 fi
 [[ -n "$failed_srv" || -z "${VLESS_PORT:-}" ]] || check_socket_or_fail tcp "$VLESS_PORT" "$MAIN_PID" "$MAIN_SRV"
 [[ -n "$failed_srv" || -z "${XHTTP_PORT:-}" ]] || check_socket_or_fail tcp "$XHTTP_PORT" "$MAIN_PID" "$MAIN_SRV"
-[[ -n "$failed_srv" || -z "${HY2_MONITOR_PORT:-}" ]] || check_socket_or_fail udp "$HY2_MONITOR_PORT" "$HY2_PID" "$HY2_SRV"
+[[ -n "$failed_srv" || "$HY2_PROBE_GATE" == 0 || -z "${HY2_MONITOR_PORT:-}" ]] || check_socket_or_fail udp "$HY2_MONITOR_PORT" "$HY2_PID" "$HY2_SRV"
 if [[ -z "$failed_srv" && -n "${SS_PORT:-}" ]]; then
     # H-04: skip when the running config no longer carries this
     # inbound (users_sync removed it); a silent port is expected then.
@@ -28031,7 +28201,25 @@ pre_install_setup() {
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die "$(tr_msg pi_oneclick_sni_fail)"
+        if ! valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
+            # W2-FAIL-2 (matrix4-C): no verified auto-select candidate.
+            # ABOX_QUICK_DEPLOY cannot tell interactive from unattended
+            # (the R menu itself sets it), so the discriminator is the
+            # TTY test, the codebase's established idiom ([[ -t 0 ]]).
+            # Interactive: one manual retry through prompt_reality_sni,
+            # the same live validation as the wizard (format + DNS
+            # resolvability gate + TLS/SAN tier probe; tier R/D/N
+            # warn-and-confirm). Cancel/EOF makes prompt_reality_sni
+            # return 1, and this function returns 1 (never die) so
+            # deploy_xray/deploy_singbox rolls the transaction back and
+            # the menu loop redraws. Unattended: keep the fail-closed
+            # die() -- nonzero exit, never prompts.
+            if [[ -t 0 ]]; then
+                ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni "$L_VISION" "$DEF_V_PORT") || return 1
+            else
+                die "$(tr_msg pi_oneclick_sni_fail)"
+            fi
+        fi
         VISION_SNI="$ABOX_AUTO_SNI_SELECTED"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'
@@ -34280,8 +34468,18 @@ _menu_info_collect() {
     fi
 
     # AP-01-residual (B-leg): drop the strip-once views built at the top.
+    # Cleanup is best-effort only: a failed rm must not decide whether
+    # the panel renders, and there is no log channel in this render
+    # path that could carry it without corrupting menu output.
     [[ -n "$_mi_sb_tmp" ]] && rm -f -- "$_mi_sb_tmp" 2>/dev/null
     [[ -n "$_mi_xr_tmp" ]] && rm -f -- "$_mi_xr_tmp" 2>/dev/null
+    # W1-FAIL-1: without this, the function inherits the status of the
+    # last [[ -n ... ]] test above: in virgin state both temps are
+    # empty, the test is false, rc=1, and _menu_info_display's
+    # `_menu_info_collect || return 0` gate skips the whole panel.
+    # Collection itself never fails here (every fallible step above
+    # is guarded); success is explicit.
+    return 0
 }
 
 # One matrix cell: [ name(padded) dot ]
@@ -34348,11 +34546,18 @@ _menu_info_display() {
     # row: 2 leading spaces + label display width + fullwidth colon (2)
     # + 2 spaces. A fixed indent only aligns when the label is 4 wide.
     printf -v _netpad '%*s' $(( $(_str_dwidth "$(tr_msg mi_net)") + 6 )) ''
-    [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
-    if [[ -n "$_MI_GEO_COUNTRY" ]]; then
+    # W5-OBS-1: GLOBAL_PUBLIC_IP follows the IP-preference cache, so
+    # under dual/ipv6 it can hold a v6 address; never print a v6
+    # address under the IPv4 label. The geo suffix is keyed to that
+    # same address, so it is only shown when the IPv4 cell really
+    # shows GLOBAL_PUBLIC_IP (otherwise the cell is unknown: `?`).
+    local _v4ip="${GLOBAL_PUBLIC_IP:-}"
+    [[ "$_v4ip" == *:* ]] && _v4ip=''
+    [[ -n "$_v4ip" ]] && _v4dot="${GREEN}●${NC}"
+    if [[ -n "$_v4ip" && -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${_v4ip:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
         msg "${_netpad}${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else
@@ -39041,8 +39246,15 @@ traffic_management_menu() {
         "$(tr_msg traffic_management_menu_status_ok)"
         "$(tr_msg traffic_management_menu_no_month_stats)"
     )
-    if [[ -n "$_tjson" ]]; then
-        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+    if [[ -z "$_tjson" ]]; then
+        # W7-OBS-1: without vnStat the menu showed only this warning
+        # and no dashboard at all. Keep the warning, but still render
+        # the dashboard frame over an empty dataset: the Python report
+        # below renders its title + "no month stats" line for `{}`.
+        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
+        _tjson='{}'
+    fi
+    python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] $(tr_msg traffic_management_menu_parse_failed)${NC}"
 import datetime, json, sys, unicodedata
 
@@ -39171,9 +39383,6 @@ else:
     out.append(f"{YELLOW}{TM_NO_MONTH_STATS}{NC}")
 sys.stdout.write("\n".join(out) + "\n")
 PY_TRAFFIC_DASH
-    else
-        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
-    fi
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "${CYAN}1.${NC}  $(tr_msg traffic_management_menu_set_limit)"
     msg "${CYAN}2.${NC}  $(tr_msg traffic_management_menu_remove_limit)"
@@ -40070,14 +40279,27 @@ do_cleanup() {
             # dnscrypt-proxy yourself if A-Box installed it.
             remove_owned_auxiliary_path /etc/systemd/resolved.conf.d/99-abox-dns.conf || die 'Failed to remove the A-Box DNS drop-in.'
             remove_owned_auxiliary_path /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || die 'Failed to remove the A-Box dnscrypt-proxy socket drop-in.'
+            local _resolved_restarted=0
             if command -v systemctl >/dev/null 2>&1; then
                 systemctl daemon-reload >/dev/null 2>&1 || msg "${YELLOW}[!] systemd daemon-reload failed during uninstall; DNS drop-in removal may not have taken effect.${NC}"
                 if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
                     systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
                 fi
-                systemctl restart systemd-resolved >/dev/null 2>&1 || msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                if systemctl restart systemd-resolved >/dev/null 2>&1; then
+                    _resolved_restarted=1
+                else
+                    msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                fi
             fi
-            msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            # W7-OBS-5: the old unconditional message claimed resolved
+            # "was restarted with distribution defaults" even when the
+            # restart above just failed (or systemd is absent). Word
+            # it by the observed outcome instead.
+            if (( _resolved_restarted == 1 )); then
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            else
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed but systemd-resolved was not restarted. DNS is left as-is; check DNS manually.${NC}"
+            fi
         fi
         if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
             restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" || die 'Timezone rollback snapshot restore failed; aborting uninstall before the snapshot is destroyed.'
@@ -40292,9 +40514,38 @@ protocol_inventory() {
 _protocol_cfg_of() { # $1 = core -> cfg|bin|svc
     case "$1" in
         xray) printf '%s|%s|%s' "$XRAY_SLOT_CFG" '/usr/local/bin/xray' 'xray' ;;
-        sing-box) printf '%s|%s|%s' '/etc/sing-box/config.json' '/usr/local/bin/sing-box' 'sing-box' ;;
+        sing-box) printf '%s|%s|%s' "${ABOX_SB_CFG:-/etc/sing-box/config.json}" '/usr/local/bin/sing-box' 'sing-box' ;;
         *) return 1 ;;
     esac
+}
+
+# W2-FAIL-1: the automatic xray-config recovery (xray_config_autorecover,
+# src/06) restores from historical deployment backups. A backup taken at
+# deploy time still carries every protocol the user later deleted, so
+# after a genuine config fault it would resurrect deleted protocols.
+# Publish the live xray config as the recovery's desired state whenever
+# a removal rewrites it. The file is separate from the historical
+# backups (manual restore keeps using those) and is only ever consumed
+# when it matches the current .env expectations exactly (see
+# _xrc_desired_config_usable in src/06), so a stale file is ignored.
+_xrc_desired_config_path() {
+    printf '%s' "${ABOX_DIR:-/etc/ddr}/.xray-desired-config.json"
+}
+
+# Publish the live xray config as the auto-recovery desired state.
+# Best-effort: the config was just validated by the caller's own
+# xray run -test and installed atomically, so a publish failure only
+# degrades the corruption-restore layer to the historical backups;
+# the .env expectations (the probe's live trigger) are unaffected.
+# rc 0 = published, 1 = not published (caller warns, delete stands).
+_xrc_publish_desired_config() {
+    local cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" dest='' _sz=''
+    dest=$(_xrc_desired_config_path) || return 1
+    [[ -f "$cfg" && ! -L "$cfg" && -r "$cfg" ]] || return 1
+    _sz=$(stat -c %s -- "$cfg" 2>/dev/null || echo 0)
+    [[ "$_sz" =~ ^[0-9]+$ && "$_sz" -gt 0 && "$_sz" -le 1048576 ]] || return 1
+    install_file_atomically "$cfg" "$dest" 600 || return 1
+    return 0
 }
 
 # _remove_inbounds_from_config CORE TAG...   |   CORE --all
@@ -40406,6 +40657,13 @@ _remove_inbounds_from_config() {
     if (( routes_before - routes_after > 0 )); then
         msg "${YELLOW}$(tprintf cl_routes_cleaned "$(( routes_before - routes_after ))")${NC}"
     fi
+    # W2-FAIL-1: publish the post-removal config as the auto-recovery
+    # desired state (separate from historical backups). Best-effort:
+    # a publish failure only degrades the corruption-restore layer
+    # to the backups; the delete itself stands.
+    if [[ "$core" == 'xray' ]]; then
+        _xrc_publish_desired_config || msg "${YELLOW}[!] Could not publish the xray desired config for auto-recovery; a later config fault would restore from a historical backup instead.${NC}"
+    fi
     rm -f "$bak"; return 0
 }
 
@@ -40472,13 +40730,24 @@ sync_env_ports_after_removal() {
     # surviving inbound is stale (setup_active_defense rebuilds its
     # fail2ban port list from .env, so a dead port would linger in the
     # jail). Clear the var (file line emptied, shell var unset) only
-    # when no surviving inbound listens on it; a port shared by the
-    # main combo and an independent node survives while any listener
-    # remains. HY2 hop-range vars are not listener ports and are out
-    # of scope here.
+    # when no surviving inbound OF THE PROTOCOL THAT OWNS THE VAR
+    # listens on it.
+    # W2-FAIL-1 (2026-11-26 matrix): the old rule pooled every live
+    # listener port across all cores, so a Hysteria 2 inbound on UDP
+    # 443 kept VLESS_PORT=443 alive after the xray Vision inbound was
+    # deleted. The health probe then read VLESS_PORT as an xray
+    # expectation, found no xray inbound on 443, and auto-restored the
+    # stale ALL backup -- resurrecting the just-deleted protocols.
+    # A port shared by two protocols survives only while a listener
+    # of the VAR'S OWN protocol remains (e.g. VLESS_PORT survives on
+    # an xray/sing-box Vision inbound, never on a Hy2 listener).
+    # HY2 hop-range vars are not listener ports and are out of scope
+    # here.
     local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
+    local -a _live_vless=() _live_xhttp=() _live_ss=() _live_socks=() _live_trojan=() _live_hy2=()
     local -a _val_parts=()
+    local _jq_prog='' _cv='' _cp=''
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for core in xray sing-box; do
         info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
@@ -40492,15 +40761,46 @@ sync_env_ports_after_removal() {
         # misread as "no live ports" and clear live .env ports.
         _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || { _read_failed=1; continue; }
         [[ "$_stripped" =~ [^[:space:]] ]] || { _read_failed=1; continue; }
-        _ports=$(jq -r '.inbounds[]? | (.port // .listen_port // empty)' <<< "$_stripped" 2>/dev/null) || { _read_failed=1; continue; }
-        while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done <<< "$_ports"
+        # Classify each live inbound by the protocol that owns its
+        # .env var (tag first, protocol/type second). The untagged
+        # xray vless fallback keys on the stream network: xhttp
+        # network is XHTTP, anything else vless is Vision. Argo
+        # vless-ws-in carries no "vision" tag and never lands in
+        # VLESS_PORT.
+        if [[ "$core" == 'xray' ]]; then
+            _jq_prog='.inbounds[]? | if ((.tag // "") | test("vision")) then "VLESS \(.port // empty)" elif ((.tag // "") | test("xhttp")) then "XHTTP \(.port // empty)" elif .protocol == "shadowsocks" then "SS \(.port // empty)" elif .protocol == "socks" then "SOCKS \(.port // empty)" elif .protocol == "trojan" then "TROJAN \(.port // empty)" elif .protocol == "vless" then (if ((.streamSettings.network // "") == "xhttp") then "XHTTP \(.port // empty)" else "VLESS \(.port // empty)" end) else empty end'
+        else
+            _jq_prog='.inbounds[]? | if .type == "vless" and ((.tag // "") | test("vision")) then "VLESS \(.listen_port // empty)" elif .type == "shadowsocks" then "SS \(.listen_port // empty)" elif .type == "socks" or .type == "mixed" then "SOCKS \(.listen_port // empty)" elif .type == "trojan" then "TROJAN \(.listen_port // empty)" elif .type == "hysteria2" then "HY2 \(.listen_port // empty)" else empty end'
+        fi
+        _ports=$(jq -r "$_jq_prog" <<< "$_stripped" 2>/dev/null) || { _read_failed=1; continue; }
+        # No IFS= here: the "VAR port" line must word-split into
+        # the two fields (IFS= would put the whole line in _cv and
+        # leave _cp empty, dropping every classification).
+        while read -r _cv _cp; do
+            [[ -n "$_cv" && -n "$_cp" ]] || continue
+            case "$_cv" in
+                VLESS) _live_vless+=("$_cp") ;;
+                XHTTP) _live_xhttp+=("$_cp") ;;
+                SS) _live_ss+=("$_cp") ;;
+                SOCKS) _live_socks+=("$_cp") ;;
+                TROJAN) _live_trojan+=("$_cp") ;;
+                # W7-OBS-4: the sing-box hysteria2 inbound listens on
+                # HY2_BASE_PORT (build_singbox_config, src/07), so it
+                # is a live Hy2 port source exactly like the official
+                # yaml below. Without this arm the per-owner rewrite
+                # cleared HY2_BASE_PORT on any sing-box delete while
+                # the Hy2 inbound still listened (the pre-fix pooled
+                # harvest kept it via the all-ports jq).
+                HY2) _live_hy2+=("$_cp") ;;
+            esac
+        done <<< "$_ports"
     done
-    if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+    if [[ -f "${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" && ! -L "${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" ]]; then
         # R7C11-02: collect every listen port (top-level and
         # trafficStats.listen), not just the first top-level one.
         local _hy2_lines='' _hy2_rc=0 _hy2_value='' _hy2_re='' _hy2_key_re="^[[:space:]]*(listen|'listen'|\"listen\")[[:space:]]*:"
         local _hy2_endpoint_re='^([[:alnum:]_.%-]*|\[[[:alnum:]_.%:-]+\]):([0-9]+(-[0-9]+)?)$'
-        _hy2_lines=$(grep -E "$_hy2_key_re" /etc/hysteria/config.yaml 2>/dev/null) || _hy2_rc=$?
+        _hy2_lines=$(grep -E "$_hy2_key_re" "${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" 2>/dev/null) || _hy2_rc=$?
         if (( _hy2_rc > 1 )); then
             _read_failed=1
         else
@@ -40523,7 +40823,7 @@ sync_env_ports_after_removal() {
                 fi
                 if [[ "$_hy2_value" =~ $_hy2_endpoint_re ]]; then
                     hy2p="${BASH_REMATCH[2]}"
-                    live_ports+=("$hy2p")
+                    _live_hy2+=("$hy2p")
                 else
                     _read_failed=1
                 fi
@@ -40538,6 +40838,19 @@ sync_env_ports_after_removal() {
     for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT TROJAN_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
+        # W2-FAIL-1: each var is kept only by a live inbound of its
+        # own protocol. A Hy2 listener on 443 must not keep
+        # VLESS_PORT, and an xray Vision inbound must not keep
+        # HY2_BASE_PORT. The keep-check below is unchanged; only its
+        # input set is now per-var.
+        case "$var" in
+            VLESS_PORT) live_ports=("${_live_vless[@]}") ;;
+            XHTTP_PORT) live_ports=("${_live_xhttp[@]}") ;;
+            SS_PORT) live_ports=("${_live_ss[@]}") ;;
+            SOCKS_PORT) live_ports=("${_live_socks[@]}") ;;
+            TROJAN_PORT) live_ports=("${_live_trojan[@]}") ;;
+            *) live_ports=("${_live_hy2[@]}") ;;
+        esac
         # R6C11-02: evaluate numeric/range/list specs, not literal
         # membership. Keep if any element is covered (exact or
         # within a range), or if any live entry is unparseable
@@ -40587,6 +40900,58 @@ sync_env_ports_after_removal() {
     done
     [[ -n "$cleared" ]] && msg "${YELLOW}$(tprintf cl_env_ports_cleared "${cleared% }")${NC}"
     if (( _write_failed == 1 )); then
+        return 1
+    fi
+    return 0
+}
+
+# W7-OBS-4 (E-leg handoff, adjudicated in the W2-FAIL-1 leg):
+# deleting Hy2 must also clear its non-port .env keys. Two live
+# readers prove they are expectations, not dead data: the health
+# probe reads HY2_HOP/HY2_HOP_IMPL/HY2_RANGE_START/HY2_RANGE_END
+# (hop firewall check, src/06, plus the fail2ban port harvest), and
+# the Clash YAML emitter resurrects a deleted Hy2 from stale
+# HY2_DOMAIN/HY2_CERT_SHA256_FP/HY2_PASS fallbacks while MODE still
+# says ALL (src/13 write_clash_yaml; HY2_BASE_PORT empty is NOT a
+# stop there -- it defaults to 443). Deploy regenerates every one
+# of these keys (HY2_PASS/HY2_OBFS/cert fingerprints; domain and hop
+# settings are re-prompted), so clearing them cannot break a later
+# re-deploy. Port vars are NOT listed here: HY2_BASE_PORT,
+# HY2_MONITOR_PORT and HY2_URI_PORTS stay with
+# sync_env_ports_after_removal above, and the hop-range vars stay
+# out of sync by the original design note (they are not listener
+# ports) -- they are cleared here instead, under the same gate.
+# Gate: only when no Hy2 remains anywhere (official config gone AND
+# no hysteria2 inbound in the sing-box config). Anything
+# unverifiable keeps the keys and returns 0 (skip, mirroring the
+# M-12(1) hop-rule reclamation next door); only a real write failure
+# returns 1.
+_clear_hy2_nonport_env_vars() {
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _hy2cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}"
+    local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+    local _stripped='' _jq_rc=0 _key='' _failed=0
+    # Official binary still installed -> Hy2 lives.
+    [[ -e "$_hy2cfg" || -L "$_hy2cfg" ]] && return 0
+    # Sing-box hysteria2 inbound still present -> Hy2 lives. A
+    # missing/empty sing-box config means no sing-box Hy2; an
+    # unreadable or unparseable one is unverifiable -> keep keys.
+    if [[ -f "$_sbcfg" && ! -L "$_sbcfg" && -s "$_sbcfg" ]]; then
+        _stripped=$(jsonc_strip_comments "$_sbcfg" 2>/dev/null) || return 0
+        [[ -n "${_stripped//[[:space:]]/}" ]] || return 0
+        printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+        (( _jq_rc == 1 )) || return 0
+    fi
+    [[ -f "$envf" && ! -L "$envf" ]] || return 0
+    for _key in HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL HY2_PASS HY2_OBFS HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END; do
+        if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
+            _failed=1
+            continue
+        fi
+        unset "$_key" 2>/dev/null || true
+    done
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Failed to clear stale Hy2 settings from .env after removing Hysteria 2; stale values may remain.${NC}"
         return 1
     fi
     return 0
@@ -41025,9 +41390,10 @@ firewall_recycle_freed_ports() {
     return 0
 }
 
-_protocol_removed_side_effects() { # $1 = core, rest = removed tags
+# $1 = core, rest = removed tags
+_protocol_removed_side_effects() {
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sb_stripped=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -41169,7 +41535,27 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     fi
     # U148: reconcile .env listener ports now, before the caller's
     # defense refresh rebuilds the fail2ban port list from .env.
-    sync_env_ports_after_removal || true
+    # W2-FAIL-1: a failed reconciliation leaves stale expectations
+    # behind -- exactly the trigger the probe restores on. Surface
+    # it (like the registry failure above) instead of swallowing it
+    # with `|| true`: the caller then reports the delete as failed
+    # rather than printing "已删除" over an inconsistent state.
+    if ! sync_env_ports_after_removal; then
+        msg "${YELLOW}[!] .env port reconciliation failed after removing ${core} protocol(s); stale listener ports may remain and the health probe may restore them.${NC}"
+        _sync_failed=1
+    fi
+    # W7-OBS-4: once the last Hy2 is gone, its non-port .env keys
+    # (domain/password/fingerprint/hop settings) must go too -- the
+    # probe reads the hop keys and the Clash emitter resurrects a
+    # deleted Hy2 from the stale fallbacks. The helper verifies
+    # "no Hy2 remains" itself; a failure is surfaced like the sync
+    # failure above. (Runs after sync; the M-12(1) hop-rule block
+    # below uses the _hop_* values captured up front, so clearing
+    # the live vars here cannot starve it.)
+    if ! _clear_hy2_nonport_env_vars; then
+        msg "${YELLOW}[!] Hy2 settings cleanup failed after removing ${core} protocol(s); stale Hy2 values may remain in .env.${NC}"
+        _hy2env_failed=1
+    fi
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
         cfg='/etc/sing-box/config.json'
@@ -41255,7 +41641,31 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # _singbox_cleanup_tuic_certs_when_none_remain), or the manifest
     # drifts from disk (stale hash vs a same-name rebuild).
     (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
-    return "$_reg_failed"
+    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 )); then return 1; fi
+    return 0
+}
+
+# W2-FAIL-1 (point 2): post-delete verification -- confirm every
+# removed tag is actually absent from the live config before the
+# caller reports success. rc 0 = all absent, 1 = a tag survives or
+# the config cannot be verified (fail-closed: an unverifiable config
+# is never reported as cleaned).
+_removed_tags_absent_from_config() { # $1 = cfg, rest = tags
+    local cfg="$1"; shift
+    local _stripped='' _t='' _jq_rc=0
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null) || return 1
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 1
+    for _t in "$@"; do
+        printf '%s' "$_stripped" | jq -e --arg t "$_t" 'any(.inbounds[]?; .tag == $t)' >/dev/null 2>&1 || _jq_rc=$?
+        case "$_jq_rc" in
+            0) return 1 ;; # tag still present
+            1) : ;;        # confirmed absent
+            *) return 1 ;; # unverifiable: fail closed
+        esac
+        _jq_rc=0
+    done
+    return 0
 }
 
 _remove_hy2_official() {
@@ -41444,11 +41854,27 @@ remove_single_protocol_menu() {
         if [[ -n "$_freed_ports" ]]; then printf '%s\n' "$_freed_ports" | firewall_recycle_freed_ports; fi
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
-    # R38-M1: the protocol is deleted, but a failed registry cleanup
-    # must not be reported as a clean success.
+    # R38-M1: the protocol is deleted, but a failed side effect
+    # (registry cleanup or .env port reconciliation) must not be
+    # reported as a clean success. The specific warning was already
+    # printed by _protocol_removed_side_effects.
     if (( _side_rc == 1 )); then
-        msg "${YELLOW}[!] Protocol ${label} removed, but user registry cleanup failed; credentials may remain on disk.${NC}"
+        msg "${YELLOW}[!] Protocol ${label} removed, but post-delete cleanup failed; the committed state may be inconsistent (see the warning above).${NC}"
         return 1
+    fi
+    # W2-FAIL-1 (point 2): verify the delete actually landed in the
+    # live config before reporting success. A tag that survives (or
+    # an unreadable config) is a failed delete, not a deleted one.
+    if [[ "$core" == 'hy2' ]]; then
+        if [[ -e "${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" || -L "${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" ]]; then
+            msg "${RED}$(tr_msg cl_fail)${NC}"
+            return 1
+        fi
+    else
+        if ! _removed_tags_absent_from_config "$cfg" "${tags[@]}"; then
+            msg "${RED}$(tr_msg cl_fail)${NC}"
+            return 1
+        fi
     fi
     refresh_subscription_after_deploy || true
     msg "${GREEN}$(tr_msg cl_done): ${label}${NC}"
@@ -47913,8 +48339,18 @@ restore_dns_snapshot_body() {
         [[ "$_sock_listen_now" == "$_sock_listen_want" ]] || return 1
     fi
     if (( _dns_no_systemd == 0 )) && command -v systemctl >/dev/null 2>&1; then
-        local _dnscrypt_units=''
-        _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
+        local _dnscrypt_units='' _dnscrypt_list_rc=0
+        # W5-FAIL-1 (matrix4-D): list-unit-files with a unit-name filter
+        # exits 1 when the unit does not exist, so a box that never
+        # installed dnscrypt-proxy failed the whole rollback even though
+        # resolv.conf was already restored. List unfiltered instead and
+        # check the exit status explicitly: a listing error fails closed
+        # (return 1, snapshot preserved for retry), while an absent unit
+        # in a successful listing simply skips this optional step via
+        # the awk gate below (empty input exits 1, branch not taken).
+        # The rc capture is ||-guarded, so it is safe under errexit too.
+        _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null) || _dnscrypt_list_rc=$?
+        if (( _dnscrypt_list_rc != 0 )); then return 1; fi
         if awk -v wanted='dnscrypt-proxy.service' '$1 == wanted { found=1 } END { exit !found }' <<< "$_dnscrypt_units"; then
         state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
         local enabled_state _got_ens _link_target='' _cur_ens='' _got_link=''
@@ -53066,6 +53502,29 @@ EOF_ZRAM_RC
 }
 
 remove_zram_swap() {
+    # W5-OBS-3: abox_zram_teardown returns 0 for a no-op cleanup, so
+    # with no A-Box zram at all this used to print "zram 已移除" for
+    # nothing removed. Probe for any A-Box zram trace first (helper,
+    # state/conf, unit or enablement link, init script, or an actually
+    # active zram device) and say so explicitly when there is none --
+    # mirroring the disk-swap "没有 A-Box 创建的磁盘 Swap 文件。" path.
+    # The teardown itself is untouched: idempotent cleanup callers
+    # (uninstall, reset) still rely on its no-op success.
+    local _rz_any=0 _rz_p
+    for _rz_p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state /etc/init.d/abox-zram; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    for _rz_p in /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service \
+        /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    if grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null; then _rz_any=1; fi
+    if (( _rz_any == 0 )); then
+        msg "${YELLOW}$(tr_msg swap_menu_no_zram)${NC}"
+        swapon --show || true
+        pause_return
+        return 0
+    fi
     if abox_zram_teardown; then
         msg "${GREEN}$(tr_msg remove_zram_swap_removed)${NC}"
     else
@@ -56452,7 +56911,11 @@ PY_BACKUP_RETENTION
 cleanup_separated_backup_keys() {
     local keys_dir="${ABOX_BACKUP_KEYS_DIR:-/root/A-Box-backup-keys}" _name="${1:-}" _f='' _archive='' _present='' _answer='' _target='' _any=0
     (( EUID == 0 )) || return 1
-    [[ -d "$keys_dir" && ! -L "$keys_dir" ]] || return 1
+    # W6-OBS-1: a missing keys directory used to fail silently (zero
+    # output, straight to "press return"). Say so explicitly, like
+    # the empty-directory message below.
+    if [[ ! -d "$keys_dir" ]]; then msg '[*] No separated recovery keys (key directory does not exist).'; return 1; fi
+    [[ ! -L "$keys_dir" ]] || return 1
     path_parent_chain_safe "$keys_dir" || return 1
     if [[ -z "$_name" ]]; then
         for _f in "$keys_dir"/A-Box-backup-*.tar.gz.key; do
@@ -63945,10 +64408,17 @@ wallos_menu() {
                 # R14-07: only a container carrying the A-Box ownership
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
-                # absent container keeps the existing failure outcome.
+                # absent container is reported as already-gone, not as
+                # a removal failure (W6-OBS-2).
                 local _wl_label='' _wl_names='' _wl_id=''
+                # W6-OBS-2: an absent container is not a removal
+                # failure -- it is already gone (e.g. this option was
+                # run once already). Say so instead of the misleading
+                # wl_remove_fail ("may still exist"). The R14-07
+                # outcome below (removal attempted but not verified
+                # gone) keeps the failure message.
                 if ! docker container inspect wallos >/dev/null 2>&1; then
-                    msg "${RED}$(tr_msg wl_remove_fail)${NC}"
+                    msg "${YELLOW}$(tr_msg wl_remove_absent)${NC}"
                 elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]] || ! _wl_id=$(_wallos_container_id); then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
@@ -66648,6 +67118,17 @@ confirm_ota_script_hash() {
     is_yes "$answer"
 }
 
+# W7-OBS-2: true when the installed A-Box.sh already has the given
+# SHA256 (i.e. the OTA download is byte-identical to what is
+# installed). Fails closed on an empty sha, an unreadable installed
+# script, or any mismatch -- the caller then proceeds as before.
+ota_local_sha_matches() {
+    local _sha="${1:-}" _local=''
+    [[ -n "$_sha" ]] || return 1
+    _local=$(sha256sum "$ABOX_DIR/A-Box.sh" 2>/dev/null | awk '{print $1}') || return 1
+    [[ -n "$_local" && "$_local" == "$_sha" ]]
+}
+
 update_script() {
     clear
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
@@ -66683,6 +67164,15 @@ update_script() {
     fi
     sha=$(sha256sum "$tmp_update" | awk '{print $1}')
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
+    # W7-OBS-2: the download is byte-identical to the installed
+    # script -- report "already latest" instead of asking whether to
+    # install it. Nothing is changed (no SNI download, no install).
+    if ota_local_sha_matches "$sha"; then
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        msg "${GREEN}$(tr_msg update_script_already_latest)${NC}"
+        pause_return
+        return 0
+    fi
     if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] $(tr_msg update_script_sni_missing_cancelled)${NC}"
@@ -70196,6 +70686,12 @@ PY_SELFTEST_TAR
     grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$source_body_file" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
     grep -Fq '每月流量管控 / Monthly Traffic' "$source_body_file" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$source_body_file" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
+    # W2-FAIL-2 (matrix4-C): one-click auto-select failure must offer one
+    # manual retry on a TTY (same live validation as the wizard) and must
+    # return -- never die -- so the deploy aborts back to the menu;
+    # unattended runs keep the fail-closed die().
+    grep -Fq 'ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni' "$source_body_file" || { echo 'FAIL: one-click SNI manual retry missing'; failures=$((failures + 1)); }
+    grep -Fq 'die "$(tr_msg pi_oneclick_sni_fail)"' "$source_body_file" || { echo 'FAIL: one-click SNI fail-closed die missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$source_body_file" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$source_body_file" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$source_body_file" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
@@ -72337,6 +72833,133 @@ PY_F05_TPUB
     g2_func_contains users_xray_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_xray_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
     g2_func_contains users_sb_ensure_tags '_jq_caller_trap=$(trap -p RETURN' || { echo 'FAIL: C-2 users_sb_ensure_tags must save the caller RETURN trap'; failures=$((failures + 1)); }
     g2_func_contains users_sb_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_sb_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
+    # 8. W2-FAIL-1 (2026-11-26 matrix): §5.1 deleting the xray Vision
+    # inbound while Hysteria 2 still listened on UDP 443 left
+    # VLESS_PORT=443 in .env (the old pooled keep-rule), so the
+    # per-minute probe read it as an xray expectation and
+    # auto-restored the stale ALL backup. The .env reconciliation
+    # must keep a var only while a live inbound OF ITS OWN protocol
+    # serves the port, and the published desired config must match
+    # the .env expectations exactly to be usable for auto-recovery.
+    {
+        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0
+        local _w2_old_slot="${XRAY_SLOT_CFG:-}" _w2_old_dir="${ABOX_DIR:-}" _w2_old_env="${ABOX_ENV:-}" _w2_old_sb="${ABOX_SB_CFG:-}" _w2_old_hy2="${ABOX_HY2_CFG:-}" _w2_old_xbin="${XRAY_BIN:-}"
+        mkdir -p "$_w2d/ddr" || { echo 'FAIL: W2-FAIL-1 test dir'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_w2d/xray.json"
+        ABOX_DIR="$_w2d/ddr"
+        ABOX_ENV="$_w2d/.env"
+        ABOX_SB_CFG="$_w2d/sb.json"
+        ABOX_HY2_CFG="$_w2d/hy2.yaml"
+        printf 'listen: :443\n' > "$_w2d/hy2.yaml"
+        cat > "$_w2d/xray.json" <<'EOF_W2F1'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053}
+]}
+EOF_W2F1
+        cat > "$_w2d/.env" <<'EOF_W2F1'
+CORE="xray"
+MODE="ALL"
+VLESS_PORT="443"
+XHTTP_PORT="8443"
+SS_PORT="2053"
+HY2_BASE_PORT="443"
+HY2_MONITOR_PORT="443"
+HY2_URI_PORTS="443"
+SOCKS_PORT=""
+TROJAN_PORT=""
+EOF_W2F1
+        # Delete Vision (Hy2 still on 443): VLESS_PORT must clear,
+        # the other ports must survive, and the coverage check must
+        # pass so the probe does not restore.
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync after Vision delete'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must clear when no Vision inbound remains (Hy2 alone must not keep it)'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^XHTTP_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '8443' ]] || { echo 'FAIL: W2-FAIL-1 XHTTP_PORT must survive while XHTTP lives'; failures=$((failures + 1)); }
+        _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
+        (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass after Vision delete (else the probe restores)'; failures=$((failures + 1)); }
+        # Delete the remaining xray inbounds: every xray var clears
+        # and the coverage check passes vacuously.
+        jq '.inbounds |= map(select(.tag == "api"))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync after full xray delete'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^SS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 SS_PORT must clear when no SS inbound remains'; failures=$((failures + 1)); }
+        _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
+        (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass vacuously with no expected ports'; failures=$((failures + 1)); }
+        # A live sing-box Vision inbound keeps VLESS_PORT; a corrupt
+        # xray config fails the sync closed with .env untouched.
+        printf '{"inbounds":[{"tag":"vision","type":"vless","listen_port":443}]}' > "$_w2d/sb.json"
+        printf 'VLESS_PORT="443"\n' > "$_w2d/.env"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync with sing-box Vision'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must survive a live sing-box Vision inbound'; failures=$((failures + 1)); }
+        printf 'this is not json{' > "$_w2d/xray.json"
+        if sync_env_ports_after_removal >/dev/null 2>&1; then echo 'FAIL: W2-FAIL-1 sync must fail on a corrupt config'; failures=$((failures + 1)); fi
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 corrupt config must leave .env untouched'; failures=$((failures + 1)); }
+        # W7-OBS-4: a live sing-box hysteria2 inbound (listen_port =
+        # HY2_BASE_PORT) keeps the Hy2 ports; and the non-port Hy2
+        # keys clear only once no Hy2 remains anywhere, are kept
+        # while one lives, and are kept when survivorship is
+        # unverifiable (fail-closed skip).
+        printf '{"inbounds":[{"tag":"hy2","type":"hysteria2","listen_port":443}]}' > "$_w2d/sb.json"
+        printf '{"inbounds":[{"tag":"api","protocol":"dokodemo-door","port":10085}]}' > "$_w2d/xray.json"
+        printf 'HY2_BASE_PORT="443"\nHY2_MONITOR_PORT="443"\nHY2_URI_PORTS="443"\n' > "$_w2d/.env"
+        rm -f "$_w2d/hy2.yaml"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync with sing-box Hy2'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_BASE_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 HY2_BASE_PORT must survive a live sing-box Hy2 inbound'; failures=$((failures + 1)); }
+        printf 'HY2_DOMAIN="example.com"\nHY2_PASS="stale"\nHY2_CERT_SHA256_FP="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"\nHY2_HOP="true"\nHY2_HOP_IMPL="official"\nHY2_RANGE_START="20000"\nHY2_RANGE_END="25000"\nHY2_CLASH_PORTS="20000-25000"\nHY2_ACME_DNS_CF_API_TOKEN="stale-token"\n' >> "$_w2d/.env"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 non-port cleanup must not fail while Hy2 lives'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept while a Hy2 inbound lives'; failures=$((failures + 1)); }
+        printf '{"inbounds":[]}' > "$_w2d/sb.json"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 non-port cleanup with no Hy2 left'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_DOMAIN must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_HOP=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_HOP must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_RANGE_START=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_RANGE_START must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        # NB: reset the two keys in place (sed) -- appending would
+        # leave duplicate keys and the first-line read below would
+        # see the cleared value, not the reset one.
+        sed -i 's/^HY2_DOMAIN=.*/HY2_DOMAIN="example.com"/; s/^HY2_PASS=.*/HY2_PASS="stale"/' "$_w2d/.env"
+        printf 'this is not json{' > "$_w2d/sb.json"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 cleanup must skip (rc 0) on an unverifiable config'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
+        g2_func_contains _protocol_removed_side_effects '_clear_hy2_nonport_env_vars' || { echo 'FAIL: W2-FAIL-1 _protocol_removed_side_effects must call the Hy2 non-port cleanup'; failures=$((failures + 1)); }
+        # Post-delete verification helper.
+        printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
+        if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
+        printf '{"inbounds":[{"tag":"api","protocol":"dokodemo-door","port":10085}]}' > "$_w2d/xray.json"
+        _removed_tags_absent_from_config "$_w2d/xray.json" vision xhttp ss >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 removed tags must verify absent'; failures=$((failures + 1)); }
+        # Desired-state publish + gate (needs root: the gate requires
+        # a root-owned 0600 file, mirroring production).
+        if (( EUID == 0 )); then
+            cat > "$_w2d/fake-xray" <<'EOF_W2F1'
+#!/usr/bin/env bash
+cfg="${@: -1}"
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$cfg" >/dev/null 2>&1 && exit 0 || exit 23
+EOF_W2F1
+            chmod +x "$_w2d/fake-xray"
+            XRAY_BIN="$_w2d/fake-xray"
+            printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT=""\nXHTTP_PORT=""\nSS_PORT=""\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
+            _xrc_publish_desired_config >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 desired-config publish'; failures=$((failures + 1)); }
+            [[ "$(stat -c %a "$_w2d/ddr/.xray-desired-config.json" 2>/dev/null || echo '')" == '600' ]] || { echo 'FAIL: W2-FAIL-1 desired config must be 0600'; failures=$((failures + 1)); }
+            _xrc_desired_config_usable "$_w2d/work.json" >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 exact-match desired config must be usable'; failures=$((failures + 1)); }
+            printf 'VLESS_PORT="443"\nXHTTP_PORT="8443"\nSS_PORT="2053"\n' > "$_w2d/.env"
+            if _xrc_desired_config_usable "$_w2d/work.json" >/dev/null 2>&1; then echo 'FAIL: W2-FAIL-1 stale desired config must be rejected'; failures=$((failures + 1)); fi
+        else
+            echo 'SKIP: W2-FAIL-1 desired-config publish/gate (needs root)'
+        fi
+        XRAY_SLOT_CFG="$_w2_old_slot"; ABOX_DIR="$_w2_old_dir"; ABOX_ENV="$_w2_old_env"; ABOX_SB_CFG="$_w2_old_sb"; ABOX_HY2_CFG="$_w2_old_hy2"; XRAY_BIN="$_w2_old_xbin"
+    }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup

@@ -1859,8 +1859,18 @@ _menu_info_collect() {
     fi
 
     # AP-01-residual (B-leg): drop the strip-once views built at the top.
+    # Cleanup is best-effort only: a failed rm must not decide whether
+    # the panel renders, and there is no log channel in this render
+    # path that could carry it without corrupting menu output.
     [[ -n "$_mi_sb_tmp" ]] && rm -f -- "$_mi_sb_tmp" 2>/dev/null
     [[ -n "$_mi_xr_tmp" ]] && rm -f -- "$_mi_xr_tmp" 2>/dev/null
+    # W1-FAIL-1: without this, the function inherits the status of the
+    # last [[ -n ... ]] test above: in virgin state both temps are
+    # empty, the test is false, rc=1, and _menu_info_display's
+    # `_menu_info_collect || return 0` gate skips the whole panel.
+    # Collection itself never fails here (every fallible step above
+    # is guarded); success is explicit.
+    return 0
 }
 
 # One matrix cell: [ name(padded) dot ]
@@ -1927,11 +1937,18 @@ _menu_info_display() {
     # row: 2 leading spaces + label display width + fullwidth colon (2)
     # + 2 spaces. A fixed indent only aligns when the label is 4 wide.
     printf -v _netpad '%*s' $(( $(_str_dwidth "$(tr_msg mi_net)") + 6 )) ''
-    [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
-    if [[ -n "$_MI_GEO_COUNTRY" ]]; then
+    # W5-OBS-1: GLOBAL_PUBLIC_IP follows the IP-preference cache, so
+    # under dual/ipv6 it can hold a v6 address; never print a v6
+    # address under the IPv4 label. The geo suffix is keyed to that
+    # same address, so it is only shown when the IPv4 cell really
+    # shows GLOBAL_PUBLIC_IP (otherwise the cell is unknown: `?`).
+    local _v4ip="${GLOBAL_PUBLIC_IP:-}"
+    [[ "$_v4ip" == *:* ]] && _v4ip=''
+    [[ -n "$_v4ip" ]] && _v4dot="${GREEN}●${NC}"
+    if [[ -n "$_v4ip" && -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${_v4ip:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
         msg "${_netpad}${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else

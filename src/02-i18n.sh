@@ -437,6 +437,12 @@ tr_msg() {
         fa:update_script_ota_url_not_immutable) echo 'نشانی URL مربوط به OTA به یک commit تغییرناپذیر A-Box اشاره نمی‌کند؛ به‌روزرسانی رد شد.' ;;
         zh-tw:update_script_ota_url_not_immutable) echo 'OTA URL 未指向不可變的 A-Box commit；已拒絕更新。' ;;
         ja:update_script_ota_url_not_immutable) echo 'OTA URL が A-Box の不変の commit を指していません。更新を拒否しました。' ;;
+        zh:update_script_already_latest) echo '已是最新版本，无需更新。' ;;
+        en:update_script_already_latest) echo 'Already on the latest version; no update needed.' ;;
+        ru:update_script_already_latest) echo 'Установлена последняя версия; обновление не требуется.' ;;
+        fa:update_script_already_latest) echo 'در حال حاضر آخرین نسخه نصب است؛ نیازی به به‌روزرسانی نیست.' ;;
+        zh-tw:update_script_already_latest) echo '已是最新版本，無需更新。' ;;
+        ja:update_script_already_latest) echo '最新バージョンです。更新は不要です。' ;;
         zh:update_script_tmp_create_failed) echo '更新脚本临时文件创建失败。' ;;
         en:update_script_tmp_create_failed) echo 'Failed to create a temporary file for the update script.' ;;
         ru:update_script_tmp_create_failed) echo 'Не удалось создать временный файл для скрипта обновления.' ;;
@@ -2201,6 +2207,12 @@ tr_msg() {
         fa:wl_remove_fail) echo '[!] حذف کانتینر wallos ناموفق بود.' ;;
         zh-tw:wl_remove_fail) echo '[!] 刪除 wallos 容器失敗，容器可能仍然存在。' ;;
         ja:wl_remove_fail) echo '[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。' ;;
+        zh:wl_remove_absent) echo 'Wallos 容器不存在，无需删除。' ;;
+        en:wl_remove_absent) echo 'Wallos container does not exist; nothing to remove.' ;;
+        ru:wl_remove_absent) echo 'Контейнер Wallos отсутствует; удалять нечего.' ;;
+        fa:wl_remove_absent) echo 'کانتینر Wallos وجود ندارد؛ چیزی برای حذف نیست.' ;;
+        zh-tw:wl_remove_absent) echo 'Wallos 容器不存在，無需刪除。' ;;
+        ja:wl_remove_absent) echo 'Wallos コンテナは存在しません。削除するものはありません。' ;;
         zh:wl_backup) echo '升级前备份：%s' ;;
         en:wl_backup) echo 'Pre-upgrade backup: %s' ;;
         ru:wl_backup) echo 'Резервная копия перед обновлением: %s' ;;
@@ -9959,6 +9971,12 @@ tr_msg() {
         fa:swap_menu_no_disk_swap) echo 'هیچ فایل Swap دیسکی که توسط A-Box ساخته شده باشد وجود ندارد.' ;;
         zh-tw:swap_menu_no_disk_swap) echo '沒有 A-Box 建立的磁碟 Swap 檔案。' ;;
         ja:swap_menu_no_disk_swap) echo 'A-Box が作成したディスクの Swap ファイルはありません。' ;;
+        zh:swap_menu_no_zram) echo '没有 A-Box 创建的 zram。' ;;
+        en:swap_menu_no_zram) echo 'No zram created by A-Box exists.' ;;
+        ru:swap_menu_no_zram) echo 'Нет zram, созданного A-Box.' ;;
+        fa:swap_menu_no_zram) echo 'هیچ zram ساخته‌شده توسط A-Box وجود ندارد.' ;;
+        zh-tw:swap_menu_no_zram) echo '沒有 A-Box 建立的 zram。' ;;
+        ja:swap_menu_no_zram) echo 'A-Box が作成した zram はありません。' ;;
         zh:swap_menu_remove_failed) echo '移除失败，请检查 /swapfile 与 /etc/fstab。' ;;
         en:swap_menu_remove_failed) echo 'Removal failed. Check /swapfile and /etc/fstab.' ;;
         ru:swap_menu_remove_failed) echo 'Удаление не удалось. Проверьте /swapfile и /etc/fstab.' ;;

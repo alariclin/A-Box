@@ -3025,6 +3025,133 @@ PY_F05_TPUB
     g2_func_contains users_xray_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_xray_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
     g2_func_contains users_sb_ensure_tags '_jq_caller_trap=$(trap -p RETURN' || { echo 'FAIL: C-2 users_sb_ensure_tags must save the caller RETURN trap'; failures=$((failures + 1)); }
     g2_func_contains users_sb_ensure_tags 'eval "$_jq_caller_trap"' || { echo 'FAIL: C-2 users_sb_ensure_tags must restore the caller RETURN trap'; failures=$((failures + 1)); }
+    # 8. W2-FAIL-1 (2026-11-26 matrix): §5.1 deleting the xray Vision
+    # inbound while Hysteria 2 still listened on UDP 443 left
+    # VLESS_PORT=443 in .env (the old pooled keep-rule), so the
+    # per-minute probe read it as an xray expectation and
+    # auto-restored the stale ALL backup. The .env reconciliation
+    # must keep a var only while a live inbound OF ITS OWN protocol
+    # serves the port, and the published desired config must match
+    # the .env expectations exactly to be usable for auto-recovery.
+    {
+        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0
+        local _w2_old_slot="${XRAY_SLOT_CFG:-}" _w2_old_dir="${ABOX_DIR:-}" _w2_old_env="${ABOX_ENV:-}" _w2_old_sb="${ABOX_SB_CFG:-}" _w2_old_hy2="${ABOX_HY2_CFG:-}" _w2_old_xbin="${XRAY_BIN:-}"
+        mkdir -p "$_w2d/ddr" || { echo 'FAIL: W2-FAIL-1 test dir'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_w2d/xray.json"
+        ABOX_DIR="$_w2d/ddr"
+        ABOX_ENV="$_w2d/.env"
+        ABOX_SB_CFG="$_w2d/sb.json"
+        ABOX_HY2_CFG="$_w2d/hy2.yaml"
+        printf 'listen: :443\n' > "$_w2d/hy2.yaml"
+        cat > "$_w2d/xray.json" <<'EOF_W2F1'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053}
+]}
+EOF_W2F1
+        cat > "$_w2d/.env" <<'EOF_W2F1'
+CORE="xray"
+MODE="ALL"
+VLESS_PORT="443"
+XHTTP_PORT="8443"
+SS_PORT="2053"
+HY2_BASE_PORT="443"
+HY2_MONITOR_PORT="443"
+HY2_URI_PORTS="443"
+SOCKS_PORT=""
+TROJAN_PORT=""
+EOF_W2F1
+        # Delete Vision (Hy2 still on 443): VLESS_PORT must clear,
+        # the other ports must survive, and the coverage check must
+        # pass so the probe does not restore.
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync after Vision delete'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must clear when no Vision inbound remains (Hy2 alone must not keep it)'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^XHTTP_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '8443' ]] || { echo 'FAIL: W2-FAIL-1 XHTTP_PORT must survive while XHTTP lives'; failures=$((failures + 1)); }
+        _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
+        (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass after Vision delete (else the probe restores)'; failures=$((failures + 1)); }
+        # Delete the remaining xray inbounds: every xray var clears
+        # and the coverage check passes vacuously.
+        jq '.inbounds |= map(select(.tag == "api"))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync after full xray delete'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^SS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 SS_PORT must clear when no SS inbound remains'; failures=$((failures + 1)); }
+        _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
+        (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass vacuously with no expected ports'; failures=$((failures + 1)); }
+        # A live sing-box Vision inbound keeps VLESS_PORT; a corrupt
+        # xray config fails the sync closed with .env untouched.
+        printf '{"inbounds":[{"tag":"vision","type":"vless","listen_port":443}]}' > "$_w2d/sb.json"
+        printf 'VLESS_PORT="443"\n' > "$_w2d/.env"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync with sing-box Vision'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must survive a live sing-box Vision inbound'; failures=$((failures + 1)); }
+        printf 'this is not json{' > "$_w2d/xray.json"
+        if sync_env_ports_after_removal >/dev/null 2>&1; then echo 'FAIL: W2-FAIL-1 sync must fail on a corrupt config'; failures=$((failures + 1)); fi
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 corrupt config must leave .env untouched'; failures=$((failures + 1)); }
+        # W7-OBS-4: a live sing-box hysteria2 inbound (listen_port =
+        # HY2_BASE_PORT) keeps the Hy2 ports; and the non-port Hy2
+        # keys clear only once no Hy2 remains anywhere, are kept
+        # while one lives, and are kept when survivorship is
+        # unverifiable (fail-closed skip).
+        printf '{"inbounds":[{"tag":"hy2","type":"hysteria2","listen_port":443}]}' > "$_w2d/sb.json"
+        printf '{"inbounds":[{"tag":"api","protocol":"dokodemo-door","port":10085}]}' > "$_w2d/xray.json"
+        printf 'HY2_BASE_PORT="443"\nHY2_MONITOR_PORT="443"\nHY2_URI_PORTS="443"\n' > "$_w2d/.env"
+        rm -f "$_w2d/hy2.yaml"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 sync with sing-box Hy2'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_BASE_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: W2-FAIL-1 HY2_BASE_PORT must survive a live sing-box Hy2 inbound'; failures=$((failures + 1)); }
+        printf 'HY2_DOMAIN="example.com"\nHY2_PASS="stale"\nHY2_CERT_SHA256_FP="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"\nHY2_HOP="true"\nHY2_HOP_IMPL="official"\nHY2_RANGE_START="20000"\nHY2_RANGE_END="25000"\nHY2_CLASH_PORTS="20000-25000"\nHY2_ACME_DNS_CF_API_TOKEN="stale-token"\n' >> "$_w2d/.env"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 non-port cleanup must not fail while Hy2 lives'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept while a Hy2 inbound lives'; failures=$((failures + 1)); }
+        printf '{"inbounds":[]}' > "$_w2d/sb.json"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 non-port cleanup with no Hy2 left'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_DOMAIN must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_HOP=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_HOP must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_RANGE_START=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 HY2_RANGE_START must clear once no Hy2 remains'; failures=$((failures + 1)); }
+        # NB: reset the two keys in place (sed) -- appending would
+        # leave duplicate keys and the first-line read below would
+        # see the cleared value, not the reset one.
+        sed -i 's/^HY2_DOMAIN=.*/HY2_DOMAIN="example.com"/; s/^HY2_PASS=.*/HY2_PASS="stale"/' "$_w2d/.env"
+        printf 'this is not json{' > "$_w2d/sb.json"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 Hy2 cleanup must skip (rc 0) on an unverifiable config'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
+        g2_func_contains _protocol_removed_side_effects '_clear_hy2_nonport_env_vars' || { echo 'FAIL: W2-FAIL-1 _protocol_removed_side_effects must call the Hy2 non-port cleanup'; failures=$((failures + 1)); }
+        # Post-delete verification helper.
+        printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
+        if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
+        printf '{"inbounds":[{"tag":"api","protocol":"dokodemo-door","port":10085}]}' > "$_w2d/xray.json"
+        _removed_tags_absent_from_config "$_w2d/xray.json" vision xhttp ss >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 removed tags must verify absent'; failures=$((failures + 1)); }
+        # Desired-state publish + gate (needs root: the gate requires
+        # a root-owned 0600 file, mirroring production).
+        if (( EUID == 0 )); then
+            cat > "$_w2d/fake-xray" <<'EOF_W2F1'
+#!/usr/bin/env bash
+cfg="${@: -1}"
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$cfg" >/dev/null 2>&1 && exit 0 || exit 23
+EOF_W2F1
+            chmod +x "$_w2d/fake-xray"
+            XRAY_BIN="$_w2d/fake-xray"
+            printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT=""\nXHTTP_PORT=""\nSS_PORT=""\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
+            _xrc_publish_desired_config >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 desired-config publish'; failures=$((failures + 1)); }
+            [[ "$(stat -c %a "$_w2d/ddr/.xray-desired-config.json" 2>/dev/null || echo '')" == '600' ]] || { echo 'FAIL: W2-FAIL-1 desired config must be 0600'; failures=$((failures + 1)); }
+            _xrc_desired_config_usable "$_w2d/work.json" >/dev/null 2>&1 || { echo 'FAIL: W2-FAIL-1 exact-match desired config must be usable'; failures=$((failures + 1)); }
+            printf 'VLESS_PORT="443"\nXHTTP_PORT="8443"\nSS_PORT="2053"\n' > "$_w2d/.env"
+            if _xrc_desired_config_usable "$_w2d/work.json" >/dev/null 2>&1; then echo 'FAIL: W2-FAIL-1 stale desired config must be rejected'; failures=$((failures + 1)); fi
+        else
+            echo 'SKIP: W2-FAIL-1 desired-config publish/gate (needs root)'
+        fi
+        XRAY_SLOT_CFG="$_w2_old_slot"; ABOX_DIR="$_w2_old_dir"; ABOX_ENV="$_w2_old_env"; ABOX_SB_CFG="$_w2_old_sb"; ABOX_HY2_CFG="$_w2_old_hy2"; XRAY_BIN="$_w2_old_xbin"
+    }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup

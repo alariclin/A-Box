@@ -712,6 +712,20 @@ confirm_remote_script_hash() {
     esac
 }
 
+# SYD-B E0 companion: the main script shadows clear() so a dumb/unknown
+# TERM never emits ncurses junk into its own logs, but third-party children
+# launched via env -i used to get the raw TERM. sudo turns dumb into
+# unknown, and under unknown whiptail/newt cannot initialise at all (W4
+# tb3: Check.Place exits via *)exit 1 with zero output). Normalise the
+# TERM handed to children: unusable values become xterm, a usable caller
+# TERM passes through untouched.
+_abox_child_term() {
+    case "${TERM:-}" in
+        ''|dumb|unknown) printf '%s\n' 'xterm' ;;
+        *) printf '%s\n' "$TERM" ;;
+    esac
+}
+
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
@@ -734,7 +748,7 @@ run_remote_bash_script() {
         PATH="$PATH" \
         HOME="${HOME:-/root}" \
         LANG="${LANG:-C.UTF-8}" \
-        TERM="${TERM:-dumb}" \
+        TERM="$(_abox_child_term)" \
         bash "$tmp" "$@"
     local rc=$?
     rm -f "$tmp"
@@ -6928,7 +6942,7 @@ case "${ABOX_LANG:-zh}" in
         return 130
     fi
     chmod 600 "$selected"
-    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" bash "$selected" "$@"
+    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="$(_abox_child_term)" bash "$selected" "$@"
     local rc=$?
     rm -rf -- "$work"
     return "$rc"

@@ -1659,6 +1659,11 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    # W4-tb3: Check.Place needs whiptail; without it the upstream script
+    # stops at an interactive apt prompt. Package names: deb whiptail,
+    # rpm newt (the newt package contains /usr/bin/whiptail), apk newt.
+    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     # M-15(2): option-capability probes. A present-but-crippled applet
     # (BusyBox) queues its GNU package for the best-effort install below;
     # the install never dies here, so a host that cannot install keeps

@@ -13682,6 +13682,11 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    # W4-tb3: Check.Place needs whiptail; without it the upstream script
+    # stops at an interactive apt prompt. Package names: deb whiptail,
+    # rpm newt (the newt package contains /usr/bin/whiptail), apk newt.
+    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     # M-15(2): option-capability probes. A present-but-crippled applet
     # (BusyBox) queues its GNU package for the best-effort install below;
     # the install never dies here, so a host that cannot install keeps
@@ -51643,6 +51648,20 @@ confirm_remote_script_hash() {
     esac
 }
 
+# SYD-B E0 companion: the main script shadows clear() so a dumb/unknown
+# TERM never emits ncurses junk into its own logs, but third-party children
+# launched via env -i used to get the raw TERM. sudo turns dumb into
+# unknown, and under unknown whiptail/newt cannot initialise at all (W4
+# tb3: Check.Place exits via *)exit 1 with zero output). Normalise the
+# TERM handed to children: unusable values become xterm, a usable caller
+# TERM passes through untouched.
+_abox_child_term() {
+    case "${TERM:-}" in
+        ''|dumb|unknown) printf '%s\n' 'xterm' ;;
+        *) printf '%s\n' "$TERM" ;;
+    esac
+}
+
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
@@ -51665,7 +51684,7 @@ run_remote_bash_script() {
         PATH="$PATH" \
         HOME="${HOME:-/root}" \
         LANG="${LANG:-C.UTF-8}" \
-        TERM="${TERM:-dumb}" \
+        TERM="$(_abox_child_term)" \
         bash "$tmp" "$@"
     local rc=$?
     rm -f "$tmp"
@@ -57859,7 +57878,7 @@ case "${ABOX_LANG:-zh}" in
         return 130
     fi
     chmod 600 "$selected"
-    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" bash "$selected" "$@"
+    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="$(_abox_child_term)" bash "$selected" "$@"
     local rc=$?
     rm -rf -- "$work"
     return "$rc"

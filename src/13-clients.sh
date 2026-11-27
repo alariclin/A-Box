@@ -4414,6 +4414,14 @@ expected_managed_services() {
 }
 
 prepare_noninteractive_file_operation() {
+    # L12 (TTY guard i18n, same root cause as the A-leg enter_runtime
+    # fix): resolve the language BEFORE any tr_msg use. The top-level
+    # ABOX_LANG='zh' init runs before main() dispatches, so without
+    # detect_lang() every message on these non-interactive CLI paths
+    # (--export-backup-key / --convert-legacy-backup /
+    # --xray-config-autorecover / --sni-test) stayed zh even when a
+    # language was saved in LANG_FILE.
+    detect_lang
     [[ $EUID -eq 0 ]] || die "$(tr_msg prepare_noninteractive_file_operation_root_required)"
     mkdir -p /run || die "$(tr_msg prepare_noninteractive_file_operation_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"

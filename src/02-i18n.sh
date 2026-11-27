@@ -2945,6 +2945,12 @@ tr_msg() {
         fa:rb_legacy_convert) echo 'این نسخهٔ پشتیبان با قالب قدیمی (manifest v2) است و اطلاعات احراز هویت HMAC ندارد، پس نمی‌توان آن را مستقیم بازیابی کرد. نخست با گزینهٔ ۴ منوی پشتیبان‌گیری آن را به manifest v3 تبدیل کنید، سپس بازیابی کنید.' ;;
         zh-tw:rb_legacy_convert) echo '此備份為舊版格式（manifest v2），無 HMAC 認證資訊，無法直接還原。請先用備份選單選項 4 將其轉換為 manifest v3 後再還原。' ;;
         ja:rb_legacy_convert) echo 'このバックアップは旧形式（manifest v2）で、HMAC 認証情報がないため直接復元できません。先にバックアップメニューのオプション 4 で manifest v3 に変換してから復元してください。' ;;
+        zh:legacy_backup_no_checksum_noninteractive) echo '旧版备份无校验和，且本次转换为非交互运行。' ;;
+        en:legacy_backup_no_checksum_noninteractive) echo 'Legacy backup has no checksum and conversion is non-interactive.' ;;
+        ru:legacy_backup_no_checksum_noninteractive) echo 'У старой резервной копии нет контрольной суммы, а преобразование выполняется в неинтерактивном режиме.' ;;
+        fa:legacy_backup_no_checksum_noninteractive) echo 'نسخهٔ پشتیبان قدیمی هیچ چک‌سام ندارد و تبدیل به‌صورت غیرتعاملی است.' ;;
+        zh-tw:legacy_backup_no_checksum_noninteractive) echo '舊版備份無校驗和，且本次轉換為非互動執行。' ;;
+        ja:legacy_backup_no_checksum_noninteractive) echo '旧版バックアップにはチェックサムがなく、変換は非対話型で実行されています。' ;;
         zh:rb_structure_fail) echo '备份归档结构/链接校验失败。' ;;
         en:rb_structure_fail) echo 'Backup archive structure/link validation failed.' ;;
         ru:rb_structure_fail) echo 'Проверка структуры/ссылок архива не пройдена.' ;;
@@ -7247,6 +7253,12 @@ tr_msg() {
         ru:legacy_xl_retire_prompt) echo 'Обнаружен устаревший экземпляр xray-latest (coexist). Удалить экземпляр и его конфигурацию? [y/N]: ' ;;
         fa:legacy_xl_retire_prompt) echo 'نمونهٔ قدیمی xray-latest (coexist) شناسایی شد. نمونه و پیکربندی آن حذف شود؟ [y/N]: ' ;;
         ja:legacy_xl_retire_prompt) echo '廃止済みの xray-latest coexist インスタンスを検出しました。インスタンスとその設定を削除しますか？[y/N]：' ;;
+        zh:legacy_xl_retire_noninteractive) echo '检测到已退役的 xray-latest 实例，但本次运行无交互终端；请设置 ABOX_LEGACY_XL_RETIRE=1 后显式退役。' ;;
+        zh-tw:legacy_xl_retire_noninteractive) echo '偵測到已退役的 xray-latest 實例，但本次執行無互動終端；請設定 ABOX_LEGACY_XL_RETIRE=1 後明確退役。' ;;
+        en:legacy_xl_retire_noninteractive) echo 'Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.' ;;
+        ru:legacy_xl_retire_noninteractive) echo 'Обнаружен устаревший экземпляр xray-latest, но текущий запуск неинтерактивный; установите ABOX_LEGACY_XL_RETIRE=1, чтобы явно вывести его из эксплуатации.' ;;
+        fa:legacy_xl_retire_noninteractive) echo 'نمونهٔ قدیمی xray-latest شناسایی شد، اما این اجرا تعاملی نیست؛ برای بازنشستگی صریح آن ABOX_LEGACY_XL_RETIRE=1 را تنظیم کنید.' ;;
+        ja:legacy_xl_retire_noninteractive) echo '廃止済みの xray-latest インスタンスを検出しましたが、今回の実行は対話型ではありません。明示的に廃止するには ABOX_LEGACY_XL_RETIRE=1 を設定してください。' ;;
         zh:inst_retired_xl) echo 'xray-latest 已退役，不再支持部署该类实例。' ;;
         zh-tw:inst_retired_xl) echo 'xray-latest 已退役，不再支援部署該類實例。' ;;
         en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;

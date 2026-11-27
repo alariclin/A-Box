@@ -2385,6 +2385,12 @@ PY_SELFTEST_YAML
     grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
     grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
     grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    # L12: the two residual hardcoded no-TTY refusals must go through i18n,
+    # and the non-interactive CLI entry must resolve the language first
+    # (same root cause as the A-leg enter_runtime fix).
+    grep -Fq 'tr_msg legacy_xl_retire_noninteractive' "$source_body_file" || { echo 'FAIL: retired xray-latest non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    grep -Fq 'tr_msg legacy_backup_no_checksum_noninteractive' "$source_body_file" || { echo 'FAIL: legacy backup no-checksum non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    awk '/^prepare_noninteractive_file_operation\(\) \{/,/^}/' "$source_body_file" | grep -Fq 'detect_lang' || { echo 'FAIL: prepare_noninteractive_file_operation must resolve language before its messages'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))

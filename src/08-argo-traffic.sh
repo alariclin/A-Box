@@ -3954,7 +3954,7 @@ _xl_legacy_retire_coexist() {
     local _udir="${ABOX_USERS_DIR:-$_abox_dir/users.d}"
     # 1. Authorisation.
     if [[ "${ABOX_LEGACY_XL_RETIRE:-0}" != '1' ]]; then
-        [[ -t 0 ]] || { msg "${RED}[!] Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.${NC}" >&2; return 1; }
+        [[ -t 0 ]] || { msg "${RED}[!] $(tr_msg legacy_xl_retire_noninteractive)${NC}" >&2; return 1; }
         printf '%s' "$(tr_msg legacy_xl_retire_prompt)" || return 1
         IFS= read -r _ans || return 1
         case "$_ans" in y|Y|yes|YES) : ;; *) msg "${YELLOW}[!] Retire cancelled; xray-latest instance left untouched.${NC}" >&2; return 1 ;; esac

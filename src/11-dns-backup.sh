@@ -712,6 +712,20 @@ confirm_remote_script_hash() {
     esac
 }
 
+# SYD-B E0 companion: the main script shadows clear() so a dumb/unknown
+# TERM never emits ncurses junk into its own logs, but third-party children
+# launched via env -i used to get the raw TERM. sudo turns dumb into
+# unknown, and under unknown whiptail/newt cannot initialise at all (W4
+# tb3: Check.Place exits via *)exit 1 with zero output). Normalise the
+# TERM handed to children: unusable values become xterm, a usable caller
+# TERM passes through untouched.
+_abox_child_term() {
+    case "${TERM:-}" in
+        ''|dumb|unknown) printf '%s\n' 'xterm' ;;
+        *) printf '%s\n' "$TERM" ;;
+    esac
+}
+
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
@@ -734,7 +748,7 @@ run_remote_bash_script() {
         PATH="$PATH" \
         HOME="${HOME:-/root}" \
         LANG="${LANG:-C.UTF-8}" \
-        TERM="${TERM:-dumb}" \
+        TERM="$(_abox_child_term)" \
         bash "$tmp" "$@"
     local rc=$?
     rm -f "$tmp"
@@ -6956,12 +6970,31 @@ case "${ABOX_LANG:-zh}" in
         esac
         return 1
     fi
+    # W4-tb3b: Check.Place.sh needs whiptail for its interactive menu; on a
+    # host without whiptail the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note) instead of running. Refuse upfront with the
+    # missing command named instead of asking the user to confirm a run
+    # that cannot succeed. Scoped to Check.Place.sh only: other mirrored
+    # scripts have their own dependencies (tb2 owns wget for bench.sh).
+    if [[ "$asset" == 'Check.Place.sh' ]] && ! command -v whiptail >/dev/null 2>&1; then
+        rm -rf -- "$work"
+        msg "${RED}$(tprintf ec_missing 'whiptail (Check.Place.sh)')${NC}"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Check.Place.sh needs whiptail to show its interactive menu. Install whiptail and retry.${NC}" ;;
+            ru) msg "${RED}Check.Place.sh нужен whiptail для отображения интерактивного меню. Установите whiptail и повторите попытку.${NC}" ;;
+            fa) msg "${RED}Check.Place.sh برای نمایش منوی تعاملی به whiptail نیاز دارد. whiptail را نصب کنید و دوباره تلاش کنید.${NC}" ;;
+            zh-tw) msg "${RED}Check.Place.sh 需要 whiptail 才能顯示互動式選單。請安裝 whiptail 後重試。${NC}" ;;
+            ja) msg "${RED}Check.Place.sh は対話式メニューの表示に whiptail が必要です。whiptail をインストールして再試行してください。${NC}" ;;
+            *) msg "${RED}Check.Place.sh 需要 whiptail 才能显示交互式菜单。请安装 whiptail 后重试。${NC}" ;;
+        esac
+        return 1
+    fi
     if ! confirm_yes_no "$run_prompt"; then
         rm -rf -- "$work"
         return 130
     fi
     chmod 600 "$selected"
-    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" bash "$selected" "$@"
+    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="$(_abox_child_term)" bash "$selected" "$@"
     local rc=$?
     rm -rf -- "$work"
     return "$rc"

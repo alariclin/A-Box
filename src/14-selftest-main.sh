@@ -878,6 +878,12 @@ PY_SELFTEST_TAR
     grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$source_body_file" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
     grep -Fq '每月流量管控 / Monthly Traffic' "$source_body_file" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$source_body_file" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
+    # W2-FAIL-2 (matrix4-C): one-click auto-select failure must offer one
+    # manual retry on a TTY (same live validation as the wizard) and must
+    # return -- never die -- so the deploy aborts back to the menu;
+    # unattended runs keep the fail-closed die().
+    grep -Fq 'ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni' "$source_body_file" || { echo 'FAIL: one-click SNI manual retry missing'; failures=$((failures + 1)); }
+    grep -Fq 'die "$(tr_msg pi_oneclick_sni_fail)"' "$source_body_file" || { echo 'FAIL: one-click SNI fail-closed die missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$source_body_file" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$source_body_file" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$source_body_file" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }

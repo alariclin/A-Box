@@ -2302,7 +2302,20 @@ failed_srv=''
 service_active_owned "$MAIN_SRV" || failed_srv="$MAIN_SRV"
 MAIN_PID=${SERVICE_PID:-}
 HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
-if [[ "$CORE" == xray && "$MODE" == *ALL* ]]; then
+# H-probe (2026-11-27): Hy2 is a sidecar of xray+ALL only while its
+# A-Box-managed unit exists. MODE stays ALL after Hy2 is deleted, so
+# demanding hysteria on MODE alone reports a deleted service failed
+# every minute (STATE churn + futile restart-gate trips). The unit
+# file is the deployment truth: deploy writes it with
+# '# Managed by A-Box' (src/07) and delete removes it (src/09
+# _remove_hy2_official), while the .env HY2_* keys are only a proxy
+# (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
+# cleared while Hy2 still lives). A managed-but-dead hysteria is
+# still reported (negative control). Downstream Hy2 branches (hop
+# firewall, HY2_MONITOR_PORT socket) stay key-gated as before; in
+# the supported delete path those keys are cleared with the unit, so
+# they are inert once Hy2 is gone.
+if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi

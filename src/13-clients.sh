@@ -777,16 +777,41 @@ PY_CLASH_REALPATH
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
     # else the stored 64-hex fingerprint; empty means unusable.
+    # L4 (A+C): for a sing-box node, a pin is not enough -- the live
+    # config must still serve a hysteria2 inbound. A residual cert
+    # (or a stale cached fingerprint) plus MODE still claiming HY2
+    # used to resurrect a deleted node here; the publisher now asks
+    # the same tri-state verdict the cert cleanup uses, and a missing
+    # or unverifiable inbound withholds the node. The official-Hy2
+    # node (CORE != singbox) is untouched: it has no sing-box inbound
+    # to check, and must not disappear because of this gate.
     local hy2_pin_colon hy2_fp_yaml hy2_yaml_emit=false
-    hy2_pin_colon=$(hy2_cert_pin_colon 2>/dev/null || true)
-    if [[ -n "$hy2_pin_colon" ]]; then
-        hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
-    elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-        hy2_fp_yaml="${HY2_CERT_SHA256_FP:-}"
-        # A4: cached fingerprint in use — the live cert could not be read,
-        # so this pin was NOT verified against the current certificate.
-        msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+    local _hy2_sb_live=1 _hy2_sb_state=0
+    if [[ "${CORE:-}" == 'singbox' && ( "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        _singbox_hy2_inbound_state; _hy2_sb_state=$?
+        if (( _hy2_sb_state != 0 )); then
+            _hy2_sb_live=0
+            if (( _hy2_sb_state == 2 )); then
+                msg "${YELLOW}[!] Hy2 node omitted from Clash YAML: sing-box config '${ABOX_SB_CFG:-/etc/sing-box/config.json}' is unverifiable; refusing to publish a node that cannot be confirmed live.${NC}" >&2
+            else
+                msg "${YELLOW}[!] Hy2 node omitted from Clash YAML: no live hysteria2 inbound in the sing-box config; refusing to publish a node with no server behind it.${NC}" >&2
+            fi
+        fi
+    fi
+    if (( _hy2_sb_live == 1 )); then
+        hy2_pin_colon=$(hy2_cert_pin_colon 2>/dev/null || true)
+        if [[ -n "$hy2_pin_colon" ]]; then
+            hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
+        elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+            hy2_fp_yaml="${HY2_CERT_SHA256_FP:-}"
+            # A4: cached fingerprint in use — the live cert could not be read,
+            # so this pin was NOT verified against the current certificate.
+            msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+        else
+            hy2_fp_yaml=''
+        fi
     else
+        hy2_pin_colon=''
         hy2_fp_yaml=''
     fi
     if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
@@ -796,6 +821,10 @@ PY_CLASH_REALPATH
             hy2_yaml_emit=true
         fi
     fi
+    # L4: the gate above already emptied the fingerprint, so the MODE
+    # branch cannot re-emit; this is belt-and-braces so a later edit
+    # to the pin selection cannot resurrect the node.
+    if (( _hy2_sb_live == 0 )); then hy2_yaml_emit=false; fi
     # H-24: Hy2 emission also honors the port flag (a bad port skips
     # the node even when a fingerprint is available).
     if (( _hy2_ports_bad == 1 )); then hy2_yaml_emit=false; fi
@@ -992,6 +1021,8 @@ EOF_CLASH
         if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
                 echo '  # Hy2 omitted: port configuration invalid; refusing to emit a node with a bad port.'
+            elif (( _hy2_sb_live == 0 )); then
+                echo '  # Hy2 omitted: no live Hy2 inbound in the sing-box config; refusing to publish a node with no server behind it.'
             elif [[ "$hy2_yaml_emit" != true ]]; then
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             else
@@ -1169,10 +1200,21 @@ EOF_CLASH
     # proxy was emitted; the groups file is written only when a real
     # node is emitted.
     if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_groups_tmp" ]]; then
-        msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
-        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
-            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
-        return 1
+        # L4: one exception to the refusal -- when the Hy2 node was
+        # withheld by the live-inbound gate above and a stale YAML
+        # already sits at $out, discarding tmp_out would leave that
+        # file publishing the ghost node. Install the generated
+        # (Hy2-less) file instead so the refresh actually removes the
+        # old node. A fresh path with no file keeps the refusal: there
+        # is nothing stale to replace.
+        if (( _hy2_sb_live == 0 )) && [[ -f "$out" ]]; then
+            msg "${YELLOW}[!] All protocols were skipped; replacing the stale Clash YAML with the current (Hy2-less) output so the removed node stops being published.${NC}" >&2
+        else
+            msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            return 1
+        fi
     fi
     rm -f -- "$_clash_uuid_list_tmp" \
         "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"

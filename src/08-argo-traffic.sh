@@ -4742,6 +4742,20 @@ EOF_SVC
     # preserved TUIC keeps its certs. Best-effort: a cleanup failure
     # must not fail the deploy.
     _singbox_cleanup_tuic_certs_when_none_remain || true
+    # L4 (leftover 20261126): same gap as TUIC above, for the Hy2
+    # pair -- an overwrite redeploy rebuilds the config from scratch,
+    # so a removed Hy2 inbound leaves /etc/sing-box/hy2.crt|key
+    # behind. The helper re-checks the live config (incl. any
+    # preserved standalone inbounds) and deletes the pair only when
+    # no hysteria2 inbound remains; a preserved Hy2 keeps its certs.
+    # Deleted paths are handed to _manifest_drop_paths here (the
+    # helper reports, the caller registers). Best-effort, like TUIC:
+    # a cleanup failure must not fail the deploy.
+    local -a _dp_hy2_deleted=()
+    _singbox_cleanup_hy2_certs_when_none_remain _dp_hy2_deleted || true
+    if (( ${#_dp_hy2_deleted[@]} > 0 )); then
+        _manifest_drop_paths "${_dp_hy2_deleted[@]}" || true
+    fi
     setup_geo_cron
     commit_deployment_transaction
     # R27-H-NF-06 (M-6): snapshot the just-deployed config so the

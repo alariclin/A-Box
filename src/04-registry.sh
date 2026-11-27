@@ -2174,6 +2174,30 @@ shortcut_custom_menu() {
                 if ! shortcut_resolve_desired ab abox; then
                     printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
                 fi
+                # W6-OBS-3: already the default set with every wrapper
+                # installed and managed: nothing to do. Previously the
+                # transaction re-ran and re-announced completion.
+                # Only a readable state counts: a corrupt state also
+                # prints the default but must still go through the
+                # M-34 heal path below, and missing/foreign wrappers
+                # must still be (re)installed by the transaction.
+                _names=$(shortcut_primary_names); _rc=$?
+                if (( _rc == 0 )) && [[ "$_names" == "$SHORTCUT_RESOLVED" ]]; then
+                    local _sc_all_managed=1
+                    for _n in $_names; do
+                        # shortcut_is_abox_managed already requires a
+                        # regular file (plus root ownership, safe mode
+                        # and the A-Box marker); no separate -f test.
+                        if shortcut_is_abox_managed "/usr/local/bin/$_n"; then
+                            :
+                        else
+                            _sc_all_managed=0; break
+                        fi
+                    done
+                    if (( _sc_all_managed == 1 )); then
+                        printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                    fi
+                fi
                 # M-34: a corrupt live state makes the transaction
                 # fail closed with no menu-reachable recovery;
                 # heal it to the default first (the reset is what

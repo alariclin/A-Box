@@ -29,7 +29,10 @@ tprintf() {
         fi
     done
     (( placeholder_count == $# )) || die "tprintf: argument count mismatch in translation '$key'"
-    printf "$fmt" "$@"
+    # W7-OBS-3: a format starting with dashes (e.g. tl_trying's "--- ...")
+    # is parsed as printf options without `--` ("printf: --: invalid
+    # option", stderr noise, empty output). `--` ends option parsing.
+    printf -- "$fmt" "$@"
 }
 
 proto_label() {

@@ -75063,10 +75063,26 @@ EOF_SVC_TEST_RCUPDATE
     die() { return 99; }
     clear_abox_env_vars
     CORE=''; MODE=''
+    # SELFTEST-ISOLATION (leftover 20261126): confirm_deployment_replacement
+    # reloads $ABOX_ENV when CORE/MODE are empty, and load_abox_env parses
+    # the state file with `while IFS= read -r -d '' key` -- which invokes
+    # THIS fixture's mocked `read` (always returns 0, never assigns key),
+    # so the loop body expands unset $key under `set -u` and aborts the
+    # whole self-test shell (`key: unbound variable`, exit 1, no verdict;
+    # stderr is swallowed by the caller's >/dev/null 2>&1). On a host
+    # without /etc/ddr/.env the load fails early at the readability guard
+    # and the fixture passes, so the bug only fires on a live host.
+    # Point ABOX_ENV at a nonexistent temp path so the load fails early
+    # exactly as on a clean host -- and the fixture keeps testing its
+    # intended path (query failure -> confirmation prompt, not a silent
+    # auto-approve driven by a reloaded live CORE/MODE).
+    _confirm_old_env="${ABOX_ENV:-}"
+    ABOX_ENV="$tmp/no-live-abox.env"
     if confirm_deployment_replacement xray VISION >/dev/null 2>&1; then
         echo 'FAIL: managed-service state query failure was silently auto-approved'
         failures=$((failures + 1))
     fi
+    if [[ -n "$_confirm_old_env" ]]; then ABOX_ENV="$_confirm_old_env"; else unset ABOX_ENV; fi
     eval "$managed_services_active__orig"
     eval "$die__orig"
     if [[ -n "$read__orig" ]]; then

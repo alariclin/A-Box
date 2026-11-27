@@ -26757,6 +26757,13 @@ PY_XRC_ENUM
 }
 
 setup_health_monitor() {
+    # L8: optional 'scripts-only' mode for restore: write the probe
+    # script but install no cron block. The restore path installs all
+    # four blocks in one merge from the backup (see
+    # restore_abox_cron_from_backup). Direct callers pass no argument
+    # and keep the old install behaviour.
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
     msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
@@ -27436,13 +27443,24 @@ EOF_PROBE
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
-    install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    fi
 }
 
 setup_geo_cron() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_geo_cron_flock_missing)"
     if ! abox_owns_service xray; then
-        remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        # L8: in 'scripts-only' mode the cron block is owned by the
+        # restore merge; only the helper script is removed here.
+        if (( _l8_scripts_only == 0 )); then
+            remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        fi
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
@@ -28078,7 +28096,11 @@ EOF_GEO
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
     chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
-    install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    fi
 }
 
 # C2 (fix2c): single canonical top-level is_systemd + xray_owned.
@@ -30059,6 +30081,75 @@ rollback_restart_services_from_backup() {
     return 1
 }
 
+# L8: inventory of A-Box residue left behind by an aborted rollback.
+# Prints one line per item (cron blocks present, jail/filter files,
+# loaded A-Box jails, fail2ban running state). Never fails (rc 0); an
+# unqueryable source is reported as unknown, never guessed.
+rollback_residual_inventory() {
+    local _blocks='' _f='' _loaded=''
+    _blocks=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 | paste -sd, - 2>/dev/null || true)
+    printf 'cron blocks present: %s\n' "${_blocks:-none}"
+    for _f in /etc/fail2ban/jail.d/A-Box.local /etc/fail2ban/filter.d/A-Box.conf; do
+        if [[ -e "$_f" || -L "$_f" ]]; then printf 'file present: %s\n' "$_f"; else printf 'file absent: %s\n' "$_f"; fi
+    done
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if fail2ban_service_running 2>/dev/null; then
+            _loaded=$(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | paste -sd, - || true)
+            printf 'fail2ban running; loaded A-Box jails: %s\n' "${_loaded:-none}"
+        else
+            printf 'fail2ban not running\n'
+        fi
+    else
+        printf 'fail2ban not installed\n'
+    fi
+    return 0
+}
+
+# L8: unified abort exit for deployment_transaction_rollback_inner.
+# Records WHICH stage the rollback reached and the residual inventory
+# in the rollback state file, and reports both; preserves the caller's
+# rc. This function deletes nothing: the default abort policy is to
+# KEEP the running state and report, never to clean up silently (see
+# _rollback_abort_cron_best_effort for the single narrow exception).
+_rollback_record_abort() {
+    local _stage="${1:-unknown}" _rc="${2:-1}"
+    {
+        printf 'abort-stage: %s\n' "$_stage"
+        printf 'abort-rc: %s\n' "$_rc"
+        rollback_residual_inventory
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    msg "${RED}[!] Rollback aborted at stage: ${_stage} (rc=${_rc}). Residual A-Box state was preserved; inventory:${NC}" >&2
+    rollback_residual_inventory >&2 || true
+    return "$_rc"
+}
+
+# L8: narrow best-effort cron cleanup for abort exits AFTER the backup
+# was verified. Only removes a block when the VERIFIED backup's cron
+# proves it absent there (so it was created by this transaction) AND
+# it is present now. Never touches fail2ban files or loaded jails on
+# abort paths, and never runs when pre-verification failed (an
+# untrusted backup must not decide deletions). Failures are ignored.
+_rollback_abort_cron_best_effort() {
+    local _pinned_dir="${1:-}" _cron='' _name _known _bare_found _present_now
+    [[ -n "$_pinned_dir" ]] || return 0
+    _cron="$_pinned_dir/meta/cron.abox.txt"
+    [[ -f "$_cron" && ! -L "$_cron" ]] || return 0
+    validate_abox_cron_file "$_cron" 2>/dev/null || return 0
+    _present_now=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 || true)
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        grep -Fq "# A-Box ${_name} BEGIN" "$_cron" 2>/dev/null && continue
+        _bare_found=0
+        while IFS= read -r _known || [[ -n "$_known" ]]; do
+            if grep -Fxq "$_known" "$_cron" 2>/dev/null; then _bare_found=1; break; fi
+        done < <(_abox_cron_block_known_lines "$_name")
+        (( _bare_found == 1 )) && continue
+        grep -Fxq "$_name" <<< "$_present_now" || continue
+        remove_abox_cron_block "$_name" >/dev/null 2>&1 || true
+        msg "[!] Rollback abort: removed ${_name} cron block created by this transaction (absent from the verified backup)." >&2
+    done
+    return 0
+}
+
 deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
     # B-C2: land a rollback state file FIRST, so a later inspection can
@@ -30096,12 +30187,14 @@ deployment_transaction_rollback_inner() {
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
+            _rollback_record_abort 'retained-bundle' 1
             return 1
         fi
         ABOX_VERIFY_PINNED_WORK=''
     fi
     if ! verify_backup_restorable "$backup" "$tx_key_file" 1; then
         msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        _rollback_record_abort 'pre-verify' 1
         return 1
     fi
 
@@ -30111,9 +30204,17 @@ deployment_transaction_rollback_inner() {
     # deletes it.
     local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
     local _pinned_archive="$_pinned_dir/$(basename "$backup")"
-    [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || { msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2; return 1; }
+    if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
+        :
+    else
+        msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
+        _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'stop-services' 1
         return 1
     fi
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -30121,6 +30222,8 @@ deployment_transaction_rollback_inner() {
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
     if (( cleanup_failed != 0 )); then
         msg "${RED}[!] Rollback aborted before removing core files: firewall cleanup could not be verified. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
 
@@ -30130,6 +30233,8 @@ deployment_transaction_rollback_inner() {
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then
             msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery bundle retained: $_pinned_archive${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
     done
@@ -30137,24 +30242,28 @@ deployment_transaction_rollback_inner() {
     if [[ -n "$tx_key_file" ]]; then
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive" "$tx_key_file"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     else
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     fi
-    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; return 1; }
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
-        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; return 1; }
+        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
     fi
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
-        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; return 1; }
+        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
     fi
     ABOX_DEPLOY_TX_TARGETS=''
     ABOX_DEPLOY_TX_REASON=''
@@ -30168,6 +30277,7 @@ deployment_transaction_rollback_inner() {
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
     standalone_preserve_cleanup
+    printf '%s\n' 'rollback: complete' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     return 0
 }
 
@@ -37448,6 +37558,9 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_flock_missing)${NC}" >&2; return 1; }
     # R9-03: a retired xray-latest coexist instance is outside the managed
     # core set and would never be stopped by a quota block. Refuse to
@@ -38629,7 +38742,11 @@ EOF_TRAFFIC
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_quota_snapshot_failed)${NC}" >&2; return 1; }
     local _tm_script="$ABOX_DIR/traffic_monitor.sh"
     if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_single_quote "$_tm_script"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    fi
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_snapshot_failed)${NC}" >&2; return 1; }
 }
 
@@ -45830,6 +45947,9 @@ user_guard_installed() {
 }
 
 setup_user_guard() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     local _src="$0"
     # M-06 (Carbon audit): under bash <(curl ...) $0 is /dev/fd/N, not a
@@ -45884,7 +46004,11 @@ setup_user_guard() {
     # matches the unquoted USERGUARD line exactly).
     local _runner_q="$runner"
     if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$runner"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    fi
     return 0
 }
 
@@ -56483,48 +56607,561 @@ normalize_restored_runtime_ownership() {
     esac
 }
 
-# L4-E10 (final-round): reinstall the USERGUARD cron block after a restore.
-# regenerate used to reinstall only PROBE/GEO/TRAFFIC, so a restore always
-# dropped the user-guard tick even when the backup carried it. Layered by
-# backup fidelity:
+# L8: known schedule lines per cron block (the same allowlist
+# validate_abox_cron_file enforces for backup files). Used to recognise
+# bare (unmarked) lines in a live crontab and in a backup file.
+_abox_cron_block_known_lines() {
+    case "${1:-}" in
+        PROBE) printf '%s\n' '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1' '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1' ;;
+        GEO) printf '%s\n' '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' ;;
+        TRAFFIC) printf '%s\n' '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1' ;;
+        USERGUARD) printf '%s\n' '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' ;;
+    esac
+}
+
+# L8: normalise a cron line for recognition: a non-default ABOX_DIR is
+# folded back to /etc/ddr so a block installed from a relocated runtime
+# dir is still recognised as the same schedule.
+_abox_cron_normalize_line() {
+    local _l="$1"
+    if [[ -n "${ABOX_DIR:-}" && "$ABOX_DIR" != '/etc/ddr' && "$ABOX_DIR" != '/' ]]; then
+        _l="${_l//"$ABOX_DIR"//etc/ddr}"
+    fi
+    printf '%s\n' "$_l"
+}
+
+# L8: owner of a bare (unmarked) cron line, or nothing when the line is
+# not a recognised A-Box schedule. External lines never match.
+_abox_cron_bare_line_owner() {
+    local _n
+    _n=$(_abox_cron_normalize_line "${1:-}")
+    case "$_n" in
+        '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'|'* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1') printf 'PROBE\n' ;;
+        '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'|'0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1') printf 'GEO\n' ;;
+        '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1') printf 'TRAFFIC\n' ;;
+        '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1') printf 'USERGUARD\n' ;;
+    esac
+}
+
+# L8: lenient inventory of the four managed blocks in the LIVE crontab.
+# Prints "NAME<TAB>schedule-line" per block found (block form or bare
+# line). No validation: a malformed live block is still reported (with
+# whatever schedule line follows its BEGIN), so the restore report
+# asserts the real crontab instead of an install intention. Unknown
+# A-Box blocks and external lines are not listed. Returns 1 only when
+# the crontab cannot be read at all.
+_current_abox_cron_blocks() {
+    local _cur_file _line _name _sched _end _owner
+    _cur_file=$(mktemp) || return 1
+    if ! read_crontab_to_file "$_cur_file"; then rm -f -- "$_cur_file"; return 1; fi
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            '# A-Box PROBE BEGIN'|'# A-Box GEO BEGIN'|'# A-Box TRAFFIC BEGIN'|'# A-Box USERGUARD BEGIN')
+                _name="${_line#\# A-Box }"
+                _name="${_name% BEGIN}"
+                IFS= read -r _sched || _sched=''
+                IFS= read -r _end || _end=''
+                printf '%s\t%s\n' "$_name" "$_sched"
+                ;;
+            '# A-Box '*)
+                # Unknown A-Box block or stray END marker: not one of
+                # the four managed blocks; ignored here (never deleted
+                # by the restore merge either).
+                ;;
+            *)
+                _owner=$(_abox_cron_bare_line_owner "$_line")
+                if [[ -n "$_owner" ]]; then
+                    printf '%s\t%s\n' "$_owner" "$_line"
+                fi
+                ;;
+        esac
+    done < "$_cur_file"
+    rm -f -- "$_cur_file"
+    return 0
+}
+
+# L8: parse the backup's meta/cron.abox.txt into the expected state for
+# each block. Sets ABOX_RESTORE_CRON_FIDELITY to 'trusted' or 'unknown'
+# and, per block, ABOX_RESTORE_CRON_<BLOCK> to 'installed (backup)',
+# 'absent', or 'unknown', plus ABOX_RESTORE_CRON_<BLOCK>_LINE with the
+# exact schedule line the backup carries (empty when absent/unknown).
+# Only a successfully collected, validating backup file counts as
+# evidence: a missing file, an unreadable file, or a validation failure
+# all mean 'unknown' -- never "no blocks". A trusted backup that says
+# nothing about a block means that block was absent at backup time.
+parse_backup_cron_expectations() {
+    local _root="${1:-}" _cron='' _line _name _sched _end _owner
+    ABOX_RESTORE_CRON_FIDELITY='unknown'
+    ABOX_RESTORE_CRON_PROBE='unknown'
+    ABOX_RESTORE_CRON_GEO='unknown'
+    ABOX_RESTORE_CRON_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_USERGUARD='unknown'
+    ABOX_RESTORE_CRON_PROBE_LINE=''
+    ABOX_RESTORE_CRON_GEO_LINE=''
+    ABOX_RESTORE_CRON_TRAFFIC_LINE=''
+    ABOX_RESTORE_CRON_USERGUARD_LINE=''
+    ABOX_RESTORE_CRON_COMPLETE=0
+    [[ -n "$_root" ]] || return 1
+    _cron="$(dirname -- "$_root")/meta/cron.abox.txt"
+    [[ -f "$_cron" && ! -L "$_cron" ]] || return 0
+    validate_abox_cron_file "$_cron" 2>/dev/null || return 0
+    ABOX_RESTORE_CRON_FIDELITY='trusted'
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            '# A-Box PROBE BEGIN'|'# A-Box GEO BEGIN'|'# A-Box TRAFFIC BEGIN'|'# A-Box USERGUARD BEGIN')
+                _name="${_line#\# A-Box }"
+                _name="${_name% BEGIN}"
+                IFS= read -r _sched || _sched=''
+                IFS= read -r _end || _end=''
+                case "$_name" in
+                    PROBE) ABOX_RESTORE_CRON_PROBE='installed (backup)'; ABOX_RESTORE_CRON_PROBE_LINE="$_sched" ;;
+                    GEO) ABOX_RESTORE_CRON_GEO='installed (backup)'; ABOX_RESTORE_CRON_GEO_LINE="$_sched" ;;
+                    TRAFFIC) ABOX_RESTORE_CRON_TRAFFIC='installed (backup)'; ABOX_RESTORE_CRON_TRAFFIC_LINE="$_sched" ;;
+                    USERGUARD) ABOX_RESTORE_CRON_USERGUARD='installed (backup)'; ABOX_RESTORE_CRON_USERGUARD_LINE="$_sched" ;;
+                esac
+                ;;
+            ''|'# A-Box '*)
+                ;;
+            *)
+                _owner=$(_abox_cron_bare_line_owner "$_line")
+                case "$_owner" in
+                    PROBE) [[ "$ABOX_RESTORE_CRON_PROBE" == 'unknown' ]] && { ABOX_RESTORE_CRON_PROBE='installed (backup)'; ABOX_RESTORE_CRON_PROBE_LINE="$_line"; } ;;
+                    GEO) [[ "$ABOX_RESTORE_CRON_GEO" == 'unknown' ]] && { ABOX_RESTORE_CRON_GEO='installed (backup)'; ABOX_RESTORE_CRON_GEO_LINE="$_line"; } ;;
+                    TRAFFIC) [[ "$ABOX_RESTORE_CRON_TRAFFIC" == 'unknown' ]] && { ABOX_RESTORE_CRON_TRAFFIC='installed (backup)'; ABOX_RESTORE_CRON_TRAFFIC_LINE="$_line"; } ;;
+                    USERGUARD) [[ "$ABOX_RESTORE_CRON_USERGUARD" == 'unknown' ]] && { ABOX_RESTORE_CRON_USERGUARD='installed (backup)'; ABOX_RESTORE_CRON_USERGUARD_LINE="$_line"; } ;;
+                esac
+                ;;
+        esac
+    done < "$_cron"
+    [[ "$ABOX_RESTORE_CRON_PROBE" == 'unknown' ]] && ABOX_RESTORE_CRON_PROBE='absent'
+    [[ "$ABOX_RESTORE_CRON_GEO" == 'unknown' ]] && ABOX_RESTORE_CRON_GEO='absent'
+    [[ "$ABOX_RESTORE_CRON_TRAFFIC" == 'unknown' ]] && ABOX_RESTORE_CRON_TRAFFIC='absent'
+    [[ "$ABOX_RESTORE_CRON_USERGUARD" == 'unknown' ]] && ABOX_RESTORE_CRON_USERGUARD='absent'
+    return 0
+}
+
+# L4-E10 (final-round) + L8: decide the USERGUARD expectation after a
+# restore. This function installs nothing; the unified restore
+# (restore_abox_cron_from_backup) installs all four blocks in one merge.
+# Layered by backup fidelity (see parse_backup_cron_expectations):
 #   1. backup meta/cron.abox.txt validates AND carries a USERGUARD block
-#      -> reinstall (the validator only allows the default tick line, so a
-#        tampered rhythm can never be installed from the backup);
+#      -> 'installed (backup)' with the backup's exact line (the
+#        validator only allows the default tick line, so a tampered
+#        rhythm can never be installed from the backup);
 #   2. otherwise, when users exist or the guard runner is present ->
-#      rebuild with the default rhythm via setup_user_guard;
-#   3. otherwise -> install nothing, but record the explicit
-#      "not installed" status so the restore summary cannot hide it.
-# Sets ABOX_RESTORE_CRON_USERGUARD to installed (backup|default) or
-# "not installed (no users, no runner)". Returns 1 only when an install
-# was attempted and failed.
+#      'installed (default)' with the default rhythm. This is the
+#      pre-existing L4-E10 deliberate exception, kept explicitly: the
+#      guard tick is a live invariant re-established by users_sync, so
+#      a restore must not silently drop it for a host that has users.
+#      It is labelled '(default)' in every report so it is never
+#      mistaken for a backup-faithful restore;
+#   3. otherwise -> 'absent'.
+# When the backup fidelity is unknown, the expectation stays 'unknown':
+# an unjudgeable backup must not decide the block either way.
+# Sets ABOX_RESTORE_CRON_USERGUARD[_LINE]. Returns 1 only when the
+# restore root argument is missing.
 restore_user_guard_cron_block() {
-    local _restore_root="${1:-}" _backup_cron='' _users_dir='' _runner='' _have_users=0
-    ABOX_RESTORE_CRON_USERGUARD='not installed (no users, no runner)'
+    local _restore_root="${1:-}" _users_dir='' _runner='' _runner_q='' _have_users=0
     [[ -n "$_restore_root" ]] || return 1
-    _backup_cron="$(dirname -- "$_restore_root")/meta/cron.abox.txt"
+    [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" == 'trusted' ]] || return 0
+    [[ "${ABOX_RESTORE_CRON_USERGUARD:-unknown}" == 'installed (backup)' ]] && return 0
     _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
     _runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
-    if [[ -f "$_backup_cron" && ! -L "$_backup_cron" ]] \
-        && validate_abox_cron_file "$_backup_cron" 2>/dev/null \
-        && { grep -Fq '# A-Box USERGUARD BEGIN' "$_backup_cron" 2>/dev/null \
-            || grep -Fq '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' "$_backup_cron" 2>/dev/null; }; then
-        setup_user_guard || return 1
-        ABOX_RESTORE_CRON_USERGUARD='installed (backup)'
-        return 0
-    fi
     if [[ -d "$_users_dir" ]] && [[ -n "$(ls -A "$_users_dir" 2>/dev/null)" ]]; then _have_users=1; fi
     if (( _have_users == 1 )) || [[ -f "$_runner" && ! -L "$_runner" ]]; then
-        setup_user_guard || return 1
+        _runner_q="$_runner"
+        if [[ "$_runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$_runner"); fi
         ABOX_RESTORE_CRON_USERGUARD='installed (default)'
+        ABOX_RESTORE_CRON_USERGUARD_LINE="*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1"
         return 0
+    fi
+    ABOX_RESTORE_CRON_USERGUARD='absent'
+    ABOX_RESTORE_CRON_USERGUARD_LINE=''
+    return 0
+}
+
+# L8: expected/actual token for one block in the restore report.
+# Expected 'installed (backup)' / 'installed (default)' both report as
+# 'installed'; the default provenance is flagged separately (see
+# report_restore_cron_status) so it is never mistaken for backup truth.
+_restore_cron_report_token() {
+    local _name="$1" _expect_var="ABOX_RESTORE_CRON_${1}" _actual_var="ABOX_RESTORE_CRON_ACTUAL_${1}" _expect _actual
+    _expect="${!_expect_var:-unknown}"
+    _actual="${!_actual_var:-unknown}"
+    case "$_expect" in
+        'installed (backup)'|'installed (default)') _expect='installed' ;;
+        'absent') _expect='absent' ;;
+        *) _expect='unknown' ;;
+    esac
+    case "$_actual" in
+        'installed'|'absent'|'mismatched') ;;
+        *) _actual='unknown' ;;
+    esac
+    printf 'expected=%s actual=%s' "$_expect" "$_actual"
+}
+
+# L8: re-read the LIVE crontab and record, per block, the actual state
+# (installed / absent / mismatched / unknown) in
+# ABOX_RESTORE_CRON_ACTUAL_<BLOCK>, and whether the live state matches
+# the parsed expectation in ABOX_RESTORE_CRON_COMPLETE (1/0). 'installed'
+# requires the live schedule line to equal the expected line exactly; a
+# block present with a different schedule is 'mismatched', not a success.
+# Returns 1 only when the live crontab cannot be read at all (actuals
+# stay 'unknown'); a mismatch is reported via COMPLETE=0, not via rc.
+_refresh_restore_cron_actuals() {
+    local _name _expect_var _expect _line_var _line _found _actual_line _complete=1
+    ABOX_RESTORE_CRON_ACTUAL_PROBE='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_GEO='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_USERGUARD='unknown'
+    ABOX_RESTORE_CRON_COMPLETE=0
+    local _live
+    _live=$(_current_abox_cron_blocks 2>/dev/null) || return 1
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        _line_var="ABOX_RESTORE_CRON_${_name}_LINE"
+        _line="${!_line_var:-}"
+        _found=$(awk -F'\t' -v n="$_name" '$1 == n { print "1"; exit }' <<< "$_live")
+        if [[ -z "$_found" ]]; then
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='absent' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='absent' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='absent' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='absent' ;;
+            esac
+            [[ "$_expect" == 'absent' ]] || _complete=0
+            continue
+        fi
+        _actual_line=$(awk -F'\t' -v n="$_name" '$1 == n { print $2; exit }' <<< "$_live")
+        if [[ -n "$_line" && "$_actual_line" == "$_line" ]]; then
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='installed' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='installed' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='installed' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='installed' ;;
+            esac
+            case "$_expect" in
+                'installed (backup)'|'installed (default)') ;;
+                *) _complete=0 ;;
+            esac
+        else
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='mismatched' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='mismatched' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='mismatched' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='mismatched' ;;
+            esac
+            _complete=0
+        fi
+    done
+    ABOX_RESTORE_CRON_COMPLETE="$_complete"
+    return 0
+}
+
+# L8: install the four blocks as one merged crontab: the current
+# crontab's non-A-Box lines are kept verbatim, all four managed blocks
+# (and recognised bare lines) are stripped, and exactly the expected
+# blocks are appended with their expected schedule lines. One
+# compare-and-swap commit (commit_crontab_if_unchanged). Returns the
+# commit status.
+_merge_abox_cron_from_expectations() {
+    local _current _merged _name _expect_var _expect _line_var _line _rc=0
+    _current=$(mktemp) || return 1
+    _merged=$(mktemp) || { rm -f -- "$_current"; return 1; }
+    if ! read_crontab_to_file "$_current"; then rm -f -- "$_current" "$_merged"; return 1; fi
+    if ! strip_abox_cron_blocks_from_file "$_current" "$_merged"; then rm -f -- "$_current" "$_merged"; return 1; fi
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        case "$_expect" in
+            'installed (backup)'|'installed (default)')
+                _line_var="ABOX_RESTORE_CRON_${_name}_LINE"
+                _line="${!_line_var:-}"
+                [[ -n "$_line" ]] || { rm -f -- "$_current" "$_merged"; return 1; }
+                case "$_line" in *$'\n'*|*%*) rm -f -- "$_current" "$_merged"; return 1 ;; esac
+                {
+                    printf '%s\n' "# A-Box ${_name} BEGIN"
+                    printf '%s\n' "$_line"
+                    printf '%s\n' "# A-Box ${_name} END"
+                } >> "$_merged" || { rm -f -- "$_current" "$_merged"; return 1; }
+                ;;
+        esac
+    done
+    commit_crontab_if_unchanged "$_current" "$_merged" || _rc=$?
+    rm -f -- "$_current" "$_merged"
+    return "$_rc"
+}
+
+# L8: unknown-fidelity path -- prepare helper scripts only for blocks
+# that are currently present, so a preserved schedule keeps a working
+# script. Best-effort: a failed preparation is warned, never fatal,
+# because the cron itself is left untouched on this path.
+_restore_abox_cron_prepare_present_scripts() {
+    local _present _name
+    _present=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 || true)
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        grep -Fxq "$_name" <<< "$_present" || continue
+        case "$_name" in
+            PROBE) setup_health_monitor scripts-only >/dev/null 2>&1 || msg "[!] Preserved PROBE block kept, but socket_probe.sh could not be prepared." >&2 ;;
+            GEO)
+                if abox_owns_service xray; then
+                    setup_geo_cron scripts-only >/dev/null 2>&1 || msg "[!] Preserved GEO block kept, but geo_update.sh could not be prepared." >&2
+                else
+                    msg "[!] Preserved GEO block kept, but xray is not owned; geo_update.sh left as-is." >&2
+                fi
+                ;;
+            TRAFFIC) setup_traffic_monitor scripts-only >/dev/null 2>&1 || msg "[!] Preserved TRAFFIC block kept, but traffic_monitor.sh could not be prepared." >&2 ;;
+            USERGUARD) setup_user_guard scripts-only >/dev/null 2>&1 || msg "[!] Preserved USERGUARD block kept, but user-guard-runner.sh could not be prepared." >&2 ;;
+        esac
+    done
+    return 0
+}
+
+# L8: restore the four cron blocks from the backup, as one group.
+#   * trusted backup: install exactly the blocks the backup carries
+#     (with the backup's exact schedule lines), remove the rest, in a
+#     single merged crontab install. Helper scripts are prepared first
+#     (scripts-only setup_*), so a block is never installed pointing at
+#     a missing helper; a block whose script cannot be prepared fails
+#     the restore instead of installing a dangling schedule. A TRAFFIC
+#     block the backup carries but the restored environment cannot run
+#     (no valid TRAFFIC_LIMIT_GB) likewise fails closed.
+#   * unknown backup (missing/invalid meta/cron.abox.txt): preserve the
+#     live blocks verbatim -- absence of evidence is not evidence of
+#     absence -- and report expected=unknown. The restore still succeeds.
+# Helper scripts of absent blocks are left alone: inert without their
+# cron block, and other paths may still reference them.
+# Returns 1 when a trusted expectation could not be installed or
+# verified (fail closed, like the old unconditional install); the
+# unknown-fidelity path returns 0 with COMPLETE=0.
+restore_abox_cron_from_backup() {
+    local _root="${1:-}" _name _expect_var _expect _line_var _line _script
+    [[ -n "$_root" ]] || return 1
+    parse_backup_cron_expectations "$_root" || return 1
+    restore_user_guard_cron_block "$_root" || return 1
+    if [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" != 'trusted' ]]; then
+        _restore_abox_cron_prepare_present_scripts || true
+        _refresh_restore_cron_actuals || true
+        ABOX_RESTORE_CRON_COMPLETE=0
+        msg "${YELLOW}[!] Restore cron fidelity unknown (backup meta/cron.abox.txt missing or invalid); existing A-Box cron blocks preserved as-is -- verify by hand.${NC}" >&2
+        return 0
+    fi
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        case "$_name" in
+            PROBE) _script="${ABOX_DIR:-/etc/ddr}/socket_probe.sh" ;;
+            GEO) _script="${ABOX_DIR:-/etc/ddr}/geo_update.sh" ;;
+            TRAFFIC) _script="${ABOX_DIR:-/etc/ddr}/traffic_monitor.sh" ;;
+            USERGUARD) _script="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh" ;;
+        esac
+        case "$_expect" in
+            'installed (backup)'|'installed (default)')
+                case "$_name" in
+                    PROBE) setup_health_monitor scripts-only || return 1 ;;
+                    GEO) setup_geo_cron scripts-only || return 1 ;;
+                    TRAFFIC)
+                        if ! valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
+                            msg "${RED}[!] Backup schedules a TRAFFIC block but the restored environment has no valid TRAFFIC_LIMIT_GB; refusing to install a monitor that would fail closed. Set a traffic limit or remove the block by hand.${NC}" >&2
+                            return 1
+                        fi
+                        setup_traffic_monitor scripts-only || return 1
+                        ;;
+                    USERGUARD) setup_user_guard scripts-only || return 1 ;;
+                esac
+                # The script must exist and be executable, or the block
+                # would point at a dead helper (e.g. setup_geo_cron's
+                # not-owned branch removes the script and returns 0).
+                [[ -f "$_script" && ! -L "$_script" && -x "$_script" ]] || return 1
+                ;;
+            'absent')
+                ;;
+            *) return 1 ;;
+        esac
+    done
+    _merge_abox_cron_from_expectations || return 1
+    if ! _refresh_restore_cron_actuals; then
+        # The merge itself was verified by its compare-and-swap commit;
+        # a re-read failure only means the outcome could not be
+        # re-confirmed. Report actual=unknown instead of failing a
+        # restore whose crontab is already correct.
+        msg "${YELLOW}[!] Could not re-read crontab to verify the restore; cron status is unverified (see report below).${NC}" >&2
+        return 0
+    fi
+    [[ "${ABOX_RESTORE_CRON_COMPLETE:-0}" == 1 ]] || return 1
+    return 0
+}
+
+# L4-E10: one-line restore summary of the four cron blocks, now as
+# expected vs actual (re-read from the live crontab, so the report
+# asserts reality, not install intent). A trusted backup with no PROBE
+# and a live PROBE reports 'expected=absent actual=installed' and is
+# judged incomplete, never hidden behind a bare 'installed'. An
+# unjudgeable backup reports 'expected=unknown'.
+report_restore_cron_status() {
+    _refresh_restore_cron_actuals 2>/dev/null || true
+    local _note=''
+    [[ "${ABOX_RESTORE_CRON_USERGUARD:-}" == 'installed (default)' ]] && _note=' (USERGUARD installed by default rebuild, not from backup)'
+    msg "[cron restore] PROBE:$(_restore_cron_report_token PROBE) GEO:$(_restore_cron_report_token GEO) TRAFFIC:$(_restore_cron_report_token TRAFFIC) USERGUARD:$(_restore_cron_report_token USERGUARD)${_note}"
+    if [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" != 'trusted' ]]; then
+        msg "${YELLOW}[!] Cron restore fidelity unknown (backup cron missing or invalid); existing blocks preserved as-is.${NC}" >&2
+    elif [[ "${ABOX_RESTORE_CRON_COMPLETE:-0}" != 1 ]]; then
+        msg "${YELLOW}[!] Cron restore incomplete: live crontab does not match the backup (see expected vs actual above).${NC}" >&2
     fi
     return 0
 }
 
-# L4-E10: one-line restore summary of the four cron blocks, so a missing
-# block can never hide behind a bare "restore complete".
-report_restore_cron_status() {
-    msg "[cron restore] PROBE:${ABOX_RESTORE_CRON_PROBE:-unknown} GEO:${ABOX_RESTORE_CRON_GEO:-unknown} TRAFFIC:${ABOX_RESTORE_CRON_TRAFFIC:-unknown} USERGUARD:${ABOX_RESTORE_CRON_USERGUARD:-unknown}"
+# L8: A-Box jails the restored on-disk config enables. Parses
+# /etc/fail2ban/jail.d/A-Box.local for [A-Box-*] sections with
+# 'enabled = true' (spaces/case tolerated). A section without an
+# enabled line counts as disabled: file presence alone does not prove
+# a jail is effectively enabled. Prints one jail name per line.
+fail2ban_expected_jails() {
+    local _jail_file='/etc/fail2ban/jail.d/A-Box.local'
+    [[ -f "$_jail_file" && ! -L "$_jail_file" ]] || return 0
+    awk '
+      /^\[A-Box-(tcp|udp)(-[0-9]+)?\]$/ { if (name != "" && enabled == 1) print name; name=substr($0, 2, length($0)-2); enabled=0; next }
+      /^\[/ { if (name != "" && enabled == 1) print name; name=""; enabled=0; next }
+      { gsub(/^[ \t]+|[ \t]+$/, "", $0); if (tolower($0) ~ /^enabled[ \t]*=[ \t]*true$/) enabled=1 }
+      END { if (name != "" && enabled == 1) print name }
+    ' "$_jail_file"
+}
+
+# L8: jails the RUNNING fail2ban currently has loaded (one per line).
+# Returns 1 when the client is missing or the status cannot be read.
+# An empty jail list is a valid empty result (rc 0).
+fail2ban_loaded_jails() {
+    local _out _list
+    command -v fail2ban-client >/dev/null 2>&1 || return 1
+    _out=$(fail2ban-client status 2>/dev/null) || return 1
+    grep -Fq 'Jail list:' <<< "$_out" || return 1
+    _list=$(sed -n 's/.*Jail list:[[:space:]]*//p' <<< "$_out" | head -1)
+    [[ -n "$_list" ]] || return 0
+    printf '%s\n' "$_list" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | awk 'NF'
+}
+
+# L8: whether the fail2ban server is currently alive (ping, not the
+# service unit: ping is what the client itself uses to decide).
+fail2ban_service_running() {
+    command -v fail2ban-client >/dev/null 2>&1 || return 1
+    fail2ban-client ping >/dev/null 2>&1
+}
+
+# L8: does the loaded A-Box jail set equal the set the restored
+# on-disk config enables?
+_fail2ban_loaded_matches_expected() {
+    local _exp _ld
+    _exp=$(fail2ban_expected_jails | sort | paste -sd, - || true)
+    _ld=$(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort | paste -sd, - || true)
+    [[ "$_exp" == "$_ld" ]]
+}
+
+# L8: converge the RUNNING fail2ban's loaded jail set with the restored
+# on-disk config, after a restore. Order is deliberate:
+#   1. validate the restored effective config first (never signal a
+#      service on a broken config);
+#   2. never start a stopped service: _f2b_restart would start one, so
+#      a stopped service is left stopped and reported (its loaded set
+#      is empty by definition; the backup carries no fail2ban
+#      start/stop state to restore from);
+#   3. prefer `fail2ban-client reload` (no server restart, other jails
+#      untouched). Reload is NOT assumed to unload a deleted jail on
+#      every supported version, so the loaded set is re-queried;
+#   4. for a stale A-Box jail that survives reload, stop that jail
+#      individually (`fail2ban-client stop <jail>` -- never a bare
+#      `stop`, which terminates the server, and never a global unban).
+#      Stopping a jail tears down its own actions, which is the
+#      intended effect for a jail the restored config no longer defines;
+#   5. only if that still does not converge, one recorded restart of
+#      the RUNNING service (confirmed running in step 2, so it cannot
+#      start a stopped service), then re-verify.
+# Re-entry is driven by the loaded-vs-expected comparison itself, not
+# by file timestamps: a previous reload that failed leaves the loaded
+# set diverged, so the next run retries even when no file changed.
+# Outcome is recorded in ABOX_RESTORE_F2B_STATUS (and the signals
+# attempted in ABOX_RESTORE_F2B_SIGNALS) and reported by
+# report_restore_fail2ban_status. Never fails the restore: a
+# non-converged loaded state is reported, not hidden, and does not
+# mask the main restore result.
+converge_fail2ban_after_restore() {
+    local _expected _stale _missing _others_before _others_after _lost _signals='none' _jail
+    ABOX_RESTORE_F2B_STATUS='unknown'
+    ABOX_RESTORE_F2B_SIGNALS='none'
+    command -v fail2ban-client >/dev/null 2>&1 || { ABOX_RESTORE_F2B_STATUS='not installed'; return 0; }
+    if ! validate_fail2ban_config; then
+        ABOX_RESTORE_F2B_STATUS='config invalid (left untouched)'
+        msg "${YELLOW}[!] Fail2Ban config invalid after restore; loaded jails left untouched.${NC}" >&2
+        return 0
+    fi
+    if ! fail2ban_service_running; then
+        _expected=$(fail2ban_expected_jails | paste -sd, - || true)
+        if [[ -n "$_expected" ]]; then
+            ABOX_RESTORE_F2B_STATUS="stopped (left stopped); expected jails not loaded: ${_expected}"
+        else
+            ABOX_RESTORE_F2B_STATUS='stopped (left stopped)'
+        fi
+        return 0
+    fi
+    _others_before=$(fail2ban_loaded_jails 2>/dev/null | grep -v '^A-Box-' | paste -sd, - || true)
+    if _fail2ban_loaded_matches_expected; then
+        ABOX_RESTORE_F2B_STATUS='converged (no signal needed)'
+        return 0
+    fi
+    if fail2ban-client reload >/dev/null 2>&1; then
+        _signals='reload'
+    else
+        _signals='reload-failed'
+    fi
+    if _fail2ban_loaded_matches_expected; then
+        ABOX_RESTORE_F2B_STATUS='converged (reload)'
+    else
+        _stale=$(comm -23 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true))
+        for _jail in $_stale; do
+            if fail2ban-client stop "$_jail" >/dev/null 2>&1; then
+                _signals="${_signals},stop:${_jail}"
+            else
+                _signals="${_signals},stop-failed:${_jail}"
+            fi
+        done
+        if _fail2ban_loaded_matches_expected; then
+            ABOX_RESTORE_F2B_STATUS='converged (reload+stop)'
+        else
+            if _f2b_restart; then
+                _signals="${_signals},restart"
+            else
+                _signals="${_signals},restart-failed"
+            fi
+            if _fail2ban_loaded_matches_expected; then
+                ABOX_RESTORE_F2B_STATUS='converged (restart)'
+            else
+                _missing=$(comm -13 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true) | paste -sd, - || true)
+                _stale=$(comm -23 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true) | paste -sd, - || true)
+                ABOX_RESTORE_F2B_STATUS="incomplete: loaded A-Box jails still differ from restored config (still loaded: ${_stale:-none}; still missing: ${_missing:-none})"
+                msg "${YELLOW}[!] Fail2Ban loaded state did not converge after restore: ${ABOX_RESTORE_F2B_STATUS}${NC}" >&2
+            fi
+        fi
+    fi
+    ABOX_RESTORE_F2B_SIGNALS="$_signals"
+    # A global service action is not file-isolated: verify the other
+    # jails that were running before still are (notably sshd). If one
+    # vanished, report it; never rewrite user jail files to compensate.
+    if [[ "$_signals" != 'none' ]]; then
+        _others_after=$(fail2ban_loaded_jails 2>/dev/null | grep -v '^A-Box-' | paste -sd, - || true)
+        _lost=$(comm -23 <(printf '%s\n' "$_others_before" | tr ',' '\n' | sed '/^$/d' | sort || true) <(printf '%s\n' "$_others_after" | tr ',' '\n' | sed '/^$/d' | sort || true) | paste -sd, - || true)
+        if [[ -n "$_lost" ]]; then
+            ABOX_RESTORE_F2B_STATUS="${ABOX_RESTORE_F2B_STATUS}; other jail(s) lost: ${_lost}"
+            msg "${YELLOW}[!] Fail2Ban action lost non-A-Box jail(s) during restore: ${_lost}; user jail files were not modified.${NC}" >&2
+        fi
+    fi
+    return 0
+}
+
+# L8: one-line restore summary of the fail2ban loaded state (see
+# converge_fail2ban_after_restore). Always call after
+# report_restore_cron_status on a restore path.
+report_restore_fail2ban_status() {
+    msg "[fail2ban restore] ${ABOX_RESTORE_F2B_STATUS:-unknown} (signals: ${ABOX_RESTORE_F2B_SIGNALS:-none})"
 }
 
 # H-08: a restored zram.state whose BOOT= belongs to another boot
@@ -56562,23 +57199,18 @@ regenerate_runtime_assets_after_restore() {
             return 1
         fi
     done
-    ABOX_RESTORE_CRON_PROBE='unknown'
-    ABOX_RESTORE_CRON_GEO='unknown'
-    ABOX_RESTORE_CRON_TRAFFIC='unknown'
-    ABOX_RESTORE_CRON_USERGUARD='unknown'
     setup_shortcut || return 1
-    setup_health_monitor || return 1
-    ABOX_RESTORE_CRON_PROBE='installed'
-    setup_geo_cron || return 1
-    ABOX_RESTORE_CRON_GEO='installed'
-    if valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
-        setup_traffic_monitor || return 1
-        ABOX_RESTORE_CRON_TRAFFIC='installed'
-    else
-        disable_traffic_monitor || return 1
-        ABOX_RESTORE_CRON_TRAFFIC='disabled'
-    fi
-    restore_user_guard_cron_block "$_restore_root" || return 1
+    # L8: cron is restored from the backup, not rebuilt from defaults.
+    # restore_abox_cron_from_backup installs exactly the blocks the
+    # backup carries (or none) in one merge; a missing/invalid backup
+    # cron preserves the live blocks and reports expected=unknown.
+    restore_abox_cron_from_backup "$_restore_root" || return 1
+    # L8: converge the RUNNING fail2ban's loaded jail set with the
+    # restored on-disk config (reload, then per-jail stop, then one
+    # recorded restart). Never fails the restore; the outcome is in
+    # ABOX_RESTORE_F2B_STATUS and reported by
+    # report_restore_fail2ban_status on the restore path.
+    converge_fail2ban_after_restore || true
 }
 
 
@@ -57249,6 +57881,7 @@ PY_LATEST_BACKUP
         preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
     report_restore_cron_status
+    report_restore_fail2ban_status
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
@@ -57465,6 +58098,7 @@ PY_RB_ENUM
     commit_deployment_transaction
     rm -rf "$work"
     report_restore_cron_status
+    report_restore_fail2ban_status
     msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
     pause_return
 }

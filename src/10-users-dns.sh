@@ -2805,6 +2805,9 @@ user_guard_installed() {
 }
 
 setup_user_guard() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     local _src="$0"
     # M-06 (Carbon audit): under bash <(curl ...) $0 is /dev/fd/N, not a
@@ -2859,7 +2862,11 @@ setup_user_guard() {
     # matches the unquoted USERGUARD line exactly).
     local _runner_q="$runner"
     if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$runner"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    fi
     return 0
 }
 

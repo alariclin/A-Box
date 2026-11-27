@@ -1020,6 +1020,14 @@ hysteria_official_hop_firewall_ok() {
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
         # counts per its rules' meta nfproto (unrestricted counts for both)).
+        # F-hop (2026-11-27): Hysteria 2.14.0 official hop builds its
+        # own per-family tables `hysteria_<hash>` (ip + ip6) with a
+        # lowercase `prerouting` base chain (`type nat hook prerouting`),
+        # invisible to iptables-nft and to the old `tbl == "nat" &&
+        # chain == "PREROUTING"` gate — every official-hop deploy on a
+        # nft-default host failed on it. Accept those tables too, with
+        # the same hook + saddr + family accounting below; any other
+        # table still does not count.
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -1037,7 +1045,7 @@ hysteria_official_hop_firewall_ok() {
             # only that source, not the whole hop range; it must not count.
             # (A negated dport cannot match `pat`: the range must follow
             # `udp dport ` directly, so `udp dport != ...` never matches.)
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
+            tolower(chain) == "prerouting" && (tbl == "nat" || tbl ~ /^hysteria_[0-9a-fA-F]+$/) && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {
@@ -2232,6 +2240,14 @@ hysteria_official_hop_firewall_ok() {
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
         # counts per its rules' meta nfproto (unrestricted counts for both)).
+        # F-hop (2026-11-27): Hysteria 2.14.0 official hop builds its
+        # own per-family tables `hysteria_<hash>` (ip + ip6) with a
+        # lowercase `prerouting` base chain (`type nat hook prerouting`),
+        # invisible to iptables-nft and to the old `tbl == "nat" &&
+        # chain == "PREROUTING"` gate — every official-hop deploy on a
+        # nft-default host failed on it. Accept those tables too, with
+        # the same hook + saddr + family accounting below; any other
+        # table still does not count.
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -2249,7 +2265,7 @@ hysteria_official_hop_firewall_ok() {
             # only that source, not the whole hop range; it must not count.
             # (A negated dport cannot match `pat`: the range must follow
             # `udp dport ` directly, so `udp dport != ...` never matches.)
-            chain == "PREROUTING" && tbl == "nat" && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
+            tolower(chain) == "prerouting" && (tbl == "nat" || tbl ~ /^hysteria_[0-9a-fA-F]+$/) && hookok && $0 ~ pat && $0 !~ /(^|[^A-Za-z0-9_])ip saddr/ && $0 !~ /(^|[^A-Za-z0-9_])ip6 saddr/ {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
                 if (fam == "inet") {

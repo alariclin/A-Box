@@ -72340,7 +72340,7 @@ run_self_tests() {
     }
     selftest_abox_signature() {
         if [[ ! -e /etc/ddr && ! -L /etc/ddr ]]; then
-            printf 'ABSENT\n'
+            printf 'ABSENT\nABSENT\n'
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
@@ -72351,6 +72351,24 @@ run_self_tests() {
         # and the readlink target for symlinks; records sorted,
         # NUL-joined, sha256. A nested same-size content change or a
         # symlink retarget now changes the signature.
+        # SELFTEST-ISOLATION (leftover 20261126): the users.d subtree is
+        # NOT part of the content/mtime signature. The 5-minute USERGUARD
+        # tick (user_guard_tick -> users_guard_eval -> users_reg_write ->
+        # users_reg_write_path) rewrites EVERY registry file on every
+        # tick with an unconditional `mv -f` of a fresh temp file -- no
+        # identical-content skip -- so a tick landing inside the
+        # self-test window flips mtime (and the dir mtime) even with
+        # zero traffic and no transition. That write is background
+        # activity, not a self-test side effect, so the first hash line
+        # excludes users.d content/mtime entirely; the second hash line
+        # covers only the sorted users.d relative-path set, which still
+        # catches the self-test creating or deleting a registry. The
+        # users.d directory itself stays in the first hash with
+        # identity+mode only (no mtime/size). Residual race: a tick
+        # that fires a real transition (quota/expiry) mid-run can still
+        # touch .env/desired/subscription via users_sync; that is rare
+        # and only on hosts with an active transition, and is left as a
+        # known limitation (see the post-test comparison below).
         python3 -I - <<'PY_ABOX_SIG' 2>/dev/null || return 1
 import os, stat, sys, hashlib
 def _ftype(m):
@@ -72375,6 +72393,7 @@ def _sha256_file(p):
     except OSError:
         return 'ERR'
 _records = []
+_users_names = []
 for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followlinks=False):
     for _name in _dirnames + _filenames:
         _p = os.path.join(_dirpath, _name)
@@ -72384,6 +72403,16 @@ for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followl
         except OSError:
             continue
         _t = _ftype(_st.st_mode)
+        if _rel == 'users.d':
+            # users.d dir itself: identity + mode only, no mtime/size
+            # (a guard tick rewriting a child registry flips the dir
+            # mtime via the temp-file replace).
+            _records.append(repr((_rel, _t, _st.st_uid, _st.st_gid, oct(stat.S_IMODE(_st.st_mode))[2:], '', '', '')))
+            continue
+        if _rel.startswith('users.d/'):
+            # Registry files: names only (see D-07 note above).
+            _users_names.append(_rel)
+            continue
         _extra = ''
         if _t == 'f':
             _extra = _sha256_file(_p)
@@ -72401,6 +72430,9 @@ except OSError:
 _records.sort()
 _blob = (chr(0).join(_records) + chr(0)) if _records else ''
 sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + chr(10))
+_users_names.sort()
+_ub = (chr(0).join(_users_names) + chr(0)) if _users_names else ''
+sys.stdout.write(hashlib.sha256(_ub.encode()).hexdigest() + chr(10))
 PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
@@ -74387,6 +74419,40 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): the emitters below
+        # merge live state by design (H-24: never silently drop
+        # multi-user UUIDs). On a host with a live deployment that
+        # live state leaks into the fixtures and breaks the count
+        # assertions (a live users.d UUID adds Vision+XHTTP nodes, so
+        # the ML-KEM flag counts read 4 instead of 2). Point every
+        # live-read at an empty/nonexistent temp path for this block:
+        #   ABOX_USERS_DIR  -> empty temp dir (list_usersd_uuids,
+        #                      users_reg_file, ss/hy2 effective passwords)
+        #   XRAY_SLOT_CFG   -> nonexistent temp path (users_cfg_of xray:
+        #                      list_xhttp_live_uuids fails open to the
+        #                      merged list; L6 publishability fails open)
+        #   ABOX_HY2_CONFIG -> nonexistent temp path (hy2_effective_password
+        #                      fails open to $HY2_PASS; _hy2_node_publishable
+        #                      sees nothing readable and fails open)
+        #   ABOX_SB_CFG     -> nonexistent temp path (_singbox_hy2_inbound_state
+        #                      / _hy2_node_publishable fail open; the
+        #                      standalone calls below override it with
+        #                      their own fixture paths)
+        # Plain assignments: the emitters run in this shell, so dynamic
+        # scope carries them; restored at the end of this block.
+        # Product emitters untouched.
+        local clash_users_dir="$tmp/abox-users.d"
+        mkdir -m 700 "$clash_users_dir" || { echo 'FAIL: self-test users.d isolation directory'; failures=$((failures + 1)); }
+        local _st_old_users_dir="${ABOX_USERS_DIR:-}" _st_old_slot_cfg="${XRAY_SLOT_CFG:-}" _st_old_hy2_cfg="${ABOX_HY2_CONFIG:-}" _st_old_sb_cfg="${ABOX_SB_CFG:-}"
+        local _st_had_users_dir=0 _st_had_slot_cfg=0 _st_had_hy2_cfg=0 _st_had_sb_cfg=0
+        [[ -n "${ABOX_USERS_DIR:-}" ]] && _st_had_users_dir=1
+        [[ -n "${XRAY_SLOT_CFG:-}" ]] && _st_had_slot_cfg=1
+        [[ -n "${ABOX_HY2_CONFIG:-}" ]] && _st_had_hy2_cfg=1
+        [[ -n "${ABOX_SB_CFG:-}" ]] && _st_had_sb_cfg=1
+        ABOX_USERS_DIR="$clash_users_dir"
+        XRAY_SLOT_CFG="$clash_dir/no-live-xray.json"
+        ABOX_HY2_CONFIG="$clash_dir/no-live-hy2.yaml"
+        ABOX_SB_CFG="$clash_dir/no-live-sb.json"
         # M1: self-test must not do real network I/O. write_clash_yaml
         # probes the VPS country via a Cloudflare trace fetch; these
         # fixtures only check YAML structure, so fail the detection here
@@ -74438,6 +74504,13 @@ EOF_SELFTEST_IPT
         fi
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): restore the four
+        # live-read variables the block above redirected; later blocks
+        # (W2/L2) save and restore their own overrides from these values.
+        if (( _st_had_users_dir == 1 )); then ABOX_USERS_DIR="$_st_old_users_dir"; else unset ABOX_USERS_DIR; fi
+        if (( _st_had_slot_cfg == 1 )); then XRAY_SLOT_CFG="$_st_old_slot_cfg"; else unset XRAY_SLOT_CFG; fi
+        if (( _st_had_hy2_cfg == 1 )); then ABOX_HY2_CONFIG="$_st_old_hy2_cfg"; else unset ABOX_HY2_CONFIG; fi
+        if (( _st_had_sb_cfg == 1 )); then ABOX_SB_CFG="$_st_old_sb_cfg"; else unset ABOX_SB_CFG; fi
         if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
 import json, sys
@@ -74522,6 +74595,12 @@ PY_SELFTEST_YAML
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi
         post_abox_sig=$(selftest_abox_signature) || { echo 'FAIL: live /etc/ddr post-test signature unavailable'; failures=$((failures + 1)); }
+        # The signature is two lines: the whole-tree hash (users.d
+        # content/mtime excluded, see selftest_abox_signature) plus
+        # the users.d relative-path-set hash. Known residual race: a
+        # USERGUARD tick firing a real quota/expiry transition mid-run
+        # can still rewrite .env/desired/subscription via users_sync;
+        # the steady-state tick (registry rewrite only) is excluded.
         if (( post_abox_exists != real_abox_exists )); then
             echo 'FAIL: --self-test changed /etc/ddr existence state'; failures=$((failures + 1))
         elif [[ "$post_abox_sig" != "$real_abox_sig" ]]; then
@@ -74984,10 +75063,26 @@ EOF_SVC_TEST_RCUPDATE
     die() { return 99; }
     clear_abox_env_vars
     CORE=''; MODE=''
+    # SELFTEST-ISOLATION (leftover 20261126): confirm_deployment_replacement
+    # reloads $ABOX_ENV when CORE/MODE are empty, and load_abox_env parses
+    # the state file with `while IFS= read -r -d '' key` -- which invokes
+    # THIS fixture's mocked `read` (always returns 0, never assigns key),
+    # so the loop body expands unset $key under `set -u` and aborts the
+    # whole self-test shell (`key: unbound variable`, exit 1, no verdict;
+    # stderr is swallowed by the caller's >/dev/null 2>&1). On a host
+    # without /etc/ddr/.env the load fails early at the readability guard
+    # and the fixture passes, so the bug only fires on a live host.
+    # Point ABOX_ENV at a nonexistent temp path so the load fails early
+    # exactly as on a clean host -- and the fixture keeps testing its
+    # intended path (query failure -> confirmation prompt, not a silent
+    # auto-approve driven by a reloaded live CORE/MODE).
+    _confirm_old_env="${ABOX_ENV:-}"
+    ABOX_ENV="$tmp/no-live-abox.env"
     if confirm_deployment_replacement xray VISION >/dev/null 2>&1; then
         echo 'FAIL: managed-service state query failure was silently auto-approved'
         failures=$((failures + 1))
     fi
+    if [[ -n "$_confirm_old_env" ]]; then ABOX_ENV="$_confirm_old_env"; else unset ABOX_ENV; fi
     eval "$managed_services_active__orig"
     eval "$die__orig"
     if [[ -n "$read__orig" ]]; then

@@ -52154,6 +52154,15 @@ sni_verify_raw_report() {
     printf '\r[*] Stage 2 progress: %d/%d verified\n' "$(( n > verify_limit ? verify_limit : n ))" "$verify_limit" >&2
     # L13: sort by measured score first; same-ASN, then same-country,
     # only break exact score ties; domain last for determinism.
+    # L13b (2026-11-27): the verified file has 17 tab-separated fields,
+    # not 15: the 9th printf argument ($check) is itself three fields
+    # (tls13/alpn/san), so asnmatch= is field 14 and samecountry= is
+    # field 15 (org= 16, cdnpenalty= 17). Do NOT "correct" these keys
+    # to -k12/-k13: those are the asn=/country= strings, not the 0/1
+    # tie-break flags -- a k12/k13 sort orders by ASN string and breaks
+    # both tie-breaks (fixture-l13b.sh: T2/T2-rev/T2c FAIL, 3 failures).
+    # The 17-column shape is also stated in the M-7 comment below and is
+    # what sni_render_ranked_report reads ($12 = asn=).
     LC_ALL=C sort -t $'\t' -k1,1n -k14,14r -k15,15r -k2,2 "$verified" -o "$verified" || return 1
     rm -rf "$asn_cache" 2>/dev/null || true
 }

@@ -2321,18 +2321,31 @@ _clear_hy2_nonport_env_vars() {
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     local _hy2cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}"
     local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _stripped='' _jq_rc=0 _key='' _failed=0
+    local _key='' _failed=0 _sb_state=0
     # Official binary still installed -> Hy2 lives.
     [[ -e "$_hy2cfg" || -L "$_hy2cfg" ]] && return 0
     # Sing-box hysteria2 inbound still present -> Hy2 lives. A
-    # missing/empty sing-box config means no sing-box Hy2; an
-    # unreadable or unparseable one is unverifiable -> keep keys.
-    if [[ -f "$_sbcfg" && ! -L "$_sbcfg" && -s "$_sbcfg" ]]; then
-        _stripped=$(jsonc_strip_comments "$_sbcfg" 2>/dev/null) || return 0
-        [[ -n "${_stripped//[[:space:]]/}" ]] || return 0
-        printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
-        (( _jq_rc == 1 )) || return 0
-    fi
+    # missing/empty sing-box config means no sing-box Hy2 (rc 3);
+    # an unreadable or unparseable one is unverifiable -> keep keys.
+    # L4: best-effort is not swallowed diagnostics -- "kept because
+    # unverifiable" warns once per process, so it is distinguishable
+    # from "readable and cleared". The verdict comes from
+    # _singbox_hy2_inbound_state, so "valid config, no match" (rc 1)
+    # is never confused with "the query never saw the expected
+    # structure" (rc 2): a config shaped like {"inbounds": "oops"}
+    # used to clear live keys here on a bare jq rc 1.
+    _singbox_hy2_inbound_state; _sb_state=$?
+    case "$_sb_state" in
+        0) return 0 ;;
+        1|3) ;;
+        2)
+            if [[ -z "${_CLEAR_HY2_ENV_UNVERIFIABLE_WARNED:-}" ]]; then
+                _CLEAR_HY2_ENV_UNVERIFIABLE_WARNED=1
+                msg "${YELLOW}[!] Hy2 settings kept in .env: sing-box config '${_sbcfg}' is unverifiable; stale Hy2 values may remain.${NC}"
+            fi
+            return 0
+            ;;
+    esac
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for _key in HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL HY2_PASS HY2_OBFS HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END; do
         if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
@@ -2605,6 +2618,103 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
         [[ -e "$_f" ]] || _deleted+=("$_f")
     done
     (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
+    return 0
+}
+
+# L4 (leftover 20261126): tri-state answer to "does the live sing-box
+# config still serve a hysteria2 inbound?" -- the single place that
+# decides it, so the cert cleanup, the .env cleanup and the Clash
+# publisher cannot drift apart.
+#   rc 0 = a hysteria2 inbound is confirmed present (Hy2 lives)
+#   rc 1 = the config is valid and has no hysteria2 inbound
+#   rc 2 = unverifiable (symlink, non-regular, strip failure,
+#          empty-after-strip, bad structure, jq failure) -- callers
+#          must keep files/keys and must not publish
+#   rc 3 = no config file at all, or an empty regular file: no
+#          inbound can exist, but nothing was verified either
+# The structure gate matters: a bare `jq ... || rc=$?; (( rc == 1 ))`
+# read treats "the query never saw the expected shape" (top level not
+# an object, .inbounds not an array) exactly like "valid config, no
+# match" (rc 1). A config shaped like {"inbounds": "oops"} would then
+# delete a live cert or clear live .env keys. Only a validated shape
+# may report rc 1 (same gate as _standalone_link_survivor).
+_singbox_hy2_inbound_state() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _stripped='' _jq_rc=0
+    [[ -L "$_cfg" ]] && return 2
+    [[ -e "$_cfg" ]] || return 3
+    [[ -f "$_cfg" ]] || return 2
+    [[ -s "$_cfg" ]] || return 3
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e 'if length != 1 then error("config is not a single JSON document") elif (.[0] | type) != "object" then error("config top level is not an object") elif (.[0] | has("inbounds")) and ((.[0].inbounds | type) != "array") then error("config inbounds is not an array") else true end' >/dev/null 2>&1 || return 2
+    printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# L4 (leftover 20261126): delete the script-managed sing-box Hy2
+# cert/key pair (/etc/sing-box/hy2.crt|key, fixed paths, single pair)
+# once no hysteria2 inbound remains in the live config. Mirror of
+# _singbox_cleanup_tuic_certs_when_none_remain, extracted from the
+# SYD-B E16 block in _protocol_removed_side_effects so the deploy tail
+# and the clear-all backstop can reuse the same verdict.
+# Contract (GPT L4 item 2): the helper NEVER touches the manifest
+# itself. It reports what it actually deleted through the caller's
+# array named by $1 (optional; nameref, bash 4.3+ as in _tsv_split);
+# the caller merges those paths into its own _deleted list or hands
+# them to _manifest_drop_paths. Paths are never mixed into stdout:
+# stdout stays log-only (warnings); the array is the channel.
+# Partial success is a first-class outcome: a file that was deleted
+# is reported (its manifest row must go); a file whose rm failed
+# stays on disk, stays out of the array, and is warned about.
+# Fail-closed, like E16 and _singbox_cert_referenced: an unverifiable
+# config, a surviving reference from ANY protocol, a symlink, or a
+# missing config all keep the files. An unverifiable config warns
+# once per process (locatable, rate-limited) and never prints a
+# password or a private key -- only the config and cert paths.
+# Always returns 0 (best-effort, like the TUIC helper): callers in
+# deploy/clear-all must not fail over it; E16's caller reads the
+# returned array instead of the return code.
+_singbox_cleanup_hy2_certs_when_none_remain() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _state=0 _f=''
+    local -a _hy2c_removed=()
+    _singbox_hy2_inbound_state; _state=$?
+    case "$_state" in
+        1) ;;
+        0) return 0 ;;
+        2)
+            # Warn once, and only when there is actually a pair to
+            # keep: a fresh box with no certs and a briefly
+            # unreadable config is not a finding.
+            if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] || [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
+                if [[ -z "${_SINGBOX_HY2_UNVERIFIABLE_WARNED:-}" ]]; then
+                    _SINGBOX_HY2_UNVERIFIABLE_WARNED=1
+                    msg "${YELLOW}[!] Hy2 certificate cleanup skipped: sing-box config '${_cfg}' is unverifiable; keeping /etc/sing-box/hy2.crt and /etc/sing-box/hy2.key.${NC}"
+                fi
+            fi
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+    for _f in /etc/sing-box/hy2.crt /etc/sing-box/hy2.key; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        # R38-H2 / 05f-H-05f-02: keep when ANY inbound of any
+        # protocol still references this file.
+        _singbox_cert_referenced "$_cfg" "$_f" && continue
+        rm -f -- "$_f" 2>/dev/null || true
+        if [[ -e "$_f" ]]; then
+            msg "${YELLOW}[!] Failed to delete stale Hy2 certificate file '$_f' after the last Hysteria 2 inbound was removed; the file remains on disk.${NC}"
+        else
+            _hy2c_removed+=("$_f")
+        fi
+    done
+    if [[ -n "${1:-}" && "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        local -n _hy2c_out="$1"
+        _hy2c_out=("${_hy2c_removed[@]}")
+    fi
     return 0
 }
 
@@ -3712,50 +3822,16 @@ _protocol_removed_side_effects() {
             _reg_failed=1
         fi
     done
-    # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key
-    # pair. Delete it only when no hysteria2 inbound remains and
-    # the pair is the script-managed /etc/sing-box/hy2.crt+key;
-    # anything else (shared, external path, still referenced) stays.
+    # SYD-B E16 (L4): a removed sing-box Hy2 inbound owns its cert/key
+    # pair. The verdict lives in _singbox_cleanup_hy2_certs_when_none_remain
+    # (extracted from this block); this site only merges what the helper
+    # actually deleted into _deleted, so the manifest drop at the foot
+    # of this function stays in one place. The helper never touches
+    # the manifest itself -- no double registration.
     if [[ "$core" == 'sing-box' ]]; then
-        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
-            # 2gq: delete the cert pair only when jq confirms no
-            # hysteria2 inbound remains (one-pass Boolean, rc 1);
-            # a jq failure or an empty config keeps it.
-            local _hy2_jq_rc=0
-            # M-6-residual (A-leg): jq -s over the stripped view; raw jq
-            # on a commented config fails with a parse error (rc 5),
-            # neither 0 nor 1, so the cert pair would wrongly survive
-            # when no hysteria2 inbound remains. Strip once here; the
-            # M-12 block below reuses the same view (the config is not
-            # rewritten between the two blocks). An empty-after-strip
-            # config is unverifiable, not a confirmation: keep the pair
-            # (rc 5, same as a jq failure).
-            if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
-                _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
-            fi
-            if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
-                printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hy2_jq_rc=$?
-            else
-                _hy2_jq_rc=5
-            fi
-            if [[ "$_hy2_jq_rc" == 1 ]]; then
-                # 05f-H-05f-02: delete each file only when no inbound
-                # of ANY protocol still references it (a manual or
-                # other-protocol inbound may share the pair).
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.crt; then
-                    if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]]; then
-                        rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.crt ]] || _deleted+=("/etc/sing-box/hy2.crt")
-                    fi
-                fi
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.key; then
-                    if [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
-                        rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.key ]] || _deleted+=("/etc/sing-box/hy2.key")
-                    fi
-                fi
-            fi
-        fi
+        local -a _hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _hy2_deleted
+        (( ${#_hy2_deleted[@]} > 0 )) && _deleted+=("${_hy2_deleted[@]}")
     fi
     # N5 (followup5 D-leg): a removed sing-box TUIC inbound owns its
     # per-tag cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/key,
@@ -4593,6 +4669,32 @@ clear_all_protocols() {
         # at clear time (side effects above are skipped for an empty
         # tag list), so orphan TUIC certs cannot survive a clear-all.
         _singbox_cleanup_tuic_certs_when_none_remain || true
+        # L4 (leftover 20261126): same backstop position for the Hy2
+        # pair -- the deploy tail and this wipe are the two paths that
+        # never ran the E16 cleanup. Runs outside the all_tags gate
+        # above, so an already-empty sing-box config still gets its
+        # certs deleted. Deleted paths go to the manifest drop here
+        # (the helper reports, the caller registers -- no double
+        # registration); a failed rm stays on disk and is warned
+        # about by the helper. Best-effort: a cleanup failure must
+        # not fail the clear.
+        local -a _cl_hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _cl_hy2_deleted || true
+        if (( ${#_cl_hy2_deleted[@]} > 0 )); then
+            _manifest_drop_paths "${_cl_hy2_deleted[@]}" || true
+        fi
+        # L4: the .env Hy2 keys are the same wipe's second residue
+        # (S3 left the fingerprint behind with the certs). Same
+        # position -- wipe_ok, outside the all_tags gate -- and the
+        # same cross-core "Hy2 still lives anywhere, keep" verdict
+        # inside _clear_hy2_nonport_env_vars (by now the official
+        # Hy2 is gone and no sing-box Hy2 inbound can remain, so
+        # the keys clear; an unverifiable config keeps them and
+        # warns instead of silently swallowing the skip). A real
+        # write failure fails the wipe: the clear must not report
+        # success with Hy2 credentials still in .env. The helper
+        # already warns on the failure itself.
+        _clear_hy2_nonport_env_vars || wipe_ok=0
         # R39-M1: a failed registry wipe used to only warn while
         # wipe_ok stayed 1, so the clear reported green success with
         # user credentials still on disk. Fold it into the verdict.

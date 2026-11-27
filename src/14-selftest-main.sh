@@ -3040,7 +3040,7 @@ PY_F05_TPUB
     # serves the port, and the published desired config must match
     # the .env expectations exactly to be usable for auto-recovery.
     {
-        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0
+        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0 _l4_st=0
         local _w2_old_slot="${XRAY_SLOT_CFG:-}" _w2_old_dir="${ABOX_DIR:-}" _w2_old_env="${ABOX_ENV:-}" _w2_old_sb="${ABOX_SB_CFG:-}" _w2_old_hy2="${ABOX_HY2_CFG:-}" _w2_old_xbin="${XRAY_BIN:-}"
         mkdir -p "$_w2d/ddr" || { echo 'FAIL: W2-FAIL-1 test dir'; failures=$((failures + 1)); }
         XRAY_SLOT_CFG="$_w2d/xray.json"
@@ -3156,6 +3156,47 @@ EOF_W2F1
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
         g2_func_contains _protocol_removed_side_effects '_clear_hy2_nonport_env_vars' || { echo 'FAIL: W2-FAIL-1 _protocol_removed_side_effects must call the Hy2 non-port cleanup'; failures=$((failures + 1)); }
+        # L4 (leftover 20261126): Hy2 cert cleanup helper wiring +
+        # tri-state inbound verdict. The helper must be reachable
+        # from every path that used to skip E16, and the verdict
+        # must separate "valid config, no match" (rc 1) from
+        # "the query never saw the expected structure" (rc 2).
+        g2_func_contains _protocol_removed_side_effects '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 _protocol_removed_side_effects must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains deploy_singbox '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 deploy_singbox must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 clear_all_protocols must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_hy2_nonport_env_vars' || { echo 'FAIL: L4 clear_all_protocols must clear the Hy2 .env keys'; failures=$((failures + 1)); }
+        g2_func_contains write_clash_yaml '_singbox_hy2_inbound_state' || { echo 'FAIL: L4 write_clash_yaml must gate the Hy2 node on the live sing-box inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"hy2","type":"hysteria2","listen_port":443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 0 )) || { echo 'FAIL: L4 live hysteria2 inbound must report state 0'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-in","type":"vless","listen_port":8443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 valid config without Hy2 must report state 1'; failures=$((failures + 1)); }
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 non-array inbounds must report state 2 (unverifiable), never state 1'; failures=$((failures + 1)); }
+        printf 'this is not json{' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 unparseable config must report state 2'; failures=$((failures + 1)); }
+        printf '{"inbounds":[]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 empty inbounds must report state 1'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 3 )) || { echo 'FAIL: L4 missing config must report state 3'; failures=$((failures + 1)); }
+        # A symlinked config is unverifiable (M-29), never "no match".
+        printf '{"inbounds":[]}' > "$_w2d/sb-real.json"
+        ln -sf "$_w2d/sb-real.json" "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 symlinked config must report state 2'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json" "$_w2d/sb-real.json"
+        # ... and the .env cleanup must keep keys on that same
+        # structurally bad shape (rc 0, keys kept), not clear them.
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        printf 'HY2_DOMAIN="example.com"\nHY2_PASS="stale"\n' > "$_w2d/.env"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi

@@ -28031,7 +28031,25 @@ pre_install_setup() {
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die "$(tr_msg pi_oneclick_sni_fail)"
+        if ! valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
+            # W2-FAIL-2 (matrix4-C): no verified auto-select candidate.
+            # ABOX_QUICK_DEPLOY cannot tell interactive from unattended
+            # (the R menu itself sets it), so the discriminator is the
+            # TTY test, the codebase's established idiom ([[ -t 0 ]]).
+            # Interactive: one manual retry through prompt_reality_sni,
+            # the same live validation as the wizard (format + DNS
+            # resolvability gate + TLS/SAN tier probe; tier R/D/N
+            # warn-and-confirm). Cancel/EOF makes prompt_reality_sni
+            # return 1, and this function returns 1 (never die) so
+            # deploy_xray/deploy_singbox rolls the transaction back and
+            # the menu loop redraws. Unattended: keep the fail-closed
+            # die() -- nonzero exit, never prompts.
+            if [[ -t 0 ]]; then
+                ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni "$L_VISION" "$DEF_V_PORT") || return 1
+            else
+                die "$(tr_msg pi_oneclick_sni_fail)"
+            fi
+        fi
         VISION_SNI="$ABOX_AUTO_SNI_SELECTED"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'
@@ -70196,6 +70214,12 @@ PY_SELFTEST_TAR
     grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$source_body_file" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
     grep -Fq '每月流量管控 / Monthly Traffic' "$source_body_file" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$source_body_file" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
+    # W2-FAIL-2 (matrix4-C): one-click auto-select failure must offer one
+    # manual retry on a TTY (same live validation as the wizard) and must
+    # return -- never die -- so the deploy aborts back to the menu;
+    # unattended runs keep the fail-closed die().
+    grep -Fq 'ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni' "$source_body_file" || { echo 'FAIL: one-click SNI manual retry missing'; failures=$((failures + 1)); }
+    grep -Fq 'die "$(tr_msg pi_oneclick_sni_fail)"' "$source_body_file" || { echo 'FAIL: one-click SNI fail-closed die missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$source_body_file" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$source_body_file" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$source_body_file" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }

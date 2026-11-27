@@ -122,7 +122,25 @@ pre_install_setup() {
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die "$(tr_msg pi_oneclick_sni_fail)"
+        if ! valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
+            # W2-FAIL-2 (matrix4-C): no verified auto-select candidate.
+            # ABOX_QUICK_DEPLOY cannot tell interactive from unattended
+            # (the R menu itself sets it), so the discriminator is the
+            # TTY test, the codebase's established idiom ([[ -t 0 ]]).
+            # Interactive: one manual retry through prompt_reality_sni,
+            # the same live validation as the wizard (format + DNS
+            # resolvability gate + TLS/SAN tier probe; tier R/D/N
+            # warn-and-confirm). Cancel/EOF makes prompt_reality_sni
+            # return 1, and this function returns 1 (never die) so
+            # deploy_xray/deploy_singbox rolls the transaction back and
+            # the menu loop redraws. Unattended: keep the fail-closed
+            # die() -- nonzero exit, never prompts.
+            if [[ -t 0 ]]; then
+                ABOX_AUTO_SNI_SELECTED=$(prompt_reality_sni "$L_VISION" "$DEF_V_PORT") || return 1
+            else
+                die "$(tr_msg pi_oneclick_sni_fail)"
+            fi
+        fi
         VISION_SNI="$ABOX_AUTO_SNI_SELECTED"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'

@@ -3,10 +3,10 @@
 # Each fixture extracts the REAL function bodies from the built install.sh
 # (never a hand copy) and runs them against stubbed surroundings.
 # Usage: source this file, then call fx_extract_* helpers.
-# Environment: INSTALL_SH (default: <fixtures dir>/../install.sh).
+# Environment: INSTALL_SH (default: <fixtures dir>/../../install.sh).
 
 FX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_SH="${INSTALL_SH:-$FX_DIR/../install.sh}"
+INSTALL_SH="${INSTALL_SH:-$FX_DIR/../../install.sh}"
 
 fx_fail() { printf 'FAIL: %s\n' "$*" >&2; return 1; }
 fx_pass() { printf 'PASS: %s\n' "$*"; return 0; }

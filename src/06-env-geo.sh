@@ -2312,17 +2312,30 @@ HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
 # (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
 # cleared while Hy2 still lives). A managed-but-dead hysteria is
 # still reported (negative control). Downstream Hy2 branches (hop
-# firewall, HY2_MONITOR_PORT socket) stay key-gated as before; in
-# the supported delete path those keys are cleared with the unit, so
-# they are inert once Hy2 is gone.
+# firewall, HY2_MONITOR_PORT socket) are gated the same way by
+# H2-probe below: the supported delete path clears those keys with
+# the unit, but a failed cleanup leaves them stale and the branches
+# would otherwise blame a healthy xray (T5b).
 if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi
-if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == official && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
+# H2-probe (2026-11-27): the hop-firewall and HY2_MONITOR_PORT checks
+# below are Hy2 checks, not xray checks. In xray mode Hy2 is the
+# separate A-Box-managed hysteria sidecar (H-probe gate above), so when
+# its unit is gone those checks must not run at all: with stale HY2_*
+# keys left by a failed delete cleanup they would fail and be blamed on
+# HY2_SRV=xray, restarting a healthy xray every 10 minutes (T5b).
+# A managed-but-dead hysteria still fails the checks and is blamed on
+# hysteria (HY2_SRV=hysteria above). In sing-box mode Hy2 lives inside
+# sing-box itself — no sidecar unit ever exists — so the checks stay
+# key-gated exactly as before.
+HY2_PROBE_GATE=1
+if [[ "$CORE" == xray ]] && ! service_is_abox_managed hysteria; then HY2_PROBE_GATE=0; fi
+if [[ -z "$failed_srv" && "$HY2_PROBE_GATE" == 1 && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == official && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
     hysteria_official_hop_firewall_ok || failed_srv="$HY2_SRV"
 fi
-if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
+if [[ -z "$failed_srv" && "$HY2_PROBE_GATE" == 1 && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
     redirect_port="${HY2_MONITOR_PORT:-${HY2_BASE_PORT:-${HY2_RANGE_START}}}"
     _iptables_q "$IPT" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     if has_ipv6 && ipv6_nat_redirect_usable; then
@@ -2331,7 +2344,7 @@ if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manua
 fi
 [[ -n "$failed_srv" || -z "${VLESS_PORT:-}" ]] || check_socket_or_fail tcp "$VLESS_PORT" "$MAIN_PID" "$MAIN_SRV"
 [[ -n "$failed_srv" || -z "${XHTTP_PORT:-}" ]] || check_socket_or_fail tcp "$XHTTP_PORT" "$MAIN_PID" "$MAIN_SRV"
-[[ -n "$failed_srv" || -z "${HY2_MONITOR_PORT:-}" ]] || check_socket_or_fail udp "$HY2_MONITOR_PORT" "$HY2_PID" "$HY2_SRV"
+[[ -n "$failed_srv" || "$HY2_PROBE_GATE" == 0 || -z "${HY2_MONITOR_PORT:-}" ]] || check_socket_or_fail udp "$HY2_MONITOR_PORT" "$HY2_PID" "$HY2_SRV"
 if [[ -z "$failed_srv" && -n "${SS_PORT:-}" ]]; then
     # H-04: skip when the running config no longer carries this
     # inbound (users_sync removed it); a silent port is expected then.

@@ -1207,15 +1207,23 @@ sni_verify_raw_report() {
         cdn_penalty=$(sni_org_cdn_penalty "$domain" "$target_org")
         add=$((add + cdn_penalty))
         [[ "$same_country" == '1' ]] && add=$((add - 250))
-        # Strongly prefer a tested target in the VPS's own ASN, but never let
-        # topology override hard TLS/SAN checks or erase explicit CDN risk.
-        [[ "$asn_match" == '1' ]] && add=$((add - 1500))
+        # L13 (2026-11-27): same-ASN no longer adjusts the numeric score.
+        # The old -1500 bonus dwarfed measured latency (tens of points
+        # for a ~30 ms handshake), so every same-ASN candidate outranked
+        # every other candidate regardless of measured TLS/SAN/ALPN
+        # behaviour -- tb9/tb10 both topped out as an AS16509 sweep.
+        # Same-ASN is now only a tie-break at sort time (see below):
+        # measured conditions rank first, and asn_match only orders rows
+        # whose adjusted scores are exactly equal. asn_match is still
+        # recorded per row and still feeds the A/B/C fit tier (unchanged).
         adj=$(sni_adjust_score "$score" "$add")
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tasn=%s\tcountry=%s\tasnmatch=%s\tsamecountry=%s\torg=%s\tcdnpenalty=%s\n' \
             "$adj" "$domain" "$c3" "$c4" "$c5" "$c6" "$c7" "$c8" "$check" "$target_asn" "$target_country" "$asn_match" "$same_country" "$target_org" "$cdn_penalty" >> "$verified" || return 1
     done < "$raw_sorted" || return 1
     printf '\r[*] Stage 2 progress: %d/%d verified\n' "$(( n > verify_limit ? verify_limit : n ))" "$verify_limit" >&2
-    LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$verified" -o "$verified" || return 1
+    # L13: sort by measured score first; same-ASN, then same-country,
+    # only break exact score ties; domain last for determinism.
+    LC_ALL=C sort -t $'\t' -k1,1n -k14,14r -k15,15r -k2,2 "$verified" -o "$verified" || return 1
     rm -rf "$asn_cache" 2>/dev/null || true
 }
 
@@ -1479,7 +1487,7 @@ sni_prompt_or_auto() {
 sni_render_ranked_report() {
     local report_file="${1:-}" requested_limit="${2:-100}" display_dir selected_file
     local row score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
-    local bucket count color heading rank local_bucket_file
+    local bucket count color heading rank local_bucket_file display_file _sni_run
     [[ -s "$report_file" ]] || { msg "${YELLOW}[!] $(tr_msg sni_render_ranked_report_no_records)${NC}"; return 1; }
     valid_decimal_upto "$requested_limit" 200 || requested_limit=100
     (( 10#$requested_limit >= 1 )) || requested_limit=100
@@ -1508,15 +1516,41 @@ sni_render_ranked_report() {
         esac
         msg "${color}[${heading}｜${count} $(tr_msg sni_count_unit)]${NC}"
         rank=0
+        # L13 (2026-11-27): group, do not dedupe. Consecutive rows sharing
+        # one ASN are highly correlated candidates, not independent picks
+        # (tb9/tb10: an AS16509 sweep filled the A tier). Dedup would hide
+        # valid candidates and diverge the display from the saved TSV, so
+        # every row is still printed; a run of >=2 same-ASN rows only gets
+        # one header line naming the group. Runs are computed with one awk
+        # pass that tags the first row of each run with run=<len>; the
+        # print loop reads it as an 18th field (empty on other rows).
+        display_file="$display_dir/$bucket.display.tsv"
+        awk -F'\t' '
+            { lines[NR] = $0; a[NR] = $12; sub(/^asn=/, "", a[NR]); n = NR }
+            END {
+                for (i = 1; i <= n; i++) {
+                    if (a[i] != "" && a[i] != "unknown" && (i == 1 || a[i] != a[i-1])) {
+                        len = 1
+                        for (j = i + 1; j <= n && a[j] == a[i]; j++) len++
+                        if (len >= 2) { print lines[i] "\trun=" len; continue }
+                    }
+                    print lines[i]
+                }
+            }
+        ' "$local_bucket_file" > "$display_file" || { rm -rf -- "$display_dir"; return 1; }
         while IFS= read -r row; do
-            IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty <<< "$row"
+            IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty _sni_run <<< "$row"
+            if [[ "$_sni_run" =~ ^run=([0-9]+)$ ]]; then
+                printf '%s[ASN %s x%s - same-ASN group; ranked by measured score, not independent picks]%s\n' \
+                    "$color" "${asn#asn=}" "${BASH_REMATCH[1]}" "$NC"
+            fi
             rank=$((rank + 1))
             printf '%s%3d. [score=%s] %-38s app=%-10s ttfb=%-10s total=%-10s HTTP/%s code=%s %s %s %s ASN=%s country=%s sameASN=%s sameRegion=%s cdnRisk=%s IP=%s%s\n' \
                 "$color" "$rank" "$score" "$domain" "${app#app=}" "${ttfb#ttfb=}" "${total#total=}" \
                 "${http#http=}" "${code#code=}" "$tls13" "$alpn" "$san" "${asn#asn=}" \
                 "${country#country=}" "${asnmatch#asnmatch=}" "${samecountry#samecountry=}" \
                 "${cdnpenalty#cdnpenalty=}" "${ip#ip=}" "$NC"
-        done < "$local_bucket_file"
+        done < "$display_file"
     done
     rm -rf -- "$display_dir"
     return 0

@@ -6923,6 +6923,25 @@ case "${ABOX_LANG:-zh}" in
         *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
     esac
     if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
+    # W4-tb2: bench.sh downloads speedtest-cli with wget (upstream lines
+    # 333/334); on a host without wget it fails mid-benchmark with no
+    # speedtest results. Refuse upfront with the missing command named
+    # instead of asking the user to confirm a run that cannot succeed.
+    # Scoped to bench.sh only: other mirrored scripts have their own
+    # dependencies (tb3 owns whiptail for Check.Place.sh).
+    if [[ "$asset" == 'bench.sh' ]] && ! command -v wget >/dev/null 2>&1; then
+        rm -rf -- "$work"
+        msg "${RED}$(tprintf ec_missing 'wget (bench.sh)')${NC}"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}bench.sh needs wget to download speedtest-cli. Install wget and retry.${NC}" ;;
+            ru) msg "${RED}bench.sh нужен wget для загрузки speedtest-cli. Установите wget и повторите попытку.${NC}" ;;
+            fa) msg "${RED}bench.sh برای دانلود speedtest-cli به wget نیاز دارد. wget را نصب کنید و دوباره تلاش کنید.${NC}" ;;
+            zh-tw) msg "${RED}bench.sh 需要 wget 才能下載 speedtest-cli。請安裝 wget 後重試。${NC}" ;;
+            ja) msg "${RED}bench.sh は speedtest-cli のダウンロードに wget が必要です。wget をインストールして再試行してください。${NC}" ;;
+            *) msg "${RED}bench.sh 需要 wget 才能下载 speedtest-cli。请安装 wget 后重试。${NC}" ;;
+        esac
+        return 1
+    fi
     if ! confirm_yes_no "$run_prompt"; then
         rm -rf -- "$work"
         return 130

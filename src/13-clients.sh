@@ -681,6 +681,78 @@ _clash_hy2_user_password() {
     return 0
 }
 
+# L6: live-first publishability, shared by write_clash_yaml and
+# view_config. A node is publishable only when the live state actually
+# serves it: the inbound must exist in the live config AND at least one
+# enabled registry user must have a resolvable credential. rc 0 =
+# publishable, 1 = not publishable. Fail-open ONLY when the live state
+# cannot be read at all (no config file / unverifiable config): the
+# .env-driven contexts (self-test, not-installed) keep the old
+# behaviour. A readable live config is authoritative: no live inbound,
+# or no usable credential, means the node must not be emitted, whatever
+# .env/MODE still say. SS is judged on its serving core (CORE ==
+# singbox -> sing-box, else xray); Hy2 is judged on both Hy2 homes
+# (official yaml and the sing-box hysteria2 inbound) because either
+# one can serve it.
+_ss_node_publishable() {
+    local _core='' _rc=0 _reg='' _enabled=0 _cfg=''
+    case "${CORE:-}" in sing-box|singbox) _core='sing-box' ;; *) _core='xray' ;; esac
+    # L6 regression guard (self-test 2026-11-27): a MISSING live config
+    # file is not a deleted inbound -- the core is simply not deployed
+    # (yet), e.g. a fresh deploy or the self-test's synthetic env
+    # (MODE=SS, SS_PORT set, no config on disk). _users_live_inbound_exists
+    # returns rc 1 for a missing file too, so the rc alone cannot tell
+    # "deleted" from "never deployed": fail open here, and only refuse
+    # below when a config EXISTS and the tag is confirmed absent.
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        _users_live_inbound_exists "$_core" 'ss' || _rc=$?
+        case "$_rc" in
+            1) return 1 ;; # live inbound confirmed gone (config exists, tag absent)
+            2) return 0 ;; # unverifiable live state: fail open
+        esac
+    fi
+    _reg=$(users_reg_file "$_core" 'ss' 2>/dev/null || true)
+    if [[ -n "$_reg" && -f "$_reg" && ! -L "$_reg" ]]; then
+        _enabled=$(jq -r '[.users[]? | select(.disabled != true and ((.blocked // "") == ""))] | length' "$_reg" 2>/dev/null || echo 0)
+        [[ "$_enabled" =~ ^[0-9]+$ ]] || _enabled=0
+        (( _enabled > 0 )) || return 1
+        if (( _enabled >= 2 )); then
+            local _u='' _ok=0
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                if ss_effective_password_for_user "$_u" "$_core" >/dev/null 2>&1; then _ok=1; break; fi
+            done < <(jq -r '.users[]? | select(.disabled != true and ((.blocked // "") == "")) | .name' "$_reg" 2>/dev/null)
+            (( _ok == 1 )) || return 1
+        else
+            ss_effective_password "$_core" >/dev/null 2>&1 || return 1
+        fi
+    fi
+    return 0
+}
+
+_hy2_node_publishable() {
+    local _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" _users='' _rc=0
+    local _sb_cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _stripped=''
+    local _any_readable=0 _any_usable=0
+    if [[ -f "$_cfg" && ! -L "$_cfg" ]]; then
+        _any_readable=1
+        _users=$(users_hy2_read_users "$_cfg" 2>/dev/null || true)
+        [[ -n "$_users" && "$_users" != '[]' ]] && _any_usable=1
+    fi
+    if [[ -f "$_sb_cfg" && ! -L "$_sb_cfg" ]]; then
+        _any_readable=1
+        _stripped=$(jsonc_strip_comments "$_sb_cfg" 2>/dev/null || true)
+        if [[ -n "${_stripped//[[:space:]]/}" ]]; then
+            if printf '%s' "$_stripped" | jq -e '[.inbounds[]? | select(.type == "hysteria2") | (.users // []) | length] | add > 0' >/dev/null 2>&1; then _any_usable=1; fi
+        fi
+    fi
+    (( _any_readable == 0 )) && return 0 # nothing readable: fail open (.env-driven contexts)
+    (( _any_usable == 1 )) && return 0
+    return 1
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     S_IP="${S_IP#[}"; S_IP="${S_IP%]}"
@@ -828,6 +900,14 @@ PY_CLASH_REALPATH
     # H-24: Hy2 emission also honors the port flag (a bad port skips
     # the node even when a fingerprint is available).
     if (( _hy2_ports_bad == 1 )); then hy2_yaml_emit=false; fi
+    # L6: live-first publishability (see _hy2_node_publishable): a Hy2
+    # node whose live auth is deny/empty must not be emitted, whatever
+    # .env HY2_PASS still says. The gate runs here, not on the
+    # "deleted an inbound" boolean: a deny flip deletes no tag.
+    if [[ "$hy2_yaml_emit" == true ]] && ! _hy2_node_publishable; then
+        msg "${YELLOW}[!] Hy2 node not publishable (no live Hy2 inbound with usable credentials); skipping the Hy2 node in Clash YAML.${NC}" >&2
+        hy2_yaml_emit=false
+    fi
     # H-24: per-protocol port gates for the Clash YAML. A port is
     # skipped when it is empty or invalid (D-1): an empty port must
     # not keep the historical :-default (443/8443/2053), which would
@@ -1108,7 +1188,10 @@ EOF_CLASH
                 done
             fi
         fi
-        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )); then
+        # L6: live-first publishability (see _ss_node_publishable): an
+        # SS node whose live inbound is gone (or has no usable
+        # credential) must not be emitted from stale .env/MODE state.
+        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )) && _ss_node_publishable; then
             # H-24(3): one node per resolved SS user; the single-user
             # list holds exactly the legacy pair, so the single node
             # is byte-identical to before.
@@ -1538,7 +1621,7 @@ view_config() {
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME MIHOMO_USER_FILE _mihomo_single_rc=0
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok _host_ok
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok _host_ok _hy2_pub_ok
     # H-24: a bad Hy2 port endpoint skips the Hy2 blocks below (and warns)
     # instead of killing the whole view (menu 12 must not die on one
     # protocol's port problem).
@@ -1617,6 +1700,22 @@ view_config() {
             _hy2_json_ok=0
         fi
     fi
+    # L6: live-first publishability, shared with write_clash_yaml (see
+    # _ss_node_publishable / _hy2_node_publishable). Folding it into
+    # the _ss_ok / _hy2_json_ok flags covers every downstream block
+    # that reads them (SS URL, sing-box JSON examples); the Hy2 URL
+    # block below does not read _hy2_json_ok, so it gets the
+    # _hy2_pub_ok conjunct as well.
+    _hy2_pub_ok=1
+    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_ok == 1 )) && ! _ss_node_publishable; then
+        msg "${YELLOW}[!] SS node not publishable (no live SS inbound with usable credentials); Shadowsocks link skipped.${NC}"
+        _ss_ok=0
+    fi
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && ! _hy2_node_publishable; then
+        msg "${YELLOW}[!] Hy2 node not publishable (no live Hy2 inbound with usable credentials); Hy2 links skipped.${NC}"
+        _hy2_json_ok=0
+        _hy2_pub_ok=0
+    fi
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE:-}")${NC}"
     msg "${BLUE}======================================================================${NC}"
@@ -1646,7 +1745,7 @@ view_config() {
         fi
         generate_qr "$XHTTP_URL"
     fi
-    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_pub_ok == 1 )) && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.

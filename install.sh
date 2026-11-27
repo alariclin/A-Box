@@ -4509,6 +4509,12 @@ tr_msg() {
         fa:rb_legacy_convert) echo 'این نسخهٔ پشتیبان با قالب قدیمی (manifest v2) است و اطلاعات احراز هویت HMAC ندارد، پس نمی‌توان آن را مستقیم بازیابی کرد. نخست با گزینهٔ ۴ منوی پشتیبان‌گیری آن را به manifest v3 تبدیل کنید، سپس بازیابی کنید.' ;;
         zh-tw:rb_legacy_convert) echo '此備份為舊版格式（manifest v2），無 HMAC 認證資訊，無法直接還原。請先用備份選單選項 4 將其轉換為 manifest v3 後再還原。' ;;
         ja:rb_legacy_convert) echo 'このバックアップは旧形式（manifest v2）で、HMAC 認証情報がないため直接復元できません。先にバックアップメニューのオプション 4 で manifest v3 に変換してから復元してください。' ;;
+        zh:legacy_backup_no_checksum_noninteractive) echo '旧版备份无校验和，且本次转换为非交互运行。' ;;
+        en:legacy_backup_no_checksum_noninteractive) echo 'Legacy backup has no checksum and conversion is non-interactive.' ;;
+        ru:legacy_backup_no_checksum_noninteractive) echo 'У старой резервной копии нет контрольной суммы, а преобразование выполняется в неинтерактивном режиме.' ;;
+        fa:legacy_backup_no_checksum_noninteractive) echo 'نسخهٔ پشتیبان قدیمی هیچ چک‌سام ندارد و تبدیل به‌صورت غیرتعاملی است.' ;;
+        zh-tw:legacy_backup_no_checksum_noninteractive) echo '舊版備份無校驗和，且本次轉換為非互動執行。' ;;
+        ja:legacy_backup_no_checksum_noninteractive) echo '旧版バックアップにはチェックサムがなく、変換は非対話型で実行されています。' ;;
         zh:rb_structure_fail) echo '备份归档结构/链接校验失败。' ;;
         en:rb_structure_fail) echo 'Backup archive structure/link validation failed.' ;;
         ru:rb_structure_fail) echo 'Проверка структуры/ссылок архива не пройдена.' ;;
@@ -8811,6 +8817,12 @@ tr_msg() {
         ru:legacy_xl_retire_prompt) echo 'Обнаружен устаревший экземпляр xray-latest (coexist). Удалить экземпляр и его конфигурацию? [y/N]: ' ;;
         fa:legacy_xl_retire_prompt) echo 'نمونهٔ قدیمی xray-latest (coexist) شناسایی شد. نمونه و پیکربندی آن حذف شود؟ [y/N]: ' ;;
         ja:legacy_xl_retire_prompt) echo '廃止済みの xray-latest coexist インスタンスを検出しました。インスタンスとその設定を削除しますか？[y/N]：' ;;
+        zh:legacy_xl_retire_noninteractive) echo '检测到已退役的 xray-latest 实例，但本次运行无交互终端；请设置 ABOX_LEGACY_XL_RETIRE=1 后显式退役。' ;;
+        zh-tw:legacy_xl_retire_noninteractive) echo '偵測到已退役的 xray-latest 實例，但本次執行無互動終端；請設定 ABOX_LEGACY_XL_RETIRE=1 後明確退役。' ;;
+        en:legacy_xl_retire_noninteractive) echo 'Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.' ;;
+        ru:legacy_xl_retire_noninteractive) echo 'Обнаружен устаревший экземпляр xray-latest, но текущий запуск неинтерактивный; установите ABOX_LEGACY_XL_RETIRE=1, чтобы явно вывести его из эксплуатации.' ;;
+        fa:legacy_xl_retire_noninteractive) echo 'نمونهٔ قدیمی xray-latest شناسایی شد، اما این اجرا تعاملی نیست؛ برای بازنشستگی صریح آن ABOX_LEGACY_XL_RETIRE=1 را تنظیم کنید.' ;;
+        ja:legacy_xl_retire_noninteractive) echo '廃止済みの xray-latest インスタンスを検出しましたが、今回の実行は対話型ではありません。明示的に廃止するには ABOX_LEGACY_XL_RETIRE=1 を設定してください。' ;;
         zh:inst_retired_xl) echo 'xray-latest 已退役，不再支持部署该类实例。' ;;
         zh-tw:inst_retired_xl) echo 'xray-latest 已退役，不再支援部署該類實例。' ;;
         en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;
@@ -36563,7 +36575,7 @@ _xl_legacy_retire_coexist() {
     local _udir="${ABOX_USERS_DIR:-$_abox_dir/users.d}"
     # 1. Authorisation.
     if [[ "${ABOX_LEGACY_XL_RETIRE:-0}" != '1' ]]; then
-        [[ -t 0 ]] || { msg "${RED}[!] Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.${NC}" >&2; return 1; }
+        [[ -t 0 ]] || { msg "${RED}[!] $(tr_msg legacy_xl_retire_noninteractive)${NC}" >&2; return 1; }
         printf '%s' "$(tr_msg legacy_xl_retire_prompt)" || return 1
         IFS= read -r _ans || return 1
         case "$_ans" in y|Y|yes|YES) : ;; *) msg "${YELLOW}[!] Retire cancelled; xray-latest instance left untouched.${NC}" >&2; return 1 ;; esac
@@ -55532,7 +55544,7 @@ PY_LEGACY_COPY
     if [[ -f "${selected}.sha256" && ! -L "${selected}.sha256" ]]; then
         backup_checksum_verify "$_c_input" "${selected}.sha256" || { rm -rf "$work"; die 'Legacy backup SHA256 verification failed.'; }
     else
-        [[ -t 0 ]] || { rm -rf "$work"; die 'Legacy backup has no checksum and conversion is non-interactive.'; }
+        [[ -t 0 ]] || { rm -rf "$work"; die "$(tr_msg legacy_backup_no_checksum_noninteractive)"; }
         confirm_yes_no 'Legacy backup has no trusted checksum. Import anyway? [Y/N]: ' || { rm -rf "$work"; return 130; }
     fi
     validate_legacy_backup_archive "$_c_input" || { rm -rf "$work"; die 'Legacy backup archive safety validation failed.'; }
@@ -69467,6 +69479,14 @@ expected_managed_services() {
 }
 
 prepare_noninteractive_file_operation() {
+    # L12 (TTY guard i18n, same root cause as the A-leg enter_runtime
+    # fix): resolve the language BEFORE any tr_msg use. The top-level
+    # ABOX_LANG='zh' init runs before main() dispatches, so without
+    # detect_lang() every message on these non-interactive CLI paths
+    # (--export-backup-key / --convert-legacy-backup /
+    # --xray-config-autorecover / --sni-test) stayed zh even when a
+    # language was saved in LANG_FILE.
+    detect_lang
     [[ $EUID -eq 0 ]] || die "$(tr_msg prepare_noninteractive_file_operation_root_required)"
     mkdir -p /run || die "$(tr_msg prepare_noninteractive_file_operation_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
@@ -72193,6 +72213,12 @@ PY_SELFTEST_YAML
     grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
     grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
     grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    # L12: the two residual hardcoded no-TTY refusals must go through i18n,
+    # and the non-interactive CLI entry must resolve the language first
+    # (same root cause as the A-leg enter_runtime fix).
+    grep -Fq 'tr_msg legacy_xl_retire_noninteractive' "$source_body_file" || { echo 'FAIL: retired xray-latest non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    grep -Fq 'tr_msg legacy_backup_no_checksum_noninteractive' "$source_body_file" || { echo 'FAIL: legacy backup no-checksum non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    awk '/^prepare_noninteractive_file_operation\(\) \{/,/^}/' "$source_body_file" | grep -Fq 'detect_lang' || { echo 'FAIL: prepare_noninteractive_file_operation must resolve language before its messages'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))

@@ -4601,7 +4601,7 @@ PY_LEGACY_COPY
     if [[ -f "${selected}.sha256" && ! -L "${selected}.sha256" ]]; then
         backup_checksum_verify "$_c_input" "${selected}.sha256" || { rm -rf "$work"; die 'Legacy backup SHA256 verification failed.'; }
     else
-        [[ -t 0 ]] || { rm -rf "$work"; die 'Legacy backup has no checksum and conversion is non-interactive.'; }
+        [[ -t 0 ]] || { rm -rf "$work"; die "$(tr_msg legacy_backup_no_checksum_noninteractive)"; }
         confirm_yes_no 'Legacy backup has no trusted checksum. Import anyway? [Y/N]: ' || { rm -rf "$work"; return 130; }
     fi
     validate_legacy_backup_archive "$_c_input" || { rm -rf "$work"; die 'Legacy backup archive safety validation failed.'; }

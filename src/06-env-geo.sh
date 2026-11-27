@@ -1283,6 +1283,24 @@ _xrc_restore_divergence_check() {
     return 0
 }
 
+# L6: an outstanding users_sync post-commit cleanup todo for the xray
+# core means the published desired file (and/or the .env port set) may
+# still describe the pre-deletion state: the deletion is committed to
+# the live config, but its tail (publish desired, reconcile ports) has
+# not landed yet. While such a todo exists, neither the desired file
+# nor any backup may be adopted as a recovery source: a backup that
+# covers the stale .env ports would resurrect the deleted inbound
+# just as surely as the stale desired file. rc 0 = a todo is pending.
+_xrc_cleanup_todo_pending() {
+    local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f=''
+    [[ -d "$_dir" ]] || return 1
+    for _f in "$_dir"/*.cleanup-pending; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        grep -q '"core"[[:space:]]*:[[:space:]]*"xray"' "$_f" 2>/dev/null && return 0
+    done
+    return 1
+}
+
 # W2-FAIL-1: decide whether the published desired config may serve as
 # the auto-recovery source. $1 = work file to stage the candidate into.
 # The file is trusted only when it is a root-owned 0600 regular file
@@ -1299,6 +1317,9 @@ _xrc_desired_config_usable() {
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     [[ -n "$dest" ]] || return 1
+    # L6: a pending xray cleanup todo means the desired file may still
+    # be the pre-deletion one; never adopt it until the todo clears.
+    _xrc_cleanup_todo_pending && return 1
     src=$(_xrc_desired_config_path) || return 1
     [[ -f "$src" && ! -L "$src" && -r "$src" ]] || return 1
     [[ "$(stat -c %u:%g "$src" 2>/dev/null || true)" == '0:0' ]] || return 1
@@ -1348,6 +1369,11 @@ xray_config_autorecover() {
     # is an error, never a cue to fall back to the legacy file.
     _desired=$(get_desired_state 2>/dev/null) || return 2
     [[ "$_desired" == 'RUNNING' ]] || return 2
+    # L6: a pending xray cleanup todo means the desired file and the
+    # .env port set may still describe the pre-deletion state. Return
+    # inconclusive (rc 2) instead of restoring from either source; the
+    # guard completes the todo, and the next probe cycle may recover.
+    _xrc_cleanup_todo_pending && return 2
     # Offline config test (bounded). rc 23 = xray "Failed to start", the
     # only confirmed config fault (measured on real xray v26.7.28 and
     # v26.10.21: malformed JSON, unknown protocol, wrong type, empty and
@@ -1728,6 +1754,13 @@ PY_XRC_ENUM
 }
 
 setup_health_monitor() {
+    # L8: optional 'scripts-only' mode for restore: write the probe
+    # script but install no cron block. The restore path installs all
+    # four blocks in one merge from the backup (see
+    # restore_abox_cron_from_backup). Direct callers pass no argument
+    # and keep the old install behaviour.
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
     msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
@@ -2302,7 +2335,7 @@ failed_srv=''
 service_active_owned "$MAIN_SRV" || failed_srv="$MAIN_SRV"
 MAIN_PID=${SERVICE_PID:-}
 HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
-# H-probe (2026-11-27): Hy2 is a sidecar of xray+ALL only while its
+# H-probe (2026-11-27): Hy2 is a sidecar of xray while its
 # A-Box-managed unit exists. MODE stays ALL after Hy2 is deleted, so
 # demanding hysteria on MODE alone reports a deleted service failed
 # every minute (STATE churn + futile restart-gate trips). The unit
@@ -2311,12 +2344,16 @@ HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
 # _remove_hy2_official), while the .env HY2_* keys are only a proxy
 # (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
 # cleared while Hy2 still lives). A managed-but-dead hysteria is
-# still reported (negative control). Downstream Hy2 branches (hop
-# firewall, HY2_MONITOR_PORT socket) are gated the same way by
-# H2-probe below: the supported delete path clears those keys with
-# the unit, but a failed cleanup leaves them stale and the branches
-# would otherwise blame a healthy xray (T5b).
-if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
+# still reported (negative control). MODE only describes deployment
+# intent: it must not overrule the unit file, so the gate below is a
+# pure unit check, aligned with the H2-probe gate — a managed unit
+# present under a non-ALL MODE (hand-edited .env, interrupted
+# redeploy, partial restore) is still the sidecar this probe owns.
+# Downstream Hy2 branches (hop firewall, HY2_MONITOR_PORT socket) are
+# gated the same way by H2-probe below: the supported delete path
+# clears those keys with the unit, but a failed cleanup leaves them
+# stale and the branches would otherwise blame a healthy xray (T5b).
+if [[ "$CORE" == xray ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi
@@ -2407,13 +2444,24 @@ EOF_PROBE
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
-    install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    fi
 }
 
 setup_geo_cron() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_geo_cron_flock_missing)"
     if ! abox_owns_service xray; then
-        remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        # L8: in 'scripts-only' mode the cron block is owned by the
+        # restore merge; only the helper script is removed here.
+        if (( _l8_scripts_only == 0 )); then
+            remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        fi
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
@@ -3049,6 +3097,10 @@ EOF_GEO
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
     chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
-    install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    fi
 }
 

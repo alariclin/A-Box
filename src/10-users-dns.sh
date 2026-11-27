@@ -394,7 +394,16 @@ users_normalize_default_name() {
     local old_reg=''
     old_reg=$(cat "$reg" 2>/dev/null) || return 0
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
-    if ! users_sync "$core" "$tag" >/dev/null 2>&1; then
+    local _nsync_rc=0
+    users_sync "$core" "$tag" >/dev/null 2>&1 || _nsync_rc=$?
+    if (( _nsync_rc == 3 )); then
+        # L6: committed; keep the renamed registry, do not roll back.
+        # The guard retries the sync, whose already-gone path re-plans
+        # and completes the cleanup.
+        msg "${YELLOW}[!] users_sync committed the rename for ${core}/${tag}, but post-commit cleanup failed and no todo could be recorded; the guard will retry it.${NC}" >&2
+        return 1
+    fi
+    if (( _nsync_rc != 0 )); then
         if ! users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1; then
             msg "${RED}[!] $(tprintf users_normalize_default_name_migrate_failed "${core}" "${tag}")${NC}" >&2
             return 1
@@ -1490,8 +1499,352 @@ users_reg_ensure() {
 }
 
 # ---- sync: rewrite the core config's user list from the registry ----
+# ---- L6: post-commit cleanup for users_sync deletions ----
+# users_sync deletes an inbound (or flips Hy2 to deny, or rebuilds an
+# inbound from snapshot) by committing a new live config -- but the
+# formal delete path's tail never ran: the xray desired config, the
+# .env listener ports, the standalone link and the published
+# subscription still described the deleted inbound, and the next
+# xray_config_autorecover could resurrect it from the stale desired
+# file. The narrow post-commit cleanup below (A + narrow function,
+# per the L6 arbitration) closes that gap without importing the
+# formal path's bundle (registry removal, certs, NAT, units -- all
+# inapplicable here: the registry and snapshot are deliberately kept
+# so a later re-enable rebuilds the inbound).
+#
+# Durable debt: a "<registry>.cleanup-pending" todo file, written
+# BEFORE the commit with the sha of the prepared new config (exactly
+# what the commit is about to install, so there is no crash window
+# between commit and record -- the U65 snapshot precedent). It
+# carries no credential: core/tag/proto/kind/config-sha/steps only.
+# _users_sync_complete_cleanup finishes it idempotently from the
+# CURRENT committed config (never from the recorded diff), and clears
+# it on success. While it exists, src/06 refuses the stale desired
+# file and any backup as a recovery source, so a crash between commit
+# and cleanup cannot resurrect the deleted inbound.
+# Kinds: inbound-removed, inbound-rebuilt, hy2-deny.
+# Return codes: users_sync returns 0 when the commit landed and the
+# cleanup is done or durably recorded (degraded success); 3 when the
+# commit landed but the cleanup could neither be recorded nor
+# completed synchronously (partial failure -- callers must NOT roll
+# the registry back on rc 3).
+_users_cleanup_todo_path() { # $1=core $2=tag -> prints todo path
+    local _reg=''
+    _reg=$(users_reg_file "$1" "$2" 2>/dev/null || true)
+    [[ -n "$_reg" ]] || return 1
+    printf '%s.cleanup-pending' "$_reg"
+}
+
+_users_cleanup_todo_write() { # $1=core $2=tag $3=proto $4=kind $5=config-sha $6=steps-csv
+    local _todo='' _tmp=''
+    _todo=$(_users_cleanup_todo_path "$1" "$2") || return 1
+    [[ "$5" =~ ^[0-9a-f]{64}$ ]] || return 1
+    case "$4" in inbound-removed|hy2-deny|inbound-rebuilt) ;; *) return 1 ;; esac
+    [[ -n "$6" ]] || return 1
+    _tmp=$(mktemp "${_todo}.tmp.XXXXXX" 2>/dev/null) || return 1
+    if ! jq -cn --arg core "$1" --arg tag "$2" --arg proto "$3" --arg kind "$4" --arg sha "$5" --arg steps "$6" \
+        '{core:$core,tag:$tag,proto:$proto,kind:$kind,config_sha:$sha,steps:($steps|split(","))}' > "$_tmp" 2>/dev/null; then
+        rm -f -- "$_tmp"; return 1
+    fi
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_todo" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    return 0
+}
+
+_users_cleanup_todo_read() { # $1=todo-path -> prints canonical json, rc 0/1
+    local _todo="$1"
+    [[ -f "$_todo" && ! -L "$_todo" ]] || return 1
+    jq -c -e 'select(.core and .tag and .proto and .kind and .config_sha and (.steps|type)=="array")' "$_todo" 2>/dev/null || return 1
+}
+
+_users_sync_proto_port_var() { # $1=proto -> prints .env var name, rc 1 if none
+    case "$1" in
+        shadowsocks) printf '%s' 'SS_PORT' ;;
+        socks|mixed) printf '%s' 'SOCKS_PORT' ;;
+        trojan) printf '%s' 'TROJAN_PORT' ;;
+        vless) printf '%s' 'VLESS_PORT' ;;
+        *) return 1 ;;
+    esac
+}
+
+# rc 0 = some removal step would still change something (desired stale,
+# .env port still set, link still present); rc 1 = already clean.
+_users_sync_removal_cleanup_needed() {
+    local _core="$1" _tag="$2" _proto="$3" _var='' _val='' _des='' _stem='' _link='' _cfg='' _live_sha='' _des_sha=''
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    if [[ "$_core" == 'xray' ]]; then
+        _des=$(_xrc_desired_config_path 2>/dev/null || true)
+        if [[ -z "$_des" || ! -f "$_des" ]]; then return 0; fi
+        _live_sha=$(sha256sum -- "$_cfg" 2>/dev/null | awk '{print $1}')
+        _des_sha=$(sha256sum -- "$_des" 2>/dev/null | awk '{print $1}')
+        [[ -n "$_live_sha" && "$_live_sha" == "$_des_sha" ]] || return 0
+    fi
+    _var=$(_users_sync_proto_port_var "$_proto" 2>/dev/null || true)
+    if [[ -n "$_var" ]]; then
+        _val=$(sed -n "s/^${_var}=//p" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ -n "$_val" ]] && return 0
+    fi
+    _stem=$(users_link_stem "$_core" "$_tag" 2>/dev/null || printf '%s' "$_tag")
+    _link="${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_stem}.link"
+    [[ -e "$_link" ]] && return 0
+    return 1
+}
+
+# rc 0 = a rebuild still owes cleanup (port var empty, or xray desired
+# does not yet match the rebuilt config); rc 1 = already consistent.
+_users_sync_rebuild_cleanup_needed() {
+    local _core="$1" _tag="$2" _proto="$3" _new="$4" _var='' _val='' _des='' _new_sha='' _des_sha=''
+    _var=$(_users_sync_proto_port_var "$_proto" 2>/dev/null || true)
+    if [[ -n "$_var" ]]; then
+        _val=$(sed -n "s/^${_var}=//p" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ -z "$_val" ]] && return 0
+    fi
+    if [[ "$_core" == 'xray' ]]; then
+        _des=$(_xrc_desired_config_path 2>/dev/null || true)
+        _new_sha=$(sha256sum -- "$_new" 2>/dev/null | awk '{print $1}')
+        if [[ -z "$_des" || ! -f "$_des" ]]; then return 0; fi
+        _des_sha=$(sha256sum -- "$_des" 2>/dev/null | awk '{print $1}')
+        [[ "$_new_sha" == "$_des_sha" ]] || return 0
+    fi
+    return 1
+}
+
+# rc 0 = the tag is already gone from the live config while the
+# registry still holds a deletion snapshot (a previous commit --
+# users_hot_remove, or an interrupted earlier sync -- already deleted
+# it); rc 1 = not in that state.
+_users_sync_already_gone() {
+    local _core="$1" _tag="$2" _proto="$3" _reg='' _snap='' _rc=0
+    case "$_proto" in
+        shadowsocks) case "$_core" in xray|sing-box) ;; *) return 1 ;; esac ;;
+        mixed|socks) [[ "$_core" == 'sing-box' ]] || return 1 ;;
+        *) return 1 ;;
+    esac
+    _reg=$(users_reg_file "$_core" "$_tag" 2>/dev/null || true)
+    [[ -n "$_reg" && -f "$_reg" && ! -L "$_reg" ]] || return 1
+    _snap=$(jq -c '.inbound_snapshot // null' "$_reg" 2>/dev/null || echo null)
+    [[ "$_snap" != 'null' ]] || return 1
+    _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+    [[ "$_rc" == 1 ]] || return 1
+    return 0
+}
+
+# Restore the .env listener port for a rebuilt inbound from the live
+# inbound's own port. Never steals the var from a different live
+# inbound of the same protocol: if the current value already serves
+# one, coverage is satisfied and the var is left alone.
+_users_sync_restore_env_port() { # $1=core $2=tag $3=proto
+    local _cfg='' _port='' _var='' _envf="${ABOX_ENV:-/etc/ddr/.env}" _cur='' _cur_live=0
+    local _cc='' _stripped='' _prog=''
+    _var=$(_users_sync_proto_port_var "$3" 2>/dev/null || true)
+    [[ -n "$_var" ]] || return 1
+    _cfg=$(users_cfg_of "$1" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    _port=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r --arg t "$2" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // empty)' 2>/dev/null | head -1) || return 1
+    [[ "$_port" =~ ^[0-9]+$ ]] || return 1
+    [[ -f "$_envf" && ! -L "$_envf" ]] || return 1
+    _cur=$(sed -n "s/^${_var}=//p" "$_envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+    [[ "$_cur" == "$_port" ]] && return 0
+    if [[ -n "$_cur" ]]; then
+        case "$3" in
+            shadowsocks) _prog='.inbounds[]? | select(.protocol == "shadowsocks" or .type == "shadowsocks") | (.port // .listen_port // empty)' ;;
+            socks|mixed) _prog='.inbounds[]? | select(.protocol == "socks" or .type == "socks" or .type == "mixed") | (.port // .listen_port // empty)' ;;
+            trojan) _prog='.inbounds[]? | select(.protocol == "trojan" or .type == "trojan") | (.port // .listen_port // empty)' ;;
+            vless) _prog='.inbounds[]? | select((.protocol == "vless" and ((.tag // "") | test("vision"))) or (.type == "vless" and ((.tag // "") | test("vision")))) | (.port // .listen_port // empty)' ;;
+        esac
+        for _cc in xray sing-box; do
+            _cc=$(users_cfg_of "$_cc" 2>/dev/null || true)
+            [[ -n "$_cc" && -f "$_cc" && ! -L "$_cc" ]] || continue
+            _stripped=$(jsonc_strip_comments "$_cc" 2>/dev/null || true)
+            [[ -n "$_stripped" ]] || continue
+            if printf '%s' "$_stripped" | jq -r "$_prog" 2>/dev/null | grep -qx "$_cur"; then _cur_live=1; break; fi
+        done
+        if (( _cur_live == 1 )); then
+            msg "users_sync cleanup: ${_var} already serves a live ${_proto} inbound; leaving it (rebuilt ${_tag} shares the protocol var)." >&2
+            return 0
+        fi
+    fi
+    if grep -q "^${_var}=" "$_envf" 2>/dev/null; then
+        sed -i "s/^${_var}=.*/${_var}=\"${_port}\"/" "$_envf" 2>/dev/null || return 1
+    else
+        printf '%s="%s"\n' "$_var" "$_port" >> "$_envf" 2>/dev/null || return 1
+    fi
+    declare -g "${_var}=${_port}"
+    return 0
+}
+
+# Prune one standalone link file when the node it names is gone.
+# Known stems go through the formal path's survivor gate
+# (_standalone_link_prune_if_gone: delete only on confirmed rc 1).
+# A generic stem (ss, hy2, ...) is removed only when NO core still
+# serves the tag; an unverifiable config keeps the link. For kind
+# hy2-deny the service is retained but the node is not publishable,
+# so the link goes on the kind, not on tag absence.
+_users_sync_prune_link() { # $1=core $2=tag $3=kind
+    local _stem='' _link='' _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _rc1=0 _rc2=0
+    _stem=$(users_link_stem "$1" "$2" 2>/dev/null || printf '%s' "$2")
+    _link="$_dir/${_stem}.link"
+    [[ -e "$_link" || -L "$_link" ]] || return 0
+    case "$_stem" in
+        trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-xray-[0-9]*|trojan-sb-[0-9]*|socks5-sb-[0-9]*|socks5-xray-[0-9]*)
+            _standalone_link_prune_if_gone "$_stem" "$_link" || true
+            [[ -e "$_link" ]] && return 1 || return 0 ;;
+    esac
+    if [[ "$3" == 'hy2-deny' ]]; then
+        rm -f -- "$_link" 2>/dev/null || return 1
+        [[ -e "$_link" ]] && return 1 || return 0
+    fi
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        _users_live_inbound_exists xray "$2" || _rc1=$?
+        _users_live_inbound_exists sing-box "$2" || _rc2=$?
+        if [[ "$_rc1" == 1 && "$_rc2" == 1 ]]; then
+            rm -f -- "$_link" 2>/dev/null || return 1
+            [[ -e "$_link" ]] && return 1 || return 0
+        fi
+        if [[ "$_rc1" == 0 || "$_rc2" == 0 ]]; then
+            return 0 # another core still serves this tag: keep the link
+        fi
+        return 1 # unverifiable: keep the link, keep the todo
+    fi
+    return 1
+}
+
+# rc 0 = the Hy2 node is still in its denied/empty state (cleanup
+# premise holds); rc 1 = usable credentials again, or unverifiable.
+_users_sync_hy2_still_denied() {
+    local _core="$1" _tag="$2" _cfg='' _users='' _stripped=''
+    if [[ "$_core" == 'hy2' ]]; then
+        _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+        [[ -e "$_cfg" ]] || return 0
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+        _users=$(users_hy2_read_users "$_cfg" 2>/dev/null) || return 1
+        [[ "$_users" == '[]' ]] && return 0
+        [[ -n "$_users" ]] && return 1
+        return 1
+    elif [[ "$_core" == 'sing-box' ]]; then
+        _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+        [[ -e "$_cfg" ]] || return 0
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+        _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 1
+        [[ -n "${_stripped//[[:space:]]/}" ]] || return 1
+        if printf '%s' "$_stripped" | jq -e '[.inbounds[]? | select(.type == "hysteria2") | (.users // []) | length] | add > 0' >/dev/null 2>&1; then return 1; fi
+        return 0
+    fi
+    return 1
+}
+
+# Run one cleanup step list for a committed (core, tag, kind, proto).
+# Steps are derived from the CURRENT committed config, never from the
+# recorded diff, so re-running them is idempotent. Order matters:
+# publish-desired first (so the desired file is fresh before any later
+# step can fail), refresh-subscription before prune-link (the rebuild
+# inside the refresh can re-create a link from a live config).
+# rc 0 = all steps done, 1 = at least one step failed (todo kept).
+# Re-entrancy: none of these steps calls users_sync (publish, port
+# sync, subscription refresh, link prune are all leaf operations).
+_users_sync_run_cleanup_steps() { # $1=core $2=tag $3=kind $4=proto $5=steps-csv
+    local _core="$1" _tag="$2" _kind="$3" _proto="$4" _steps="$5" _step='' _ok=0
+    local -a _arr=()
+    IFS=',' read -r -a _arr <<< "$_steps"
+    for _step in "${_arr[@]}"; do
+        case "$_step" in
+            publish-desired)
+                if [[ "$_core" == 'xray' ]]; then
+                    if ! _xrc_publish_desired_config; then
+                        msg "users_sync cleanup: failed to publish xray desired config after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                    fi
+                fi ;;
+            sync-env-ports)
+                if ! sync_env_ports_after_removal; then
+                    msg "users_sync cleanup: .env port reconciliation failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            restore-env-port)
+                if ! _users_sync_restore_env_port "$_core" "$_tag" "$_proto"; then
+                    msg "users_sync cleanup: .env port restore failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            refresh-subscription)
+                if ! refresh_subscription_after_deploy; then
+                    msg "users_sync cleanup: subscription refresh failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi
+                # The on-disk Clash YAML is a static published artifact
+                # too; regenerate it best-effort so a stale file does
+                # not keep serving the dead node until the next
+                # menu-12 view. A failure here only warns: the emit
+                # gates (D) make the next regeneration correct.
+                if declare -F write_clash_yaml >/dev/null 2>&1; then
+                    write_clash_yaml >/dev/null 2>&1 || msg "users_sync cleanup: Clash YAML regeneration failed after ${_core}/${_tag} ${_kind}; the file may stay stale until the next view." >&2
+                fi ;;
+            prune-link)
+                if ! _users_sync_prune_link "$_core" "$_tag" "$_kind"; then
+                    msg "users_sync cleanup: standalone link prune failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            *) msg "users_sync cleanup: unknown step '${_step}' for ${_core}/${_tag}; cleanup todo kept." >&2; _ok=1 ;;
+        esac
+    done
+    return "$_ok"
+}
+
+# Complete a pending post-commit cleanup for one registry, idempotently,
+# from the CURRENT committed config. rc 0 = done or moot (todo cleared);
+# 1 = still pending (todo kept); 2 = todo unreadable/malformed (kept).
+_users_sync_complete_cleanup() { # $1=core $2=tag
+    local _core="$1" _tag="$2" _todo='' _tj='' _kind='' _proto='' _steps='' _cfg='' _rc=0 _reg=''
+    _todo=$(_users_cleanup_todo_path "$_core" "$_tag") || return 2
+    [[ -f "$_todo" && ! -L "$_todo" ]] || return 0
+    _tj=$(_users_cleanup_todo_read "$_todo") || return 2
+    _kind=$(printf '%s' "$_tj" | jq -r '.kind // ""' 2>/dev/null)
+    _proto=$(printf '%s' "$_tj" | jq -r '.proto // ""' 2>/dev/null)
+    _steps=$(printf '%s' "$_tj" | jq -r '.steps // [] | join(",")' 2>/dev/null)
+    case "$_kind" in inbound-removed|hy2-deny|inbound-rebuilt) ;; *) return 2 ;; esac
+    [[ -n "$_steps" ]] || return 2
+    # Registry gone (the formal delete path took over) -> moot; the
+    # formal path owns the tail now.
+    _reg=$(users_reg_file "$_core" "$_tag" 2>/dev/null || true)
+    if [[ -z "$_reg" || ! -f "$_reg" ]]; then rm -f -- "$_todo"; return 0; fi
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # Re-derive the premise from the CURRENT committed config; a tag
+    # that is live again (re-enable raced ahead) makes a removal todo
+    # moot, and usable Hy2 credentials again make a deny todo moot.
+    case "$_kind" in
+        inbound-removed)
+            _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+            case "$_rc" in
+                0) rm -f -- "$_todo"; return 0 ;;
+                1) : ;;
+                *) return 1 ;;
+            esac
+            # L6 item 9: verify the committed config actually lacks
+            # the tag before any step acts on the old diff; a bad
+            # config, a surviving tag, or a changed generation keeps
+            # the todo instead of cleaning on stale premises.
+            if ! _removed_tags_absent_from_config "$_cfg" "$_tag"; then return 1; fi
+            ;;
+        hy2-deny)
+            if ! _users_sync_hy2_still_denied "$_core" "$_tag"; then
+                rm -f -- "$_todo"; return 0
+            fi
+            ;;
+        inbound-rebuilt)
+            _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+            case "$_rc" in
+                0) : ;;
+                1) rm -f -- "$_todo"; return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+    esac
+    if _users_sync_run_cleanup_steps "$_core" "$_tag" "$_kind" "$_proto" "$_steps"; then
+        rm -f -- "$_todo" || return 1
+        return 0
+    fi
+    return 1
+}
+
 users_sync() {
     local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc='' _jq_cfg='' _jq_tmp=0
+    local _cleanup_kind='' _cleanup_steps='' _cleanup_needed=0 _cleanup_todo_ok=0 _hy2_was_usable=0
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -1573,6 +1926,18 @@ users_sync() {
         [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
         local regj_pre=''
         regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
+    fi
+    # L6: capture the pre-sync Hy2 usability before the rewrite: an
+    # all-disabled Hy2 sync flips live auth to deny (official) or
+    # empty users (sing-box) without deleting any tag, so the
+    # post-commit plan below needs the BEFORE state to know a
+    # publishable node just went dark.
+    if [[ "$core" == 'hy2' ]]; then
+        local _hy2_before=''
+        _hy2_before=$(users_hy2_read_users "$cfg" 2>/dev/null || true)
+        [[ -n "$_hy2_before" && "$_hy2_before" != '[]' ]] && _hy2_was_usable=1
+    elif [[ "$core" == 'sing-box' && "$proto" == 'hysteria2' ]]; then
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$_jq_cfg" >/dev/null 2>&1; then _hy2_was_usable=1; fi
     fi
     case "$core" in
         xray)
@@ -1659,6 +2024,59 @@ users_sync() {
         local regj=''
         regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     fi
+    # L6: plan the post-commit cleanup BEFORE the commit (U65
+    # precedent: the snapshot is persisted pre-commit for the same
+    # reason). The todo records the sha of $tmp -- exactly what the
+    # commit is about to install -- so there is no crash window
+    # between commit and record, and the guard can verify the
+    # generation later. Kinds: inbound-removed (this sync deletes the
+    # tag), inbound-rebuilt (this sync rebuilds it from snapshot),
+    # hy2-deny (all Hy2 users disabled: live flips to deny / empty
+    # users, no tag is deleted). already-gone: a previous commit
+    # (users_hot_remove, or an interrupted earlier sync) already
+    # deleted the tag; the todo is (re-)planned from the current state
+    # when cleanup is still due.
+    if (( sb_will_delete == 1 )); then
+        _cleanup_kind='inbound-removed'
+        if [[ "$core" == 'xray' ]]; then _cleanup_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+        else _cleanup_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+        _cleanup_needed=1
+    elif (( sb_will_rebuild == 1 )); then
+        if _users_sync_rebuild_cleanup_needed "$core" "$tag" "$proto" "$tmp"; then
+            _cleanup_kind='inbound-rebuilt'
+            if [[ "$core" == 'xray' ]]; then _cleanup_steps='restore-env-port,publish-desired,refresh-subscription';
+            else _cleanup_steps='restore-env-port,refresh-subscription'; fi
+            _cleanup_needed=1
+        fi
+    elif (( encount == 0 )) && (( _hy2_was_usable == 1 )); then
+        _cleanup_kind='hy2-deny'
+        _cleanup_steps='refresh-subscription,prune-link'
+        _cleanup_needed=1
+    elif (( encount == 0 )) && [[ -e "${ABOX_DIR:-/etc/ddr}/standalone-links.d/hy2.link" ]] && { [[ "$core" == 'hy2' ]] || { [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'hysteria2' ]]; }; }; then
+        # Already denied by an earlier sync, but a stale link survived
+        # (e.g. the pre-fix runs never pruned it): still owed a prune
+        # and a subscription refresh.
+        _cleanup_kind='hy2-deny'
+        _cleanup_steps='refresh-subscription,prune-link'
+        _cleanup_needed=1
+    fi
+    if (( _cleanup_needed == 0 )) && (( encount == 0 )) && (( sb_will_delete == 0 )) && _users_sync_already_gone "$core" "$tag" "$proto"; then
+        if _users_sync_removal_cleanup_needed "$core" "$tag" "$proto"; then
+            _cleanup_kind='inbound-removed'
+            if [[ "$core" == 'xray' ]]; then _cleanup_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+            else _cleanup_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+            _cleanup_needed=1
+        fi
+    fi
+    if (( _cleanup_needed == 1 )); then
+        local _new_sha=''
+        _new_sha=$(sha256sum -- "$tmp" 2>/dev/null | awk '{print $1}') || _new_sha=''
+        if [[ "$_new_sha" =~ ^[0-9a-f]{64}$ ]] && _users_cleanup_todo_write "$core" "$tag" "$proto" "$_cleanup_kind" "$_new_sha" "$_cleanup_steps"; then
+            _cleanup_todo_ok=1
+        else
+            msg "users_sync stage SYNC-21: post-commit cleanup todo could not be recorded for ${core}/${tag}; the commit below still proceeds, and cleanup will be attempted synchronously" >&2
+        fi
+    fi
     users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         rm -f "$tmp" "$bak"; rm -rf "$tmpd"
@@ -1674,6 +2092,30 @@ users_sync() {
             local regj3=''
             regj3=$(jq -c 'del(.inbound_snapshot)' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj3" || true
             msg "${GREEN}[+] ${core} ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
+        fi
+        # L6: post-commit cleanup hook -- SYNC-20 confirmed the commit,
+        # and this runs here, before the final return 0, never in the
+        # callers (so deploy recovery, interactive apply and guard
+        # ticks are all covered). The cleanup is derived from the
+        # CURRENT committed config. Degraded success: the commit stands
+        # and users_sync returns 0 when the todo is recorded (the guard
+        # retries it, and src/06 refuses the stale desired file / any
+        # backup while it exists). Only a commit whose cleanup could
+        # neither be recorded nor completed synchronously returns 3
+        # (partial failure); callers must not roll the registry back
+        # on rc 3.
+        local _cleanup_rc=0
+        if (( _cleanup_todo_ok == 1 )); then
+            _users_sync_complete_cleanup "$core" "$tag" || _cleanup_rc=$?
+            if (( _cleanup_rc != 0 )); then
+                msg "${YELLOW}[!] users_sync: ${core}/${tag} committed, but post-commit cleanup is still pending (todo recorded; the user guard will retry it; auto-recovery will not use the stale desired config meanwhile).${NC}" >&2
+            fi
+        elif (( _cleanup_needed == 1 )); then
+            if ! _users_sync_run_cleanup_steps "$core" "$tag" "$_cleanup_kind" "$proto" "$_cleanup_steps"; then
+                msg "users_sync stage SYNC-21: config commit succeeded for ${core}/${tag} but post-commit cleanup failed and no todo could be recorded (partial failure)" >&2
+                (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
+                return 3
+            fi
         fi
         (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
         return 0
@@ -2418,6 +2860,16 @@ users_apply_reg() {
     fi
     local _sync_rc=0
     users_sync "$1" "$2" || _sync_rc=$?
+    if (( _sync_rc == 3 )); then
+        # L6: the sync COMMITTED (live config and registry hold the new
+        # state); only the post-commit cleanup is unrecorded. Never
+        # roll the registry back over a committed deletion: the
+        # .sync-pending marker stays planted so the guard retries the
+        # sync, whose already-gone path re-plans and completes the
+        # cleanup.
+        msg "${YELLOW}[!] users_sync committed the change for $1/$2, but post-commit cleanup failed and no todo could be recorded; the guard will retry it.${NC}" >&2
+        return 1
+    fi
     if (( _sync_rc != 0 )); then
         # Roll back, and clear the marker only after verifying
         # the rollback landed (re-read matches the old content).
@@ -2805,6 +3257,9 @@ user_guard_installed() {
 }
 
 setup_user_guard() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     local _src="$0"
     # M-06 (Carbon audit): under bash <(curl ...) $0 is /dev/fd/N, not a
@@ -2859,7 +3314,11 @@ setup_user_guard() {
     # matches the unquoted USERGUARD line exactly).
     local _runner_q="$runner"
     if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$runner"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    fi
     return 0
 }
 
@@ -2968,6 +3427,29 @@ users_hot_remove() {
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
     rm -f -- "$tmp"; rm -rf "$tmpd"
+    # L6: a whole-inbound deletion on disk (single-password SS, or the
+    # last multi-user client) is a committed deletion whose tail
+    # (desired/.env/link/subscription) users_sync's hook would
+    # otherwise miss: by the time users_sync runs, the tag is already
+    # gone, so its before/after diff sees nothing. Record the same
+    # post-commit todo here, with the sha of the config just installed;
+    # users_sync (or the guard) completes it idempotently.
+    # vless/trojan only lose one client here, never the inbound.
+    if [[ "$proto" == 'shadowsocks' ]]; then
+        local _hot_jq_rc=0 _hot_sha='' _hot_steps=''
+        jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || _hot_jq_rc=$?
+        # jq -e rc 1 (jq <= 1.6) or 4 (jq >= 1.7) means "no output",
+        # i.e. the tag is absent; any other non-zero rc is a read
+        # error, not a deletion.
+        if [[ "$_hot_jq_rc" == 1 || "$_hot_jq_rc" == 4 ]]; then
+            _hot_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || _hot_sha=''
+            if [[ "$core" == 'xray' ]]; then _hot_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+            else _hot_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+            if [[ "$_hot_sha" =~ ^[0-9a-f]{64}$ ]]; then
+                _users_cleanup_todo_write "$core" "$tag" "$proto" 'inbound-removed' "$_hot_sha" "$_hot_steps" || msg "users_hot_remove: post-commit cleanup todo could not be recorded for ${core}/${tag}" >&2
+            fi
+        fi
+    fi
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
     esac
@@ -3040,6 +3522,21 @@ users_guard_eval() {
     # the users_sync calls below on the restart permission.
     local _guard_svc=''
     _guard_svc=$(users_svc_of "$core" 2>/dev/null || printf '%s' "$core")
+    # L6: complete a pending post-commit cleanup from an earlier sync.
+    # File-only work (desired/.env/link/subscription, no restart): it
+    # may run under H-23 when the todo's generation matches the live
+    # config (the deletion it records is already committed to disk),
+    # or whenever a restart is permitted anyway. Otherwise leave it
+    # for a later tick; a later users_sync completes it from its hook.
+    local _todo_f='' _todo_sha='' _live_sha=''
+    _todo_f=$(_users_cleanup_todo_path "$core" "$tag" 2>/dev/null || true)
+    if [[ -n "$_todo_f" && -f "$_todo_f" ]]; then
+        _todo_sha=$(jq -r '.config_sha // ""' "$_todo_f" 2>/dev/null || true)
+        _live_sha=$(sha256sum -- "$(users_cfg_of "$core" 2>/dev/null || echo '')" 2>/dev/null | awk '{print $1}' || true)
+        if service_restart_permitted "$_guard_svc" || [[ -n "$_todo_sha" && "$_todo_sha" == "$_live_sha" ]]; then
+            _users_sync_complete_cleanup "$core" "$tag" >/dev/null 2>&1 || true
+        fi
+    fi
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire

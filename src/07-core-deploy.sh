@@ -1980,6 +1980,75 @@ rollback_restart_services_from_backup() {
     return 1
 }
 
+# L8: inventory of A-Box residue left behind by an aborted rollback.
+# Prints one line per item (cron blocks present, jail/filter files,
+# loaded A-Box jails, fail2ban running state). Never fails (rc 0); an
+# unqueryable source is reported as unknown, never guessed.
+rollback_residual_inventory() {
+    local _blocks='' _f='' _loaded=''
+    _blocks=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 | paste -sd, - 2>/dev/null || true)
+    printf 'cron blocks present: %s\n' "${_blocks:-none}"
+    for _f in /etc/fail2ban/jail.d/A-Box.local /etc/fail2ban/filter.d/A-Box.conf; do
+        if [[ -e "$_f" || -L "$_f" ]]; then printf 'file present: %s\n' "$_f"; else printf 'file absent: %s\n' "$_f"; fi
+    done
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if fail2ban_service_running 2>/dev/null; then
+            _loaded=$(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | paste -sd, - || true)
+            printf 'fail2ban running; loaded A-Box jails: %s\n' "${_loaded:-none}"
+        else
+            printf 'fail2ban not running\n'
+        fi
+    else
+        printf 'fail2ban not installed\n'
+    fi
+    return 0
+}
+
+# L8: unified abort exit for deployment_transaction_rollback_inner.
+# Records WHICH stage the rollback reached and the residual inventory
+# in the rollback state file, and reports both; preserves the caller's
+# rc. This function deletes nothing: the default abort policy is to
+# KEEP the running state and report, never to clean up silently (see
+# _rollback_abort_cron_best_effort for the single narrow exception).
+_rollback_record_abort() {
+    local _stage="${1:-unknown}" _rc="${2:-1}"
+    {
+        printf 'abort-stage: %s\n' "$_stage"
+        printf 'abort-rc: %s\n' "$_rc"
+        rollback_residual_inventory
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    msg "${RED}[!] Rollback aborted at stage: ${_stage} (rc=${_rc}). Residual A-Box state was preserved; inventory:${NC}" >&2
+    rollback_residual_inventory >&2 || true
+    return "$_rc"
+}
+
+# L8: narrow best-effort cron cleanup for abort exits AFTER the backup
+# was verified. Only removes a block when the VERIFIED backup's cron
+# proves it absent there (so it was created by this transaction) AND
+# it is present now. Never touches fail2ban files or loaded jails on
+# abort paths, and never runs when pre-verification failed (an
+# untrusted backup must not decide deletions). Failures are ignored.
+_rollback_abort_cron_best_effort() {
+    local _pinned_dir="${1:-}" _cron='' _name _known _bare_found _present_now
+    [[ -n "$_pinned_dir" ]] || return 0
+    _cron="$_pinned_dir/meta/cron.abox.txt"
+    [[ -f "$_cron" && ! -L "$_cron" ]] || return 0
+    validate_abox_cron_file "$_cron" 2>/dev/null || return 0
+    _present_now=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 || true)
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        grep -Fq "# A-Box ${_name} BEGIN" "$_cron" 2>/dev/null && continue
+        _bare_found=0
+        while IFS= read -r _known || [[ -n "$_known" ]]; do
+            if grep -Fxq "$_known" "$_cron" 2>/dev/null; then _bare_found=1; break; fi
+        done < <(_abox_cron_block_known_lines "$_name")
+        (( _bare_found == 1 )) && continue
+        grep -Fxq "$_name" <<< "$_present_now" || continue
+        remove_abox_cron_block "$_name" >/dev/null 2>&1 || true
+        msg "[!] Rollback abort: removed ${_name} cron block created by this transaction (absent from the verified backup)." >&2
+    done
+    return 0
+}
+
 deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
     # B-C2: land a rollback state file FIRST, so a later inspection can
@@ -2017,12 +2086,14 @@ deployment_transaction_rollback_inner() {
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
+            _rollback_record_abort 'retained-bundle' 1
             return 1
         fi
         ABOX_VERIFY_PINNED_WORK=''
     fi
     if ! verify_backup_restorable "$backup" "$tx_key_file" 1; then
         msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        _rollback_record_abort 'pre-verify' 1
         return 1
     fi
 
@@ -2032,9 +2103,17 @@ deployment_transaction_rollback_inner() {
     # deletes it.
     local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
     local _pinned_archive="$_pinned_dir/$(basename "$backup")"
-    [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || { msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2; return 1; }
+    if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
+        :
+    else
+        msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
+        _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'stop-services' 1
         return 1
     fi
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -2042,6 +2121,8 @@ deployment_transaction_rollback_inner() {
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
     if (( cleanup_failed != 0 )); then
         msg "${RED}[!] Rollback aborted before removing core files: firewall cleanup could not be verified. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
 
@@ -2051,6 +2132,8 @@ deployment_transaction_rollback_inner() {
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then
             msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery bundle retained: $_pinned_archive${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
     done
@@ -2058,24 +2141,28 @@ deployment_transaction_rollback_inner() {
     if [[ -n "$tx_key_file" ]]; then
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive" "$tx_key_file"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     else
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     fi
-    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; return 1; }
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
-        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; return 1; }
+        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
     fi
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
-        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; return 1; }
+        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
     fi
     ABOX_DEPLOY_TX_TARGETS=''
     ABOX_DEPLOY_TX_REASON=''
@@ -2089,6 +2176,7 @@ deployment_transaction_rollback_inner() {
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
     standalone_preserve_cleanup
+    printf '%s\n' 'rollback: complete' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     return 0
 }
 

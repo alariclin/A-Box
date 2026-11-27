@@ -46,7 +46,7 @@ for _lang in zh en ru fa zh-tw ja; do
             printf 'FAIL: tprintf %s [%s]: rc=%s err=[%s] val=[%s]\n' "$key" "$_lang" "$rc" "$err" "$val" >&2
             failures=$((failures + 1))
         fi
-    done < <(grep -E "^[[:space:]]*${_lang}:[A-Za-z_0-9]+\) echo '--" "$FX_DIR/../src/02-i18n.sh" | sed -E "s/^[[:space:]]*${_lang}:([A-Za-z_0-9]+)\) echo.*/\1/" | sort -u)
+    done < <(grep -E "^[[:space:]]*${_lang}:[A-Za-z_0-9]+\) echo '--" "$FX_DIR/../../src/02-i18n.sh" | sed -E "s/^[[:space:]]*${_lang}:([A-Za-z_0-9]+)\) echo.*/\1/" | sort -u)
 done
 export ABOX_LANG=zh
 

@@ -41,7 +41,7 @@ run_self_tests() {
     }
     selftest_abox_signature() {
         if [[ ! -e /etc/ddr && ! -L /etc/ddr ]]; then
-            printf 'ABSENT\n'
+            printf 'ABSENT\nABSENT\n'
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
@@ -52,6 +52,24 @@ run_self_tests() {
         # and the readlink target for symlinks; records sorted,
         # NUL-joined, sha256. A nested same-size content change or a
         # symlink retarget now changes the signature.
+        # SELFTEST-ISOLATION (leftover 20261126): the users.d subtree is
+        # NOT part of the content/mtime signature. The 5-minute USERGUARD
+        # tick (user_guard_tick -> users_guard_eval -> users_reg_write ->
+        # users_reg_write_path) rewrites EVERY registry file on every
+        # tick with an unconditional `mv -f` of a fresh temp file -- no
+        # identical-content skip -- so a tick landing inside the
+        # self-test window flips mtime (and the dir mtime) even with
+        # zero traffic and no transition. That write is background
+        # activity, not a self-test side effect, so the first hash line
+        # excludes users.d content/mtime entirely; the second hash line
+        # covers only the sorted users.d relative-path set, which still
+        # catches the self-test creating or deleting a registry. The
+        # users.d directory itself stays in the first hash with
+        # identity+mode only (no mtime/size). Residual race: a tick
+        # that fires a real transition (quota/expiry) mid-run can still
+        # touch .env/desired/subscription via users_sync; that is rare
+        # and only on hosts with an active transition, and is left as a
+        # known limitation (see the post-test comparison below).
         python3 -I - <<'PY_ABOX_SIG' 2>/dev/null || return 1
 import os, stat, sys, hashlib
 def _ftype(m):
@@ -76,6 +94,7 @@ def _sha256_file(p):
     except OSError:
         return 'ERR'
 _records = []
+_users_names = []
 for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followlinks=False):
     for _name in _dirnames + _filenames:
         _p = os.path.join(_dirpath, _name)
@@ -85,6 +104,16 @@ for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followl
         except OSError:
             continue
         _t = _ftype(_st.st_mode)
+        if _rel == 'users.d':
+            # users.d dir itself: identity + mode only, no mtime/size
+            # (a guard tick rewriting a child registry flips the dir
+            # mtime via the temp-file replace).
+            _records.append(repr((_rel, _t, _st.st_uid, _st.st_gid, oct(stat.S_IMODE(_st.st_mode))[2:], '', '', '')))
+            continue
+        if _rel.startswith('users.d/'):
+            # Registry files: names only (see D-07 note above).
+            _users_names.append(_rel)
+            continue
         _extra = ''
         if _t == 'f':
             _extra = _sha256_file(_p)
@@ -102,6 +131,9 @@ except OSError:
 _records.sort()
 _blob = (chr(0).join(_records) + chr(0)) if _records else ''
 sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + chr(10))
+_users_names.sort()
+_ub = (chr(0).join(_users_names) + chr(0)) if _users_names else ''
+sys.stdout.write(hashlib.sha256(_ub.encode()).hexdigest() + chr(10))
 PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
@@ -2088,6 +2120,40 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): the emitters below
+        # merge live state by design (H-24: never silently drop
+        # multi-user UUIDs). On a host with a live deployment that
+        # live state leaks into the fixtures and breaks the count
+        # assertions (a live users.d UUID adds Vision+XHTTP nodes, so
+        # the ML-KEM flag counts read 4 instead of 2). Point every
+        # live-read at an empty/nonexistent temp path for this block:
+        #   ABOX_USERS_DIR  -> empty temp dir (list_usersd_uuids,
+        #                      users_reg_file, ss/hy2 effective passwords)
+        #   XRAY_SLOT_CFG   -> nonexistent temp path (users_cfg_of xray:
+        #                      list_xhttp_live_uuids fails open to the
+        #                      merged list; L6 publishability fails open)
+        #   ABOX_HY2_CONFIG -> nonexistent temp path (hy2_effective_password
+        #                      fails open to $HY2_PASS; _hy2_node_publishable
+        #                      sees nothing readable and fails open)
+        #   ABOX_SB_CFG     -> nonexistent temp path (_singbox_hy2_inbound_state
+        #                      / _hy2_node_publishable fail open; the
+        #                      standalone calls below override it with
+        #                      their own fixture paths)
+        # Plain assignments: the emitters run in this shell, so dynamic
+        # scope carries them; restored at the end of this block.
+        # Product emitters untouched.
+        local clash_users_dir="$tmp/abox-users.d"
+        mkdir -m 700 "$clash_users_dir" || { echo 'FAIL: self-test users.d isolation directory'; failures=$((failures + 1)); }
+        local _st_old_users_dir="${ABOX_USERS_DIR:-}" _st_old_slot_cfg="${XRAY_SLOT_CFG:-}" _st_old_hy2_cfg="${ABOX_HY2_CONFIG:-}" _st_old_sb_cfg="${ABOX_SB_CFG:-}"
+        local _st_had_users_dir=0 _st_had_slot_cfg=0 _st_had_hy2_cfg=0 _st_had_sb_cfg=0
+        [[ -n "${ABOX_USERS_DIR:-}" ]] && _st_had_users_dir=1
+        [[ -n "${XRAY_SLOT_CFG:-}" ]] && _st_had_slot_cfg=1
+        [[ -n "${ABOX_HY2_CONFIG:-}" ]] && _st_had_hy2_cfg=1
+        [[ -n "${ABOX_SB_CFG:-}" ]] && _st_had_sb_cfg=1
+        ABOX_USERS_DIR="$clash_users_dir"
+        XRAY_SLOT_CFG="$clash_dir/no-live-xray.json"
+        ABOX_HY2_CONFIG="$clash_dir/no-live-hy2.yaml"
+        ABOX_SB_CFG="$clash_dir/no-live-sb.json"
         # M1: self-test must not do real network I/O. write_clash_yaml
         # probes the VPS country via a Cloudflare trace fetch; these
         # fixtures only check YAML structure, so fail the detection here
@@ -2139,6 +2205,13 @@ EOF_SELFTEST_IPT
         fi
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): restore the four
+        # live-read variables the block above redirected; later blocks
+        # (W2/L2) save and restore their own overrides from these values.
+        if (( _st_had_users_dir == 1 )); then ABOX_USERS_DIR="$_st_old_users_dir"; else unset ABOX_USERS_DIR; fi
+        if (( _st_had_slot_cfg == 1 )); then XRAY_SLOT_CFG="$_st_old_slot_cfg"; else unset XRAY_SLOT_CFG; fi
+        if (( _st_had_hy2_cfg == 1 )); then ABOX_HY2_CONFIG="$_st_old_hy2_cfg"; else unset ABOX_HY2_CONFIG; fi
+        if (( _st_had_sb_cfg == 1 )); then ABOX_SB_CFG="$_st_old_sb_cfg"; else unset ABOX_SB_CFG; fi
         if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
 import json, sys
@@ -2223,6 +2296,12 @@ PY_SELFTEST_YAML
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi
         post_abox_sig=$(selftest_abox_signature) || { echo 'FAIL: live /etc/ddr post-test signature unavailable'; failures=$((failures + 1)); }
+        # The signature is two lines: the whole-tree hash (users.d
+        # content/mtime excluded, see selftest_abox_signature) plus
+        # the users.d relative-path-set hash. Known residual race: a
+        # USERGUARD tick firing a real quota/expiry transition mid-run
+        # can still rewrite .env/desired/subscription via users_sync;
+        # the steady-state tick (registry rewrite only) is excluded.
         if (( post_abox_exists != real_abox_exists )); then
             echo 'FAIL: --self-test changed /etc/ddr existence state'; failures=$((failures + 1))
         elif [[ "$post_abox_sig" != "$real_abox_sig" ]]; then
@@ -2385,6 +2464,12 @@ PY_SELFTEST_YAML
     grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
     grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
     grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    # L12: the two residual hardcoded no-TTY refusals must go through i18n,
+    # and the non-interactive CLI entry must resolve the language first
+    # (same root cause as the A-leg enter_runtime fix).
+    grep -Fq 'tr_msg legacy_xl_retire_noninteractive' "$source_body_file" || { echo 'FAIL: retired xray-latest non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    grep -Fq 'tr_msg legacy_backup_no_checksum_noninteractive' "$source_body_file" || { echo 'FAIL: legacy backup no-checksum non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    awk '/^prepare_noninteractive_file_operation\(\) \{/,/^}/' "$source_body_file" | grep -Fq 'detect_lang' || { echo 'FAIL: prepare_noninteractive_file_operation must resolve language before its messages'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))
@@ -2679,10 +2764,26 @@ EOF_SVC_TEST_RCUPDATE
     die() { return 99; }
     clear_abox_env_vars
     CORE=''; MODE=''
+    # SELFTEST-ISOLATION (leftover 20261126): confirm_deployment_replacement
+    # reloads $ABOX_ENV when CORE/MODE are empty, and load_abox_env parses
+    # the state file with `while IFS= read -r -d '' key` -- which invokes
+    # THIS fixture's mocked `read` (always returns 0, never assigns key),
+    # so the loop body expands unset $key under `set -u` and aborts the
+    # whole self-test shell (`key: unbound variable`, exit 1, no verdict;
+    # stderr is swallowed by the caller's >/dev/null 2>&1). On a host
+    # without /etc/ddr/.env the load fails early at the readability guard
+    # and the fixture passes, so the bug only fires on a live host.
+    # Point ABOX_ENV at a nonexistent temp path so the load fails early
+    # exactly as on a clean host -- and the fixture keeps testing its
+    # intended path (query failure -> confirmation prompt, not a silent
+    # auto-approve driven by a reloaded live CORE/MODE).
+    _confirm_old_env="${ABOX_ENV:-}"
+    ABOX_ENV="$tmp/no-live-abox.env"
     if confirm_deployment_replacement xray VISION >/dev/null 2>&1; then
         echo 'FAIL: managed-service state query failure was silently auto-approved'
         failures=$((failures + 1))
     fi
+    if [[ -n "$_confirm_old_env" ]]; then ABOX_ENV="$_confirm_old_env"; else unset ABOX_ENV; fi
     eval "$managed_services_active__orig"
     eval "$die__orig"
     if [[ -n "$read__orig" ]]; then
@@ -3034,7 +3135,7 @@ PY_F05_TPUB
     # serves the port, and the published desired config must match
     # the .env expectations exactly to be usable for auto-recovery.
     {
-        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0
+        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0 _l4_st=0
         local _w2_old_slot="${XRAY_SLOT_CFG:-}" _w2_old_dir="${ABOX_DIR:-}" _w2_old_env="${ABOX_ENV:-}" _w2_old_sb="${ABOX_SB_CFG:-}" _w2_old_hy2="${ABOX_HY2_CFG:-}" _w2_old_xbin="${XRAY_BIN:-}"
         mkdir -p "$_w2d/ddr" || { echo 'FAIL: W2-FAIL-1 test dir'; failures=$((failures + 1)); }
         XRAY_SLOT_CFG="$_w2d/xray.json"
@@ -3072,6 +3173,30 @@ EOF_W2F1
         [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must clear when no Vision inbound remains (Hy2 alone must not keep it)'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^XHTTP_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == '8443' ]] || { echo 'FAIL: W2-FAIL-1 XHTTP_PORT must survive while XHTTP lives'; failures=$((failures + 1)); }
+        # O-1 (2026-11-27): official hop writes `listen: :20000-25000`
+        # in the Hysteria YAML while HY2_BASE_PORT stays 443, so the
+        # Vision delete must not clear it (the menu would show
+        # "Hy2:?"). Rebuild the fixture in hop mode and re-run the
+        # same Vision delete, then restore the non-hop fixture the
+        # rest of this block expects (api+xhttp+ss, listen :443).
+        printf 'listen: :20000-25000\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT="443"\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="20000"\nHY2_URI_PORTS="20000-25000"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
+        cat > "$_w2d/xray.json" <<'EOF_W2F1'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053}
+]}
+EOF_W2F1
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: O-1 sync after Vision delete (official hop)'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_BASE_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: O-1 HY2_BASE_PORT must survive a Vision delete while official-hop Hy2 lives'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: O-1 VLESS_PORT must still clear on Vision delete (official hop)'; failures=$((failures + 1)); }
+        printf 'listen: :443\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT=""\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="443"\nHY2_URI_PORTS="443"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
         _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
         (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass after Vision delete (else the probe restores)'; failures=$((failures + 1)); }
         # Delete the remaining xray inbounds: every xray var clears
@@ -3126,6 +3251,47 @@ EOF_W2F1
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
         g2_func_contains _protocol_removed_side_effects '_clear_hy2_nonport_env_vars' || { echo 'FAIL: W2-FAIL-1 _protocol_removed_side_effects must call the Hy2 non-port cleanup'; failures=$((failures + 1)); }
+        # L4 (leftover 20261126): Hy2 cert cleanup helper wiring +
+        # tri-state inbound verdict. The helper must be reachable
+        # from every path that used to skip E16, and the verdict
+        # must separate "valid config, no match" (rc 1) from
+        # "the query never saw the expected structure" (rc 2).
+        g2_func_contains _protocol_removed_side_effects '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 _protocol_removed_side_effects must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains deploy_singbox '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 deploy_singbox must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 clear_all_protocols must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_hy2_nonport_env_vars' || { echo 'FAIL: L4 clear_all_protocols must clear the Hy2 .env keys'; failures=$((failures + 1)); }
+        g2_func_contains write_clash_yaml '_singbox_hy2_inbound_state' || { echo 'FAIL: L4 write_clash_yaml must gate the Hy2 node on the live sing-box inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"hy2","type":"hysteria2","listen_port":443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 0 )) || { echo 'FAIL: L4 live hysteria2 inbound must report state 0'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-in","type":"vless","listen_port":8443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 valid config without Hy2 must report state 1'; failures=$((failures + 1)); }
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 non-array inbounds must report state 2 (unverifiable), never state 1'; failures=$((failures + 1)); }
+        printf 'this is not json{' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 unparseable config must report state 2'; failures=$((failures + 1)); }
+        printf '{"inbounds":[]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 empty inbounds must report state 1'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 3 )) || { echo 'FAIL: L4 missing config must report state 3'; failures=$((failures + 1)); }
+        # A symlinked config is unverifiable (M-29), never "no match".
+        printf '{"inbounds":[]}' > "$_w2d/sb-real.json"
+        ln -sf "$_w2d/sb-real.json" "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 symlinked config must report state 2'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json" "$_w2d/sb-real.json"
+        # ... and the .env cleanup must keep keys on that same
+        # structurally bad shape (rc 0, keys kept), not clear them.
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        printf 'HY2_DOMAIN="example.com"\nHY2_PASS="stale"\n' > "$_w2d/.env"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
@@ -3151,6 +3317,120 @@ EOF_W2F1
             echo 'SKIP: W2-FAIL-1 desired-config publish/gate (needs root)'
         fi
         XRAY_SLOT_CFG="$_w2_old_slot"; ABOX_DIR="$_w2_old_dir"; ABOX_ENV="$_w2_old_env"; ABOX_SB_CFG="$_w2_old_sb"; ABOX_HY2_CFG="$_w2_old_hy2"; XRAY_BIN="$_w2_old_xbin"
+    }
+    # 9. L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2
+    # non-port cleanup to SS_PASS / SOCKS_USER / SOCKS_PASS / UUID /
+    # VLESS_SNI / VISION_SNI / XHTTP_SNI. verify4 saw SS_PASS survive
+    # four SS deletes because sync_env_ports_after_removal only
+    # reconciles listener ports. Each key must clear only when no
+    # live inbound of the protocol that owns it remains on either
+    # core, and must survive while one does.
+    {
+        local _l2d="$tmp/l2keys" _l2_env=''
+        local _l2_old_slot="${XRAY_SLOT_CFG:-}" _l2_old_dir="${ABOX_DIR:-}" _l2_old_env="${ABOX_ENV:-}" _l2_old_sb="${ABOX_SB_CFG:-}" _l2_old_hy2="${ABOX_HY2_CFG:-}"
+        mkdir -p "$_l2d/ddr" || { echo 'FAIL: L2 test dir'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2d/xray.json"
+        ABOX_DIR="$_l2d/ddr"
+        ABOX_ENV="$_l2d/.env"
+        ABOX_SB_CFG="$_l2d/sb.json"
+        ABOX_HY2_CFG="$_l2d/hy2.yaml"
+        rm -f "$_l2d/hy2.yaml"
+        cat > "$_l2d/xray.json" <<'EOF_L2'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053},
+ {"tag":"socks5-landing","protocol":"socks","port":1080}
+]}
+EOF_L2
+        printf '{"inbounds":[]}' > "$_l2d/sb.json"
+        cat > "$_l2d/.env" <<'EOF_L2'
+CORE="xray"
+MODE="ALL"
+UUID="11111111-1111-4111-8111-111111111111"
+VLESS_SNI="www.microsoft.com"
+VISION_SNI="www.microsoft.com"
+XHTTP_SNI="www.microsoft.com"
+VLESS_PORT="443"
+XHTTP_PORT="8443"
+SS_PORT="2053"
+SOCKS_PORT="1080"
+SOCKS_USER="socksuser"
+SOCKS_PASS="sockspass"
+SS_PASS="sspass-stale"
+EOF_L2
+        # SS delete: the port sync clears SS_PORT; the helper must
+        # clear SS_PASS while keeping every surviving key.
+        jq --arg t ss '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must clear once no SS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_l2_env" == '11111111-1111-4111-8111-111111111111' ]] || { echo 'FAIL: L2 UUID must survive while Vision+XHTTP live'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must survive while Vision lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # Vision-only delete: VISION_SNI clears; UUID and VLESS_SNI
+        # survive as the XHTTP fallback still needs them.
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must clear when Vision is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 UUID must survive while XHTTP lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must survive as the XHTTP fallback while XHTTP lives'; failures=$((failures + 1)); }
+        # Vision+XHTTP delete: UUID and all three SNI keys clear;
+        # SOCKS credentials survive (SOCKS still lives).
+        jq --arg t xhttp '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision+XHTTP delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 UUID must clear when no VLESS-family inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^XHTTP_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 XHTTP_SNI must clear when XHTTP is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must clear when neither Vision nor XHTTP can fall back to it'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # SOCKS delete on both cores clears the credentials; a live
+        # sing-box mixed inbound keeps them.
+        jq --arg t socks5-landing '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SOCKS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"socks5-landing","type":"mixed","listen_port":1080}]}' > "$_l2d/sb.json"
+        sed -i 's/^SOCKS_USER=.*/SOCKS_USER="socksuser"/; s/^SOCKS_PASS=.*/SOCKS_PASS="sockspass"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SOCKS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive a live sing-box mixed inbound'; failures=$((failures + 1)); }
+        # Cross-core SS keep, ShadowTLS companion exclusion, corrupt
+        # config skip, and the Argo UUID exclusion.
+        printf '{"inbounds":[{"tag":"ss","type":"shadowsocks","listen_port":2053}]}' > "$_l2d/sb.json"
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must survive a live sing-box SS inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"shadowtls-ss","type":"shadowsocks","listen":"127.0.0.1","method":"2022-blake3-aes-128-gcm","password":"inner-not-ss-pass"}]}' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only a ShadowTLS companion'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 ShadowTLS loopback companion (own password, no listen_port) must not keep SS_PASS'; failures=$((failures + 1)); }
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        printf 'this is not json{' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must skip (rc 0) on an unverifiable config'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-ws-in","type":"vless","listen_port":10000}]}' > "$_l2d/sb.json"
+        sed -i 's/^UUID=.*/UUID="11111111-1111-4111-8111-111111111111"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only an Argo inbound'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 Argo vless-ws-in (own ARGO_UUID) must not keep the main UUID'; failures=$((failures + 1)); }
+        g2_func_contains _protocol_removed_side_effects '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 _protocol_removed_side_effects must call the non-port cleanup'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 clear_all_protocols must call the non-port cleanup'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2_old_slot"; ABOX_DIR="$_l2_old_dir"; ABOX_ENV="$_l2_old_env"; ABOX_SB_CFG="$_l2_old_sb"; ABOX_HY2_CFG="$_l2_old_hy2"
     }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"

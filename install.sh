@@ -4509,6 +4509,12 @@ tr_msg() {
         fa:rb_legacy_convert) echo 'این نسخهٔ پشتیبان با قالب قدیمی (manifest v2) است و اطلاعات احراز هویت HMAC ندارد، پس نمی‌توان آن را مستقیم بازیابی کرد. نخست با گزینهٔ ۴ منوی پشتیبان‌گیری آن را به manifest v3 تبدیل کنید، سپس بازیابی کنید.' ;;
         zh-tw:rb_legacy_convert) echo '此備份為舊版格式（manifest v2），無 HMAC 認證資訊，無法直接還原。請先用備份選單選項 4 將其轉換為 manifest v3 後再還原。' ;;
         ja:rb_legacy_convert) echo 'このバックアップは旧形式（manifest v2）で、HMAC 認証情報がないため直接復元できません。先にバックアップメニューのオプション 4 で manifest v3 に変換してから復元してください。' ;;
+        zh:legacy_backup_no_checksum_noninteractive) echo '旧版备份无校验和，且本次转换为非交互运行。' ;;
+        en:legacy_backup_no_checksum_noninteractive) echo 'Legacy backup has no checksum and conversion is non-interactive.' ;;
+        ru:legacy_backup_no_checksum_noninteractive) echo 'У старой резервной копии нет контрольной суммы, а преобразование выполняется в неинтерактивном режиме.' ;;
+        fa:legacy_backup_no_checksum_noninteractive) echo 'نسخهٔ پشتیبان قدیمی هیچ چک‌سام ندارد و تبدیل به‌صورت غیرتعاملی است.' ;;
+        zh-tw:legacy_backup_no_checksum_noninteractive) echo '舊版備份無校驗和，且本次轉換為非互動執行。' ;;
+        ja:legacy_backup_no_checksum_noninteractive) echo '旧版バックアップにはチェックサムがなく、変換は非対話型で実行されています。' ;;
         zh:rb_structure_fail) echo '备份归档结构/链接校验失败。' ;;
         en:rb_structure_fail) echo 'Backup archive structure/link validation failed.' ;;
         ru:rb_structure_fail) echo 'Проверка структуры/ссылок архива не пройдена.' ;;
@@ -8811,6 +8817,12 @@ tr_msg() {
         ru:legacy_xl_retire_prompt) echo 'Обнаружен устаревший экземпляр xray-latest (coexist). Удалить экземпляр и его конфигурацию? [y/N]: ' ;;
         fa:legacy_xl_retire_prompt) echo 'نمونهٔ قدیمی xray-latest (coexist) شناسایی شد. نمونه و پیکربندی آن حذف شود؟ [y/N]: ' ;;
         ja:legacy_xl_retire_prompt) echo '廃止済みの xray-latest coexist インスタンスを検出しました。インスタンスとその設定を削除しますか？[y/N]：' ;;
+        zh:legacy_xl_retire_noninteractive) echo '检测到已退役的 xray-latest 实例，但本次运行无交互终端；请设置 ABOX_LEGACY_XL_RETIRE=1 后显式退役。' ;;
+        zh-tw:legacy_xl_retire_noninteractive) echo '偵測到已退役的 xray-latest 實例，但本次執行無互動終端；請設定 ABOX_LEGACY_XL_RETIRE=1 後明確退役。' ;;
+        en:legacy_xl_retire_noninteractive) echo 'Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.' ;;
+        ru:legacy_xl_retire_noninteractive) echo 'Обнаружен устаревший экземпляр xray-latest, но текущий запуск неинтерактивный; установите ABOX_LEGACY_XL_RETIRE=1, чтобы явно вывести его из эксплуатации.' ;;
+        fa:legacy_xl_retire_noninteractive) echo 'نمونهٔ قدیمی xray-latest شناسایی شد، اما این اجرا تعاملی نیست؛ برای بازنشستگی صریح آن ABOX_LEGACY_XL_RETIRE=1 را تنظیم کنید.' ;;
+        ja:legacy_xl_retire_noninteractive) echo '廃止済みの xray-latest インスタンスを検出しましたが、今回の実行は対話型ではありません。明示的に廃止するには ABOX_LEGACY_XL_RETIRE=1 を設定してください。' ;;
         zh:inst_retired_xl) echo 'xray-latest 已退役，不再支持部署该类实例。' ;;
         zh-tw:inst_retired_xl) echo 'xray-latest 已退役，不再支援部署該類實例。' ;;
         en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;
@@ -13713,6 +13725,27 @@ ensure_commands() {
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${_cap_unique[@]}" >/dev/null 2>&1 || true
     fi
+    # W4-tb2: bench.sh (toolbox 2) downloads speedtest-cli with wget, so
+    # a minimal host without wget fails mid-benchmark. Best-effort only:
+    # wget is a toolbox dependency, never a startup gate -- a failed
+    # install must not die here; run_mirrored_test_script() reports the
+    # missing command instead. install_optional_package is non-fatal
+    # (returns 1 on failure) by design.
+    if ! command -v wget >/dev/null 2>&1; then
+        install_optional_package wget >/dev/null 2>&1 || true
+    fi
+    # W4-tb3b: Check.Place.sh (toolbox 3) needs whiptail for its interactive
+    # menu; without it the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note). Best-effort only, aligned with tb2 (wget):
+    # whiptail is a toolbox dependency, never a startup gate -- a failed
+    # install must not die here; run_mirrored_test_script() reports the
+    # missing command instead. Mapping unchanged: deb whiptail, rpm newt
+    # (the newt package contains /usr/bin/whiptail), apk newt.
+    # install_optional_package is non-fatal (returns 1 on failure) by design.
+    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
+    if [[ -n "$_pkg" ]]; then
+        install_optional_package "$_pkg" >/dev/null 2>&1 || true
+    fi
     local required=(curl jq openssl bc unzip tar iptables ip6tables ss lsof crontab logrotate python3 flock cmp)
     local c
     for c in "${required[@]}"; do
@@ -15823,6 +15856,16 @@ prune_owned_core_families_except() {
         [[ "$allowed" == *" $srv "* ]] && continue
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
+        # L3 (2026-11-27): a pruned hysteria family must not leave
+        # its official-hop NAT rules behind. The prune path never
+        # calls _remove_hy2_official, so reclaim them here, after
+        # the stop and before the manifest/force family removal
+        # (same cleanup-first ordering: a failure aborts the deploy
+        # before anything irreversible is deleted, and a retry
+        # re-runs this step).
+        if [[ "$srv" == 'hysteria' ]]; then
+            remove_hy2_official_hop_rules || die "$(tprintf pr_remove "$srv")"
+        fi
         remove_owned_core_family "$srv" 0 1 || die "$(tprintf pr_remove "$srv")"
         # M-18 (supplement): pruning hysteria leaves no consumer of
         # the xtables-lock grant; revoke it (service already stopped,
@@ -16542,10 +16585,26 @@ remove_owned_core_family() {
 
 remove_all_owned_core_families() {
     # $1 force_heal forwarded to each family (1 = menu 17 / full uninstall only).
-    local force_heal="${1:-0}" failed=0
+    local force_heal="${1:-0}" failed=0 _hy2_hop_ok=1
     remove_owned_core_family xray "$force_heal" || failed=1
     remove_owned_core_family sing-box "$force_heal" || failed=1
-    remove_owned_core_family hysteria "$force_heal" || failed=1
+    # L3 (2026-11-27, menu-17 follow-up): a hysteria family removed
+    # here never passes through _remove_hy2_official, so reclaim its
+    # official-hop NAT rules here, after the caller's stop and before
+    # the family removal (same cleanup-first ordering as the prune
+    # hook: a failure leaves the unit/config/identity in place for a
+    # retry and fails the uninstall instead of reporting success over
+    # a residue). Only an A-Box-owned (or config-only) hysteria is
+    # cleaned: a foreign install's rules are not ours, and an absent
+    # install has no resolvable hop identity.
+    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+        remove_hy2_official_hop_rules || _hy2_hop_ok=0
+    fi
+    if (( _hy2_hop_ok == 1 )); then
+        remove_owned_core_family hysteria "$force_heal" || failed=1
+    else
+        failed=1
+    fi
     remove_owned_core_family xray-latest "$force_heal" || failed=1
     (( failed == 0 ))
 }
@@ -16560,6 +16619,21 @@ remove_owned_core_families_for_restore() {
     for srv in xray sing-box hysteria; do
         if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
             continue
+        fi
+        # L3 (2026-11-27, menu-17 follow-up): same as the prune hook
+        # and remove_all_owned_core_families -- a hysteria family
+        # removed here never passes through _remove_hy2_official, so
+        # reclaim its official-hop NAT rules after the caller's stop
+        # and before the family removal, for hysteria only. A failure
+        # skips this family's removal (unit/config/identity stay for
+        # a retry) and fails the restore instead of reporting success
+        # over a residue. The config-only skip above already ran, so
+        # a preserved live family never reaches this cleanup.
+        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+            if ! remove_hy2_official_hop_rules; then
+                failed=1
+                continue
+            fi
         fi
         remove_owned_core_family "$srv" 0 1 || failed=1
     done
@@ -26312,6 +26386,24 @@ _xrc_restore_divergence_check() {
     return 0
 }
 
+# L6: an outstanding users_sync post-commit cleanup todo for the xray
+# core means the published desired file (and/or the .env port set) may
+# still describe the pre-deletion state: the deletion is committed to
+# the live config, but its tail (publish desired, reconcile ports) has
+# not landed yet. While such a todo exists, neither the desired file
+# nor any backup may be adopted as a recovery source: a backup that
+# covers the stale .env ports would resurrect the deleted inbound
+# just as surely as the stale desired file. rc 0 = a todo is pending.
+_xrc_cleanup_todo_pending() {
+    local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f=''
+    [[ -d "$_dir" ]] || return 1
+    for _f in "$_dir"/*.cleanup-pending; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        grep -q '"core"[[:space:]]*:[[:space:]]*"xray"' "$_f" 2>/dev/null && return 0
+    done
+    return 1
+}
+
 # W2-FAIL-1: decide whether the published desired config may serve as
 # the auto-recovery source. $1 = work file to stage the candidate into.
 # The file is trusted only when it is a root-owned 0600 regular file
@@ -26328,6 +26420,9 @@ _xrc_desired_config_usable() {
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     [[ -n "$dest" ]] || return 1
+    # L6: a pending xray cleanup todo means the desired file may still
+    # be the pre-deletion one; never adopt it until the todo clears.
+    _xrc_cleanup_todo_pending && return 1
     src=$(_xrc_desired_config_path) || return 1
     [[ -f "$src" && ! -L "$src" && -r "$src" ]] || return 1
     [[ "$(stat -c %u:%g "$src" 2>/dev/null || true)" == '0:0' ]] || return 1
@@ -26377,6 +26472,11 @@ xray_config_autorecover() {
     # is an error, never a cue to fall back to the legacy file.
     _desired=$(get_desired_state 2>/dev/null) || return 2
     [[ "$_desired" == 'RUNNING' ]] || return 2
+    # L6: a pending xray cleanup todo means the desired file and the
+    # .env port set may still describe the pre-deletion state. Return
+    # inconclusive (rc 2) instead of restoring from either source; the
+    # guard completes the todo, and the next probe cycle may recover.
+    _xrc_cleanup_todo_pending && return 2
     # Offline config test (bounded). rc 23 = xray "Failed to start", the
     # only confirmed config fault (measured on real xray v26.7.28 and
     # v26.10.21: malformed JSON, unknown protocol, wrong type, empty and
@@ -26757,6 +26857,13 @@ PY_XRC_ENUM
 }
 
 setup_health_monitor() {
+    # L8: optional 'scripts-only' mode for restore: write the probe
+    # script but install no cron block. The restore path installs all
+    # four blocks in one merge from the backup (see
+    # restore_abox_cron_from_backup). Direct callers pass no argument
+    # and keep the old install behaviour.
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
     msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
@@ -27331,7 +27438,7 @@ failed_srv=''
 service_active_owned "$MAIN_SRV" || failed_srv="$MAIN_SRV"
 MAIN_PID=${SERVICE_PID:-}
 HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
-# H-probe (2026-11-27): Hy2 is a sidecar of xray+ALL only while its
+# H-probe (2026-11-27): Hy2 is a sidecar of xray while its
 # A-Box-managed unit exists. MODE stays ALL after Hy2 is deleted, so
 # demanding hysteria on MODE alone reports a deleted service failed
 # every minute (STATE churn + futile restart-gate trips). The unit
@@ -27340,12 +27447,16 @@ HY2_SRV="$MAIN_SRV"; HY2_PID="$MAIN_PID"
 # _remove_hy2_official), while the .env HY2_* keys are only a proxy
 # (B-leg clears them on delete, and O-1 shows HY2_BASE_PORT can be
 # cleared while Hy2 still lives). A managed-but-dead hysteria is
-# still reported (negative control). Downstream Hy2 branches (hop
-# firewall, HY2_MONITOR_PORT socket) are gated the same way by
-# H2-probe below: the supported delete path clears those keys with
-# the unit, but a failed cleanup leaves them stale and the branches
-# would otherwise blame a healthy xray (T5b).
-if [[ "$CORE" == xray && "$MODE" == *ALL* ]] && service_is_abox_managed hysteria; then
+# still reported (negative control). MODE only describes deployment
+# intent: it must not overrule the unit file, so the gate below is a
+# pure unit check, aligned with the H2-probe gate — a managed unit
+# present under a non-ALL MODE (hand-edited .env, interrupted
+# redeploy, partial restore) is still the sidecar this probe owns.
+# Downstream Hy2 branches (hop firewall, HY2_MONITOR_PORT socket) are
+# gated the same way by H2-probe below: the supported delete path
+# clears those keys with the unit, but a failed cleanup leaves them
+# stale and the branches would otherwise blame a healthy xray (T5b).
+if [[ "$CORE" == xray ]] && service_is_abox_managed hysteria; then
     if [[ -z "$failed_srv" ]]; then service_active_owned hysteria || failed_srv=hysteria; fi
     HY2_SRV=hysteria; HY2_PID=${SERVICE_PID:-}
 fi
@@ -27436,13 +27547,24 @@ EOF_PROBE
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
-    install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    fi
 }
 
 setup_geo_cron() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_geo_cron_flock_missing)"
     if ! abox_owns_service xray; then
-        remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        # L8: in 'scripts-only' mode the cron block is owned by the
+        # restore merge; only the helper script is removed here.
+        if (( _l8_scripts_only == 0 )); then
+            remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        fi
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
@@ -28078,7 +28200,11 @@ EOF_GEO
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
     chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
-    install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    fi
 }
 
 # C2 (fix2c): single canonical top-level is_systemd + xray_owned.
@@ -30059,6 +30185,75 @@ rollback_restart_services_from_backup() {
     return 1
 }
 
+# L8: inventory of A-Box residue left behind by an aborted rollback.
+# Prints one line per item (cron blocks present, jail/filter files,
+# loaded A-Box jails, fail2ban running state). Never fails (rc 0); an
+# unqueryable source is reported as unknown, never guessed.
+rollback_residual_inventory() {
+    local _blocks='' _f='' _loaded=''
+    _blocks=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 | paste -sd, - 2>/dev/null || true)
+    printf 'cron blocks present: %s\n' "${_blocks:-none}"
+    for _f in /etc/fail2ban/jail.d/A-Box.local /etc/fail2ban/filter.d/A-Box.conf; do
+        if [[ -e "$_f" || -L "$_f" ]]; then printf 'file present: %s\n' "$_f"; else printf 'file absent: %s\n' "$_f"; fi
+    done
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if fail2ban_service_running 2>/dev/null; then
+            _loaded=$(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | paste -sd, - || true)
+            printf 'fail2ban running; loaded A-Box jails: %s\n' "${_loaded:-none}"
+        else
+            printf 'fail2ban not running\n'
+        fi
+    else
+        printf 'fail2ban not installed\n'
+    fi
+    return 0
+}
+
+# L8: unified abort exit for deployment_transaction_rollback_inner.
+# Records WHICH stage the rollback reached and the residual inventory
+# in the rollback state file, and reports both; preserves the caller's
+# rc. This function deletes nothing: the default abort policy is to
+# KEEP the running state and report, never to clean up silently (see
+# _rollback_abort_cron_best_effort for the single narrow exception).
+_rollback_record_abort() {
+    local _stage="${1:-unknown}" _rc="${2:-1}"
+    {
+        printf 'abort-stage: %s\n' "$_stage"
+        printf 'abort-rc: %s\n' "$_rc"
+        rollback_residual_inventory
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    msg "${RED}[!] Rollback aborted at stage: ${_stage} (rc=${_rc}). Residual A-Box state was preserved; inventory:${NC}" >&2
+    rollback_residual_inventory >&2 || true
+    return "$_rc"
+}
+
+# L8: narrow best-effort cron cleanup for abort exits AFTER the backup
+# was verified. Only removes a block when the VERIFIED backup's cron
+# proves it absent there (so it was created by this transaction) AND
+# it is present now. Never touches fail2ban files or loaded jails on
+# abort paths, and never runs when pre-verification failed (an
+# untrusted backup must not decide deletions). Failures are ignored.
+_rollback_abort_cron_best_effort() {
+    local _pinned_dir="${1:-}" _cron='' _name _known _bare_found _present_now
+    [[ -n "$_pinned_dir" ]] || return 0
+    _cron="$_pinned_dir/meta/cron.abox.txt"
+    [[ -f "$_cron" && ! -L "$_cron" ]] || return 0
+    validate_abox_cron_file "$_cron" 2>/dev/null || return 0
+    _present_now=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 || true)
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        grep -Fq "# A-Box ${_name} BEGIN" "$_cron" 2>/dev/null && continue
+        _bare_found=0
+        while IFS= read -r _known || [[ -n "$_known" ]]; do
+            if grep -Fxq "$_known" "$_cron" 2>/dev/null; then _bare_found=1; break; fi
+        done < <(_abox_cron_block_known_lines "$_name")
+        (( _bare_found == 1 )) && continue
+        grep -Fxq "$_name" <<< "$_present_now" || continue
+        remove_abox_cron_block "$_name" >/dev/null 2>&1 || true
+        msg "[!] Rollback abort: removed ${_name} cron block created by this transaction (absent from the verified backup)." >&2
+    done
+    return 0
+}
+
 deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
     # B-C2: land a rollback state file FIRST, so a later inspection can
@@ -30096,12 +30291,14 @@ deployment_transaction_rollback_inner() {
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
+            _rollback_record_abort 'retained-bundle' 1
             return 1
         fi
         ABOX_VERIFY_PINNED_WORK=''
     fi
     if ! verify_backup_restorable "$backup" "$tx_key_file" 1; then
         msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        _rollback_record_abort 'pre-verify' 1
         return 1
     fi
 
@@ -30111,9 +30308,17 @@ deployment_transaction_rollback_inner() {
     # deletes it.
     local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
     local _pinned_archive="$_pinned_dir/$(basename "$backup")"
-    [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || { msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2; return 1; }
+    if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
+        :
+    else
+        msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
+        _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'stop-services' 1
         return 1
     fi
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -30121,6 +30326,8 @@ deployment_transaction_rollback_inner() {
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
     if (( cleanup_failed != 0 )); then
         msg "${RED}[!] Rollback aborted before removing core files: firewall cleanup could not be verified. Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_abort_cron_best_effort "$_pinned_dir"
+        _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
 
@@ -30130,6 +30337,8 @@ deployment_transaction_rollback_inner() {
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then
             msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery bundle retained: $_pinned_archive${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
     done
@@ -30137,24 +30346,28 @@ deployment_transaction_rollback_inner() {
     if [[ -n "$tx_key_file" ]]; then
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive" "$tx_key_file"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     else
         if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            _rollback_abort_cron_best_effort "$_pinned_dir"
+            _rollback_record_abort 'restore' 1
             rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     fi
-    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; return 1; }
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
-        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; return 1; }
+        rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
     fi
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
-        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; return 1; }
+        rm -rf -- "$tx_ephemeral_dir" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $tx_ephemeral_dir${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
     fi
     ABOX_DEPLOY_TX_TARGETS=''
     ABOX_DEPLOY_TX_REASON=''
@@ -30168,6 +30381,7 @@ deployment_transaction_rollback_inner() {
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
     standalone_preserve_cleanup
+    printf '%s\n' 'rollback: complete' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     return 0
 }
 
@@ -36563,7 +36777,7 @@ _xl_legacy_retire_coexist() {
     local _udir="${ABOX_USERS_DIR:-$_abox_dir/users.d}"
     # 1. Authorisation.
     if [[ "${ABOX_LEGACY_XL_RETIRE:-0}" != '1' ]]; then
-        [[ -t 0 ]] || { msg "${RED}[!] Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.${NC}" >&2; return 1; }
+        [[ -t 0 ]] || { msg "${RED}[!] $(tr_msg legacy_xl_retire_noninteractive)${NC}" >&2; return 1; }
         printf '%s' "$(tr_msg legacy_xl_retire_prompt)" || return 1
         IFS= read -r _ans || return 1
         case "$_ans" in y|Y|yes|YES) : ;; *) msg "${YELLOW}[!] Retire cancelled; xray-latest instance left untouched.${NC}" >&2; return 1 ;; esac
@@ -37351,6 +37565,20 @@ EOF_SVC
     # preserved TUIC keeps its certs. Best-effort: a cleanup failure
     # must not fail the deploy.
     _singbox_cleanup_tuic_certs_when_none_remain || true
+    # L4 (leftover 20261126): same gap as TUIC above, for the Hy2
+    # pair -- an overwrite redeploy rebuilds the config from scratch,
+    # so a removed Hy2 inbound leaves /etc/sing-box/hy2.crt|key
+    # behind. The helper re-checks the live config (incl. any
+    # preserved standalone inbounds) and deletes the pair only when
+    # no hysteria2 inbound remains; a preserved Hy2 keeps its certs.
+    # Deleted paths are handed to _manifest_drop_paths here (the
+    # helper reports, the caller registers). Best-effort, like TUIC:
+    # a cleanup failure must not fail the deploy.
+    local -a _dp_hy2_deleted=()
+    _singbox_cleanup_hy2_certs_when_none_remain _dp_hy2_deleted || true
+    if (( ${#_dp_hy2_deleted[@]} > 0 )); then
+        _manifest_drop_paths "${_dp_hy2_deleted[@]}" || true
+    fi
     setup_geo_cron
     commit_deployment_transaction
     # R27-H-NF-06 (M-6): snapshot the just-deployed config so the
@@ -37448,6 +37676,9 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_flock_missing)${NC}" >&2; return 1; }
     # R9-03: a retired xray-latest coexist instance is outside the managed
     # core set and would never be stopped by a quota block. Refuse to
@@ -38629,7 +38860,11 @@ EOF_TRAFFIC
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_quota_snapshot_failed)${NC}" >&2; return 1; }
     local _tm_script="$ABOX_DIR/traffic_monitor.sh"
     if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_single_quote "$_tm_script"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    fi
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_snapshot_failed)${NC}" >&2; return 1; }
 }
 
@@ -40742,7 +40977,10 @@ sync_env_ports_after_removal() {
     # of the VAR'S OWN protocol remains (e.g. VLESS_PORT survives on
     # an xray/sing-box Vision inbound, never on a Hy2 listener).
     # HY2 hop-range vars are not listener ports and are out of scope
-    # here.
+    # here. O-1 exception: HY2_BASE_PORT is likewise not a listener
+    # port while official hop is on (the listen spec is the hop
+    # range), so a live hop range keeps it -- see the O-1 block in
+    # the var loop below.
     local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _live_vless=() _live_xhttp=() _live_ss=() _live_socks=() _live_trojan=() _live_hy2=()
@@ -40890,6 +41128,25 @@ sync_env_ports_after_removal() {
             done
             (( _keep == 1 )) && break
         done
+        # O-1 (2026-11-27): HY2_BASE_PORT is not a listener port while
+        # official hop is on. Deploy writes the official listen spec
+        # as the hop range (src/07: HY2_LISTEN=":${HY2_RANGE_START}-
+        # ${HY2_RANGE_END}") while HY2_BASE_PORT keeps the prompted
+        # port (443), so the range-membership check above can never
+        # keep it: deleting Vision (also 443) cleared it and the menu
+        # showed "Hy2:?". A live range in the Hy2 live set proves Hy2
+        # still lives in hop mode, and HY2_BASE_PORT is its
+        # nominal/display port (menu Hy2:${HY2_BASE_PORT}), so keep it
+        # then. Only a range keeps it this way: a single-port listener
+        # still needs the exact/range match above, so a stale
+        # HY2_BASE_PORT with no listener behind it still clears, and
+        # with no live Hy2 at all (_live_hy2 empty) it still clears
+        # on Hy2 delete.
+        if [[ "$var" == 'HY2_BASE_PORT' && "$_keep" == 0 ]]; then
+            for _lp in "${live_ports[@]}"; do
+                if [[ "$_lp" =~ ^[0-9]+-[0-9]+$ ]]; then _keep=1; break; fi
+            done
+        fi
         (( _keep == 1 )) && continue
         if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1
@@ -40930,18 +41187,31 @@ _clear_hy2_nonport_env_vars() {
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     local _hy2cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}"
     local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _stripped='' _jq_rc=0 _key='' _failed=0
+    local _key='' _failed=0 _sb_state=0
     # Official binary still installed -> Hy2 lives.
     [[ -e "$_hy2cfg" || -L "$_hy2cfg" ]] && return 0
     # Sing-box hysteria2 inbound still present -> Hy2 lives. A
-    # missing/empty sing-box config means no sing-box Hy2; an
-    # unreadable or unparseable one is unverifiable -> keep keys.
-    if [[ -f "$_sbcfg" && ! -L "$_sbcfg" && -s "$_sbcfg" ]]; then
-        _stripped=$(jsonc_strip_comments "$_sbcfg" 2>/dev/null) || return 0
-        [[ -n "${_stripped//[[:space:]]/}" ]] || return 0
-        printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
-        (( _jq_rc == 1 )) || return 0
-    fi
+    # missing/empty sing-box config means no sing-box Hy2 (rc 3);
+    # an unreadable or unparseable one is unverifiable -> keep keys.
+    # L4: best-effort is not swallowed diagnostics -- "kept because
+    # unverifiable" warns once per process, so it is distinguishable
+    # from "readable and cleared". The verdict comes from
+    # _singbox_hy2_inbound_state, so "valid config, no match" (rc 1)
+    # is never confused with "the query never saw the expected
+    # structure" (rc 2): a config shaped like {"inbounds": "oops"}
+    # used to clear live keys here on a bare jq rc 1.
+    _singbox_hy2_inbound_state; _sb_state=$?
+    case "$_sb_state" in
+        0) return 0 ;;
+        1|3) ;;
+        2)
+            if [[ -z "${_CLEAR_HY2_ENV_UNVERIFIABLE_WARNED:-}" ]]; then
+                _CLEAR_HY2_ENV_UNVERIFIABLE_WARNED=1
+                msg "${YELLOW}[!] Hy2 settings kept in .env: sing-box config '${_sbcfg}' is unverifiable; stale Hy2 values may remain.${NC}"
+            fi
+            return 0
+            ;;
+    esac
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for _key in HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL HY2_PASS HY2_OBFS HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END; do
         if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
@@ -40952,6 +41222,92 @@ _clear_hy2_nonport_env_vars() {
     done
     if (( _failed == 1 )); then
         msg "${YELLOW}[!] Failed to clear stale Hy2 settings from .env after removing Hysteria 2; stale values may remain.${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2 non-port
+# cleanup above to the remaining protocols' non-port .env keys.
+# verify4 saw SS_PASS survive four SS deletes: sync_env_ports_after_removal
+# only reconciles listener PORTs, so the secret stayed in .env (and
+# write_env re-emits it on every later write). Same residue class for
+# SOCKS_USER/PASS, the main UUID and the three SNI keys.
+# Gate: each key clears only when no live inbound of the protocol that
+# OWNS it remains on either core. The classification mirrors
+# sync_env_ports_after_removal (tag first, protocol/type second), so an
+# Argo vless-ws-in never keeps the main UUID and a Hy2 listener never
+# keeps a VLESS key:
+#   SS_PASS        <- any shadowsocks inbound (xray protocol; sing-box
+#                     type WITH a listen_port -- the ShadowTLS loopback
+#                     companion has none and its own password, so it
+#                     must not keep SS_PASS)
+#   SOCKS_USER/PASS <- any socks inbound (xray protocol; sing-box type
+#                     socks|mixed)
+#   UUID           <- any VLESS-family inbound (Vision or XHTTP)
+#   VISION_SNI     <- Vision only
+#   XHTTP_SNI      <- XHTTP only
+#   VLESS_SNI      <- Vision or XHTTP (it is the shared fallback both
+#                     readers use: ${VISION_SNI:-${VLESS_SNI:-}} and
+#                     ${XHTTP_SNI:-${VLESS_SNI:-}})
+# Deploy regenerates every one of these keys (UUID/SS_PASS fresh per
+# deploy, src/08; SNI re-prompted or auto-selected, src/07; SOCKS
+# landing creds are prompted fresh per landing and never read from
+# .env), so clearing cannot break a later re-deploy. Anything
+# unverifiable (missing .env, symlinked/unreadable/unparseable config)
+# keeps the keys and returns 0 (skip, mirroring
+# _clear_hy2_nonport_env_vars); only a real write failure returns 1.
+_clear_stale_nonport_env_vars() {
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+    local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+    local _stripped='' _jq_prog='' _labels='' _lab='' _key='' _failed=0
+    local _vision=0 _xhttp=0 _ss=0 _socks=0 _unverifiable=0
+    local _core='' _cfg=''
+    local -a _clear_keys=()
+    for _core in xray sing-box; do
+        if [[ "$_core" == 'xray' ]]; then
+            _cfg="$_xcfg"
+            _jq_prog='.inbounds[]? | if ((.tag // "") | test("vision")) then "VLESS" elif ((.tag // "") | test("xhttp")) then "XHTTP" elif .protocol == "shadowsocks" then "SS" elif .protocol == "socks" then "SOCKS" elif .protocol == "vless" then (if ((.streamSettings.network // "") == "xhttp") then "XHTTP" else "VLESS" end) else empty end'
+        else
+            _cfg="$_sbcfg"
+            _jq_prog='.inbounds[]? | if .type == "vless" and ((.tag // "") | test("vision")) then "VLESS" elif .type == "shadowsocks" and has("listen_port") then "SS" elif .type == "socks" or .type == "mixed" then "SOCKS" else empty end'
+        fi
+        # A symlinked config may still serve the protocol through its
+        # target: unverifiable, keep the keys. A missing config means
+        # no inbounds on this core; an existing non-regular or empty
+        # file is damage, not absence: unverifiable as well.
+        if [[ -L "$_cfg" ]]; then _unverifiable=1; continue; fi
+        [[ -e "$_cfg" ]] || continue
+        if [[ ! -f "$_cfg" || ! -s "$_cfg" ]]; then _unverifiable=1; continue; fi
+        _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || { _unverifiable=1; continue; }
+        [[ -n "${_stripped//[[:space:]]/}" ]] || { _unverifiable=1; continue; }
+        _labels=$(printf '%s' "$_stripped" | jq -r "$_jq_prog" 2>/dev/null) || { _unverifiable=1; continue; }
+        while IFS= read -r _lab; do
+            case "$_lab" in
+                VLESS) _vision=1 ;;
+                XHTTP) _xhttp=1 ;;
+                SS) _ss=1 ;;
+                SOCKS) _socks=1 ;;
+            esac
+        done <<< "$_labels"
+    done
+    (( _unverifiable == 0 )) || return 0
+    [[ -f "$envf" && ! -L "$envf" ]] || return 0
+    if (( _ss == 0 )); then _clear_keys+=(SS_PASS); fi
+    if (( _socks == 0 )); then _clear_keys+=(SOCKS_USER SOCKS_PASS); fi
+    if (( _vision == 0 )); then _clear_keys+=(VISION_SNI); fi
+    if (( _xhttp == 0 )); then _clear_keys+=(XHTTP_SNI); fi
+    if (( _vision == 0 && _xhttp == 0 )); then _clear_keys+=(UUID VLESS_SNI); fi
+    for _key in "${_clear_keys[@]}"; do
+        if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
+            _failed=1
+            continue
+        fi
+        unset "$_key" 2>/dev/null || true
+    done
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Failed to clear stale protocol settings from .env after removing protocol(s); stale values may remain.${NC}"
         return 1
     fi
     return 0
@@ -41131,6 +41487,103 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
     return 0
 }
 
+# L4 (leftover 20261126): tri-state answer to "does the live sing-box
+# config still serve a hysteria2 inbound?" -- the single place that
+# decides it, so the cert cleanup, the .env cleanup and the Clash
+# publisher cannot drift apart.
+#   rc 0 = a hysteria2 inbound is confirmed present (Hy2 lives)
+#   rc 1 = the config is valid and has no hysteria2 inbound
+#   rc 2 = unverifiable (symlink, non-regular, strip failure,
+#          empty-after-strip, bad structure, jq failure) -- callers
+#          must keep files/keys and must not publish
+#   rc 3 = no config file at all, or an empty regular file: no
+#          inbound can exist, but nothing was verified either
+# The structure gate matters: a bare `jq ... || rc=$?; (( rc == 1 ))`
+# read treats "the query never saw the expected shape" (top level not
+# an object, .inbounds not an array) exactly like "valid config, no
+# match" (rc 1). A config shaped like {"inbounds": "oops"} would then
+# delete a live cert or clear live .env keys. Only a validated shape
+# may report rc 1 (same gate as _standalone_link_survivor).
+_singbox_hy2_inbound_state() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _stripped='' _jq_rc=0
+    [[ -L "$_cfg" ]] && return 2
+    [[ -e "$_cfg" ]] || return 3
+    [[ -f "$_cfg" ]] || return 2
+    [[ -s "$_cfg" ]] || return 3
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e 'if length != 1 then error("config is not a single JSON document") elif (.[0] | type) != "object" then error("config top level is not an object") elif (.[0] | has("inbounds")) and ((.[0].inbounds | type) != "array") then error("config inbounds is not an array") else true end' >/dev/null 2>&1 || return 2
+    printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# L4 (leftover 20261126): delete the script-managed sing-box Hy2
+# cert/key pair (/etc/sing-box/hy2.crt|key, fixed paths, single pair)
+# once no hysteria2 inbound remains in the live config. Mirror of
+# _singbox_cleanup_tuic_certs_when_none_remain, extracted from the
+# SYD-B E16 block in _protocol_removed_side_effects so the deploy tail
+# and the clear-all backstop can reuse the same verdict.
+# Contract (GPT L4 item 2): the helper NEVER touches the manifest
+# itself. It reports what it actually deleted through the caller's
+# array named by $1 (optional; nameref, bash 4.3+ as in _tsv_split);
+# the caller merges those paths into its own _deleted list or hands
+# them to _manifest_drop_paths. Paths are never mixed into stdout:
+# stdout stays log-only (warnings); the array is the channel.
+# Partial success is a first-class outcome: a file that was deleted
+# is reported (its manifest row must go); a file whose rm failed
+# stays on disk, stays out of the array, and is warned about.
+# Fail-closed, like E16 and _singbox_cert_referenced: an unverifiable
+# config, a surviving reference from ANY protocol, a symlink, or a
+# missing config all keep the files. An unverifiable config warns
+# once per process (locatable, rate-limited) and never prints a
+# password or a private key -- only the config and cert paths.
+# Always returns 0 (best-effort, like the TUIC helper): callers in
+# deploy/clear-all must not fail over it; E16's caller reads the
+# returned array instead of the return code.
+_singbox_cleanup_hy2_certs_when_none_remain() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _state=0 _f=''
+    local -a _hy2c_removed=()
+    _singbox_hy2_inbound_state; _state=$?
+    case "$_state" in
+        1) ;;
+        0) return 0 ;;
+        2)
+            # Warn once, and only when there is actually a pair to
+            # keep: a fresh box with no certs and a briefly
+            # unreadable config is not a finding.
+            if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] || [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
+                if [[ -z "${_SINGBOX_HY2_UNVERIFIABLE_WARNED:-}" ]]; then
+                    _SINGBOX_HY2_UNVERIFIABLE_WARNED=1
+                    msg "${YELLOW}[!] Hy2 certificate cleanup skipped: sing-box config '${_cfg}' is unverifiable; keeping /etc/sing-box/hy2.crt and /etc/sing-box/hy2.key.${NC}"
+                fi
+            fi
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+    for _f in /etc/sing-box/hy2.crt /etc/sing-box/hy2.key; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        # R38-H2 / 05f-H-05f-02: keep when ANY inbound of any
+        # protocol still references this file.
+        _singbox_cert_referenced "$_cfg" "$_f" && continue
+        rm -f -- "$_f" 2>/dev/null || true
+        if [[ -e "$_f" ]]; then
+            msg "${YELLOW}[!] Failed to delete stale Hy2 certificate file '$_f' after the last Hysteria 2 inbound was removed; the file remains on disk.${NC}"
+        else
+            _hy2c_removed+=("$_f")
+        fi
+    done
+    if [[ -n "${1:-}" && "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        local -n _hy2c_out="$1"
+        _hy2c_out=("${_hy2c_removed[@]}")
+    fi
+    return 0
+}
+
 # M-12(1): the per-tag TUIC cert filename suffix (same construction as
 # the TUIC deployer): sanitized tag + first 8 hex of its sha256.
 tuic_cert_tag() {
@@ -41173,7 +41626,17 @@ remove_hy2_hop_nat_rules() {
                 continue
             fi
         fi
-        _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -j REDIRECT --to-ports "$_base")
+        _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$_base")
+        # L3 (2026-11-27): the spec MUST be the full install-time
+        # spec, including `-m comment --comment A-Box-HY2-HOP`.
+        # iptables -C/-D is exact-match, not subset-match: a
+        # comment-less spec never matches the commented rule the
+        # unit installs (verified in a real netns on S1: comment-less
+        # -C rc=1, full-spec -C rc=0), so the old spec silently
+        # deleted a same-port UNCOMMENTED rule if one existed while
+        # leaving the owned one behind, and still returned 0. No
+        # comment-less install shape exists in git history, so no
+        # fallback is needed.
         # 05e2-M4: tri-state -C (same contract as
         # iptables_rule_check): 0 = present, 1 = absent, anything
         # else = query error, which must fail, never read as absent.
@@ -41187,6 +41650,769 @@ remove_hy2_hop_nat_rules() {
         done
     done
     (( _failed == 0 ))
+}
+
+# L3 (2026-11-27): official-Hy2 hop NAT reclaim.
+#
+# The hysteria binary (not A-Box) builds hop rules at startup
+# (HyNetworks/hysteria app/v2.14.0, app/internal/firewall/
+# firewall_linux.go, verified against the pinned tag):
+#   nft: table <ip|ip6> hysteria_<sha256("nft|"+fam+"|"+IP+"|"+
+#        port+"|"+union)[:8]>, chains prerouting/output
+#        (type nat hook <same> priority -100), one rule per chain
+#        per redirect range (first+1..end).
+#   iptables (no nft): chain HYSTERIA-PR-<sha256(bin+"|"+IP+"|"+
+#        port+"|"+union)[:8]> in nat, one REDIRECT/DNAT target rule,
+#        plus -j jumps from PREROUTING/OUTPUT.
+# The binary only removes them on graceful exit; A-Box's own SIGKILL
+# paths (residual kill, stop timeout, crash/OOM) leave them behind,
+# and no A-Box code ever deleted them.
+#
+# Deletion policy (GPT-arbitrated, parent order):
+#  * B is the main path: recompute the exact names from the
+#    instance's own listen parameters and delete ONLY objects
+#    whose full content matches what upstream generates for those
+#    parameters (family, bind scope, chains/hooks, the complete
+#    expected rule set, no extras, no unknown references).
+#    A hash proves parameter identity, not creator identity; a
+#    same-named object with ANY unexpected content is refused.
+#    An object with no rules at all is deletable: it moves no
+#    traffic and references nothing (a partial-cleanup leftover).
+#  * A (enumeration) is only a discovery step: other hysteria_*
+#    tables / HYSTERIA-PR-* chains are reported as suspected
+#    leftovers, never auto-deleted. A-Box keeps no trusted history
+#    of past hop identities, so nothing else is recomputable.
+#  * Negative verification is per object (absent / present /
+#    inspection-failed), never a reused health check: an empty
+#    chain, a single leftover jump, or one backend clean while
+#    the other still holds residue must all be reported.
+#  * The identity comes from the config the binary actually
+#    started with (/etc/hysteria/config.yaml listen:), cross-
+#    checked against the .env hop values. The .env values are a
+#    proxy (they can go stale while the service lives); a
+#    conflict is never resolved by preferring the environment --
+#    it fails closed with both values reported. A confirmed
+#    single-port / hop-off instance is a no-op success, distinct
+#    from "configuration lost, hop state unknown", which fails.
+#  * Deletion runs after the service is confirmed stopped with
+#    no residual process, and BEFORE the unit, config and
+#    credentials are deleted, so a failure leaves everything in
+#    place for a retry through the same entry points (cleanup-
+#    first ordering is the retry mechanism; no persisted cleanup
+#    record is needed). clean_nat_rules, the minute probe, the
+#    desired-state file and the 24h guards are untouched.
+#
+# Canonical-output notes (all verified on real S1, iptables
+# 1.8.10/nf_tables; the sandbox cannot add rules at all):
+#  * `iptables -S` prints `-p udp` first, inserts `-m udp`
+#    before --dport, and prints -d as IP/32 (v4) or IP/128 (v6);
+#    target rules carry no -m udp. Comparison therefore
+#    normalizes listed lines (drop `-m udp`, strip host masks,
+#    sort tokens) and compares against the same normalization
+#    of the expected add-order line; deletion replays the exact
+#    listed line (-A -> -D), never a reconstructed spec.
+#  * `nft list ruleset` prints the base-chain priority as the
+#    name `dstnat`, never the numeric -100 the binary passes in.
+#    Both spellings are accepted. `# Warning:` diagnostics for
+#    iptables-nft tables are skipped, not treated as content.
+#  * `iptables -C/-D` is exact-match, not subset-match: see the
+#    M-12(1) note on remove_hy2_hop_nat_rules above.
+
+# sha256, first 8 hex chars. rc 1 when sha256sum is unavailable.
+_hy2hop_sha8() {
+    local _in="$1" _sum=''
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    _sum=$(printf '%s' "$_in" | sha256sum 2>/dev/null | cut -d' ' -f1) || return 1
+    [[ "$_sum" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s' "${_sum:0:8}"
+}
+
+# Normalize a listen host for the upstream hash input: the Go
+# net.IP.String() form, or "<nil>" for an empty (wildcard) host.
+# Prints the form; rc 1 when it cannot be determined exactly.
+# IPv4 is validated in bash (Go rejects leading-zero octets);
+# IPv6 needs python3 for Go-identical compression (a mapped
+# ::ffff:a.b.c.d collapses to the dotted quad, like Go's To4).
+_hy2hop_norm_ip() {
+    local _ip="$1" _o='' _i=''
+    [[ -n "$_ip" ]] || { printf '<nil>'; return 0; }
+    [[ "$_ip" != *%* ]] || return 1
+    if [[ "$_ip" != *:* ]]; then
+        [[ "$_ip" =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || return 1
+        for _o in ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}; do
+            (( 10#$_o <= 255 )) || return 1
+        done
+        printf '%s' "$_ip"
+        return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || return 1
+    _i=$(python3 -I -c 'import ipaddress,sys; ip=ipaddress.ip_address(sys.argv[1]); m=getattr(ip,"ipv4_mapped",None); print(m if m is not None else ip)' "$_ip" 2>/dev/null) || return 1
+    [[ -n "$_i" ]] || return 1
+    printf '%s' "$_i"
+}
+
+# Parse a hysteria listen value (":20000-25000", "1.2.3.4:20000",
+# "[2001:db8::1]:20000-25000") into _HY2HOP_* globals.
+# Only a single port or a single range is accepted (A-Box never
+# writes comma unions; anything else fails closed).
+# rc 0 = parsed, 1 = unparseable.
+# Globals: _HY2HOP_IP ("" = wildcard), _HY2HOP_IPSTR (hash input
+# form, "<nil>" for wildcard), _HY2HOP_IS6, _HY2HOP_UNSPEC,
+# _HY2HOP_FIRST, _HY2HOP_START, _HY2HOP_END, _HY2HOP_UNION,
+# _HY2HOP_HOP (1 = a redirect range exists).
+_hy2hop_parse_listen() {
+    local _v="$1" _host='' _pspec='' _s='' _e='' _ipstr=''
+    if [[ "$_v" =~ ^\[([^\]]+)\]:([0-9]+(-[0-9]+)?)$ ]]; then
+        _host="${BASH_REMATCH[1]}"; _pspec="${BASH_REMATCH[2]}"
+    elif [[ "$_v" =~ ^([^:]*):([0-9]+(-[0-9]+)?)$ ]]; then
+        _host="${BASH_REMATCH[1]}"; _pspec="${BASH_REMATCH[2]}"
+    else
+        return 1
+    fi
+    if [[ "$_pspec" == *-* ]]; then
+        _s="${_pspec%%-*}"; _e="${_pspec##*-}"
+    else
+        _s="$_pspec"; _e="$_pspec"
+    fi
+    [[ "$_s" =~ ^[0-9]+$ && "$_e" =~ ^[0-9]+$ ]] || return 1
+    (( 10#$_s >= 1 && 10#$_e <= 65535 && 10#$_s <= 10#$_e )) || return 1
+    _s=$((10#$_s)); _e=$((10#$_e))
+    _ipstr=$(_hy2hop_norm_ip "$_host") || return 1
+    _HY2HOP_IP=''
+    [[ "$_ipstr" == '<nil>' ]] || _HY2HOP_IP="$_ipstr"
+    _HY2HOP_IPSTR="$_ipstr"
+    _HY2HOP_IS6=0; [[ "$_ipstr" == *:* ]] && _HY2HOP_IS6=1
+    _HY2HOP_UNSPEC=0
+    if [[ "$_ipstr" == '<nil>' || "$_ipstr" == '0.0.0.0' || "$_ipstr" == '::' ]]; then _HY2HOP_UNSPEC=1; fi
+    _HY2HOP_FIRST="$_s"; _HY2HOP_START="$_s"; _HY2HOP_END="$_e"
+    if (( _s == _e )); then _HY2HOP_UNION="$_s"; else _HY2HOP_UNION="$_s-$_e"; fi
+    _HY2HOP_HOP=0; (( _s < _e )) && _HY2HOP_HOP=1
+    return 0
+}
+
+# Read the top-level `listen:` value from the hysteria config.
+# Prints the bare value. rc 0 = value printed, 1 = no config file,
+# 2 = config present but no (parseable) top-level listen line.
+# Only a column-0 `listen:` counts: a nested listen (e.g. under
+# trafficStats) is a different listener, not the UDP hop listen.
+_hy2hop_read_config_listen() {
+    local _cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" _line='' _val='' _q=''
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    _line=$(grep -E '^listen:' "$_cfg" 2>/dev/null | head -1) || return 2
+    [[ -n "$_line" ]] || return 2
+    _val="${_line#*:}"
+    _val="${_val#"${_val%%[![:space:]]*}"}"
+    _val="${_val%"${_val##*[![:space:]]}"}"
+    [[ -n "$_val" ]] || return 2
+    _q="${_val:0:1}"
+    if [[ "$_q" == '"' || "$_q" == "'" ]]; then
+        _val="${_val:1}"
+        _val="${_val%%"$_q"*}"
+    else
+        _val="${_val%%#*}"
+        _val="${_val%"${_val##*[![:space:]]}"}"
+    fi
+    [[ -n "$_val" ]] || return 2
+    printf '%s' "$_val"
+}
+
+# Resolve this instance's hop identity. Sets _HY2HOP_* (see
+# _hy2hop_parse_listen) plus _HY2HOP_SOURCE (config|env|both).
+# Prints the reason on failure. rc 0 = resolved (HOP 1 = hop rules
+# may exist, HOP 0 = confirmed no-hop), 1 = conflict / unknown.
+# The config listen is authoritative: it is what the binary read
+# at startup (HY2_HOP_IMPL is not consulted: the official binary
+# builds hop rules from its listen value alone). The .env hop
+# values are only a cross-check; a disagreement fails closed --
+# never resolved by preferring the environment (nor by silently
+# preferring the config when the environment positively
+# disagrees). A missing config falls back to a complete,
+# self-consistent .env record (the retry-after-partial-success
+# case); a missing config with no usable .env record is unknown.
+_hy2hop_resolve_identity() {
+    local _cfg_listen='' _cfg_rc=0 _env_ok=0 _env_off=0 _env_first=0 _env_start=0 _env_end=0
+    _cfg_listen=$(_hy2hop_read_config_listen 2>/dev/null); _cfg_rc=$?
+    if (( _cfg_rc == 2 )); then
+        msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: the hysteria config has no readable top-level listen value; refusing to delete firewall rules.${NC}"
+        return 1
+    fi
+    if (( _cfg_rc == 0 )) && ! _hy2hop_parse_listen "$_cfg_listen"; then
+        msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: config listen '${_cfg_listen}' is not a parseable listen value; refusing to delete firewall rules.${NC}"
+        return 1
+    fi
+    if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${HY2_MONITOR_PORT:-}" ]] &&
+       [[ "${HY2_RANGE_START:-}" =~ ^[0-9]+$ && "${HY2_RANGE_END:-}" =~ ^[0-9]+$ && "${HY2_MONITOR_PORT:-}" =~ ^[0-9]+$ ]] &&
+       (( 10#${HY2_RANGE_START} >= 1 && 10#${HY2_RANGE_END} <= 65535 && 10#${HY2_RANGE_START} <= 10#${HY2_RANGE_END} && 10#${HY2_MONITOR_PORT} == 10#${HY2_RANGE_START} )); then
+        _env_ok=1; _env_first=$((10#${HY2_MONITOR_PORT})); _env_start=$((10#${HY2_RANGE_START})); _env_end=$((10#${HY2_RANGE_END}))
+    fi
+    if [[ -n "${HY2_HOP:-}" && "${HY2_HOP:-}" != 'true' ]]; then _env_off=1; fi
+    if (( _cfg_rc == 0 )); then
+        if (( _env_ok == 1 )); then
+            if (( _env_first != _HY2HOP_FIRST || _env_start != _HY2HOP_START || _env_end != _HY2HOP_END )); then
+                msg "${YELLOW}[!] Hy2 hop identity conflict: config listen '${_cfg_listen}' vs .env range ${HY2_RANGE_START}-${HY2_RANGE_END} (monitor ${HY2_MONITOR_PORT}); refusing to delete firewall rules by either value.${NC}"
+                return 1
+            fi
+            _HY2HOP_SOURCE='both'
+        elif (( _env_off == 1 )); then
+            if (( _HY2HOP_HOP == 1 )); then
+                msg "${YELLOW}[!] Hy2 hop identity conflict: config listen '${_cfg_listen}' describes port hopping but .env says hopping is off; refusing to delete firewall rules.${NC}"
+                return 1
+            fi
+            _HY2HOP_SOURCE='both'
+        else
+            _HY2HOP_SOURCE='config'
+        fi
+    else
+        if (( _env_ok == 1 )); then
+            _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+            _HY2HOP_FIRST="$_env_first"; _HY2HOP_START="$_env_start"; _HY2HOP_END="$_env_end"
+            if (( _env_start == _env_end )); then _HY2HOP_UNION="$_env_start"; else _HY2HOP_UNION="$_env_start-$_env_end"; fi
+            _HY2HOP_HOP=0; (( _env_start < _env_end )) && _HY2HOP_HOP=1
+            _HY2HOP_SOURCE='env'
+        elif (( _env_off == 1 )); then
+            _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+            _HY2HOP_FIRST=''; _HY2HOP_START=''; _HY2HOP_END=''; _HY2HOP_UNION=''; _HY2HOP_HOP=0
+            _HY2HOP_SOURCE='env'
+        else
+            msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: no readable config and no complete .env hop record; refusing to delete firewall rules.${NC}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Expected nft rule lines for one family, from the resolved identity.
+# Prints one line per redirect rule (at most one: a single range).
+_hy2hop_nft_expected_rules() {
+    local _fam="$1" _rs=0 _re=0 _r=''
+    (( _HY2HOP_HOP == 1 )) || return 0
+    _rs=$(( _HY2HOP_START + 1 )); _re=$_HY2HOP_END
+    (( _rs <= _re )) || return 0
+    if (( _rs == _re )); then _r="$_rs"; else _r="$_rs-$_re"; fi
+    if [[ "$_fam" == 'ip6' && "$_HY2HOP_UNSPEC" == 0 && "$_HY2HOP_IS6" == 1 ]]; then
+        printf 'ip6 daddr %s udp dport %s dnat to [%s]:%s\n' "$_HY2HOP_IP" "$_r" "$_HY2HOP_IP" "$_HY2HOP_FIRST"
+    elif (( _HY2HOP_UNSPEC == 1 )); then
+        printf 'fib daddr type local udp dport %s redirect to :%s\n' "$_r" "$_HY2HOP_FIRST"
+    else
+        printf 'ip daddr %s udp dport %s redirect to :%s\n' "$_HY2HOP_IP" "$_r" "$_HY2HOP_FIRST"
+    fi
+}
+
+# Status of one nft table, from a ruleset text ($1), family ($2) and
+# table name ($3). Prints absent|match|empty|mismatch.
+# rc 0 = inspected, 1 = ruleset unusable (caller: inspection-failed).
+# match = exactly the upstream content (every expected rule in both
+# chains, no extras; duplicate identical rules are allowed -- a
+# crash-restart appends them). empty = the table exists but holds
+# no rules at all (deletable: it moves no traffic). Anything else
+# (extra chain/rule, missing expected rule, wrong hook/priority,
+# unclosed chain) is mismatch and must never be deleted.
+_hy2hop_nft_table_status() {
+    local _ruleset="$1" _fam="$2" _tbl="$3" _block='' _line='' _t='' _chain=''
+    local _chains=' ' _type_pre=0 _type_out=0 _rules_pre='' _rules_out='' _rules_total=0 _extra=0
+    local _expected='' _exp=''
+    if ! printf '%s\n' "$_ruleset" | grep -Eq "^[[:space:]]*table[[:space:]]+${_fam}[[:space:]]+${_tbl}([[:space:]]|\{)"; then
+        printf 'absent\n'; return 0
+    fi
+    _expected=$(_hy2hop_nft_expected_rules "$_fam")
+    _block=$(printf '%s\n' "$_ruleset" | awk -v fam="$_fam" -v tbl="$_tbl" '
+        function braces(s,    n, i, ch) { n=0; for (i=1; i<=length(s); i++) { ch=substr(s,i,1); if (ch=="{") n++; else if (ch=="}") n-- } return n }
+        /^[[:space:]]*#/ { next }
+        !inside {
+            if ($1=="table" && $2==fam) { nm=$3; gsub(/[{}]/, "", nm); if (nm==tbl) { inside=1; depth=braces($0) } }
+            next
+        }
+        inside {
+            depth += braces($0)
+            if (depth<=0) { inside=0; next }
+            print
+            next
+        }
+    ')
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _t="${_line#"${_line%%[![:space:]]*}"}"
+        _t="${_t%"${_t##*[![:space:]]}"}"
+        [[ -z "$_t" ]] && continue
+        [[ "$_t" == \#* ]] && continue
+        if [[ "$_t" =~ ^chain[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*\{[[:space:]]*$ ]]; then
+            [[ -n "$_chain" ]] && { _extra=1; continue; }
+            _chain="${BASH_REMATCH[1]}"
+            case "$_chain" in prerouting|output) ;; *) _extra=1 ;; esac
+            [[ "$_chains" == *" $_chain "* ]] && _extra=1
+            _chains+=" $_chain "
+            continue
+        fi
+        local _type_re='^type[[:space:]]+nat[[:space:]]+hook[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]+priority[[:space:]]+([^;[:space:]]+)[;][[:space:]]*policy[[:space:]]+accept[;][[:space:]]*$'
+        if [[ "$_t" =~ $_type_re ]]; then
+            [[ -n "$_chain" ]] || { _extra=1; continue; }
+            [[ "${BASH_REMATCH[1]}" == "$_chain" ]] || _extra=1
+            case "${BASH_REMATCH[2]}" in dstnat|-100) ;; *) _extra=1 ;; esac
+            if [[ "$_chain" == prerouting ]]; then [[ "$_type_pre" == 1 ]] && _extra=1; _type_pre=1;
+            elif [[ "$_chain" == output ]]; then [[ "$_type_out" == 1 ]] && _extra=1; _type_out=1;
+            else _extra=1; fi
+            continue
+        fi
+        if [[ "$_t" == '}' ]]; then
+            [[ -n "$_chain" ]] || { _extra=1; continue; }
+            if [[ "$_chain" == prerouting && "$_type_pre" == 0 ]]; then _extra=1; fi
+            if [[ "$_chain" == output && "$_type_out" == 0 ]]; then _extra=1; fi
+            _chain=''
+            continue
+        fi
+        [[ -n "$_chain" ]] || { _extra=1; continue; }
+        _rules_total=$(( _rules_total + 1 ))
+        if [[ "$_chain" == prerouting ]]; then _rules_pre+="$_t"$'\n'; else _rules_out+="$_t"$'\n'; fi
+    done <<< "$_block"
+    [[ -n "$_chain" ]] && _extra=1
+    if (( _extra == 1 )); then printf 'mismatch\n'; return 0; fi
+    if (( _rules_total == 0 )); then printf 'empty\n'; return 0; fi
+    while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+        [[ -z "$_exp" ]] && continue
+        grep -Fxq -- "$_exp" <<< "$_rules_pre" || { printf 'mismatch\n'; return 0; }
+        grep -Fxq -- "$_exp" <<< "$_rules_out" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_expected"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        grep -Fxq -- "$_line" <<< "$_expected" || { printf 'mismatch\n'; return 0; }
+    done <<< "${_rules_pre}${_rules_out}"
+    printf 'match\n'; return 0
+}
+
+# Normalize one `-A ...` line for comparison: drop the `-m udp`
+# pair (`iptables -S` inserts it before --dport although the rule
+# was added without it), strip /32|/128 host masks after -d, and
+# sort the tokens after the chain name (`iptables -S` reorders
+# matches: -p first, then the match extensions). The chain name
+# stays first, so a jump from a foreign chain can never compare
+# equal. Prints the normalized line; rc 1 on a malformed line.
+_hy2hop_ipt_norm_line() {
+    local _line="$1" _chain='' _tok='' _i=0 _n=0
+    local -a _toks=() _rest=() _sorted=()
+    [[ "$_line" == -A\ * ]] || return 1
+    _line="${_line#-A }"
+    read -r -a _toks <<< "$_line" || return 1
+    (( ${#_toks[@]} >= 1 )) || return 1
+    _chain="${_toks[0]}"
+    _n=${#_toks[@]}; _i=1
+    while (( _i < _n )); do
+        _tok="${_toks[_i]}"
+        if [[ "$_tok" == '-m' && $(( _i + 1 )) -lt $_n && "${_toks[_i+1]}" == 'udp' ]]; then
+            _i=$(( _i + 2 )); continue
+        fi
+        if [[ "$_tok" == '-d' && $(( _i + 1 )) -lt $_n ]]; then
+            _rest+=('-d')
+            _tok="${_toks[_i+1]}"; _tok="${_tok%/32}"; _tok="${_tok%/128}"
+            _rest+=("$_tok")
+            _i=$(( _i + 2 )); continue
+        fi
+        _rest+=("$_tok")
+        _i=$(( _i + 1 ))
+    done
+    if (( ${#_rest[@]} > 0 )); then
+        while IFS= read -r _tok; do _sorted+=("$_tok"); done < <(printf '%s\n' "${_rest[@]}" | LC_ALL=C sort)
+    fi
+    printf '%s' "$_chain"
+    for _tok in "${_sorted[@]}"; do printf ' %s' "$_tok"; done
+    printf '\n'
+}
+
+# Expected iptables target rule for $2 (chain) under binary $1,
+# normalized (see _hy2hop_ipt_norm_line). DNAT only for ip6tables
+# with a specific IPv6 listen address; everything else REDIRECTs.
+_hy2hop_ipt_expected_target() {
+    local _bin="$1" _chain="$2" _raw=''
+    if [[ "$_bin" == 'ip6tables' && "$_HY2HOP_UNSPEC" == 0 && "$_HY2HOP_IS6" == 1 ]]; then
+        _raw="-A $_chain -p udp -j DNAT --to-destination [$_HY2HOP_IP]:$_HY2HOP_FIRST"
+    else
+        _raw="-A $_chain -p udp -j REDIRECT --to-ports $_HY2HOP_FIRST"
+    fi
+    _hy2hop_ipt_norm_line "$_raw"
+}
+
+# Expected iptables jump rules for $1 (chain), normalized, one per
+# line (PREROUTING + OUTPUT). At most one redirect range exists.
+_hy2hop_ipt_expected_jumps() {
+    local _chain="$1" _rs=0 _re=0 _r='' _base='' _raw=''
+    (( _HY2HOP_HOP == 1 )) || return 0
+    _rs=$(( _HY2HOP_START + 1 )); _re=$_HY2HOP_END
+    (( _rs <= _re )) || return 0
+    if (( _rs == _re )); then _r="$_rs"; else _r="$_rs:$_re"; fi
+    for _base in PREROUTING OUTPUT; do
+        if (( _HY2HOP_UNSPEC == 1 )); then
+            _raw="-A $_base -m addrtype --dst-type LOCAL -p udp --dport $_r -j $_chain"
+        else
+            _raw="-A $_base -d $_HY2HOP_IP -p udp --dport $_r -j $_chain"
+        fi
+        _hy2hop_ipt_norm_line "$_raw"
+    done
+}
+
+# Status of one iptables chain + its jumps, from a `-t nat -S`
+# listing text ($1), binary name ($2) and chain ($3).
+# Prints absent|match|empty|dangling|mismatch. rc 0 = inspected.
+# dangling = the chain is gone but exactly-expected jumps remain
+# (deletable: they reference a nonexistent chain). match requires
+# the chain to hold exactly the expected target rule (duplicates
+# allowed) and the jumps to be exactly the expected set; empty is
+# a chain with no rules and no jumps. Any other rule in the chain,
+# any non-expected jump, or a partially-present expected set is
+# mismatch and must never be deleted.
+_hy2hop_ipt_chain_status() {
+    local _listing="$1" _bin="$2" _chain="$3" _line='' _norm='' _exp=''
+    local _has_chain=0 _chain_rules='' _jumps='' _n_chain=0 _n_jump=0
+    local _expected_target='' _expected_jumps=''
+    _expected_target=$(_hy2hop_ipt_expected_target "$_bin" "$_chain")
+    _expected_jumps=$(_hy2hop_ipt_expected_jumps "$_chain")
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        if [[ "$_line" == "-N $_chain" ]]; then _has_chain=1; continue; fi
+        [[ "$_line" == -A\ * ]] || continue
+        if [[ "$_line" == "-A $_chain "* ]]; then
+            _norm=$(_hy2hop_ipt_norm_line "$_line") || { printf 'mismatch\n'; return 0; }
+            _chain_rules+="$_norm"$'\n'; _n_chain=$(( _n_chain + 1 ))
+        elif [[ " $_line " == *' -j '"$_chain"' '* || " $_line " == *' -j '"$_chain" ]]; then
+            _norm=$(_hy2hop_ipt_norm_line "$_line") || { printf 'mismatch\n'; return 0; }
+            _jumps+="$_norm"$'\n'; _n_jump=$(( _n_jump + 1 ))
+        fi
+    done <<< "$_listing"
+    if (( _has_chain == 0 && _n_jump == 0 )); then printf 'absent\n'; return 0; fi
+    if (( _has_chain == 0 )); then
+        while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+            [[ -z "$_exp" ]] && continue
+            grep -Fxq -- "$_exp" <<< "$_jumps" || { printf 'mismatch\n'; return 0; }
+        done <<< "$_expected_jumps"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            [[ -z "$_line" ]] && continue
+            grep -Fxq -- "$_line" <<< "$_expected_jumps" || { printf 'mismatch\n'; return 0; }
+        done <<< "$_jumps"
+        printf 'dangling\n'; return 0
+    fi
+    if (( _n_chain == 0 && _n_jump == 0 )); then printf 'empty\n'; return 0; fi
+    (( _n_chain >= 1 )) || { printf 'mismatch\n'; return 0; }
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        [[ "$_line" == "$_expected_target" ]] || { printf 'mismatch\n'; return 0; }
+    done <<< "$_chain_rules"
+    while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+        [[ -z "$_exp" ]] && continue
+        grep -Fxq -- "$_exp" <<< "$_jumps" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_expected_jumps"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        grep -Fxq -- "$_line" <<< "$_expected_jumps" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_jumps"
+    printf 'match\n'; return 0
+}
+
+# Delete all jumps to $2 in $1's nat table (exact replay of the
+# listed lines), then flush + delete the chain itself when it
+# exists. Upstream cleanup order: jumps first, -F/-X last -- never
+# -F first, or a failed -X would leave a destroyed-but-present
+# chain. rc 0 = chain + jumps gone (verified by re-listing),
+# 1 = failed (a jump or the chain remains).
+_hy2hop_ipt_delete_chain() {
+    local _bin="$1" _chain="$2" _listing='' _line='' _n=0
+    local -a _argv=()
+    while (( _n < 128 )); do
+        _listing=$(_iptables_q "$_bin" -t nat -S 2>/dev/null) || return 1
+        _line=$(printf '%s\n' "$_listing" | awk -v ch="$_chain" '$1 == "-A" { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) == ch) { print; exit } }')
+        [[ -n "$_line" ]] || break
+        _line="${_line#-A }"
+        read -r -a _argv <<< "$_line" || return 1
+        _iptables_do "$_bin" -t nat -D "${_argv[@]}" >/dev/null 2>&1 || return 1
+        _n=$(( _n + 1 ))
+    done
+    _listing=$(_iptables_q "$_bin" -t nat -S 2>/dev/null) || return 1
+    if printf '%s\n' "$_listing" | awk -v ch="$_chain" '$1 == "-A" { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) == ch) { found=1 } } END { exit !found }'; then
+        return 1
+    fi
+    if printf '%s\n' "$_listing" | grep -qx -- "-N $_chain"; then
+        _iptables_do "$_bin" -t nat -F "$_chain" >/dev/null 2>&1 || return 1
+        _iptables_do "$_bin" -t nat -X "$_chain" >/dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+
+# Fetch `-t nat -S` for $1. Prints the listing. rc 0 = listing
+# printed (possibly empty), 1 = binary missing (caller: skip this
+# backend), 2 = query failed (caller: inspection-failed). A missing
+# nat table (container VPS without iptable_nat) means "no NAT
+# rules to clean", same exemption as clean_nat_rules M-14(3).
+_hy2hop_fetch_ipt_listing() {
+    local _bin="$1" _out='' _rc=0 _err=''
+    command -v "$_bin" >/dev/null 2>&1 || return 1
+    _out=$(_iptables_q "$_bin" -t nat -S 2>/dev/null); _rc=$?
+    if (( _rc != 0 )); then
+        _err=$(_iptables_q "$_bin" -t nat -S 2>&1 >/dev/null || true)
+        if printf '%s\n' "$_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool"; then
+            printf '%s' ''; return 0
+        fi
+        return 2
+    fi
+    printf '%s' "$_out"
+    return 0
+}
+
+# nft families in scope for the resolved identity, one per line.
+_hy2hop_nft_families() {
+    if (( _HY2HOP_UNSPEC == 1 )); then printf 'ip\nip6\n';
+    elif (( _HY2HOP_IS6 == 1 )); then printf 'ip6\n';
+    else printf 'ip\n'; fi
+}
+
+# iptables binaries in scope for the resolved identity, one per line.
+_hy2hop_ipt_bins() {
+    if (( _HY2HOP_UNSPEC == 1 )); then printf 'iptables\nip6tables\n';
+    elif (( _HY2HOP_IS6 == 1 )); then printf 'ip6tables\n';
+    else printf 'iptables\n'; fi
+}
+
+# Expected nft table name for $1 (family). rc 1 when the hash
+# cannot be computed (sha256sum unavailable).
+_hy2hop_nft_table() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "nft|$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'hysteria_%s' "$_h"
+}
+
+# Expected iptables chain name for $1 (binary). rc 1 when the hash
+# cannot be computed (sha256sum unavailable).
+_hy2hop_ipt_chain() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'HYSTERIA-PR-%s' "$_h"
+}
+
+# List all hysteria_* tables in a ruleset text ($1), "fam name"
+# one per line. Used only for the suspected-leftover report.
+_hy2hop_list_nft_tables() {
+    printf '%s\n' "$1" | awk '$1 == "table" && $3 ~ /^hysteria_[0-9a-fA-F]+$/ { nm=$3; gsub(/[{}]/, "", nm); print $2, nm }'
+}
+
+# List all HYSTERIA-PR-* chain names in a `-t nat -S` listing
+# text ($1), one per line (from -N lines and -j targets).
+# Used only for the suspected-leftover report.
+_hy2hop_list_ipt_chains() {
+    printf '%s\n' "$1" | awk '$1 == "-N" && $2 ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/ { print $2 } { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/) print $(i+1) }' | sort -u
+}
+
+# Reclaim the official-hop NAT rules of THIS hysteria instance.
+# rc 0 = this instance's hop objects are gone (deleted or already
+# absent; suspected leftovers of unknown ownership are only
+# reported); rc 1 = cleanup incomplete / unverifiable / refused.
+# Every failure prints its specific reason plus the summary line
+# "service is stopped, rule cleanup did not complete" -- never
+# "stop failed". Must run with the service stopped and no residual
+# process (verified again here), and BEFORE the unit, config and
+# credentials are deleted, so a failure is retryable.
+remove_hy2_official_hop_rules() {
+    local _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
+    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
+    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
+    local _listing='' _listing_ok=0 _listing_missing=0
+    local _st='' _mp='' _orc=0 _suspects='' _s='' _own_tbl='' _own_chain=''
+    # 0. Preconditions: stopped + no residual process. (The caller
+    # _remove_hy2_official already verified; the prune path only
+    # stop()s, so this guard is load-bearing there. A missing unit
+    # reports inactive/MainPID 0 via systemctl show, so a
+    # config-only residue passes here and is still guarded by
+    # the pgrep check below.)
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _st=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || { msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: cannot confirm the hysteria service is stopped.${NC}"; return 1; }
+        [[ "$_st" == inactive || "$_st" == failed ]] || { msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: the hysteria service is still ${_st}; stop it first.${NC}"; return 1; }
+        _mp=$(systemctl show -p MainPID --value hysteria 2>/dev/null || echo 0)
+        if [[ "$_mp" =~ ^[0-9]+$ ]] && (( _mp > 0 )) && [[ -d /proc/$_mp ]]; then
+            msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: hysteria process ${_mp} is still running.${NC}"; return 1
+        fi
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-service hysteria status >/dev/null 2>&1; _orc=$?
+        case "$_orc" in
+            3|16|32) : ;;
+            *) msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: the hysteria service is not stopped (rc-service status ${_orc}).${NC}"; return 1 ;;
+        esac
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then
+        msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: a hysteria process is still running.${NC}"; return 1
+    fi
+    # 1. Identity.
+    if ! _hy2hop_resolve_identity; then
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    # 2. Fetch listings once. A missing binary means that backend
+    # could not have built rules on this host (same-host deploy
+    # and delete); it is skipped as absent, not failed. A failed
+    # listing is inspection-failed.
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables)
+                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
+                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
+                ;;
+            ip6tables)
+                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
+                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
+                ;;
+        esac
+    done
+    if (( _HY2HOP_HOP == 0 )); then
+        # Confirmed no-hop: nothing of this instance can exist.
+        # Only report anything that looks like a leftover.
+        _suspects=''
+        if (( _ruleset_ok == 1 )); then
+            while IFS= read -r _s || [[ -n "$_s" ]]; do
+                [[ -n "$_s" ]] || continue
+                _suspects+="${_suspects:+, }${_s}"
+            done < <(_hy2hop_list_nft_tables "$_ruleset")
+        fi
+        for _bin in $(_hy2hop_ipt_bins); do
+            case "$_bin" in
+                iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok ;;
+                ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok ;;
+            esac
+            (( _listing_ok == 1 )) || continue
+            while IFS= read -r _s || [[ -n "$_s" ]]; do
+                [[ -n "$_s" ]] || continue
+                _suspects+="${_suspects:+, }${_bin} ${_s}"
+            done < <(_hy2hop_list_ipt_chains "$_listing")
+        done
+        if [[ -n "$_suspects" ]]; then
+            msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
+        fi
+        return 0
+    fi
+    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
+        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
+        _failed=1
+    fi
+    # 3. nft side: judge + delete per table.
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_nft_table "$_fam") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            if (( _src != 0 )); then
+                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
+            fi
+            case "$_status" in
+                absent) : ;;
+                match|empty)
+                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
+                    ;;
+                mismatch)
+                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
+                    _failed=1
+                    ;;
+            esac
+        done
+    fi
+    # 4. iptables side: judge + delete per chain. Each object is
+    # judged on its own gate: a refused object never blocks the
+    # deletion of an exactly-matching object on the other backend.
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        if (( _listing_ok == 0 && _listing_missing == 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
+            _failed=1; continue
+        fi
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_ipt_chain "$_bin") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        case "$_status" in
+            absent) : ;;
+            match|empty|dangling)
+                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
+                ;;
+            mismatch)
+                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
+                _failed=1
+                ;;
+        esac
+    done
+    # 5. Negative verification, per object: re-list fresh and
+    # require every expected object to be absent. This catches an
+    # empty chain, a single leftover jump, and one backend clean
+    # while the other still holds residue.
+    if (( _ruleset_missing == 0 )); then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+        if (( _ruleset_ok == 1 )); then
+            for _fam in $(_hy2hop_nft_families); do
+                _tbl=$(_hy2hop_nft_table "$_fam") || { _failed=1; continue; }
+                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+                if (( _src != 0 )); then
+                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+                fi
+                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+            done
+        else
+            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
+        fi
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        if (( _src != 0 )); then
+            if (( _src == 1 )); then continue; fi
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        _chain=$(_hy2hop_ipt_chain "$_bin") || { _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+    done
+    # 6. Suspected leftovers: any other hysteria_* table or
+    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
+    # delete it, and never count it as this instance's residue.
+    _suspects=''
+    if (( _ruleset_ok == 1 )); then
+        while IFS= read -r _s || [[ -n "$_s" ]]; do
+            [[ -n "$_s" ]] || continue
+            _own_tbl=''
+            _fam="${_s%% *}"; _tbl="${_s#* }"
+            _own_tbl=$(_hy2hop_nft_table "$_fam" 2>/dev/null || true)
+            [[ "$_tbl" == "$_own_tbl" ]] && continue
+            _suspects+="${_suspects:+, }${_fam} ${_tbl}"
+        done < <(_hy2hop_list_nft_tables "$_ruleset")
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin" 2>/dev/null); _src=$?
+        (( _src == 0 )) || continue
+        _own_chain=$(_hy2hop_ipt_chain "$_bin" 2>/dev/null || true)
+        while IFS= read -r _s || [[ -n "$_s" ]]; do
+            [[ -n "$_s" ]] || continue
+            [[ "$_s" == "$_own_chain" ]] && continue
+            _suspects+="${_suspects:+, }${_bin} ${_s}"
+        done < <(_hy2hop_list_ipt_chains "$_listing")
+    done
+    if [[ -n "$_suspects" ]]; then
+        msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
+    fi
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    return 0
 }
 
 # M-12(1): enumerate "proto/port" lines for the given inbound tags in a
@@ -41393,7 +42619,7 @@ firewall_recycle_freed_ports() {
 # $1 = core, rest = removed tags
 _protocol_removed_side_effects() {
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _sb_stripped=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _staleenv_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -41462,50 +42688,16 @@ _protocol_removed_side_effects() {
             _reg_failed=1
         fi
     done
-    # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key
-    # pair. Delete it only when no hysteria2 inbound remains and
-    # the pair is the script-managed /etc/sing-box/hy2.crt+key;
-    # anything else (shared, external path, still referenced) stays.
+    # SYD-B E16 (L4): a removed sing-box Hy2 inbound owns its cert/key
+    # pair. The verdict lives in _singbox_cleanup_hy2_certs_when_none_remain
+    # (extracted from this block); this site only merges what the helper
+    # actually deleted into _deleted, so the manifest drop at the foot
+    # of this function stays in one place. The helper never touches
+    # the manifest itself -- no double registration.
     if [[ "$core" == 'sing-box' ]]; then
-        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
-            # 2gq: delete the cert pair only when jq confirms no
-            # hysteria2 inbound remains (one-pass Boolean, rc 1);
-            # a jq failure or an empty config keeps it.
-            local _hy2_jq_rc=0
-            # M-6-residual (A-leg): jq -s over the stripped view; raw jq
-            # on a commented config fails with a parse error (rc 5),
-            # neither 0 nor 1, so the cert pair would wrongly survive
-            # when no hysteria2 inbound remains. Strip once here; the
-            # M-12 block below reuses the same view (the config is not
-            # rewritten between the two blocks). An empty-after-strip
-            # config is unverifiable, not a confirmation: keep the pair
-            # (rc 5, same as a jq failure).
-            if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
-                _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
-            fi
-            if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
-                printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hy2_jq_rc=$?
-            else
-                _hy2_jq_rc=5
-            fi
-            if [[ "$_hy2_jq_rc" == 1 ]]; then
-                # 05f-H-05f-02: delete each file only when no inbound
-                # of ANY protocol still references it (a manual or
-                # other-protocol inbound may share the pair).
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.crt; then
-                    if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]]; then
-                        rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.crt ]] || _deleted+=("/etc/sing-box/hy2.crt")
-                    fi
-                fi
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.key; then
-                    if [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
-                        rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.key ]] || _deleted+=("/etc/sing-box/hy2.key")
-                    fi
-                fi
-            fi
-        fi
+        local -a _hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _hy2_deleted
+        (( ${#_hy2_deleted[@]} > 0 )) && _deleted+=("${_hy2_deleted[@]}")
     fi
     # N5 (followup5 D-leg): a removed sing-box TUIC inbound owns its
     # per-tag cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/key,
@@ -41555,6 +42747,17 @@ _protocol_removed_side_effects() {
     if ! _clear_hy2_nonport_env_vars; then
         msg "${YELLOW}[!] Hy2 settings cleanup failed after removing ${core} protocol(s); stale Hy2 values may remain in .env.${NC}"
         _hy2env_failed=1
+    fi
+    # L2 (fix-leftover-20261126): same generalization for the remaining
+    # protocols' non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, the
+    # three SNI keys). The helper verifies "no inbound of that family
+    # remains" itself; a failure is surfaced like the Hy2 failure
+    # above. (Runs after sync; nothing below reads the cleared shell
+    # vars -- the M-12(1) hop-rule block captured its values up front,
+    # and the Argo/tuic blocks below read the live configs, not .env.)
+    if ! _clear_stale_nonport_env_vars; then
+        msg "${YELLOW}[!] Non-port protocol settings cleanup failed after removing ${core} protocol(s); stale values may remain in .env.${NC}"
+        _staleenv_failed=1
     fi
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
@@ -41641,7 +42844,7 @@ _protocol_removed_side_effects() {
     # _singbox_cleanup_tuic_certs_when_none_remain), or the manifest
     # drifts from disk (stale hash vs a same-name rebuild).
     (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
-    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 )); then return 1; fi
+    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 || _staleenv_failed == 1 )); then return 1; fi
     return 0
 }
 
@@ -41706,6 +42909,15 @@ _remove_hy2_official() {
         if [[ "$_hy2_main_pid" =~ ^[0-9]+$ ]] && (( _hy2_main_pid > 0 )) && [[ -d /proc/$_hy2_main_pid ]]; then return 1; fi
     fi
     if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
+    # L3 (2026-11-27): reclaim the official-hop NAT rules the
+    # hysteria binary built at startup (nft hysteria_<hash> tables /
+    # iptables HYSTERIA-PR-<hash> chains). The service is confirmed
+    # stopped and no residual process remains, and the unit, config
+    # and credentials still exist, so a failure here returns 1
+    # BEFORE any irreversible step: the same entry points can retry
+    # (cleanup-first ordering is the retry mechanism; no persisted
+    # cleanup record is needed). Never report this as a stop failure.
+    remove_hy2_official_hop_rules || return 1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service || return 1
@@ -42308,6 +43520,13 @@ clear_all_protocols() {
         # ports of surviving nodes; best-effort (a failed sync keeps
         # the ports, exactly like a skipped one did).
         sync_env_ports_after_removal || true
+        # L2 (fix-leftover-20261126): same gap, same fix, for the
+        # non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, SNI keys):
+        # when a core's config holds no inbounds the side effects
+        # above are skipped for that core, so a clear-all from an
+        # empty-config state would otherwise leave every non-port
+        # key behind. Best-effort like the sync above.
+        _clear_stale_nonport_env_vars || true
         # M-12(1): recycle the freed ports now that every removal has
         # succeeded; on partial wipe the rules stay (fail-closed).
         if [[ -s "$_freed_tmp" ]]; then firewall_recycle_freed_ports < "$_freed_tmp"; fi
@@ -42316,6 +43535,32 @@ clear_all_protocols() {
         # at clear time (side effects above are skipped for an empty
         # tag list), so orphan TUIC certs cannot survive a clear-all.
         _singbox_cleanup_tuic_certs_when_none_remain || true
+        # L4 (leftover 20261126): same backstop position for the Hy2
+        # pair -- the deploy tail and this wipe are the two paths that
+        # never ran the E16 cleanup. Runs outside the all_tags gate
+        # above, so an already-empty sing-box config still gets its
+        # certs deleted. Deleted paths go to the manifest drop here
+        # (the helper reports, the caller registers -- no double
+        # registration); a failed rm stays on disk and is warned
+        # about by the helper. Best-effort: a cleanup failure must
+        # not fail the clear.
+        local -a _cl_hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _cl_hy2_deleted || true
+        if (( ${#_cl_hy2_deleted[@]} > 0 )); then
+            _manifest_drop_paths "${_cl_hy2_deleted[@]}" || true
+        fi
+        # L4: the .env Hy2 keys are the same wipe's second residue
+        # (S3 left the fingerprint behind with the certs). Same
+        # position -- wipe_ok, outside the all_tags gate -- and the
+        # same cross-core "Hy2 still lives anywhere, keep" verdict
+        # inside _clear_hy2_nonport_env_vars (by now the official
+        # Hy2 is gone and no sing-box Hy2 inbound can remain, so
+        # the keys clear; an unverifiable config keeps them and
+        # warns instead of silently swallowing the skip). A real
+        # write failure fails the wipe: the clear must not report
+        # success with Hy2 credentials still in .env. The helper
+        # already warns on the failure itself.
+        _clear_hy2_nonport_env_vars || wipe_ok=0
         # R39-M1: a failed registry wipe used to only warn while
         # wipe_ok stayed 1, so the clear reported green success with
         # user credentials still on disk. Fold it into the verdict.
@@ -43419,7 +44664,16 @@ users_normalize_default_name() {
     local old_reg=''
     old_reg=$(cat "$reg" 2>/dev/null) || return 0
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
-    if ! users_sync "$core" "$tag" >/dev/null 2>&1; then
+    local _nsync_rc=0
+    users_sync "$core" "$tag" >/dev/null 2>&1 || _nsync_rc=$?
+    if (( _nsync_rc == 3 )); then
+        # L6: committed; keep the renamed registry, do not roll back.
+        # The guard retries the sync, whose already-gone path re-plans
+        # and completes the cleanup.
+        msg "${YELLOW}[!] users_sync committed the rename for ${core}/${tag}, but post-commit cleanup failed and no todo could be recorded; the guard will retry it.${NC}" >&2
+        return 1
+    fi
+    if (( _nsync_rc != 0 )); then
         if ! users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1; then
             msg "${RED}[!] $(tprintf users_normalize_default_name_migrate_failed "${core}" "${tag}")${NC}" >&2
             return 1
@@ -44515,8 +45769,352 @@ users_reg_ensure() {
 }
 
 # ---- sync: rewrite the core config's user list from the registry ----
+# ---- L6: post-commit cleanup for users_sync deletions ----
+# users_sync deletes an inbound (or flips Hy2 to deny, or rebuilds an
+# inbound from snapshot) by committing a new live config -- but the
+# formal delete path's tail never ran: the xray desired config, the
+# .env listener ports, the standalone link and the published
+# subscription still described the deleted inbound, and the next
+# xray_config_autorecover could resurrect it from the stale desired
+# file. The narrow post-commit cleanup below (A + narrow function,
+# per the L6 arbitration) closes that gap without importing the
+# formal path's bundle (registry removal, certs, NAT, units -- all
+# inapplicable here: the registry and snapshot are deliberately kept
+# so a later re-enable rebuilds the inbound).
+#
+# Durable debt: a "<registry>.cleanup-pending" todo file, written
+# BEFORE the commit with the sha of the prepared new config (exactly
+# what the commit is about to install, so there is no crash window
+# between commit and record -- the U65 snapshot precedent). It
+# carries no credential: core/tag/proto/kind/config-sha/steps only.
+# _users_sync_complete_cleanup finishes it idempotently from the
+# CURRENT committed config (never from the recorded diff), and clears
+# it on success. While it exists, src/06 refuses the stale desired
+# file and any backup as a recovery source, so a crash between commit
+# and cleanup cannot resurrect the deleted inbound.
+# Kinds: inbound-removed, inbound-rebuilt, hy2-deny.
+# Return codes: users_sync returns 0 when the commit landed and the
+# cleanup is done or durably recorded (degraded success); 3 when the
+# commit landed but the cleanup could neither be recorded nor
+# completed synchronously (partial failure -- callers must NOT roll
+# the registry back on rc 3).
+_users_cleanup_todo_path() { # $1=core $2=tag -> prints todo path
+    local _reg=''
+    _reg=$(users_reg_file "$1" "$2" 2>/dev/null || true)
+    [[ -n "$_reg" ]] || return 1
+    printf '%s.cleanup-pending' "$_reg"
+}
+
+_users_cleanup_todo_write() { # $1=core $2=tag $3=proto $4=kind $5=config-sha $6=steps-csv
+    local _todo='' _tmp=''
+    _todo=$(_users_cleanup_todo_path "$1" "$2") || return 1
+    [[ "$5" =~ ^[0-9a-f]{64}$ ]] || return 1
+    case "$4" in inbound-removed|hy2-deny|inbound-rebuilt) ;; *) return 1 ;; esac
+    [[ -n "$6" ]] || return 1
+    _tmp=$(mktemp "${_todo}.tmp.XXXXXX" 2>/dev/null) || return 1
+    if ! jq -cn --arg core "$1" --arg tag "$2" --arg proto "$3" --arg kind "$4" --arg sha "$5" --arg steps "$6" \
+        '{core:$core,tag:$tag,proto:$proto,kind:$kind,config_sha:$sha,steps:($steps|split(","))}' > "$_tmp" 2>/dev/null; then
+        rm -f -- "$_tmp"; return 1
+    fi
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_todo" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    return 0
+}
+
+_users_cleanup_todo_read() { # $1=todo-path -> prints canonical json, rc 0/1
+    local _todo="$1"
+    [[ -f "$_todo" && ! -L "$_todo" ]] || return 1
+    jq -c -e 'select(.core and .tag and .proto and .kind and .config_sha and (.steps|type)=="array")' "$_todo" 2>/dev/null || return 1
+}
+
+_users_sync_proto_port_var() { # $1=proto -> prints .env var name, rc 1 if none
+    case "$1" in
+        shadowsocks) printf '%s' 'SS_PORT' ;;
+        socks|mixed) printf '%s' 'SOCKS_PORT' ;;
+        trojan) printf '%s' 'TROJAN_PORT' ;;
+        vless) printf '%s' 'VLESS_PORT' ;;
+        *) return 1 ;;
+    esac
+}
+
+# rc 0 = some removal step would still change something (desired stale,
+# .env port still set, link still present); rc 1 = already clean.
+_users_sync_removal_cleanup_needed() {
+    local _core="$1" _tag="$2" _proto="$3" _var='' _val='' _des='' _stem='' _link='' _cfg='' _live_sha='' _des_sha=''
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    if [[ "$_core" == 'xray' ]]; then
+        _des=$(_xrc_desired_config_path 2>/dev/null || true)
+        if [[ -z "$_des" || ! -f "$_des" ]]; then return 0; fi
+        _live_sha=$(sha256sum -- "$_cfg" 2>/dev/null | awk '{print $1}')
+        _des_sha=$(sha256sum -- "$_des" 2>/dev/null | awk '{print $1}')
+        [[ -n "$_live_sha" && "$_live_sha" == "$_des_sha" ]] || return 0
+    fi
+    _var=$(_users_sync_proto_port_var "$_proto" 2>/dev/null || true)
+    if [[ -n "$_var" ]]; then
+        _val=$(sed -n "s/^${_var}=//p" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ -n "$_val" ]] && return 0
+    fi
+    _stem=$(users_link_stem "$_core" "$_tag" 2>/dev/null || printf '%s' "$_tag")
+    _link="${ABOX_DIR:-/etc/ddr}/standalone-links.d/${_stem}.link"
+    [[ -e "$_link" ]] && return 0
+    return 1
+}
+
+# rc 0 = a rebuild still owes cleanup (port var empty, or xray desired
+# does not yet match the rebuilt config); rc 1 = already consistent.
+_users_sync_rebuild_cleanup_needed() {
+    local _core="$1" _tag="$2" _proto="$3" _new="$4" _var='' _val='' _des='' _new_sha='' _des_sha=''
+    _var=$(_users_sync_proto_port_var "$_proto" 2>/dev/null || true)
+    if [[ -n "$_var" ]]; then
+        _val=$(sed -n "s/^${_var}=//p" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ -z "$_val" ]] && return 0
+    fi
+    if [[ "$_core" == 'xray' ]]; then
+        _des=$(_xrc_desired_config_path 2>/dev/null || true)
+        _new_sha=$(sha256sum -- "$_new" 2>/dev/null | awk '{print $1}')
+        if [[ -z "$_des" || ! -f "$_des" ]]; then return 0; fi
+        _des_sha=$(sha256sum -- "$_des" 2>/dev/null | awk '{print $1}')
+        [[ "$_new_sha" == "$_des_sha" ]] || return 0
+    fi
+    return 1
+}
+
+# rc 0 = the tag is already gone from the live config while the
+# registry still holds a deletion snapshot (a previous commit --
+# users_hot_remove, or an interrupted earlier sync -- already deleted
+# it); rc 1 = not in that state.
+_users_sync_already_gone() {
+    local _core="$1" _tag="$2" _proto="$3" _reg='' _snap='' _rc=0
+    case "$_proto" in
+        shadowsocks) case "$_core" in xray|sing-box) ;; *) return 1 ;; esac ;;
+        mixed|socks) [[ "$_core" == 'sing-box' ]] || return 1 ;;
+        *) return 1 ;;
+    esac
+    _reg=$(users_reg_file "$_core" "$_tag" 2>/dev/null || true)
+    [[ -n "$_reg" && -f "$_reg" && ! -L "$_reg" ]] || return 1
+    _snap=$(jq -c '.inbound_snapshot // null' "$_reg" 2>/dev/null || echo null)
+    [[ "$_snap" != 'null' ]] || return 1
+    _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+    [[ "$_rc" == 1 ]] || return 1
+    return 0
+}
+
+# Restore the .env listener port for a rebuilt inbound from the live
+# inbound's own port. Never steals the var from a different live
+# inbound of the same protocol: if the current value already serves
+# one, coverage is satisfied and the var is left alone.
+_users_sync_restore_env_port() { # $1=core $2=tag $3=proto
+    local _cfg='' _port='' _var='' _envf="${ABOX_ENV:-/etc/ddr/.env}" _cur='' _cur_live=0
+    local _cc='' _stripped='' _prog=''
+    _var=$(_users_sync_proto_port_var "$3" 2>/dev/null || true)
+    [[ -n "$_var" ]] || return 1
+    _cfg=$(users_cfg_of "$1" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    _port=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r --arg t "$2" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // empty)' 2>/dev/null | head -1) || return 1
+    [[ "$_port" =~ ^[0-9]+$ ]] || return 1
+    [[ -f "$_envf" && ! -L "$_envf" ]] || return 1
+    _cur=$(sed -n "s/^${_var}=//p" "$_envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+    [[ "$_cur" == "$_port" ]] && return 0
+    if [[ -n "$_cur" ]]; then
+        case "$3" in
+            shadowsocks) _prog='.inbounds[]? | select(.protocol == "shadowsocks" or .type == "shadowsocks") | (.port // .listen_port // empty)' ;;
+            socks|mixed) _prog='.inbounds[]? | select(.protocol == "socks" or .type == "socks" or .type == "mixed") | (.port // .listen_port // empty)' ;;
+            trojan) _prog='.inbounds[]? | select(.protocol == "trojan" or .type == "trojan") | (.port // .listen_port // empty)' ;;
+            vless) _prog='.inbounds[]? | select((.protocol == "vless" and ((.tag // "") | test("vision"))) or (.type == "vless" and ((.tag // "") | test("vision")))) | (.port // .listen_port // empty)' ;;
+        esac
+        for _cc in xray sing-box; do
+            _cc=$(users_cfg_of "$_cc" 2>/dev/null || true)
+            [[ -n "$_cc" && -f "$_cc" && ! -L "$_cc" ]] || continue
+            _stripped=$(jsonc_strip_comments "$_cc" 2>/dev/null || true)
+            [[ -n "$_stripped" ]] || continue
+            if printf '%s' "$_stripped" | jq -r "$_prog" 2>/dev/null | grep -qx "$_cur"; then _cur_live=1; break; fi
+        done
+        if (( _cur_live == 1 )); then
+            msg "users_sync cleanup: ${_var} already serves a live ${_proto} inbound; leaving it (rebuilt ${_tag} shares the protocol var)." >&2
+            return 0
+        fi
+    fi
+    if grep -q "^${_var}=" "$_envf" 2>/dev/null; then
+        sed -i "s/^${_var}=.*/${_var}=\"${_port}\"/" "$_envf" 2>/dev/null || return 1
+    else
+        printf '%s="%s"\n' "$_var" "$_port" >> "$_envf" 2>/dev/null || return 1
+    fi
+    declare -g "${_var}=${_port}"
+    return 0
+}
+
+# Prune one standalone link file when the node it names is gone.
+# Known stems go through the formal path's survivor gate
+# (_standalone_link_prune_if_gone: delete only on confirmed rc 1).
+# A generic stem (ss, hy2, ...) is removed only when NO core still
+# serves the tag; an unverifiable config keeps the link. For kind
+# hy2-deny the service is retained but the node is not publishable,
+# so the link goes on the kind, not on tag absence.
+_users_sync_prune_link() { # $1=core $2=tag $3=kind
+    local _stem='' _link='' _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _rc1=0 _rc2=0
+    _stem=$(users_link_stem "$1" "$2" 2>/dev/null || printf '%s' "$2")
+    _link="$_dir/${_stem}.link"
+    [[ -e "$_link" || -L "$_link" ]] || return 0
+    case "$_stem" in
+        trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray|trojan-xray-[0-9]*|trojan-sb-[0-9]*|socks5-sb-[0-9]*|socks5-xray-[0-9]*)
+            _standalone_link_prune_if_gone "$_stem" "$_link" || true
+            [[ -e "$_link" ]] && return 1 || return 0 ;;
+    esac
+    if [[ "$3" == 'hy2-deny' ]]; then
+        rm -f -- "$_link" 2>/dev/null || return 1
+        [[ -e "$_link" ]] && return 1 || return 0
+    fi
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        _users_live_inbound_exists xray "$2" || _rc1=$?
+        _users_live_inbound_exists sing-box "$2" || _rc2=$?
+        if [[ "$_rc1" == 1 && "$_rc2" == 1 ]]; then
+            rm -f -- "$_link" 2>/dev/null || return 1
+            [[ -e "$_link" ]] && return 1 || return 0
+        fi
+        if [[ "$_rc1" == 0 || "$_rc2" == 0 ]]; then
+            return 0 # another core still serves this tag: keep the link
+        fi
+        return 1 # unverifiable: keep the link, keep the todo
+    fi
+    return 1
+}
+
+# rc 0 = the Hy2 node is still in its denied/empty state (cleanup
+# premise holds); rc 1 = usable credentials again, or unverifiable.
+_users_sync_hy2_still_denied() {
+    local _core="$1" _tag="$2" _cfg='' _users='' _stripped=''
+    if [[ "$_core" == 'hy2' ]]; then
+        _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}"
+        [[ -e "$_cfg" ]] || return 0
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+        _users=$(users_hy2_read_users "$_cfg" 2>/dev/null) || return 1
+        [[ "$_users" == '[]' ]] && return 0
+        [[ -n "$_users" ]] && return 1
+        return 1
+    elif [[ "$_core" == 'sing-box' ]]; then
+        _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+        [[ -e "$_cfg" ]] || return 0
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+        _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 1
+        [[ -n "${_stripped//[[:space:]]/}" ]] || return 1
+        if printf '%s' "$_stripped" | jq -e '[.inbounds[]? | select(.type == "hysteria2") | (.users // []) | length] | add > 0' >/dev/null 2>&1; then return 1; fi
+        return 0
+    fi
+    return 1
+}
+
+# Run one cleanup step list for a committed (core, tag, kind, proto).
+# Steps are derived from the CURRENT committed config, never from the
+# recorded diff, so re-running them is idempotent. Order matters:
+# publish-desired first (so the desired file is fresh before any later
+# step can fail), refresh-subscription before prune-link (the rebuild
+# inside the refresh can re-create a link from a live config).
+# rc 0 = all steps done, 1 = at least one step failed (todo kept).
+# Re-entrancy: none of these steps calls users_sync (publish, port
+# sync, subscription refresh, link prune are all leaf operations).
+_users_sync_run_cleanup_steps() { # $1=core $2=tag $3=kind $4=proto $5=steps-csv
+    local _core="$1" _tag="$2" _kind="$3" _proto="$4" _steps="$5" _step='' _ok=0
+    local -a _arr=()
+    IFS=',' read -r -a _arr <<< "$_steps"
+    for _step in "${_arr[@]}"; do
+        case "$_step" in
+            publish-desired)
+                if [[ "$_core" == 'xray' ]]; then
+                    if ! _xrc_publish_desired_config; then
+                        msg "users_sync cleanup: failed to publish xray desired config after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                    fi
+                fi ;;
+            sync-env-ports)
+                if ! sync_env_ports_after_removal; then
+                    msg "users_sync cleanup: .env port reconciliation failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            restore-env-port)
+                if ! _users_sync_restore_env_port "$_core" "$_tag" "$_proto"; then
+                    msg "users_sync cleanup: .env port restore failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            refresh-subscription)
+                if ! refresh_subscription_after_deploy; then
+                    msg "users_sync cleanup: subscription refresh failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi
+                # The on-disk Clash YAML is a static published artifact
+                # too; regenerate it best-effort so a stale file does
+                # not keep serving the dead node until the next
+                # menu-12 view. A failure here only warns: the emit
+                # gates (D) make the next regeneration correct.
+                if declare -F write_clash_yaml >/dev/null 2>&1; then
+                    write_clash_yaml >/dev/null 2>&1 || msg "users_sync cleanup: Clash YAML regeneration failed after ${_core}/${_tag} ${_kind}; the file may stay stale until the next view." >&2
+                fi ;;
+            prune-link)
+                if ! _users_sync_prune_link "$_core" "$_tag" "$_kind"; then
+                    msg "users_sync cleanup: standalone link prune failed after ${_core}/${_tag} ${_kind}; cleanup todo kept." >&2; _ok=1
+                fi ;;
+            *) msg "users_sync cleanup: unknown step '${_step}' for ${_core}/${_tag}; cleanup todo kept." >&2; _ok=1 ;;
+        esac
+    done
+    return "$_ok"
+}
+
+# Complete a pending post-commit cleanup for one registry, idempotently,
+# from the CURRENT committed config. rc 0 = done or moot (todo cleared);
+# 1 = still pending (todo kept); 2 = todo unreadable/malformed (kept).
+_users_sync_complete_cleanup() { # $1=core $2=tag
+    local _core="$1" _tag="$2" _todo='' _tj='' _kind='' _proto='' _steps='' _cfg='' _rc=0 _reg=''
+    _todo=$(_users_cleanup_todo_path "$_core" "$_tag") || return 2
+    [[ -f "$_todo" && ! -L "$_todo" ]] || return 0
+    _tj=$(_users_cleanup_todo_read "$_todo") || return 2
+    _kind=$(printf '%s' "$_tj" | jq -r '.kind // ""' 2>/dev/null)
+    _proto=$(printf '%s' "$_tj" | jq -r '.proto // ""' 2>/dev/null)
+    _steps=$(printf '%s' "$_tj" | jq -r '.steps // [] | join(",")' 2>/dev/null)
+    case "$_kind" in inbound-removed|hy2-deny|inbound-rebuilt) ;; *) return 2 ;; esac
+    [[ -n "$_steps" ]] || return 2
+    # Registry gone (the formal delete path took over) -> moot; the
+    # formal path owns the tail now.
+    _reg=$(users_reg_file "$_core" "$_tag" 2>/dev/null || true)
+    if [[ -z "$_reg" || ! -f "$_reg" ]]; then rm -f -- "$_todo"; return 0; fi
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    # Re-derive the premise from the CURRENT committed config; a tag
+    # that is live again (re-enable raced ahead) makes a removal todo
+    # moot, and usable Hy2 credentials again make a deny todo moot.
+    case "$_kind" in
+        inbound-removed)
+            _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+            case "$_rc" in
+                0) rm -f -- "$_todo"; return 0 ;;
+                1) : ;;
+                *) return 1 ;;
+            esac
+            # L6 item 9: verify the committed config actually lacks
+            # the tag before any step acts on the old diff; a bad
+            # config, a surviving tag, or a changed generation keeps
+            # the todo instead of cleaning on stale premises.
+            if ! _removed_tags_absent_from_config "$_cfg" "$_tag"; then return 1; fi
+            ;;
+        hy2-deny)
+            if ! _users_sync_hy2_still_denied "$_core" "$_tag"; then
+                rm -f -- "$_todo"; return 0
+            fi
+            ;;
+        inbound-rebuilt)
+            _users_live_inbound_exists "$_core" "$_tag" || _rc=$?
+            case "$_rc" in
+                0) : ;;
+                1) rm -f -- "$_todo"; return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+    esac
+    if _users_sync_run_cleanup_steps "$_core" "$_tag" "$_kind" "$_proto" "$_steps"; then
+        rm -f -- "$_todo" || return 1
+        return 0
+    fi
+    return 1
+}
+
 users_sync() {
     local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc='' _jq_cfg='' _jq_tmp=0
+    local _cleanup_kind='' _cleanup_steps='' _cleanup_needed=0 _cleanup_todo_ok=0 _hy2_was_usable=0
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -44598,6 +46196,18 @@ users_sync() {
         [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
         local regj_pre=''
         regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
+    fi
+    # L6: capture the pre-sync Hy2 usability before the rewrite: an
+    # all-disabled Hy2 sync flips live auth to deny (official) or
+    # empty users (sing-box) without deleting any tag, so the
+    # post-commit plan below needs the BEFORE state to know a
+    # publishable node just went dark.
+    if [[ "$core" == 'hy2' ]]; then
+        local _hy2_before=''
+        _hy2_before=$(users_hy2_read_users "$cfg" 2>/dev/null || true)
+        [[ -n "$_hy2_before" && "$_hy2_before" != '[]' ]] && _hy2_was_usable=1
+    elif [[ "$core" == 'sing-box' && "$proto" == 'hysteria2' ]]; then
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$_jq_cfg" >/dev/null 2>&1; then _hy2_was_usable=1; fi
     fi
     case "$core" in
         xray)
@@ -44684,6 +46294,59 @@ users_sync() {
         local regj=''
         regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     fi
+    # L6: plan the post-commit cleanup BEFORE the commit (U65
+    # precedent: the snapshot is persisted pre-commit for the same
+    # reason). The todo records the sha of $tmp -- exactly what the
+    # commit is about to install -- so there is no crash window
+    # between commit and record, and the guard can verify the
+    # generation later. Kinds: inbound-removed (this sync deletes the
+    # tag), inbound-rebuilt (this sync rebuilds it from snapshot),
+    # hy2-deny (all Hy2 users disabled: live flips to deny / empty
+    # users, no tag is deleted). already-gone: a previous commit
+    # (users_hot_remove, or an interrupted earlier sync) already
+    # deleted the tag; the todo is (re-)planned from the current state
+    # when cleanup is still due.
+    if (( sb_will_delete == 1 )); then
+        _cleanup_kind='inbound-removed'
+        if [[ "$core" == 'xray' ]]; then _cleanup_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+        else _cleanup_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+        _cleanup_needed=1
+    elif (( sb_will_rebuild == 1 )); then
+        if _users_sync_rebuild_cleanup_needed "$core" "$tag" "$proto" "$tmp"; then
+            _cleanup_kind='inbound-rebuilt'
+            if [[ "$core" == 'xray' ]]; then _cleanup_steps='restore-env-port,publish-desired,refresh-subscription';
+            else _cleanup_steps='restore-env-port,refresh-subscription'; fi
+            _cleanup_needed=1
+        fi
+    elif (( encount == 0 )) && (( _hy2_was_usable == 1 )); then
+        _cleanup_kind='hy2-deny'
+        _cleanup_steps='refresh-subscription,prune-link'
+        _cleanup_needed=1
+    elif (( encount == 0 )) && [[ -e "${ABOX_DIR:-/etc/ddr}/standalone-links.d/hy2.link" ]] && { [[ "$core" == 'hy2' ]] || { [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'hysteria2' ]]; }; }; then
+        # Already denied by an earlier sync, but a stale link survived
+        # (e.g. the pre-fix runs never pruned it): still owed a prune
+        # and a subscription refresh.
+        _cleanup_kind='hy2-deny'
+        _cleanup_steps='refresh-subscription,prune-link'
+        _cleanup_needed=1
+    fi
+    if (( _cleanup_needed == 0 )) && (( encount == 0 )) && (( sb_will_delete == 0 )) && _users_sync_already_gone "$core" "$tag" "$proto"; then
+        if _users_sync_removal_cleanup_needed "$core" "$tag" "$proto"; then
+            _cleanup_kind='inbound-removed'
+            if [[ "$core" == 'xray' ]]; then _cleanup_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+            else _cleanup_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+            _cleanup_needed=1
+        fi
+    fi
+    if (( _cleanup_needed == 1 )); then
+        local _new_sha=''
+        _new_sha=$(sha256sum -- "$tmp" 2>/dev/null | awk '{print $1}') || _new_sha=''
+        if [[ "$_new_sha" =~ ^[0-9a-f]{64}$ ]] && _users_cleanup_todo_write "$core" "$tag" "$proto" "$_cleanup_kind" "$_new_sha" "$_cleanup_steps"; then
+            _cleanup_todo_ok=1
+        else
+            msg "users_sync stage SYNC-21: post-commit cleanup todo could not be recorded for ${core}/${tag}; the commit below still proceeds, and cleanup will be attempted synchronously" >&2
+        fi
+    fi
     users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         rm -f "$tmp" "$bak"; rm -rf "$tmpd"
@@ -44699,6 +46362,30 @@ users_sync() {
             local regj3=''
             regj3=$(jq -c 'del(.inbound_snapshot)' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj3" || true
             msg "${GREEN}[+] ${core} ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
+        fi
+        # L6: post-commit cleanup hook -- SYNC-20 confirmed the commit,
+        # and this runs here, before the final return 0, never in the
+        # callers (so deploy recovery, interactive apply and guard
+        # ticks are all covered). The cleanup is derived from the
+        # CURRENT committed config. Degraded success: the commit stands
+        # and users_sync returns 0 when the todo is recorded (the guard
+        # retries it, and src/06 refuses the stale desired file / any
+        # backup while it exists). Only a commit whose cleanup could
+        # neither be recorded nor completed synchronously returns 3
+        # (partial failure); callers must not roll the registry back
+        # on rc 3.
+        local _cleanup_rc=0
+        if (( _cleanup_todo_ok == 1 )); then
+            _users_sync_complete_cleanup "$core" "$tag" || _cleanup_rc=$?
+            if (( _cleanup_rc != 0 )); then
+                msg "${YELLOW}[!] users_sync: ${core}/${tag} committed, but post-commit cleanup is still pending (todo recorded; the user guard will retry it; auto-recovery will not use the stale desired config meanwhile).${NC}" >&2
+            fi
+        elif (( _cleanup_needed == 1 )); then
+            if ! _users_sync_run_cleanup_steps "$core" "$tag" "$_cleanup_kind" "$proto" "$_cleanup_steps"; then
+                msg "users_sync stage SYNC-21: config commit succeeded for ${core}/${tag} but post-commit cleanup failed and no todo could be recorded (partial failure)" >&2
+                (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
+                return 3
+            fi
         fi
         (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
         return 0
@@ -45443,6 +47130,16 @@ users_apply_reg() {
     fi
     local _sync_rc=0
     users_sync "$1" "$2" || _sync_rc=$?
+    if (( _sync_rc == 3 )); then
+        # L6: the sync COMMITTED (live config and registry hold the new
+        # state); only the post-commit cleanup is unrecorded. Never
+        # roll the registry back over a committed deletion: the
+        # .sync-pending marker stays planted so the guard retries the
+        # sync, whose already-gone path re-plans and completes the
+        # cleanup.
+        msg "${YELLOW}[!] users_sync committed the change for $1/$2, but post-commit cleanup failed and no todo could be recorded; the guard will retry it.${NC}" >&2
+        return 1
+    fi
     if (( _sync_rc != 0 )); then
         # Roll back, and clear the marker only after verifying
         # the rollback landed (re-read matches the old content).
@@ -45830,6 +47527,9 @@ user_guard_installed() {
 }
 
 setup_user_guard() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     local _src="$0"
     # M-06 (Carbon audit): under bash <(curl ...) $0 is /dev/fd/N, not a
@@ -45884,7 +47584,11 @@ setup_user_guard() {
     # matches the unquoted USERGUARD line exactly).
     local _runner_q="$runner"
     if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$runner"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
+    fi
     return 0
 }
 
@@ -45993,6 +47697,29 @@ users_hot_remove() {
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
     rm -f -- "$tmp"; rm -rf "$tmpd"
+    # L6: a whole-inbound deletion on disk (single-password SS, or the
+    # last multi-user client) is a committed deletion whose tail
+    # (desired/.env/link/subscription) users_sync's hook would
+    # otherwise miss: by the time users_sync runs, the tag is already
+    # gone, so its before/after diff sees nothing. Record the same
+    # post-commit todo here, with the sha of the config just installed;
+    # users_sync (or the guard) completes it idempotently.
+    # vless/trojan only lose one client here, never the inbound.
+    if [[ "$proto" == 'shadowsocks' ]]; then
+        local _hot_jq_rc=0 _hot_sha='' _hot_steps=''
+        jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || _hot_jq_rc=$?
+        # jq -e rc 1 (jq <= 1.6) or 4 (jq >= 1.7) means "no output",
+        # i.e. the tag is absent; any other non-zero rc is a read
+        # error, not a deletion.
+        if [[ "$_hot_jq_rc" == 1 || "$_hot_jq_rc" == 4 ]]; then
+            _hot_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || _hot_sha=''
+            if [[ "$core" == 'xray' ]]; then _hot_steps='publish-desired,sync-env-ports,refresh-subscription,prune-link';
+            else _hot_steps='sync-env-ports,refresh-subscription,prune-link'; fi
+            if [[ "$_hot_sha" =~ ^[0-9a-f]{64}$ ]]; then
+                _users_cleanup_todo_write "$core" "$tag" "$proto" 'inbound-removed' "$_hot_sha" "$_hot_steps" || msg "users_hot_remove: post-commit cleanup todo could not be recorded for ${core}/${tag}" >&2
+            fi
+        fi
+    fi
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
     esac
@@ -46065,6 +47792,21 @@ users_guard_eval() {
     # the users_sync calls below on the restart permission.
     local _guard_svc=''
     _guard_svc=$(users_svc_of "$core" 2>/dev/null || printf '%s' "$core")
+    # L6: complete a pending post-commit cleanup from an earlier sync.
+    # File-only work (desired/.env/link/subscription, no restart): it
+    # may run under H-23 when the todo's generation matches the live
+    # config (the deletion it records is already committed to disk),
+    # or whenever a restart is permitted anyway. Otherwise leave it
+    # for a later tick; a later users_sync completes it from its hook.
+    local _todo_f='' _todo_sha='' _live_sha=''
+    _todo_f=$(_users_cleanup_todo_path "$core" "$tag" 2>/dev/null || true)
+    if [[ -n "$_todo_f" && -f "$_todo_f" ]]; then
+        _todo_sha=$(jq -r '.config_sha // ""' "$_todo_f" 2>/dev/null || true)
+        _live_sha=$(sha256sum -- "$(users_cfg_of "$core" 2>/dev/null || echo '')" 2>/dev/null | awk '{print $1}' || true)
+        if service_restart_permitted "$_guard_svc" || [[ -n "$_todo_sha" && "$_todo_sha" == "$_live_sha" ]]; then
+            _users_sync_complete_cleanup "$core" "$tag" >/dev/null 2>&1 || true
+        fi
+    fi
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire
@@ -51643,6 +53385,20 @@ confirm_remote_script_hash() {
     esac
 }
 
+# SYD-B E0 companion: the main script shadows clear() so a dumb/unknown
+# TERM never emits ncurses junk into its own logs, but third-party children
+# launched via env -i used to get the raw TERM. sudo turns dumb into
+# unknown, and under unknown whiptail/newt cannot initialise at all (W4
+# tb3: Check.Place exits via *)exit 1 with zero output). Normalise the
+# TERM handed to children: unusable values become xterm, a usable caller
+# TERM passes through untouched.
+_abox_child_term() {
+    case "${TERM:-}" in
+        ''|dumb|unknown) printf '%s\n' 'xterm' ;;
+        *) printf '%s\n' "$TERM" ;;
+    esac
+}
+
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
@@ -51665,7 +53421,7 @@ run_remote_bash_script() {
         PATH="$PATH" \
         HOME="${HOME:-/root}" \
         LANG="${LANG:-C.UTF-8}" \
-        TERM="${TERM:-dumb}" \
+        TERM="$(_abox_child_term)" \
         bash "$tmp" "$@"
     local rc=$?
     rm -f "$tmp"
@@ -52138,15 +53894,32 @@ sni_verify_raw_report() {
         cdn_penalty=$(sni_org_cdn_penalty "$domain" "$target_org")
         add=$((add + cdn_penalty))
         [[ "$same_country" == '1' ]] && add=$((add - 250))
-        # Strongly prefer a tested target in the VPS's own ASN, but never let
-        # topology override hard TLS/SAN checks or erase explicit CDN risk.
-        [[ "$asn_match" == '1' ]] && add=$((add - 1500))
+        # L13 (2026-11-27): same-ASN no longer adjusts the numeric score.
+        # The old -1500 bonus dwarfed measured latency (tens of points
+        # for a ~30 ms handshake), so every same-ASN candidate outranked
+        # every other candidate regardless of measured TLS/SAN/ALPN
+        # behaviour -- tb9/tb10 both topped out as an AS16509 sweep.
+        # Same-ASN is now only a tie-break at sort time (see below):
+        # measured conditions rank first, and asn_match only orders rows
+        # whose adjusted scores are exactly equal. asn_match is still
+        # recorded per row and still feeds the A/B/C fit tier (unchanged).
         adj=$(sni_adjust_score "$score" "$add")
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tasn=%s\tcountry=%s\tasnmatch=%s\tsamecountry=%s\torg=%s\tcdnpenalty=%s\n' \
             "$adj" "$domain" "$c3" "$c4" "$c5" "$c6" "$c7" "$c8" "$check" "$target_asn" "$target_country" "$asn_match" "$same_country" "$target_org" "$cdn_penalty" >> "$verified" || return 1
     done < "$raw_sorted" || return 1
     printf '\r[*] Stage 2 progress: %d/%d verified\n' "$(( n > verify_limit ? verify_limit : n ))" "$verify_limit" >&2
-    LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$verified" -o "$verified" || return 1
+    # L13: sort by measured score first; same-ASN, then same-country,
+    # only break exact score ties; domain last for determinism.
+    # L13b (2026-11-27): the verified file has 17 tab-separated fields,
+    # not 15: the 9th printf argument ($check) is itself three fields
+    # (tls13/alpn/san), so asnmatch= is field 14 and samecountry= is
+    # field 15 (org= 16, cdnpenalty= 17). Do NOT "correct" these keys
+    # to -k12/-k13: those are the asn=/country= strings, not the 0/1
+    # tie-break flags -- a k12/k13 sort orders by ASN string and breaks
+    # both tie-breaks (fixture-l13b.sh: T2/T2-rev/T2c FAIL, 3 failures).
+    # The 17-column shape is also stated in the M-7 comment below and is
+    # what sni_render_ranked_report reads ($12 = asn=).
+    LC_ALL=C sort -t $'\t' -k1,1n -k14,14r -k15,15r -k2,2 "$verified" -o "$verified" || return 1
     rm -rf "$asn_cache" 2>/dev/null || true
 }
 
@@ -52251,7 +54024,21 @@ sni_auto_select_default() {
     _sni_auto_caller_int_trap=$(trap -p INT 2>/dev/null || true)
     _sni_auto_caller_term_trap=$(trap -p TERM 2>/dev/null || true)
     _sni_auto_caller_trap=$(trap -p RETURN 2>/dev/null || true)
-    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_trap:-}" ]]; then eval "$_sni_auto_caller_trap"; fi; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
+    # L11: restore the caller's EXIT trap only in the main shell
+    # (BASHPID == $$). In a command-substitution subshell (BASHPID != $$,
+    # e.g. $(sni_auto_select_default) in pre_install_setup), re-installing
+    # it makes deployment_transaction_exit_abort fire at subshell exit;
+    # its rollback msg goes to stdout (msg has no >&2) and pollutes the
+    # captured SNI, so valid_sni fails although a candidate verified --
+    # 11 consecutive main-menu failures vs 5 §7 passes (no transaction
+    # trap there). A re-installed EXIT trap in a subshell can only fire
+    # at subshell exit, never usefully, so skipping the restore there
+    # loses nothing; the main shell keeps its transaction protection.
+    # Same hazard class as die()'s H-17 owner gate (a rollback hook must
+    # never run in a non-owner child shell); here the gate is the
+    # trap-agnostic main-shell check, since any stdout-printing caller
+    # EXIT trap would pollute the capture the same way.
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_trap:-}" ]]; then eval "$_sni_auto_caller_trap"; fi; if [[ "$BASHPID" == "$$" && -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi' EXIT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 130' INT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 143' TERM
@@ -52410,7 +54197,7 @@ sni_prompt_or_auto() {
 sni_render_ranked_report() {
     local report_file="${1:-}" requested_limit="${2:-100}" display_dir selected_file
     local row score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
-    local bucket count color heading rank local_bucket_file
+    local bucket count color heading rank local_bucket_file display_file _sni_run
     [[ -s "$report_file" ]] || { msg "${YELLOW}[!] $(tr_msg sni_render_ranked_report_no_records)${NC}"; return 1; }
     valid_decimal_upto "$requested_limit" 200 || requested_limit=100
     (( 10#$requested_limit >= 1 )) || requested_limit=100
@@ -52439,15 +54226,41 @@ sni_render_ranked_report() {
         esac
         msg "${color}[${heading}｜${count} $(tr_msg sni_count_unit)]${NC}"
         rank=0
+        # L13 (2026-11-27): group, do not dedupe. Consecutive rows sharing
+        # one ASN are highly correlated candidates, not independent picks
+        # (tb9/tb10: an AS16509 sweep filled the A tier). Dedup would hide
+        # valid candidates and diverge the display from the saved TSV, so
+        # every row is still printed; a run of >=2 same-ASN rows only gets
+        # one header line naming the group. Runs are computed with one awk
+        # pass that tags the first row of each run with run=<len>; the
+        # print loop reads it as an 18th field (empty on other rows).
+        display_file="$display_dir/$bucket.display.tsv"
+        awk -F'\t' '
+            { lines[NR] = $0; a[NR] = $12; sub(/^asn=/, "", a[NR]); n = NR }
+            END {
+                for (i = 1; i <= n; i++) {
+                    if (a[i] != "" && a[i] != "unknown" && (i == 1 || a[i] != a[i-1])) {
+                        len = 1
+                        for (j = i + 1; j <= n && a[j] == a[i]; j++) len++
+                        if (len >= 2) { print lines[i] "\trun=" len; continue }
+                    }
+                    print lines[i]
+                }
+            }
+        ' "$local_bucket_file" > "$display_file" || { rm -rf -- "$display_dir"; return 1; }
         while IFS= read -r row; do
-            IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty <<< "$row"
+            IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty _sni_run <<< "$row"
+            if [[ "$_sni_run" =~ ^run=([0-9]+)$ ]]; then
+                printf '%s[ASN %s x%s - same-ASN group; ranked by measured score, not independent picks]%s\n' \
+                    "$color" "${asn#asn=}" "${BASH_REMATCH[1]}" "$NC"
+            fi
             rank=$((rank + 1))
             printf '%s%3d. [score=%s] %-38s app=%-10s ttfb=%-10s total=%-10s HTTP/%s code=%s %s %s %s ASN=%s country=%s sameASN=%s sameRegion=%s cdnRisk=%s IP=%s%s\n' \
                 "$color" "$rank" "$score" "$domain" "${app#app=}" "${ttfb#ttfb=}" "${total#total=}" \
                 "${http#http=}" "${code#code=}" "$tls13" "$alpn" "$san" "${asn#asn=}" \
                 "${country#country=}" "${asnmatch#asnmatch=}" "${samecountry#samecountry=}" \
                 "${cdnpenalty#cdnpenalty=}" "${ip#ip=}" "$NC"
-        done < "$local_bucket_file"
+        done < "$display_file"
     done
     rm -rf -- "$display_dir"
     return 0
@@ -55532,7 +57345,7 @@ PY_LEGACY_COPY
     if [[ -f "${selected}.sha256" && ! -L "${selected}.sha256" ]]; then
         backup_checksum_verify "$_c_input" "${selected}.sha256" || { rm -rf "$work"; die 'Legacy backup SHA256 verification failed.'; }
     else
-        [[ -t 0 ]] || { rm -rf "$work"; die 'Legacy backup has no checksum and conversion is non-interactive.'; }
+        [[ -t 0 ]] || { rm -rf "$work"; die "$(tr_msg legacy_backup_no_checksum_noninteractive)"; }
         confirm_yes_no 'Legacy backup has no trusted checksum. Import anyway? [Y/N]: ' || { rm -rf "$work"; return 130; }
     fi
     validate_legacy_backup_archive "$_c_input" || { rm -rf "$work"; die 'Legacy backup archive safety validation failed.'; }
@@ -56483,48 +58296,561 @@ normalize_restored_runtime_ownership() {
     esac
 }
 
-# L4-E10 (final-round): reinstall the USERGUARD cron block after a restore.
-# regenerate used to reinstall only PROBE/GEO/TRAFFIC, so a restore always
-# dropped the user-guard tick even when the backup carried it. Layered by
-# backup fidelity:
+# L8: known schedule lines per cron block (the same allowlist
+# validate_abox_cron_file enforces for backup files). Used to recognise
+# bare (unmarked) lines in a live crontab and in a backup file.
+_abox_cron_block_known_lines() {
+    case "${1:-}" in
+        PROBE) printf '%s\n' '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1' '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1' ;;
+        GEO) printf '%s\n' '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1' ;;
+        TRAFFIC) printf '%s\n' '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1' ;;
+        USERGUARD) printf '%s\n' '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' ;;
+    esac
+}
+
+# L8: normalise a cron line for recognition: a non-default ABOX_DIR is
+# folded back to /etc/ddr so a block installed from a relocated runtime
+# dir is still recognised as the same schedule.
+_abox_cron_normalize_line() {
+    local _l="$1"
+    if [[ -n "${ABOX_DIR:-}" && "$ABOX_DIR" != '/etc/ddr' && "$ABOX_DIR" != '/' ]]; then
+        _l="${_l//"$ABOX_DIR"//etc/ddr}"
+    fi
+    printf '%s\n' "$_l"
+}
+
+# L8: owner of a bare (unmarked) cron line, or nothing when the line is
+# not a recognised A-Box schedule. External lines never match.
+_abox_cron_bare_line_owner() {
+    local _n
+    _n=$(_abox_cron_normalize_line "${1:-}")
+    case "$_n" in
+        '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'|'* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1') printf 'PROBE\n' ;;
+        '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'|'0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1') printf 'GEO\n' ;;
+        '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1') printf 'TRAFFIC\n' ;;
+        '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1') printf 'USERGUARD\n' ;;
+    esac
+}
+
+# L8: lenient inventory of the four managed blocks in the LIVE crontab.
+# Prints "NAME<TAB>schedule-line" per block found (block form or bare
+# line). No validation: a malformed live block is still reported (with
+# whatever schedule line follows its BEGIN), so the restore report
+# asserts the real crontab instead of an install intention. Unknown
+# A-Box blocks and external lines are not listed. Returns 1 only when
+# the crontab cannot be read at all.
+_current_abox_cron_blocks() {
+    local _cur_file _line _name _sched _end _owner
+    _cur_file=$(mktemp) || return 1
+    if ! read_crontab_to_file "$_cur_file"; then rm -f -- "$_cur_file"; return 1; fi
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            '# A-Box PROBE BEGIN'|'# A-Box GEO BEGIN'|'# A-Box TRAFFIC BEGIN'|'# A-Box USERGUARD BEGIN')
+                _name="${_line#\# A-Box }"
+                _name="${_name% BEGIN}"
+                IFS= read -r _sched || _sched=''
+                IFS= read -r _end || _end=''
+                printf '%s\t%s\n' "$_name" "$_sched"
+                ;;
+            '# A-Box '*)
+                # Unknown A-Box block or stray END marker: not one of
+                # the four managed blocks; ignored here (never deleted
+                # by the restore merge either).
+                ;;
+            *)
+                _owner=$(_abox_cron_bare_line_owner "$_line")
+                if [[ -n "$_owner" ]]; then
+                    printf '%s\t%s\n' "$_owner" "$_line"
+                fi
+                ;;
+        esac
+    done < "$_cur_file"
+    rm -f -- "$_cur_file"
+    return 0
+}
+
+# L8: parse the backup's meta/cron.abox.txt into the expected state for
+# each block. Sets ABOX_RESTORE_CRON_FIDELITY to 'trusted' or 'unknown'
+# and, per block, ABOX_RESTORE_CRON_<BLOCK> to 'installed (backup)',
+# 'absent', or 'unknown', plus ABOX_RESTORE_CRON_<BLOCK>_LINE with the
+# exact schedule line the backup carries (empty when absent/unknown).
+# Only a successfully collected, validating backup file counts as
+# evidence: a missing file, an unreadable file, or a validation failure
+# all mean 'unknown' -- never "no blocks". A trusted backup that says
+# nothing about a block means that block was absent at backup time.
+parse_backup_cron_expectations() {
+    local _root="${1:-}" _cron='' _line _name _sched _end _owner
+    ABOX_RESTORE_CRON_FIDELITY='unknown'
+    ABOX_RESTORE_CRON_PROBE='unknown'
+    ABOX_RESTORE_CRON_GEO='unknown'
+    ABOX_RESTORE_CRON_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_USERGUARD='unknown'
+    ABOX_RESTORE_CRON_PROBE_LINE=''
+    ABOX_RESTORE_CRON_GEO_LINE=''
+    ABOX_RESTORE_CRON_TRAFFIC_LINE=''
+    ABOX_RESTORE_CRON_USERGUARD_LINE=''
+    ABOX_RESTORE_CRON_COMPLETE=0
+    [[ -n "$_root" ]] || return 1
+    _cron="$(dirname -- "$_root")/meta/cron.abox.txt"
+    [[ -f "$_cron" && ! -L "$_cron" ]] || return 0
+    validate_abox_cron_file "$_cron" 2>/dev/null || return 0
+    ABOX_RESTORE_CRON_FIDELITY='trusted'
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            '# A-Box PROBE BEGIN'|'# A-Box GEO BEGIN'|'# A-Box TRAFFIC BEGIN'|'# A-Box USERGUARD BEGIN')
+                _name="${_line#\# A-Box }"
+                _name="${_name% BEGIN}"
+                IFS= read -r _sched || _sched=''
+                IFS= read -r _end || _end=''
+                case "$_name" in
+                    PROBE) ABOX_RESTORE_CRON_PROBE='installed (backup)'; ABOX_RESTORE_CRON_PROBE_LINE="$_sched" ;;
+                    GEO) ABOX_RESTORE_CRON_GEO='installed (backup)'; ABOX_RESTORE_CRON_GEO_LINE="$_sched" ;;
+                    TRAFFIC) ABOX_RESTORE_CRON_TRAFFIC='installed (backup)'; ABOX_RESTORE_CRON_TRAFFIC_LINE="$_sched" ;;
+                    USERGUARD) ABOX_RESTORE_CRON_USERGUARD='installed (backup)'; ABOX_RESTORE_CRON_USERGUARD_LINE="$_sched" ;;
+                esac
+                ;;
+            ''|'# A-Box '*)
+                ;;
+            *)
+                _owner=$(_abox_cron_bare_line_owner "$_line")
+                case "$_owner" in
+                    PROBE) [[ "$ABOX_RESTORE_CRON_PROBE" == 'unknown' ]] && { ABOX_RESTORE_CRON_PROBE='installed (backup)'; ABOX_RESTORE_CRON_PROBE_LINE="$_line"; } ;;
+                    GEO) [[ "$ABOX_RESTORE_CRON_GEO" == 'unknown' ]] && { ABOX_RESTORE_CRON_GEO='installed (backup)'; ABOX_RESTORE_CRON_GEO_LINE="$_line"; } ;;
+                    TRAFFIC) [[ "$ABOX_RESTORE_CRON_TRAFFIC" == 'unknown' ]] && { ABOX_RESTORE_CRON_TRAFFIC='installed (backup)'; ABOX_RESTORE_CRON_TRAFFIC_LINE="$_line"; } ;;
+                    USERGUARD) [[ "$ABOX_RESTORE_CRON_USERGUARD" == 'unknown' ]] && { ABOX_RESTORE_CRON_USERGUARD='installed (backup)'; ABOX_RESTORE_CRON_USERGUARD_LINE="$_line"; } ;;
+                esac
+                ;;
+        esac
+    done < "$_cron"
+    [[ "$ABOX_RESTORE_CRON_PROBE" == 'unknown' ]] && ABOX_RESTORE_CRON_PROBE='absent'
+    [[ "$ABOX_RESTORE_CRON_GEO" == 'unknown' ]] && ABOX_RESTORE_CRON_GEO='absent'
+    [[ "$ABOX_RESTORE_CRON_TRAFFIC" == 'unknown' ]] && ABOX_RESTORE_CRON_TRAFFIC='absent'
+    [[ "$ABOX_RESTORE_CRON_USERGUARD" == 'unknown' ]] && ABOX_RESTORE_CRON_USERGUARD='absent'
+    return 0
+}
+
+# L4-E10 (final-round) + L8: decide the USERGUARD expectation after a
+# restore. This function installs nothing; the unified restore
+# (restore_abox_cron_from_backup) installs all four blocks in one merge.
+# Layered by backup fidelity (see parse_backup_cron_expectations):
 #   1. backup meta/cron.abox.txt validates AND carries a USERGUARD block
-#      -> reinstall (the validator only allows the default tick line, so a
-#        tampered rhythm can never be installed from the backup);
+#      -> 'installed (backup)' with the backup's exact line (the
+#        validator only allows the default tick line, so a tampered
+#        rhythm can never be installed from the backup);
 #   2. otherwise, when users exist or the guard runner is present ->
-#      rebuild with the default rhythm via setup_user_guard;
-#   3. otherwise -> install nothing, but record the explicit
-#      "not installed" status so the restore summary cannot hide it.
-# Sets ABOX_RESTORE_CRON_USERGUARD to installed (backup|default) or
-# "not installed (no users, no runner)". Returns 1 only when an install
-# was attempted and failed.
+#      'installed (default)' with the default rhythm. This is the
+#      pre-existing L4-E10 deliberate exception, kept explicitly: the
+#      guard tick is a live invariant re-established by users_sync, so
+#      a restore must not silently drop it for a host that has users.
+#      It is labelled '(default)' in every report so it is never
+#      mistaken for a backup-faithful restore;
+#   3. otherwise -> 'absent'.
+# When the backup fidelity is unknown, the expectation stays 'unknown':
+# an unjudgeable backup must not decide the block either way.
+# Sets ABOX_RESTORE_CRON_USERGUARD[_LINE]. Returns 1 only when the
+# restore root argument is missing.
 restore_user_guard_cron_block() {
-    local _restore_root="${1:-}" _backup_cron='' _users_dir='' _runner='' _have_users=0
-    ABOX_RESTORE_CRON_USERGUARD='not installed (no users, no runner)'
+    local _restore_root="${1:-}" _users_dir='' _runner='' _runner_q='' _have_users=0
     [[ -n "$_restore_root" ]] || return 1
-    _backup_cron="$(dirname -- "$_restore_root")/meta/cron.abox.txt"
+    [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" == 'trusted' ]] || return 0
+    [[ "${ABOX_RESTORE_CRON_USERGUARD:-unknown}" == 'installed (backup)' ]] && return 0
     _users_dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}"
     _runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
-    if [[ -f "$_backup_cron" && ! -L "$_backup_cron" ]] \
-        && validate_abox_cron_file "$_backup_cron" 2>/dev/null \
-        && { grep -Fq '# A-Box USERGUARD BEGIN' "$_backup_cron" 2>/dev/null \
-            || grep -Fq '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1' "$_backup_cron" 2>/dev/null; }; then
-        setup_user_guard || return 1
-        ABOX_RESTORE_CRON_USERGUARD='installed (backup)'
-        return 0
-    fi
     if [[ -d "$_users_dir" ]] && [[ -n "$(ls -A "$_users_dir" 2>/dev/null)" ]]; then _have_users=1; fi
     if (( _have_users == 1 )) || [[ -f "$_runner" && ! -L "$_runner" ]]; then
-        setup_user_guard || return 1
+        _runner_q="$_runner"
+        if [[ "$_runner" == *[[:space:]]* ]]; then _runner_q=$(shell_single_quote "$_runner"); fi
         ABOX_RESTORE_CRON_USERGUARD='installed (default)'
+        ABOX_RESTORE_CRON_USERGUARD_LINE="*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1"
         return 0
+    fi
+    ABOX_RESTORE_CRON_USERGUARD='absent'
+    ABOX_RESTORE_CRON_USERGUARD_LINE=''
+    return 0
+}
+
+# L8: expected/actual token for one block in the restore report.
+# Expected 'installed (backup)' / 'installed (default)' both report as
+# 'installed'; the default provenance is flagged separately (see
+# report_restore_cron_status) so it is never mistaken for backup truth.
+_restore_cron_report_token() {
+    local _name="$1" _expect_var="ABOX_RESTORE_CRON_${1}" _actual_var="ABOX_RESTORE_CRON_ACTUAL_${1}" _expect _actual
+    _expect="${!_expect_var:-unknown}"
+    _actual="${!_actual_var:-unknown}"
+    case "$_expect" in
+        'installed (backup)'|'installed (default)') _expect='installed' ;;
+        'absent') _expect='absent' ;;
+        *) _expect='unknown' ;;
+    esac
+    case "$_actual" in
+        'installed'|'absent'|'mismatched') ;;
+        *) _actual='unknown' ;;
+    esac
+    printf 'expected=%s actual=%s' "$_expect" "$_actual"
+}
+
+# L8: re-read the LIVE crontab and record, per block, the actual state
+# (installed / absent / mismatched / unknown) in
+# ABOX_RESTORE_CRON_ACTUAL_<BLOCK>, and whether the live state matches
+# the parsed expectation in ABOX_RESTORE_CRON_COMPLETE (1/0). 'installed'
+# requires the live schedule line to equal the expected line exactly; a
+# block present with a different schedule is 'mismatched', not a success.
+# Returns 1 only when the live crontab cannot be read at all (actuals
+# stay 'unknown'); a mismatch is reported via COMPLETE=0, not via rc.
+_refresh_restore_cron_actuals() {
+    local _name _expect_var _expect _line_var _line _found _actual_line _complete=1
+    ABOX_RESTORE_CRON_ACTUAL_PROBE='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_GEO='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='unknown'
+    ABOX_RESTORE_CRON_ACTUAL_USERGUARD='unknown'
+    ABOX_RESTORE_CRON_COMPLETE=0
+    local _live
+    _live=$(_current_abox_cron_blocks 2>/dev/null) || return 1
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        _line_var="ABOX_RESTORE_CRON_${_name}_LINE"
+        _line="${!_line_var:-}"
+        _found=$(awk -F'\t' -v n="$_name" '$1 == n { print "1"; exit }' <<< "$_live")
+        if [[ -z "$_found" ]]; then
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='absent' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='absent' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='absent' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='absent' ;;
+            esac
+            [[ "$_expect" == 'absent' ]] || _complete=0
+            continue
+        fi
+        _actual_line=$(awk -F'\t' -v n="$_name" '$1 == n { print $2; exit }' <<< "$_live")
+        if [[ -n "$_line" && "$_actual_line" == "$_line" ]]; then
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='installed' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='installed' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='installed' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='installed' ;;
+            esac
+            case "$_expect" in
+                'installed (backup)'|'installed (default)') ;;
+                *) _complete=0 ;;
+            esac
+        else
+            case "$_name" in
+                PROBE) ABOX_RESTORE_CRON_ACTUAL_PROBE='mismatched' ;;
+                GEO) ABOX_RESTORE_CRON_ACTUAL_GEO='mismatched' ;;
+                TRAFFIC) ABOX_RESTORE_CRON_ACTUAL_TRAFFIC='mismatched' ;;
+                USERGUARD) ABOX_RESTORE_CRON_ACTUAL_USERGUARD='mismatched' ;;
+            esac
+            _complete=0
+        fi
+    done
+    ABOX_RESTORE_CRON_COMPLETE="$_complete"
+    return 0
+}
+
+# L8: install the four blocks as one merged crontab: the current
+# crontab's non-A-Box lines are kept verbatim, all four managed blocks
+# (and recognised bare lines) are stripped, and exactly the expected
+# blocks are appended with their expected schedule lines. One
+# compare-and-swap commit (commit_crontab_if_unchanged). Returns the
+# commit status.
+_merge_abox_cron_from_expectations() {
+    local _current _merged _name _expect_var _expect _line_var _line _rc=0
+    _current=$(mktemp) || return 1
+    _merged=$(mktemp) || { rm -f -- "$_current"; return 1; }
+    if ! read_crontab_to_file "$_current"; then rm -f -- "$_current" "$_merged"; return 1; fi
+    if ! strip_abox_cron_blocks_from_file "$_current" "$_merged"; then rm -f -- "$_current" "$_merged"; return 1; fi
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        case "$_expect" in
+            'installed (backup)'|'installed (default)')
+                _line_var="ABOX_RESTORE_CRON_${_name}_LINE"
+                _line="${!_line_var:-}"
+                [[ -n "$_line" ]] || { rm -f -- "$_current" "$_merged"; return 1; }
+                case "$_line" in *$'\n'*|*%*) rm -f -- "$_current" "$_merged"; return 1 ;; esac
+                {
+                    printf '%s\n' "# A-Box ${_name} BEGIN"
+                    printf '%s\n' "$_line"
+                    printf '%s\n' "# A-Box ${_name} END"
+                } >> "$_merged" || { rm -f -- "$_current" "$_merged"; return 1; }
+                ;;
+        esac
+    done
+    commit_crontab_if_unchanged "$_current" "$_merged" || _rc=$?
+    rm -f -- "$_current" "$_merged"
+    return "$_rc"
+}
+
+# L8: unknown-fidelity path -- prepare helper scripts only for blocks
+# that are currently present, so a preserved schedule keeps a working
+# script. Best-effort: a failed preparation is warned, never fatal,
+# because the cron itself is left untouched on this path.
+_restore_abox_cron_prepare_present_scripts() {
+    local _present _name
+    _present=$(_current_abox_cron_blocks 2>/dev/null | cut -f1 || true)
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        grep -Fxq "$_name" <<< "$_present" || continue
+        case "$_name" in
+            PROBE) setup_health_monitor scripts-only >/dev/null 2>&1 || msg "[!] Preserved PROBE block kept, but socket_probe.sh could not be prepared." >&2 ;;
+            GEO)
+                if abox_owns_service xray; then
+                    setup_geo_cron scripts-only >/dev/null 2>&1 || msg "[!] Preserved GEO block kept, but geo_update.sh could not be prepared." >&2
+                else
+                    msg "[!] Preserved GEO block kept, but xray is not owned; geo_update.sh left as-is." >&2
+                fi
+                ;;
+            TRAFFIC) setup_traffic_monitor scripts-only >/dev/null 2>&1 || msg "[!] Preserved TRAFFIC block kept, but traffic_monitor.sh could not be prepared." >&2 ;;
+            USERGUARD) setup_user_guard scripts-only >/dev/null 2>&1 || msg "[!] Preserved USERGUARD block kept, but user-guard-runner.sh could not be prepared." >&2 ;;
+        esac
+    done
+    return 0
+}
+
+# L8: restore the four cron blocks from the backup, as one group.
+#   * trusted backup: install exactly the blocks the backup carries
+#     (with the backup's exact schedule lines), remove the rest, in a
+#     single merged crontab install. Helper scripts are prepared first
+#     (scripts-only setup_*), so a block is never installed pointing at
+#     a missing helper; a block whose script cannot be prepared fails
+#     the restore instead of installing a dangling schedule. A TRAFFIC
+#     block the backup carries but the restored environment cannot run
+#     (no valid TRAFFIC_LIMIT_GB) likewise fails closed.
+#   * unknown backup (missing/invalid meta/cron.abox.txt): preserve the
+#     live blocks verbatim -- absence of evidence is not evidence of
+#     absence -- and report expected=unknown. The restore still succeeds.
+# Helper scripts of absent blocks are left alone: inert without their
+# cron block, and other paths may still reference them.
+# Returns 1 when a trusted expectation could not be installed or
+# verified (fail closed, like the old unconditional install); the
+# unknown-fidelity path returns 0 with COMPLETE=0.
+restore_abox_cron_from_backup() {
+    local _root="${1:-}" _name _expect_var _expect _line_var _line _script
+    [[ -n "$_root" ]] || return 1
+    parse_backup_cron_expectations "$_root" || return 1
+    restore_user_guard_cron_block "$_root" || return 1
+    if [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" != 'trusted' ]]; then
+        _restore_abox_cron_prepare_present_scripts || true
+        _refresh_restore_cron_actuals || true
+        ABOX_RESTORE_CRON_COMPLETE=0
+        msg "${YELLOW}[!] Restore cron fidelity unknown (backup meta/cron.abox.txt missing or invalid); existing A-Box cron blocks preserved as-is -- verify by hand.${NC}" >&2
+        return 0
+    fi
+    for _name in PROBE GEO TRAFFIC USERGUARD; do
+        _expect_var="ABOX_RESTORE_CRON_${_name}"
+        _expect="${!_expect_var:-unknown}"
+        case "$_name" in
+            PROBE) _script="${ABOX_DIR:-/etc/ddr}/socket_probe.sh" ;;
+            GEO) _script="${ABOX_DIR:-/etc/ddr}/geo_update.sh" ;;
+            TRAFFIC) _script="${ABOX_DIR:-/etc/ddr}/traffic_monitor.sh" ;;
+            USERGUARD) _script="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh" ;;
+        esac
+        case "$_expect" in
+            'installed (backup)'|'installed (default)')
+                case "$_name" in
+                    PROBE) setup_health_monitor scripts-only || return 1 ;;
+                    GEO) setup_geo_cron scripts-only || return 1 ;;
+                    TRAFFIC)
+                        if ! valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
+                            msg "${RED}[!] Backup schedules a TRAFFIC block but the restored environment has no valid TRAFFIC_LIMIT_GB; refusing to install a monitor that would fail closed. Set a traffic limit or remove the block by hand.${NC}" >&2
+                            return 1
+                        fi
+                        setup_traffic_monitor scripts-only || return 1
+                        ;;
+                    USERGUARD) setup_user_guard scripts-only || return 1 ;;
+                esac
+                # The script must exist and be executable, or the block
+                # would point at a dead helper (e.g. setup_geo_cron's
+                # not-owned branch removes the script and returns 0).
+                [[ -f "$_script" && ! -L "$_script" && -x "$_script" ]] || return 1
+                ;;
+            'absent')
+                ;;
+            *) return 1 ;;
+        esac
+    done
+    _merge_abox_cron_from_expectations || return 1
+    if ! _refresh_restore_cron_actuals; then
+        # The merge itself was verified by its compare-and-swap commit;
+        # a re-read failure only means the outcome could not be
+        # re-confirmed. Report actual=unknown instead of failing a
+        # restore whose crontab is already correct.
+        msg "${YELLOW}[!] Could not re-read crontab to verify the restore; cron status is unverified (see report below).${NC}" >&2
+        return 0
+    fi
+    [[ "${ABOX_RESTORE_CRON_COMPLETE:-0}" == 1 ]] || return 1
+    return 0
+}
+
+# L4-E10: one-line restore summary of the four cron blocks, now as
+# expected vs actual (re-read from the live crontab, so the report
+# asserts reality, not install intent). A trusted backup with no PROBE
+# and a live PROBE reports 'expected=absent actual=installed' and is
+# judged incomplete, never hidden behind a bare 'installed'. An
+# unjudgeable backup reports 'expected=unknown'.
+report_restore_cron_status() {
+    _refresh_restore_cron_actuals 2>/dev/null || true
+    local _note=''
+    [[ "${ABOX_RESTORE_CRON_USERGUARD:-}" == 'installed (default)' ]] && _note=' (USERGUARD installed by default rebuild, not from backup)'
+    msg "[cron restore] PROBE:$(_restore_cron_report_token PROBE) GEO:$(_restore_cron_report_token GEO) TRAFFIC:$(_restore_cron_report_token TRAFFIC) USERGUARD:$(_restore_cron_report_token USERGUARD)${_note}"
+    if [[ "${ABOX_RESTORE_CRON_FIDELITY:-unknown}" != 'trusted' ]]; then
+        msg "${YELLOW}[!] Cron restore fidelity unknown (backup cron missing or invalid); existing blocks preserved as-is.${NC}" >&2
+    elif [[ "${ABOX_RESTORE_CRON_COMPLETE:-0}" != 1 ]]; then
+        msg "${YELLOW}[!] Cron restore incomplete: live crontab does not match the backup (see expected vs actual above).${NC}" >&2
     fi
     return 0
 }
 
-# L4-E10: one-line restore summary of the four cron blocks, so a missing
-# block can never hide behind a bare "restore complete".
-report_restore_cron_status() {
-    msg "[cron restore] PROBE:${ABOX_RESTORE_CRON_PROBE:-unknown} GEO:${ABOX_RESTORE_CRON_GEO:-unknown} TRAFFIC:${ABOX_RESTORE_CRON_TRAFFIC:-unknown} USERGUARD:${ABOX_RESTORE_CRON_USERGUARD:-unknown}"
+# L8: A-Box jails the restored on-disk config enables. Parses
+# /etc/fail2ban/jail.d/A-Box.local for [A-Box-*] sections with
+# 'enabled = true' (spaces/case tolerated). A section without an
+# enabled line counts as disabled: file presence alone does not prove
+# a jail is effectively enabled. Prints one jail name per line.
+fail2ban_expected_jails() {
+    local _jail_file='/etc/fail2ban/jail.d/A-Box.local'
+    [[ -f "$_jail_file" && ! -L "$_jail_file" ]] || return 0
+    awk '
+      /^\[A-Box-(tcp|udp)(-[0-9]+)?\]$/ { if (name != "" && enabled == 1) print name; name=substr($0, 2, length($0)-2); enabled=0; next }
+      /^\[/ { if (name != "" && enabled == 1) print name; name=""; enabled=0; next }
+      { gsub(/^[ \t]+|[ \t]+$/, "", $0); if (tolower($0) ~ /^enabled[ \t]*=[ \t]*true$/) enabled=1 }
+      END { if (name != "" && enabled == 1) print name }
+    ' "$_jail_file"
+}
+
+# L8: jails the RUNNING fail2ban currently has loaded (one per line).
+# Returns 1 when the client is missing or the status cannot be read.
+# An empty jail list is a valid empty result (rc 0).
+fail2ban_loaded_jails() {
+    local _out _list
+    command -v fail2ban-client >/dev/null 2>&1 || return 1
+    _out=$(fail2ban-client status 2>/dev/null) || return 1
+    grep -Fq 'Jail list:' <<< "$_out" || return 1
+    _list=$(sed -n 's/.*Jail list:[[:space:]]*//p' <<< "$_out" | head -1)
+    [[ -n "$_list" ]] || return 0
+    printf '%s\n' "$_list" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | awk 'NF'
+}
+
+# L8: whether the fail2ban server is currently alive (ping, not the
+# service unit: ping is what the client itself uses to decide).
+fail2ban_service_running() {
+    command -v fail2ban-client >/dev/null 2>&1 || return 1
+    fail2ban-client ping >/dev/null 2>&1
+}
+
+# L8: does the loaded A-Box jail set equal the set the restored
+# on-disk config enables?
+_fail2ban_loaded_matches_expected() {
+    local _exp _ld
+    _exp=$(fail2ban_expected_jails | sort | paste -sd, - || true)
+    _ld=$(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort | paste -sd, - || true)
+    [[ "$_exp" == "$_ld" ]]
+}
+
+# L8: converge the RUNNING fail2ban's loaded jail set with the restored
+# on-disk config, after a restore. Order is deliberate:
+#   1. validate the restored effective config first (never signal a
+#      service on a broken config);
+#   2. never start a stopped service: _f2b_restart would start one, so
+#      a stopped service is left stopped and reported (its loaded set
+#      is empty by definition; the backup carries no fail2ban
+#      start/stop state to restore from);
+#   3. prefer `fail2ban-client reload` (no server restart, other jails
+#      untouched). Reload is NOT assumed to unload a deleted jail on
+#      every supported version, so the loaded set is re-queried;
+#   4. for a stale A-Box jail that survives reload, stop that jail
+#      individually (`fail2ban-client stop <jail>` -- never a bare
+#      `stop`, which terminates the server, and never a global unban).
+#      Stopping a jail tears down its own actions, which is the
+#      intended effect for a jail the restored config no longer defines;
+#   5. only if that still does not converge, one recorded restart of
+#      the RUNNING service (confirmed running in step 2, so it cannot
+#      start a stopped service), then re-verify.
+# Re-entry is driven by the loaded-vs-expected comparison itself, not
+# by file timestamps: a previous reload that failed leaves the loaded
+# set diverged, so the next run retries even when no file changed.
+# Outcome is recorded in ABOX_RESTORE_F2B_STATUS (and the signals
+# attempted in ABOX_RESTORE_F2B_SIGNALS) and reported by
+# report_restore_fail2ban_status. Never fails the restore: a
+# non-converged loaded state is reported, not hidden, and does not
+# mask the main restore result.
+converge_fail2ban_after_restore() {
+    local _expected _stale _missing _others_before _others_after _lost _signals='none' _jail
+    ABOX_RESTORE_F2B_STATUS='unknown'
+    ABOX_RESTORE_F2B_SIGNALS='none'
+    command -v fail2ban-client >/dev/null 2>&1 || { ABOX_RESTORE_F2B_STATUS='not installed'; return 0; }
+    if ! validate_fail2ban_config; then
+        ABOX_RESTORE_F2B_STATUS='config invalid (left untouched)'
+        msg "${YELLOW}[!] Fail2Ban config invalid after restore; loaded jails left untouched.${NC}" >&2
+        return 0
+    fi
+    if ! fail2ban_service_running; then
+        _expected=$(fail2ban_expected_jails | paste -sd, - || true)
+        if [[ -n "$_expected" ]]; then
+            ABOX_RESTORE_F2B_STATUS="stopped (left stopped); expected jails not loaded: ${_expected}"
+        else
+            ABOX_RESTORE_F2B_STATUS='stopped (left stopped)'
+        fi
+        return 0
+    fi
+    _others_before=$(fail2ban_loaded_jails 2>/dev/null | grep -v '^A-Box-' | paste -sd, - || true)
+    if _fail2ban_loaded_matches_expected; then
+        ABOX_RESTORE_F2B_STATUS='converged (no signal needed)'
+        return 0
+    fi
+    if fail2ban-client reload >/dev/null 2>&1; then
+        _signals='reload'
+    else
+        _signals='reload-failed'
+    fi
+    if _fail2ban_loaded_matches_expected; then
+        ABOX_RESTORE_F2B_STATUS='converged (reload)'
+    else
+        _stale=$(comm -23 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true))
+        for _jail in $_stale; do
+            if fail2ban-client stop "$_jail" >/dev/null 2>&1; then
+                _signals="${_signals},stop:${_jail}"
+            else
+                _signals="${_signals},stop-failed:${_jail}"
+            fi
+        done
+        if _fail2ban_loaded_matches_expected; then
+            ABOX_RESTORE_F2B_STATUS='converged (reload+stop)'
+        else
+            if _f2b_restart; then
+                _signals="${_signals},restart"
+            else
+                _signals="${_signals},restart-failed"
+            fi
+            if _fail2ban_loaded_matches_expected; then
+                ABOX_RESTORE_F2B_STATUS='converged (restart)'
+            else
+                _missing=$(comm -13 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true) | paste -sd, - || true)
+                _stale=$(comm -23 <(fail2ban_loaded_jails 2>/dev/null | grep '^A-Box-' | sort || true) <(fail2ban_expected_jails | sort || true) | paste -sd, - || true)
+                ABOX_RESTORE_F2B_STATUS="incomplete: loaded A-Box jails still differ from restored config (still loaded: ${_stale:-none}; still missing: ${_missing:-none})"
+                msg "${YELLOW}[!] Fail2Ban loaded state did not converge after restore: ${ABOX_RESTORE_F2B_STATUS}${NC}" >&2
+            fi
+        fi
+    fi
+    ABOX_RESTORE_F2B_SIGNALS="$_signals"
+    # A global service action is not file-isolated: verify the other
+    # jails that were running before still are (notably sshd). If one
+    # vanished, report it; never rewrite user jail files to compensate.
+    if [[ "$_signals" != 'none' ]]; then
+        _others_after=$(fail2ban_loaded_jails 2>/dev/null | grep -v '^A-Box-' | paste -sd, - || true)
+        _lost=$(comm -23 <(printf '%s\n' "$_others_before" | tr ',' '\n' | sed '/^$/d' | sort || true) <(printf '%s\n' "$_others_after" | tr ',' '\n' | sed '/^$/d' | sort || true) | paste -sd, - || true)
+        if [[ -n "$_lost" ]]; then
+            ABOX_RESTORE_F2B_STATUS="${ABOX_RESTORE_F2B_STATUS}; other jail(s) lost: ${_lost}"
+            msg "${YELLOW}[!] Fail2Ban action lost non-A-Box jail(s) during restore: ${_lost}; user jail files were not modified.${NC}" >&2
+        fi
+    fi
+    return 0
+}
+
+# L8: one-line restore summary of the fail2ban loaded state (see
+# converge_fail2ban_after_restore). Always call after
+# report_restore_cron_status on a restore path.
+report_restore_fail2ban_status() {
+    msg "[fail2ban restore] ${ABOX_RESTORE_F2B_STATUS:-unknown} (signals: ${ABOX_RESTORE_F2B_SIGNALS:-none})"
 }
 
 # H-08: a restored zram.state whose BOOT= belongs to another boot
@@ -56562,23 +58888,18 @@ regenerate_runtime_assets_after_restore() {
             return 1
         fi
     done
-    ABOX_RESTORE_CRON_PROBE='unknown'
-    ABOX_RESTORE_CRON_GEO='unknown'
-    ABOX_RESTORE_CRON_TRAFFIC='unknown'
-    ABOX_RESTORE_CRON_USERGUARD='unknown'
     setup_shortcut || return 1
-    setup_health_monitor || return 1
-    ABOX_RESTORE_CRON_PROBE='installed'
-    setup_geo_cron || return 1
-    ABOX_RESTORE_CRON_GEO='installed'
-    if valid_traffic_limit_gb "${TRAFFIC_LIMIT_GB:-}"; then
-        setup_traffic_monitor || return 1
-        ABOX_RESTORE_CRON_TRAFFIC='installed'
-    else
-        disable_traffic_monitor || return 1
-        ABOX_RESTORE_CRON_TRAFFIC='disabled'
-    fi
-    restore_user_guard_cron_block "$_restore_root" || return 1
+    # L8: cron is restored from the backup, not rebuilt from defaults.
+    # restore_abox_cron_from_backup installs exactly the blocks the
+    # backup carries (or none) in one merge; a missing/invalid backup
+    # cron preserves the live blocks and reports expected=unknown.
+    restore_abox_cron_from_backup "$_restore_root" || return 1
+    # L8: converge the RUNNING fail2ban's loaded jail set with the
+    # restored on-disk config (reload, then per-jail stop, then one
+    # recorded restart). Never fails the restore; the outcome is in
+    # ABOX_RESTORE_F2B_STATUS and reported by
+    # report_restore_fail2ban_status on the restore path.
+    converge_fail2ban_after_restore || true
 }
 
 
@@ -57249,6 +59570,7 @@ PY_LATEST_BACKUP
         preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
     report_restore_cron_status
+    report_restore_fail2ban_status
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
@@ -57465,6 +59787,7 @@ PY_RB_ENUM
     commit_deployment_transaction
     rm -rf "$work"
     report_restore_cron_status
+    report_restore_fail2ban_status
     msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
     pause_return
 }
@@ -57854,12 +60177,50 @@ case "${ABOX_LANG:-zh}" in
         *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
     esac
     if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
+    # W4-tb2: bench.sh downloads speedtest-cli with wget (upstream lines
+    # 333/334); on a host without wget it fails mid-benchmark with no
+    # speedtest results. Refuse upfront with the missing command named
+    # instead of asking the user to confirm a run that cannot succeed.
+    # Scoped to bench.sh only: other mirrored scripts have their own
+    # dependencies (tb3 owns whiptail for Check.Place.sh).
+    if [[ "$asset" == 'bench.sh' ]] && ! command -v wget >/dev/null 2>&1; then
+        rm -rf -- "$work"
+        msg "${RED}$(tprintf ec_missing 'wget (bench.sh)')${NC}"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}bench.sh needs wget to download speedtest-cli. Install wget and retry.${NC}" ;;
+            ru) msg "${RED}bench.sh нужен wget для загрузки speedtest-cli. Установите wget и повторите попытку.${NC}" ;;
+            fa) msg "${RED}bench.sh برای دانلود speedtest-cli به wget نیاز دارد. wget را نصب کنید و دوباره تلاش کنید.${NC}" ;;
+            zh-tw) msg "${RED}bench.sh 需要 wget 才能下載 speedtest-cli。請安裝 wget 後重試。${NC}" ;;
+            ja) msg "${RED}bench.sh は speedtest-cli のダウンロードに wget が必要です。wget をインストールして再試行してください。${NC}" ;;
+            *) msg "${RED}bench.sh 需要 wget 才能下载 speedtest-cli。请安装 wget 后重试。${NC}" ;;
+        esac
+        return 1
+    fi
+    # W4-tb3b: Check.Place.sh needs whiptail for its interactive menu; on a
+    # host without whiptail the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note) instead of running. Refuse upfront with the
+    # missing command named instead of asking the user to confirm a run
+    # that cannot succeed. Scoped to Check.Place.sh only: other mirrored
+    # scripts have their own dependencies (tb2 owns wget for bench.sh).
+    if [[ "$asset" == 'Check.Place.sh' ]] && ! command -v whiptail >/dev/null 2>&1; then
+        rm -rf -- "$work"
+        msg "${RED}$(tprintf ec_missing 'whiptail (Check.Place.sh)')${NC}"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Check.Place.sh needs whiptail to show its interactive menu. Install whiptail and retry.${NC}" ;;
+            ru) msg "${RED}Check.Place.sh нужен whiptail для отображения интерактивного меню. Установите whiptail и повторите попытку.${NC}" ;;
+            fa) msg "${RED}Check.Place.sh برای نمایش منوی تعاملی به whiptail نیاز دارد. whiptail را نصب کنید و دوباره تلاش کنید.${NC}" ;;
+            zh-tw) msg "${RED}Check.Place.sh 需要 whiptail 才能顯示互動式選單。請安裝 whiptail 後重試。${NC}" ;;
+            ja) msg "${RED}Check.Place.sh は対話式メニューの表示に whiptail が必要です。whiptail をインストールして再試行してください。${NC}" ;;
+            *) msg "${RED}Check.Place.sh 需要 whiptail 才能显示交互式菜单。请安装 whiptail 后重试。${NC}" ;;
+        esac
+        return 1
+    fi
     if ! confirm_yes_no "$run_prompt"; then
         rm -rf -- "$work"
         return 130
     fi
     chmod 600 "$selected"
-    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" bash "$selected" "$@"
+    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="$(_abox_child_term)" bash "$selected" "$@"
     local rc=$?
     rm -rf -- "$work"
     return "$rc"
@@ -64945,8 +67306,20 @@ ss_effective_password_for_user() {
 hy2_effective_password() {
     # ABOX_HY2_CONFIG is the config-path override (fixture hook, same
     # convention as hy2_effective_password_for_user).
-    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick=''
-    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
+    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick='' _read_rc=0 _live_readable=0
+    # L6: "no usable credential" must not fall back to .env HY2_PASS.
+    # users_hy2_read_users prints [] with rc 0 for a live deny password
+    # (ABOX-DENY-*), and rc 1 for an unreadable file -- but also rc 1
+    # for a READABLE file with no usable credential (empty userpass,
+    # missing password). Only a missing/symlinked live config keeps
+    # the old fail-open to $HY2_PASS; a present, regular live config
+    # that yields no usable credential is authoritative: return 1 so
+    # no caller can publish the stale .env password as a live node.
+    [[ -f "$cfg" && ! -L "$cfg" ]] && _live_readable=1
+    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || _read_rc=$?
+    if (( _live_readable == 1 )) && { (( _read_rc != 0 )) || [[ "$users" == '[]' ]]; }; then
+        return 1
+    fi
     if [[ -n "$users" && "$users" != '[]' ]]; then
         # M41-NEW-01 follow-up: the single-node/combo display must
         # show main's credential, not the first registered user's.
@@ -65734,6 +68107,78 @@ _clash_hy2_user_password() {
     return 0
 }
 
+# L6: live-first publishability, shared by write_clash_yaml and
+# view_config. A node is publishable only when the live state actually
+# serves it: the inbound must exist in the live config AND at least one
+# enabled registry user must have a resolvable credential. rc 0 =
+# publishable, 1 = not publishable. Fail-open ONLY when the live state
+# cannot be read at all (no config file / unverifiable config): the
+# .env-driven contexts (self-test, not-installed) keep the old
+# behaviour. A readable live config is authoritative: no live inbound,
+# or no usable credential, means the node must not be emitted, whatever
+# .env/MODE still say. SS is judged on its serving core (CORE ==
+# singbox -> sing-box, else xray); Hy2 is judged on both Hy2 homes
+# (official yaml and the sing-box hysteria2 inbound) because either
+# one can serve it.
+_ss_node_publishable() {
+    local _core='' _rc=0 _reg='' _enabled=0 _cfg=''
+    case "${CORE:-}" in sing-box|singbox) _core='sing-box' ;; *) _core='xray' ;; esac
+    # L6 regression guard (self-test 2026-11-27): a MISSING live config
+    # file is not a deleted inbound -- the core is simply not deployed
+    # (yet), e.g. a fresh deploy or the self-test's synthetic env
+    # (MODE=SS, SS_PORT set, no config on disk). _users_live_inbound_exists
+    # returns rc 1 for a missing file too, so the rc alone cannot tell
+    # "deleted" from "never deployed": fail open here, and only refuse
+    # below when a config EXISTS and the tag is confirmed absent.
+    _cfg=$(users_cfg_of "$_core" 2>/dev/null || true)
+    [[ -n "$_cfg" && -f "$_cfg" && ! -L "$_cfg" ]] || return 0
+    if declare -F _users_live_inbound_exists >/dev/null 2>&1; then
+        _users_live_inbound_exists "$_core" 'ss' || _rc=$?
+        case "$_rc" in
+            1) return 1 ;; # live inbound confirmed gone (config exists, tag absent)
+            2) return 0 ;; # unverifiable live state: fail open
+        esac
+    fi
+    _reg=$(users_reg_file "$_core" 'ss' 2>/dev/null || true)
+    if [[ -n "$_reg" && -f "$_reg" && ! -L "$_reg" ]]; then
+        _enabled=$(jq -r '[.users[]? | select(.disabled != true and ((.blocked // "") == ""))] | length' "$_reg" 2>/dev/null || echo 0)
+        [[ "$_enabled" =~ ^[0-9]+$ ]] || _enabled=0
+        (( _enabled > 0 )) || return 1
+        if (( _enabled >= 2 )); then
+            local _u='' _ok=0
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] || continue
+                if ss_effective_password_for_user "$_u" "$_core" >/dev/null 2>&1; then _ok=1; break; fi
+            done < <(jq -r '.users[]? | select(.disabled != true and ((.blocked // "") == "")) | .name' "$_reg" 2>/dev/null)
+            (( _ok == 1 )) || return 1
+        else
+            ss_effective_password "$_core" >/dev/null 2>&1 || return 1
+        fi
+    fi
+    return 0
+}
+
+_hy2_node_publishable() {
+    local _cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" _users='' _rc=0
+    local _sb_cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _stripped=''
+    local _any_readable=0 _any_usable=0
+    if [[ -f "$_cfg" && ! -L "$_cfg" ]]; then
+        _any_readable=1
+        _users=$(users_hy2_read_users "$_cfg" 2>/dev/null || true)
+        [[ -n "$_users" && "$_users" != '[]' ]] && _any_usable=1
+    fi
+    if [[ -f "$_sb_cfg" && ! -L "$_sb_cfg" ]]; then
+        _any_readable=1
+        _stripped=$(jsonc_strip_comments "$_sb_cfg" 2>/dev/null || true)
+        if [[ -n "${_stripped//[[:space:]]/}" ]]; then
+            if printf '%s' "$_stripped" | jq -e '[.inbounds[]? | select(.type == "hysteria2") | (.users // []) | length] | add > 0' >/dev/null 2>&1; then _any_usable=1; fi
+        fi
+    fi
+    (( _any_readable == 0 )) && return 0 # nothing readable: fail open (.env-driven contexts)
+    (( _any_usable == 1 )) && return 0
+    return 1
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     S_IP="${S_IP#[}"; S_IP="${S_IP%]}"
@@ -65830,16 +68275,41 @@ PY_CLASH_REALPATH
     # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
     # Effective fingerprint: live-certificate fingerprint when readable,
     # else the stored 64-hex fingerprint; empty means unusable.
+    # L4 (A+C): for a sing-box node, a pin is not enough -- the live
+    # config must still serve a hysteria2 inbound. A residual cert
+    # (or a stale cached fingerprint) plus MODE still claiming HY2
+    # used to resurrect a deleted node here; the publisher now asks
+    # the same tri-state verdict the cert cleanup uses, and a missing
+    # or unverifiable inbound withholds the node. The official-Hy2
+    # node (CORE != singbox) is untouched: it has no sing-box inbound
+    # to check, and must not disappear because of this gate.
     local hy2_pin_colon hy2_fp_yaml hy2_yaml_emit=false
-    hy2_pin_colon=$(hy2_cert_pin_colon 2>/dev/null || true)
-    if [[ -n "$hy2_pin_colon" ]]; then
-        hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
-    elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-        hy2_fp_yaml="${HY2_CERT_SHA256_FP:-}"
-        # A4: cached fingerprint in use — the live cert could not be read,
-        # so this pin was NOT verified against the current certificate.
-        msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+    local _hy2_sb_live=1 _hy2_sb_state=0
+    if [[ "${CORE:-}" == 'singbox' && ( "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        _singbox_hy2_inbound_state; _hy2_sb_state=$?
+        if (( _hy2_sb_state != 0 )); then
+            _hy2_sb_live=0
+            if (( _hy2_sb_state == 2 )); then
+                msg "${YELLOW}[!] Hy2 node omitted from Clash YAML: sing-box config '${ABOX_SB_CFG:-/etc/sing-box/config.json}' is unverifiable; refusing to publish a node that cannot be confirmed live.${NC}" >&2
+            else
+                msg "${YELLOW}[!] Hy2 node omitted from Clash YAML: no live hysteria2 inbound in the sing-box config; refusing to publish a node with no server behind it.${NC}" >&2
+            fi
+        fi
+    fi
+    if (( _hy2_sb_live == 1 )); then
+        hy2_pin_colon=$(hy2_cert_pin_colon 2>/dev/null || true)
+        if [[ -n "$hy2_pin_colon" ]]; then
+            hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
+        elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+            hy2_fp_yaml="${HY2_CERT_SHA256_FP:-}"
+            # A4: cached fingerprint in use — the live cert could not be read,
+            # so this pin was NOT verified against the current certificate.
+            msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+        else
+            hy2_fp_yaml=''
+        fi
     else
+        hy2_pin_colon=''
         hy2_fp_yaml=''
     fi
     if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
@@ -65849,9 +68319,21 @@ PY_CLASH_REALPATH
             hy2_yaml_emit=true
         fi
     fi
+    # L4: the gate above already emptied the fingerprint, so the MODE
+    # branch cannot re-emit; this is belt-and-braces so a later edit
+    # to the pin selection cannot resurrect the node.
+    if (( _hy2_sb_live == 0 )); then hy2_yaml_emit=false; fi
     # H-24: Hy2 emission also honors the port flag (a bad port skips
     # the node even when a fingerprint is available).
     if (( _hy2_ports_bad == 1 )); then hy2_yaml_emit=false; fi
+    # L6: live-first publishability (see _hy2_node_publishable): a Hy2
+    # node whose live auth is deny/empty must not be emitted, whatever
+    # .env HY2_PASS still says. The gate runs here, not on the
+    # "deleted an inbound" boolean: a deny flip deletes no tag.
+    if [[ "$hy2_yaml_emit" == true ]] && ! _hy2_node_publishable; then
+        msg "${YELLOW}[!] Hy2 node not publishable (no live Hy2 inbound with usable credentials); skipping the Hy2 node in Clash YAML.${NC}" >&2
+        hy2_yaml_emit=false
+    fi
     # H-24: per-protocol port gates for the Clash YAML. A port is
     # skipped when it is empty or invalid (D-1): an empty port must
     # not keep the historical :-default (443/8443/2053), which would
@@ -66045,6 +68527,8 @@ EOF_CLASH
         if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
             if (( _hy2_ports_bad == 1 )); then
                 echo '  # Hy2 omitted: port configuration invalid; refusing to emit a node with a bad port.'
+            elif (( _hy2_sb_live == 0 )); then
+                echo '  # Hy2 omitted: no live Hy2 inbound in the sing-box config; refusing to publish a node with no server behind it.'
             elif [[ "$hy2_yaml_emit" != true ]]; then
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             else
@@ -66130,7 +68614,10 @@ EOF_CLASH
                 done
             fi
         fi
-        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )); then
+        # L6: live-first publishability (see _ss_node_publishable): an
+        # SS node whose live inbound is gone (or has no usable
+        # credential) must not be emitted from stale .env/MODE state.
+        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && (( _ss_port_ok == 1 )) && _ss_node_publishable; then
             # H-24(3): one node per resolved SS user; the single-user
             # list holds exactly the legacy pair, so the single node
             # is byte-identical to before.
@@ -66222,10 +68709,21 @@ EOF_CLASH
     # proxy was emitted; the groups file is written only when a real
     # node is emitted.
     if (( _vision_emit == 0 )) && (( _xhttp_emit == 0 )) && (( _hy2_emit == 0 )) && (( _ss_emit == 0 )) && [[ ! -s "$_clash_standalone_groups_tmp" ]]; then
-        msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
-        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
-            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
-        return 1
+        # L4: one exception to the refusal -- when the Hy2 node was
+        # withheld by the live-inbound gate above and a stale YAML
+        # already sits at $out, discarding tmp_out would leave that
+        # file publishing the ghost node. Install the generated
+        # (Hy2-less) file instead so the refresh actually removes the
+        # old node. A fresh path with no file keeps the refusal: there
+        # is nothing stale to replace.
+        if (( _hy2_sb_live == 0 )) && [[ -f "$out" ]]; then
+            msg "${YELLOW}[!] All protocols were skipped; replacing the stale Clash YAML with the current (Hy2-less) output so the removed node stops being published.${NC}" >&2
+        else
+            msg "${YELLOW}[!] All protocols were skipped; refusing to emit a Clash YAML with no proxies.${NC}" >&2
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            return 1
+        fi
     fi
     rm -f -- "$_clash_uuid_list_tmp" \
         "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -66549,7 +69047,7 @@ view_config() {
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME MIHOMO_USER_FILE _mihomo_single_rc=0
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok _host_ok
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json _hy2_eff_pass _sb_json_started _vless_ok _xhttp_ok _ss_ok _hy2_json_ok _host_ok _hy2_pub_ok
     # H-24: a bad Hy2 port endpoint skips the Hy2 blocks below (and warns)
     # instead of killing the whole view (menu 12 must not die on one
     # protocol's port problem).
@@ -66628,6 +69126,22 @@ view_config() {
             _hy2_json_ok=0
         fi
     fi
+    # L6: live-first publishability, shared with write_clash_yaml (see
+    # _ss_node_publishable / _hy2_node_publishable). Folding it into
+    # the _ss_ok / _hy2_json_ok flags covers every downstream block
+    # that reads them (SS URL, sing-box JSON examples); the Hy2 URL
+    # block below does not read _hy2_json_ok, so it gets the
+    # _hy2_pub_ok conjunct as well.
+    _hy2_pub_ok=1
+    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && (( _ss_ok == 1 )) && ! _ss_node_publishable; then
+        msg "${YELLOW}[!] SS node not publishable (no live SS inbound with usable credentials); Shadowsocks link skipped.${NC}"
+        _ss_ok=0
+    fi
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && ! _hy2_node_publishable; then
+        msg "${YELLOW}[!] Hy2 node not publishable (no live Hy2 inbound with usable credentials); Hy2 links skipped.${NC}"
+        _hy2_json_ok=0
+        _hy2_pub_ok=0
+    fi
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE:-}")${NC}"
     msg "${BLUE}======================================================================${NC}"
@@ -66657,7 +69171,7 @@ view_config() {
         fi
         generate_qr "$XHTTP_URL"
     fi
-    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]] && (( _hy2_pub_ok == 1 )) && [[ -n "$HY2_URI_PORT" ]] && { [[ -n "${HY2_DOMAIN:-}" ]] || (( _host_ok == 1 )); }; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
@@ -69467,6 +71981,14 @@ expected_managed_services() {
 }
 
 prepare_noninteractive_file_operation() {
+    # L12 (TTY guard i18n, same root cause as the A-leg enter_runtime
+    # fix): resolve the language BEFORE any tr_msg use. The top-level
+    # ABOX_LANG='zh' init runs before main() dispatches, so without
+    # detect_lang() every message on these non-interactive CLI paths
+    # (--export-backup-key / --convert-legacy-backup /
+    # --xray-config-autorecover / --sni-test) stayed zh even when a
+    # language was saved in LANG_FILE.
+    detect_lang
     [[ $EUID -eq 0 ]] || die "$(tr_msg prepare_noninteractive_file_operation_root_required)"
     mkdir -p /run || die "$(tr_msg prepare_noninteractive_file_operation_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
@@ -69849,7 +72371,7 @@ run_self_tests() {
     }
     selftest_abox_signature() {
         if [[ ! -e /etc/ddr && ! -L /etc/ddr ]]; then
-            printf 'ABSENT\n'
+            printf 'ABSENT\nABSENT\n'
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
@@ -69860,6 +72382,24 @@ run_self_tests() {
         # and the readlink target for symlinks; records sorted,
         # NUL-joined, sha256. A nested same-size content change or a
         # symlink retarget now changes the signature.
+        # SELFTEST-ISOLATION (leftover 20261126): the users.d subtree is
+        # NOT part of the content/mtime signature. The 5-minute USERGUARD
+        # tick (user_guard_tick -> users_guard_eval -> users_reg_write ->
+        # users_reg_write_path) rewrites EVERY registry file on every
+        # tick with an unconditional `mv -f` of a fresh temp file -- no
+        # identical-content skip -- so a tick landing inside the
+        # self-test window flips mtime (and the dir mtime) even with
+        # zero traffic and no transition. That write is background
+        # activity, not a self-test side effect, so the first hash line
+        # excludes users.d content/mtime entirely; the second hash line
+        # covers only the sorted users.d relative-path set, which still
+        # catches the self-test creating or deleting a registry. The
+        # users.d directory itself stays in the first hash with
+        # identity+mode only (no mtime/size). Residual race: a tick
+        # that fires a real transition (quota/expiry) mid-run can still
+        # touch .env/desired/subscription via users_sync; that is rare
+        # and only on hosts with an active transition, and is left as a
+        # known limitation (see the post-test comparison below).
         python3 -I - <<'PY_ABOX_SIG' 2>/dev/null || return 1
 import os, stat, sys, hashlib
 def _ftype(m):
@@ -69884,6 +72424,7 @@ def _sha256_file(p):
     except OSError:
         return 'ERR'
 _records = []
+_users_names = []
 for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followlinks=False):
     for _name in _dirnames + _filenames:
         _p = os.path.join(_dirpath, _name)
@@ -69893,6 +72434,16 @@ for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followl
         except OSError:
             continue
         _t = _ftype(_st.st_mode)
+        if _rel == 'users.d':
+            # users.d dir itself: identity + mode only, no mtime/size
+            # (a guard tick rewriting a child registry flips the dir
+            # mtime via the temp-file replace).
+            _records.append(repr((_rel, _t, _st.st_uid, _st.st_gid, oct(stat.S_IMODE(_st.st_mode))[2:], '', '', '')))
+            continue
+        if _rel.startswith('users.d/'):
+            # Registry files: names only (see D-07 note above).
+            _users_names.append(_rel)
+            continue
         _extra = ''
         if _t == 'f':
             _extra = _sha256_file(_p)
@@ -69910,6 +72461,9 @@ except OSError:
 _records.sort()
 _blob = (chr(0).join(_records) + chr(0)) if _records else ''
 sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + chr(10))
+_users_names.sort()
+_ub = (chr(0).join(_users_names) + chr(0)) if _users_names else ''
+sys.stdout.write(hashlib.sha256(_ub.encode()).hexdigest() + chr(10))
 PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
@@ -71896,6 +74450,40 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): the emitters below
+        # merge live state by design (H-24: never silently drop
+        # multi-user UUIDs). On a host with a live deployment that
+        # live state leaks into the fixtures and breaks the count
+        # assertions (a live users.d UUID adds Vision+XHTTP nodes, so
+        # the ML-KEM flag counts read 4 instead of 2). Point every
+        # live-read at an empty/nonexistent temp path for this block:
+        #   ABOX_USERS_DIR  -> empty temp dir (list_usersd_uuids,
+        #                      users_reg_file, ss/hy2 effective passwords)
+        #   XRAY_SLOT_CFG   -> nonexistent temp path (users_cfg_of xray:
+        #                      list_xhttp_live_uuids fails open to the
+        #                      merged list; L6 publishability fails open)
+        #   ABOX_HY2_CONFIG -> nonexistent temp path (hy2_effective_password
+        #                      fails open to $HY2_PASS; _hy2_node_publishable
+        #                      sees nothing readable and fails open)
+        #   ABOX_SB_CFG     -> nonexistent temp path (_singbox_hy2_inbound_state
+        #                      / _hy2_node_publishable fail open; the
+        #                      standalone calls below override it with
+        #                      their own fixture paths)
+        # Plain assignments: the emitters run in this shell, so dynamic
+        # scope carries them; restored at the end of this block.
+        # Product emitters untouched.
+        local clash_users_dir="$tmp/abox-users.d"
+        mkdir -m 700 "$clash_users_dir" || { echo 'FAIL: self-test users.d isolation directory'; failures=$((failures + 1)); }
+        local _st_old_users_dir="${ABOX_USERS_DIR:-}" _st_old_slot_cfg="${XRAY_SLOT_CFG:-}" _st_old_hy2_cfg="${ABOX_HY2_CONFIG:-}" _st_old_sb_cfg="${ABOX_SB_CFG:-}"
+        local _st_had_users_dir=0 _st_had_slot_cfg=0 _st_had_hy2_cfg=0 _st_had_sb_cfg=0
+        [[ -n "${ABOX_USERS_DIR:-}" ]] && _st_had_users_dir=1
+        [[ -n "${XRAY_SLOT_CFG:-}" ]] && _st_had_slot_cfg=1
+        [[ -n "${ABOX_HY2_CONFIG:-}" ]] && _st_had_hy2_cfg=1
+        [[ -n "${ABOX_SB_CFG:-}" ]] && _st_had_sb_cfg=1
+        ABOX_USERS_DIR="$clash_users_dir"
+        XRAY_SLOT_CFG="$clash_dir/no-live-xray.json"
+        ABOX_HY2_CONFIG="$clash_dir/no-live-hy2.yaml"
+        ABOX_SB_CFG="$clash_dir/no-live-sb.json"
         # M1: self-test must not do real network I/O. write_clash_yaml
         # probes the VPS country via a Cloudflare trace fetch; these
         # fixtures only check YAML structure, so fail the detection here
@@ -71947,6 +74535,13 @@ EOF_SELFTEST_IPT
         fi
         [[ ! -e "$clash_dir/A-Box-mihomo-single-ss.yaml" ]] || { echo 'FAIL: refused single-user YAML must not leave a file behind'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
+        # SELFTEST-ISOLATION (leftover 20261126): restore the four
+        # live-read variables the block above redirected; later blocks
+        # (W2/L2) save and restore their own overrides from these values.
+        if (( _st_had_users_dir == 1 )); then ABOX_USERS_DIR="$_st_old_users_dir"; else unset ABOX_USERS_DIR; fi
+        if (( _st_had_slot_cfg == 1 )); then XRAY_SLOT_CFG="$_st_old_slot_cfg"; else unset XRAY_SLOT_CFG; fi
+        if (( _st_had_hy2_cfg == 1 )); then ABOX_HY2_CONFIG="$_st_old_hy2_cfg"; else unset ABOX_HY2_CONFIG; fi
+        if (( _st_had_sb_cfg == 1 )); then ABOX_SB_CFG="$_st_old_sb_cfg"; else unset ABOX_SB_CFG; fi
         if selftest_has python3; then
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
 import json, sys
@@ -72031,6 +74626,12 @@ PY_SELFTEST_YAML
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi
         post_abox_sig=$(selftest_abox_signature) || { echo 'FAIL: live /etc/ddr post-test signature unavailable'; failures=$((failures + 1)); }
+        # The signature is two lines: the whole-tree hash (users.d
+        # content/mtime excluded, see selftest_abox_signature) plus
+        # the users.d relative-path-set hash. Known residual race: a
+        # USERGUARD tick firing a real quota/expiry transition mid-run
+        # can still rewrite .env/desired/subscription via users_sync;
+        # the steady-state tick (registry rewrite only) is excluded.
         if (( post_abox_exists != real_abox_exists )); then
             echo 'FAIL: --self-test changed /etc/ddr existence state'; failures=$((failures + 1))
         elif [[ "$post_abox_sig" != "$real_abox_sig" ]]; then
@@ -72193,6 +74794,12 @@ PY_SELFTEST_YAML
     grep -Fq 'read -r -p "$prompt" input || return 1' "$source_body_file" || { echo 'FAIL: looped input prompts must return failure on EOF'; failures=$((failures + 1)); }
     grep -Fq 'VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die' "$source_body_file" || { echo 'FAIL: prompt command substitutions must propagate EOF failure'; failures=$((failures + 1)); }
     grep -Fq 'exec < /dev/tty || die' "$source_body_file" || { echo 'FAIL: need_interactive_tty must fail fast when opening /dev/tty fails'; failures=$((failures + 1)); }
+    # L12: the two residual hardcoded no-TTY refusals must go through i18n,
+    # and the non-interactive CLI entry must resolve the language first
+    # (same root cause as the A-leg enter_runtime fix).
+    grep -Fq 'tr_msg legacy_xl_retire_noninteractive' "$source_body_file" || { echo 'FAIL: retired xray-latest non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    grep -Fq 'tr_msg legacy_backup_no_checksum_noninteractive' "$source_body_file" || { echo 'FAIL: legacy backup no-checksum non-interactive refusal must use i18n'; failures=$((failures + 1)); }
+    awk '/^prepare_noninteractive_file_operation\(\) \{/,/^}/' "$source_body_file" | grep -Fq 'detect_lang' || { echo 'FAIL: prepare_noninteractive_file_operation must resolve language before its messages'; failures=$((failures + 1)); }
     if grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e(p)?([[:space:]]|$)' "$0" || grep -Eq '(^|[[:space:];])read[[:space:]]+-r[[:space:]]+-e[[:space:]]+-p([[:space:]]|$)' "$0"; then
         echo 'FAIL: interactive reads must not use readline mode because Ctrl-D/EOF can stall on PTY inputs'
         failures=$((failures + 1))
@@ -72487,10 +75094,26 @@ EOF_SVC_TEST_RCUPDATE
     die() { return 99; }
     clear_abox_env_vars
     CORE=''; MODE=''
+    # SELFTEST-ISOLATION (leftover 20261126): confirm_deployment_replacement
+    # reloads $ABOX_ENV when CORE/MODE are empty, and load_abox_env parses
+    # the state file with `while IFS= read -r -d '' key` -- which invokes
+    # THIS fixture's mocked `read` (always returns 0, never assigns key),
+    # so the loop body expands unset $key under `set -u` and aborts the
+    # whole self-test shell (`key: unbound variable`, exit 1, no verdict;
+    # stderr is swallowed by the caller's >/dev/null 2>&1). On a host
+    # without /etc/ddr/.env the load fails early at the readability guard
+    # and the fixture passes, so the bug only fires on a live host.
+    # Point ABOX_ENV at a nonexistent temp path so the load fails early
+    # exactly as on a clean host -- and the fixture keeps testing its
+    # intended path (query failure -> confirmation prompt, not a silent
+    # auto-approve driven by a reloaded live CORE/MODE).
+    _confirm_old_env="${ABOX_ENV:-}"
+    ABOX_ENV="$tmp/no-live-abox.env"
     if confirm_deployment_replacement xray VISION >/dev/null 2>&1; then
         echo 'FAIL: managed-service state query failure was silently auto-approved'
         failures=$((failures + 1))
     fi
+    if [[ -n "$_confirm_old_env" ]]; then ABOX_ENV="$_confirm_old_env"; else unset ABOX_ENV; fi
     eval "$managed_services_active__orig"
     eval "$die__orig"
     if [[ -n "$read__orig" ]]; then
@@ -72842,7 +75465,7 @@ PY_F05_TPUB
     # serves the port, and the published desired config must match
     # the .env expectations exactly to be usable for auto-recovery.
     {
-        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0
+        local _w2d="$tmp/w2f1" _w2_env='' _w2_cov=0 _l4_st=0
         local _w2_old_slot="${XRAY_SLOT_CFG:-}" _w2_old_dir="${ABOX_DIR:-}" _w2_old_env="${ABOX_ENV:-}" _w2_old_sb="${ABOX_SB_CFG:-}" _w2_old_hy2="${ABOX_HY2_CFG:-}" _w2_old_xbin="${XRAY_BIN:-}"
         mkdir -p "$_w2d/ddr" || { echo 'FAIL: W2-FAIL-1 test dir'; failures=$((failures + 1)); }
         XRAY_SLOT_CFG="$_w2d/xray.json"
@@ -72880,6 +75503,30 @@ EOF_W2F1
         [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must clear when no Vision inbound remains (Hy2 alone must not keep it)'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^XHTTP_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == '8443' ]] || { echo 'FAIL: W2-FAIL-1 XHTTP_PORT must survive while XHTTP lives'; failures=$((failures + 1)); }
+        # O-1 (2026-11-27): official hop writes `listen: :20000-25000`
+        # in the Hysteria YAML while HY2_BASE_PORT stays 443, so the
+        # Vision delete must not clear it (the menu would show
+        # "Hy2:?"). Rebuild the fixture in hop mode and re-run the
+        # same Vision delete, then restore the non-hop fixture the
+        # rest of this block expects (api+xhttp+ss, listen :443).
+        printf 'listen: :20000-25000\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT="443"\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="20000"\nHY2_URI_PORTS="20000-25000"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
+        cat > "$_w2d/xray.json" <<'EOF_W2F1'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053}
+]}
+EOF_W2F1
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: O-1 sync after Vision delete (official hop)'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_BASE_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: O-1 HY2_BASE_PORT must survive a Vision delete while official-hop Hy2 lives'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: O-1 VLESS_PORT must still clear on Vision delete (official hop)'; failures=$((failures + 1)); }
+        printf 'listen: :443\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT=""\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="443"\nHY2_URI_PORTS="443"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
         _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
         (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass after Vision delete (else the probe restores)'; failures=$((failures + 1)); }
         # Delete the remaining xray inbounds: every xray var clears
@@ -72934,6 +75581,47 @@ EOF_W2F1
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: W2-FAIL-1 Hy2 keys must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
         g2_func_contains _protocol_removed_side_effects '_clear_hy2_nonport_env_vars' || { echo 'FAIL: W2-FAIL-1 _protocol_removed_side_effects must call the Hy2 non-port cleanup'; failures=$((failures + 1)); }
+        # L4 (leftover 20261126): Hy2 cert cleanup helper wiring +
+        # tri-state inbound verdict. The helper must be reachable
+        # from every path that used to skip E16, and the verdict
+        # must separate "valid config, no match" (rc 1) from
+        # "the query never saw the expected structure" (rc 2).
+        g2_func_contains _protocol_removed_side_effects '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 _protocol_removed_side_effects must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains deploy_singbox '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 deploy_singbox must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_singbox_cleanup_hy2_certs_when_none_remain' || { echo 'FAIL: L4 clear_all_protocols must call the Hy2 cert cleanup helper'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_hy2_nonport_env_vars' || { echo 'FAIL: L4 clear_all_protocols must clear the Hy2 .env keys'; failures=$((failures + 1)); }
+        g2_func_contains write_clash_yaml '_singbox_hy2_inbound_state' || { echo 'FAIL: L4 write_clash_yaml must gate the Hy2 node on the live sing-box inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"hy2","type":"hysteria2","listen_port":443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 0 )) || { echo 'FAIL: L4 live hysteria2 inbound must report state 0'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-in","type":"vless","listen_port":8443}]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 valid config without Hy2 must report state 1'; failures=$((failures + 1)); }
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 non-array inbounds must report state 2 (unverifiable), never state 1'; failures=$((failures + 1)); }
+        printf 'this is not json{' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 unparseable config must report state 2'; failures=$((failures + 1)); }
+        printf '{"inbounds":[]}' > "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 1 )) || { echo 'FAIL: L4 empty inbounds must report state 1'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 3 )) || { echo 'FAIL: L4 missing config must report state 3'; failures=$((failures + 1)); }
+        # A symlinked config is unverifiable (M-29), never "no match".
+        printf '{"inbounds":[]}' > "$_w2d/sb-real.json"
+        ln -sf "$_w2d/sb-real.json" "$_w2d/sb.json"
+        _singbox_hy2_inbound_state >/dev/null 2>&1; _l4_st=$?
+        (( _l4_st == 2 )) || { echo 'FAIL: L4 symlinked config must report state 2'; failures=$((failures + 1)); }
+        rm -f "$_w2d/sb.json" "$_w2d/sb-real.json"
+        # ... and the .env cleanup must keep keys on that same
+        # structurally bad shape (rc 0, keys kept), not clear them.
+        printf '{"inbounds":"oops"}' > "$_w2d/sb.json"
+        printf 'HY2_DOMAIN="example.com"\nHY2_PASS="stale"\n' > "$_w2d/.env"
+        _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
@@ -72959,6 +75647,120 @@ EOF_W2F1
             echo 'SKIP: W2-FAIL-1 desired-config publish/gate (needs root)'
         fi
         XRAY_SLOT_CFG="$_w2_old_slot"; ABOX_DIR="$_w2_old_dir"; ABOX_ENV="$_w2_old_env"; ABOX_SB_CFG="$_w2_old_sb"; ABOX_HY2_CFG="$_w2_old_hy2"; XRAY_BIN="$_w2_old_xbin"
+    }
+    # 9. L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2
+    # non-port cleanup to SS_PASS / SOCKS_USER / SOCKS_PASS / UUID /
+    # VLESS_SNI / VISION_SNI / XHTTP_SNI. verify4 saw SS_PASS survive
+    # four SS deletes because sync_env_ports_after_removal only
+    # reconciles listener ports. Each key must clear only when no
+    # live inbound of the protocol that owns it remains on either
+    # core, and must survive while one does.
+    {
+        local _l2d="$tmp/l2keys" _l2_env=''
+        local _l2_old_slot="${XRAY_SLOT_CFG:-}" _l2_old_dir="${ABOX_DIR:-}" _l2_old_env="${ABOX_ENV:-}" _l2_old_sb="${ABOX_SB_CFG:-}" _l2_old_hy2="${ABOX_HY2_CFG:-}"
+        mkdir -p "$_l2d/ddr" || { echo 'FAIL: L2 test dir'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2d/xray.json"
+        ABOX_DIR="$_l2d/ddr"
+        ABOX_ENV="$_l2d/.env"
+        ABOX_SB_CFG="$_l2d/sb.json"
+        ABOX_HY2_CFG="$_l2d/hy2.yaml"
+        rm -f "$_l2d/hy2.yaml"
+        cat > "$_l2d/xray.json" <<'EOF_L2'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053},
+ {"tag":"socks5-landing","protocol":"socks","port":1080}
+]}
+EOF_L2
+        printf '{"inbounds":[]}' > "$_l2d/sb.json"
+        cat > "$_l2d/.env" <<'EOF_L2'
+CORE="xray"
+MODE="ALL"
+UUID="11111111-1111-4111-8111-111111111111"
+VLESS_SNI="www.microsoft.com"
+VISION_SNI="www.microsoft.com"
+XHTTP_SNI="www.microsoft.com"
+VLESS_PORT="443"
+XHTTP_PORT="8443"
+SS_PORT="2053"
+SOCKS_PORT="1080"
+SOCKS_USER="socksuser"
+SOCKS_PASS="sockspass"
+SS_PASS="sspass-stale"
+EOF_L2
+        # SS delete: the port sync clears SS_PORT; the helper must
+        # clear SS_PASS while keeping every surviving key.
+        jq --arg t ss '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must clear once no SS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_l2_env" == '11111111-1111-4111-8111-111111111111' ]] || { echo 'FAIL: L2 UUID must survive while Vision+XHTTP live'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must survive while Vision lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # Vision-only delete: VISION_SNI clears; UUID and VLESS_SNI
+        # survive as the XHTTP fallback still needs them.
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must clear when Vision is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 UUID must survive while XHTTP lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must survive as the XHTTP fallback while XHTTP lives'; failures=$((failures + 1)); }
+        # Vision+XHTTP delete: UUID and all three SNI keys clear;
+        # SOCKS credentials survive (SOCKS still lives).
+        jq --arg t xhttp '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision+XHTTP delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 UUID must clear when no VLESS-family inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^XHTTP_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 XHTTP_SNI must clear when XHTTP is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must clear when neither Vision nor XHTTP can fall back to it'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # SOCKS delete on both cores clears the credentials; a live
+        # sing-box mixed inbound keeps them.
+        jq --arg t socks5-landing '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SOCKS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"socks5-landing","type":"mixed","listen_port":1080}]}' > "$_l2d/sb.json"
+        sed -i 's/^SOCKS_USER=.*/SOCKS_USER="socksuser"/; s/^SOCKS_PASS=.*/SOCKS_PASS="sockspass"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SOCKS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive a live sing-box mixed inbound'; failures=$((failures + 1)); }
+        # Cross-core SS keep, ShadowTLS companion exclusion, corrupt
+        # config skip, and the Argo UUID exclusion.
+        printf '{"inbounds":[{"tag":"ss","type":"shadowsocks","listen_port":2053}]}' > "$_l2d/sb.json"
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must survive a live sing-box SS inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"shadowtls-ss","type":"shadowsocks","listen":"127.0.0.1","method":"2022-blake3-aes-128-gcm","password":"inner-not-ss-pass"}]}' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only a ShadowTLS companion'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 ShadowTLS loopback companion (own password, no listen_port) must not keep SS_PASS'; failures=$((failures + 1)); }
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        printf 'this is not json{' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must skip (rc 0) on an unverifiable config'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-ws-in","type":"vless","listen_port":10000}]}' > "$_l2d/sb.json"
+        sed -i 's/^UUID=.*/UUID="11111111-1111-4111-8111-111111111111"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only an Argo inbound'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 Argo vless-ws-in (own ARGO_UUID) must not keep the main UUID'; failures=$((failures + 1)); }
+        g2_func_contains _protocol_removed_side_effects '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 _protocol_removed_side_effects must call the non-port cleanup'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 clear_all_protocols must call the non-port cleanup'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2_old_slot"; ABOX_DIR="$_l2_old_dir"; ABOX_ENV="$_l2_old_env"; ABOX_SB_CFG="$_l2_old_sb"; ABOX_HY2_CFG="$_l2_old_hy2"
     }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"

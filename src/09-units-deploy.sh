@@ -2111,7 +2111,10 @@ sync_env_ports_after_removal() {
     # of the VAR'S OWN protocol remains (e.g. VLESS_PORT survives on
     # an xray/sing-box Vision inbound, never on a Hy2 listener).
     # HY2 hop-range vars are not listener ports and are out of scope
-    # here.
+    # here. O-1 exception: HY2_BASE_PORT is likewise not a listener
+    # port while official hop is on (the listen spec is the hop
+    # range), so a live hop range keeps it -- see the O-1 block in
+    # the var loop below.
     local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _live_vless=() _live_xhttp=() _live_ss=() _live_socks=() _live_trojan=() _live_hy2=()
@@ -2259,6 +2262,25 @@ sync_env_ports_after_removal() {
             done
             (( _keep == 1 )) && break
         done
+        # O-1 (2026-11-27): HY2_BASE_PORT is not a listener port while
+        # official hop is on. Deploy writes the official listen spec
+        # as the hop range (src/07: HY2_LISTEN=":${HY2_RANGE_START}-
+        # ${HY2_RANGE_END}") while HY2_BASE_PORT keeps the prompted
+        # port (443), so the range-membership check above can never
+        # keep it: deleting Vision (also 443) cleared it and the menu
+        # showed "Hy2:?". A live range in the Hy2 live set proves Hy2
+        # still lives in hop mode, and HY2_BASE_PORT is its
+        # nominal/display port (menu Hy2:${HY2_BASE_PORT}), so keep it
+        # then. Only a range keeps it this way: a single-port listener
+        # still needs the exact/range match above, so a stale
+        # HY2_BASE_PORT with no listener behind it still clears, and
+        # with no live Hy2 at all (_live_hy2 empty) it still clears
+        # on Hy2 delete.
+        if [[ "$var" == 'HY2_BASE_PORT' && "$_keep" == 0 ]]; then
+            for _lp in "${live_ports[@]}"; do
+                if [[ "$_lp" =~ ^[0-9]+-[0-9]+$ ]]; then _keep=1; break; fi
+            done
+        fi
         (( _keep == 1 )) && continue
         if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1
@@ -2299,18 +2321,31 @@ _clear_hy2_nonport_env_vars() {
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     local _hy2cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}"
     local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _stripped='' _jq_rc=0 _key='' _failed=0
+    local _key='' _failed=0 _sb_state=0
     # Official binary still installed -> Hy2 lives.
     [[ -e "$_hy2cfg" || -L "$_hy2cfg" ]] && return 0
     # Sing-box hysteria2 inbound still present -> Hy2 lives. A
-    # missing/empty sing-box config means no sing-box Hy2; an
-    # unreadable or unparseable one is unverifiable -> keep keys.
-    if [[ -f "$_sbcfg" && ! -L "$_sbcfg" && -s "$_sbcfg" ]]; then
-        _stripped=$(jsonc_strip_comments "$_sbcfg" 2>/dev/null) || return 0
-        [[ -n "${_stripped//[[:space:]]/}" ]] || return 0
-        printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
-        (( _jq_rc == 1 )) || return 0
-    fi
+    # missing/empty sing-box config means no sing-box Hy2 (rc 3);
+    # an unreadable or unparseable one is unverifiable -> keep keys.
+    # L4: best-effort is not swallowed diagnostics -- "kept because
+    # unverifiable" warns once per process, so it is distinguishable
+    # from "readable and cleared". The verdict comes from
+    # _singbox_hy2_inbound_state, so "valid config, no match" (rc 1)
+    # is never confused with "the query never saw the expected
+    # structure" (rc 2): a config shaped like {"inbounds": "oops"}
+    # used to clear live keys here on a bare jq rc 1.
+    _singbox_hy2_inbound_state; _sb_state=$?
+    case "$_sb_state" in
+        0) return 0 ;;
+        1|3) ;;
+        2)
+            if [[ -z "${_CLEAR_HY2_ENV_UNVERIFIABLE_WARNED:-}" ]]; then
+                _CLEAR_HY2_ENV_UNVERIFIABLE_WARNED=1
+                msg "${YELLOW}[!] Hy2 settings kept in .env: sing-box config '${_sbcfg}' is unverifiable; stale Hy2 values may remain.${NC}"
+            fi
+            return 0
+            ;;
+    esac
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for _key in HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL HY2_PASS HY2_OBFS HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END; do
         if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
@@ -2321,6 +2356,92 @@ _clear_hy2_nonport_env_vars() {
     done
     if (( _failed == 1 )); then
         msg "${YELLOW}[!] Failed to clear stale Hy2 settings from .env after removing Hysteria 2; stale values may remain.${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2 non-port
+# cleanup above to the remaining protocols' non-port .env keys.
+# verify4 saw SS_PASS survive four SS deletes: sync_env_ports_after_removal
+# only reconciles listener PORTs, so the secret stayed in .env (and
+# write_env re-emits it on every later write). Same residue class for
+# SOCKS_USER/PASS, the main UUID and the three SNI keys.
+# Gate: each key clears only when no live inbound of the protocol that
+# OWNS it remains on either core. The classification mirrors
+# sync_env_ports_after_removal (tag first, protocol/type second), so an
+# Argo vless-ws-in never keeps the main UUID and a Hy2 listener never
+# keeps a VLESS key:
+#   SS_PASS        <- any shadowsocks inbound (xray protocol; sing-box
+#                     type WITH a listen_port -- the ShadowTLS loopback
+#                     companion has none and its own password, so it
+#                     must not keep SS_PASS)
+#   SOCKS_USER/PASS <- any socks inbound (xray protocol; sing-box type
+#                     socks|mixed)
+#   UUID           <- any VLESS-family inbound (Vision or XHTTP)
+#   VISION_SNI     <- Vision only
+#   XHTTP_SNI      <- XHTTP only
+#   VLESS_SNI      <- Vision or XHTTP (it is the shared fallback both
+#                     readers use: ${VISION_SNI:-${VLESS_SNI:-}} and
+#                     ${XHTTP_SNI:-${VLESS_SNI:-}})
+# Deploy regenerates every one of these keys (UUID/SS_PASS fresh per
+# deploy, src/08; SNI re-prompted or auto-selected, src/07; SOCKS
+# landing creds are prompted fresh per landing and never read from
+# .env), so clearing cannot break a later re-deploy. Anything
+# unverifiable (missing .env, symlinked/unreadable/unparseable config)
+# keeps the keys and returns 0 (skip, mirroring
+# _clear_hy2_nonport_env_vars); only a real write failure returns 1.
+_clear_stale_nonport_env_vars() {
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+    local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+    local _stripped='' _jq_prog='' _labels='' _lab='' _key='' _failed=0
+    local _vision=0 _xhttp=0 _ss=0 _socks=0 _unverifiable=0
+    local _core='' _cfg=''
+    local -a _clear_keys=()
+    for _core in xray sing-box; do
+        if [[ "$_core" == 'xray' ]]; then
+            _cfg="$_xcfg"
+            _jq_prog='.inbounds[]? | if ((.tag // "") | test("vision")) then "VLESS" elif ((.tag // "") | test("xhttp")) then "XHTTP" elif .protocol == "shadowsocks" then "SS" elif .protocol == "socks" then "SOCKS" elif .protocol == "vless" then (if ((.streamSettings.network // "") == "xhttp") then "XHTTP" else "VLESS" end) else empty end'
+        else
+            _cfg="$_sbcfg"
+            _jq_prog='.inbounds[]? | if .type == "vless" and ((.tag // "") | test("vision")) then "VLESS" elif .type == "shadowsocks" and has("listen_port") then "SS" elif .type == "socks" or .type == "mixed" then "SOCKS" else empty end'
+        fi
+        # A symlinked config may still serve the protocol through its
+        # target: unverifiable, keep the keys. A missing config means
+        # no inbounds on this core; an existing non-regular or empty
+        # file is damage, not absence: unverifiable as well.
+        if [[ -L "$_cfg" ]]; then _unverifiable=1; continue; fi
+        [[ -e "$_cfg" ]] || continue
+        if [[ ! -f "$_cfg" || ! -s "$_cfg" ]]; then _unverifiable=1; continue; fi
+        _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || { _unverifiable=1; continue; }
+        [[ -n "${_stripped//[[:space:]]/}" ]] || { _unverifiable=1; continue; }
+        _labels=$(printf '%s' "$_stripped" | jq -r "$_jq_prog" 2>/dev/null) || { _unverifiable=1; continue; }
+        while IFS= read -r _lab; do
+            case "$_lab" in
+                VLESS) _vision=1 ;;
+                XHTTP) _xhttp=1 ;;
+                SS) _ss=1 ;;
+                SOCKS) _socks=1 ;;
+            esac
+        done <<< "$_labels"
+    done
+    (( _unverifiable == 0 )) || return 0
+    [[ -f "$envf" && ! -L "$envf" ]] || return 0
+    if (( _ss == 0 )); then _clear_keys+=(SS_PASS); fi
+    if (( _socks == 0 )); then _clear_keys+=(SOCKS_USER SOCKS_PASS); fi
+    if (( _vision == 0 )); then _clear_keys+=(VISION_SNI); fi
+    if (( _xhttp == 0 )); then _clear_keys+=(XHTTP_SNI); fi
+    if (( _vision == 0 && _xhttp == 0 )); then _clear_keys+=(UUID VLESS_SNI); fi
+    for _key in "${_clear_keys[@]}"; do
+        if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
+            _failed=1
+            continue
+        fi
+        unset "$_key" 2>/dev/null || true
+    done
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Failed to clear stale protocol settings from .env after removing protocol(s); stale values may remain.${NC}"
         return 1
     fi
     return 0
@@ -2500,6 +2621,103 @@ _singbox_cleanup_tuic_certs_when_none_remain() {
     return 0
 }
 
+# L4 (leftover 20261126): tri-state answer to "does the live sing-box
+# config still serve a hysteria2 inbound?" -- the single place that
+# decides it, so the cert cleanup, the .env cleanup and the Clash
+# publisher cannot drift apart.
+#   rc 0 = a hysteria2 inbound is confirmed present (Hy2 lives)
+#   rc 1 = the config is valid and has no hysteria2 inbound
+#   rc 2 = unverifiable (symlink, non-regular, strip failure,
+#          empty-after-strip, bad structure, jq failure) -- callers
+#          must keep files/keys and must not publish
+#   rc 3 = no config file at all, or an empty regular file: no
+#          inbound can exist, but nothing was verified either
+# The structure gate matters: a bare `jq ... || rc=$?; (( rc == 1 ))`
+# read treats "the query never saw the expected shape" (top level not
+# an object, .inbounds not an array) exactly like "valid config, no
+# match" (rc 1). A config shaped like {"inbounds": "oops"} would then
+# delete a live cert or clear live .env keys. Only a validated shape
+# may report rc 1 (same gate as _standalone_link_survivor).
+_singbox_hy2_inbound_state() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _stripped='' _jq_rc=0
+    [[ -L "$_cfg" ]] && return 2
+    [[ -e "$_cfg" ]] || return 3
+    [[ -f "$_cfg" ]] || return 2
+    [[ -s "$_cfg" ]] || return 3
+    _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || return 2
+    [[ -n "${_stripped//[[:space:]]/}" ]] || return 2
+    printf '%s' "$_stripped" | jq -s -e 'if length != 1 then error("config is not a single JSON document") elif (.[0] | type) != "object" then error("config top level is not an object") elif (.[0] | has("inbounds")) and ((.[0].inbounds | type) != "array") then error("config inbounds is not an array") else true end' >/dev/null 2>&1 || return 2
+    printf '%s' "$_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# L4 (leftover 20261126): delete the script-managed sing-box Hy2
+# cert/key pair (/etc/sing-box/hy2.crt|key, fixed paths, single pair)
+# once no hysteria2 inbound remains in the live config. Mirror of
+# _singbox_cleanup_tuic_certs_when_none_remain, extracted from the
+# SYD-B E16 block in _protocol_removed_side_effects so the deploy tail
+# and the clear-all backstop can reuse the same verdict.
+# Contract (GPT L4 item 2): the helper NEVER touches the manifest
+# itself. It reports what it actually deleted through the caller's
+# array named by $1 (optional; nameref, bash 4.3+ as in _tsv_split);
+# the caller merges those paths into its own _deleted list or hands
+# them to _manifest_drop_paths. Paths are never mixed into stdout:
+# stdout stays log-only (warnings); the array is the channel.
+# Partial success is a first-class outcome: a file that was deleted
+# is reported (its manifest row must go); a file whose rm failed
+# stays on disk, stays out of the array, and is warned about.
+# Fail-closed, like E16 and _singbox_cert_referenced: an unverifiable
+# config, a surviving reference from ANY protocol, a symlink, or a
+# missing config all keep the files. An unverifiable config warns
+# once per process (locatable, rate-limited) and never prints a
+# password or a private key -- only the config and cert paths.
+# Always returns 0 (best-effort, like the TUIC helper): callers in
+# deploy/clear-all must not fail over it; E16's caller reads the
+# returned array instead of the return code.
+_singbox_cleanup_hy2_certs_when_none_remain() {
+    local _cfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}" _state=0 _f=''
+    local -a _hy2c_removed=()
+    _singbox_hy2_inbound_state; _state=$?
+    case "$_state" in
+        1) ;;
+        0) return 0 ;;
+        2)
+            # Warn once, and only when there is actually a pair to
+            # keep: a fresh box with no certs and a briefly
+            # unreadable config is not a finding.
+            if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] || [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
+                if [[ -z "${_SINGBOX_HY2_UNVERIFIABLE_WARNED:-}" ]]; then
+                    _SINGBOX_HY2_UNVERIFIABLE_WARNED=1
+                    msg "${YELLOW}[!] Hy2 certificate cleanup skipped: sing-box config '${_cfg}' is unverifiable; keeping /etc/sing-box/hy2.crt and /etc/sing-box/hy2.key.${NC}"
+                fi
+            fi
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+    for _f in /etc/sing-box/hy2.crt /etc/sing-box/hy2.key; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        # R38-H2 / 05f-H-05f-02: keep when ANY inbound of any
+        # protocol still references this file.
+        _singbox_cert_referenced "$_cfg" "$_f" && continue
+        rm -f -- "$_f" 2>/dev/null || true
+        if [[ -e "$_f" ]]; then
+            msg "${YELLOW}[!] Failed to delete stale Hy2 certificate file '$_f' after the last Hysteria 2 inbound was removed; the file remains on disk.${NC}"
+        else
+            _hy2c_removed+=("$_f")
+        fi
+    done
+    if [[ -n "${1:-}" && "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        local -n _hy2c_out="$1"
+        _hy2c_out=("${_hy2c_removed[@]}")
+    fi
+    return 0
+}
+
 # M-12(1): the per-tag TUIC cert filename suffix (same construction as
 # the TUIC deployer): sanitized tag + first 8 hex of its sha256.
 tuic_cert_tag() {
@@ -2542,7 +2760,17 @@ remove_hy2_hop_nat_rules() {
                 continue
             fi
         fi
-        _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -j REDIRECT --to-ports "$_base")
+        _spec=(-i "$_iface" -p udp --dport "${_start}:${_end}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$_base")
+        # L3 (2026-11-27): the spec MUST be the full install-time
+        # spec, including `-m comment --comment A-Box-HY2-HOP`.
+        # iptables -C/-D is exact-match, not subset-match: a
+        # comment-less spec never matches the commented rule the
+        # unit installs (verified in a real netns on S1: comment-less
+        # -C rc=1, full-spec -C rc=0), so the old spec silently
+        # deleted a same-port UNCOMMENTED rule if one existed while
+        # leaving the owned one behind, and still returned 0. No
+        # comment-less install shape exists in git history, so no
+        # fallback is needed.
         # 05e2-M4: tri-state -C (same contract as
         # iptables_rule_check): 0 = present, 1 = absent, anything
         # else = query error, which must fail, never read as absent.
@@ -2556,6 +2784,769 @@ remove_hy2_hop_nat_rules() {
         done
     done
     (( _failed == 0 ))
+}
+
+# L3 (2026-11-27): official-Hy2 hop NAT reclaim.
+#
+# The hysteria binary (not A-Box) builds hop rules at startup
+# (HyNetworks/hysteria app/v2.14.0, app/internal/firewall/
+# firewall_linux.go, verified against the pinned tag):
+#   nft: table <ip|ip6> hysteria_<sha256("nft|"+fam+"|"+IP+"|"+
+#        port+"|"+union)[:8]>, chains prerouting/output
+#        (type nat hook <same> priority -100), one rule per chain
+#        per redirect range (first+1..end).
+#   iptables (no nft): chain HYSTERIA-PR-<sha256(bin+"|"+IP+"|"+
+#        port+"|"+union)[:8]> in nat, one REDIRECT/DNAT target rule,
+#        plus -j jumps from PREROUTING/OUTPUT.
+# The binary only removes them on graceful exit; A-Box's own SIGKILL
+# paths (residual kill, stop timeout, crash/OOM) leave them behind,
+# and no A-Box code ever deleted them.
+#
+# Deletion policy (GPT-arbitrated, parent order):
+#  * B is the main path: recompute the exact names from the
+#    instance's own listen parameters and delete ONLY objects
+#    whose full content matches what upstream generates for those
+#    parameters (family, bind scope, chains/hooks, the complete
+#    expected rule set, no extras, no unknown references).
+#    A hash proves parameter identity, not creator identity; a
+#    same-named object with ANY unexpected content is refused.
+#    An object with no rules at all is deletable: it moves no
+#    traffic and references nothing (a partial-cleanup leftover).
+#  * A (enumeration) is only a discovery step: other hysteria_*
+#    tables / HYSTERIA-PR-* chains are reported as suspected
+#    leftovers, never auto-deleted. A-Box keeps no trusted history
+#    of past hop identities, so nothing else is recomputable.
+#  * Negative verification is per object (absent / present /
+#    inspection-failed), never a reused health check: an empty
+#    chain, a single leftover jump, or one backend clean while
+#    the other still holds residue must all be reported.
+#  * The identity comes from the config the binary actually
+#    started with (/etc/hysteria/config.yaml listen:), cross-
+#    checked against the .env hop values. The .env values are a
+#    proxy (they can go stale while the service lives); a
+#    conflict is never resolved by preferring the environment --
+#    it fails closed with both values reported. A confirmed
+#    single-port / hop-off instance is a no-op success, distinct
+#    from "configuration lost, hop state unknown", which fails.
+#  * Deletion runs after the service is confirmed stopped with
+#    no residual process, and BEFORE the unit, config and
+#    credentials are deleted, so a failure leaves everything in
+#    place for a retry through the same entry points (cleanup-
+#    first ordering is the retry mechanism; no persisted cleanup
+#    record is needed). clean_nat_rules, the minute probe, the
+#    desired-state file and the 24h guards are untouched.
+#
+# Canonical-output notes (all verified on real S1, iptables
+# 1.8.10/nf_tables; the sandbox cannot add rules at all):
+#  * `iptables -S` prints `-p udp` first, inserts `-m udp`
+#    before --dport, and prints -d as IP/32 (v4) or IP/128 (v6);
+#    target rules carry no -m udp. Comparison therefore
+#    normalizes listed lines (drop `-m udp`, strip host masks,
+#    sort tokens) and compares against the same normalization
+#    of the expected add-order line; deletion replays the exact
+#    listed line (-A -> -D), never a reconstructed spec.
+#  * `nft list ruleset` prints the base-chain priority as the
+#    name `dstnat`, never the numeric -100 the binary passes in.
+#    Both spellings are accepted. `# Warning:` diagnostics for
+#    iptables-nft tables are skipped, not treated as content.
+#  * `iptables -C/-D` is exact-match, not subset-match: see the
+#    M-12(1) note on remove_hy2_hop_nat_rules above.
+
+# sha256, first 8 hex chars. rc 1 when sha256sum is unavailable.
+_hy2hop_sha8() {
+    local _in="$1" _sum=''
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    _sum=$(printf '%s' "$_in" | sha256sum 2>/dev/null | cut -d' ' -f1) || return 1
+    [[ "$_sum" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s' "${_sum:0:8}"
+}
+
+# Normalize a listen host for the upstream hash input: the Go
+# net.IP.String() form, or "<nil>" for an empty (wildcard) host.
+# Prints the form; rc 1 when it cannot be determined exactly.
+# IPv4 is validated in bash (Go rejects leading-zero octets);
+# IPv6 needs python3 for Go-identical compression (a mapped
+# ::ffff:a.b.c.d collapses to the dotted quad, like Go's To4).
+_hy2hop_norm_ip() {
+    local _ip="$1" _o='' _i=''
+    [[ -n "$_ip" ]] || { printf '<nil>'; return 0; }
+    [[ "$_ip" != *%* ]] || return 1
+    if [[ "$_ip" != *:* ]]; then
+        [[ "$_ip" =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || return 1
+        for _o in ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}; do
+            (( 10#$_o <= 255 )) || return 1
+        done
+        printf '%s' "$_ip"
+        return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || return 1
+    _i=$(python3 -I -c 'import ipaddress,sys; ip=ipaddress.ip_address(sys.argv[1]); m=getattr(ip,"ipv4_mapped",None); print(m if m is not None else ip)' "$_ip" 2>/dev/null) || return 1
+    [[ -n "$_i" ]] || return 1
+    printf '%s' "$_i"
+}
+
+# Parse a hysteria listen value (":20000-25000", "1.2.3.4:20000",
+# "[2001:db8::1]:20000-25000") into _HY2HOP_* globals.
+# Only a single port or a single range is accepted (A-Box never
+# writes comma unions; anything else fails closed).
+# rc 0 = parsed, 1 = unparseable.
+# Globals: _HY2HOP_IP ("" = wildcard), _HY2HOP_IPSTR (hash input
+# form, "<nil>" for wildcard), _HY2HOP_IS6, _HY2HOP_UNSPEC,
+# _HY2HOP_FIRST, _HY2HOP_START, _HY2HOP_END, _HY2HOP_UNION,
+# _HY2HOP_HOP (1 = a redirect range exists).
+_hy2hop_parse_listen() {
+    local _v="$1" _host='' _pspec='' _s='' _e='' _ipstr=''
+    if [[ "$_v" =~ ^\[([^\]]+)\]:([0-9]+(-[0-9]+)?)$ ]]; then
+        _host="${BASH_REMATCH[1]}"; _pspec="${BASH_REMATCH[2]}"
+    elif [[ "$_v" =~ ^([^:]*):([0-9]+(-[0-9]+)?)$ ]]; then
+        _host="${BASH_REMATCH[1]}"; _pspec="${BASH_REMATCH[2]}"
+    else
+        return 1
+    fi
+    if [[ "$_pspec" == *-* ]]; then
+        _s="${_pspec%%-*}"; _e="${_pspec##*-}"
+    else
+        _s="$_pspec"; _e="$_pspec"
+    fi
+    [[ "$_s" =~ ^[0-9]+$ && "$_e" =~ ^[0-9]+$ ]] || return 1
+    (( 10#$_s >= 1 && 10#$_e <= 65535 && 10#$_s <= 10#$_e )) || return 1
+    _s=$((10#$_s)); _e=$((10#$_e))
+    _ipstr=$(_hy2hop_norm_ip "$_host") || return 1
+    _HY2HOP_IP=''
+    [[ "$_ipstr" == '<nil>' ]] || _HY2HOP_IP="$_ipstr"
+    _HY2HOP_IPSTR="$_ipstr"
+    _HY2HOP_IS6=0; [[ "$_ipstr" == *:* ]] && _HY2HOP_IS6=1
+    _HY2HOP_UNSPEC=0
+    if [[ "$_ipstr" == '<nil>' || "$_ipstr" == '0.0.0.0' || "$_ipstr" == '::' ]]; then _HY2HOP_UNSPEC=1; fi
+    _HY2HOP_FIRST="$_s"; _HY2HOP_START="$_s"; _HY2HOP_END="$_e"
+    if (( _s == _e )); then _HY2HOP_UNION="$_s"; else _HY2HOP_UNION="$_s-$_e"; fi
+    _HY2HOP_HOP=0; (( _s < _e )) && _HY2HOP_HOP=1
+    return 0
+}
+
+# Read the top-level `listen:` value from the hysteria config.
+# Prints the bare value. rc 0 = value printed, 1 = no config file,
+# 2 = config present but no (parseable) top-level listen line.
+# Only a column-0 `listen:` counts: a nested listen (e.g. under
+# trafficStats) is a different listener, not the UDP hop listen.
+_hy2hop_read_config_listen() {
+    local _cfg="${ABOX_HY2_CFG:-/etc/hysteria/config.yaml}" _line='' _val='' _q=''
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    _line=$(grep -E '^listen:' "$_cfg" 2>/dev/null | head -1) || return 2
+    [[ -n "$_line" ]] || return 2
+    _val="${_line#*:}"
+    _val="${_val#"${_val%%[![:space:]]*}"}"
+    _val="${_val%"${_val##*[![:space:]]}"}"
+    [[ -n "$_val" ]] || return 2
+    _q="${_val:0:1}"
+    if [[ "$_q" == '"' || "$_q" == "'" ]]; then
+        _val="${_val:1}"
+        _val="${_val%%"$_q"*}"
+    else
+        _val="${_val%%#*}"
+        _val="${_val%"${_val##*[![:space:]]}"}"
+    fi
+    [[ -n "$_val" ]] || return 2
+    printf '%s' "$_val"
+}
+
+# Resolve this instance's hop identity. Sets _HY2HOP_* (see
+# _hy2hop_parse_listen) plus _HY2HOP_SOURCE (config|env|both).
+# Prints the reason on failure. rc 0 = resolved (HOP 1 = hop rules
+# may exist, HOP 0 = confirmed no-hop), 1 = conflict / unknown.
+# The config listen is authoritative: it is what the binary read
+# at startup (HY2_HOP_IMPL is not consulted: the official binary
+# builds hop rules from its listen value alone). The .env hop
+# values are only a cross-check; a disagreement fails closed --
+# never resolved by preferring the environment (nor by silently
+# preferring the config when the environment positively
+# disagrees). A missing config falls back to a complete,
+# self-consistent .env record (the retry-after-partial-success
+# case); a missing config with no usable .env record is unknown.
+_hy2hop_resolve_identity() {
+    local _cfg_listen='' _cfg_rc=0 _env_ok=0 _env_off=0 _env_first=0 _env_start=0 _env_end=0
+    _cfg_listen=$(_hy2hop_read_config_listen 2>/dev/null); _cfg_rc=$?
+    if (( _cfg_rc == 2 )); then
+        msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: the hysteria config has no readable top-level listen value; refusing to delete firewall rules.${NC}"
+        return 1
+    fi
+    if (( _cfg_rc == 0 )) && ! _hy2hop_parse_listen "$_cfg_listen"; then
+        msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: config listen '${_cfg_listen}' is not a parseable listen value; refusing to delete firewall rules.${NC}"
+        return 1
+    fi
+    if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${HY2_MONITOR_PORT:-}" ]] &&
+       [[ "${HY2_RANGE_START:-}" =~ ^[0-9]+$ && "${HY2_RANGE_END:-}" =~ ^[0-9]+$ && "${HY2_MONITOR_PORT:-}" =~ ^[0-9]+$ ]] &&
+       (( 10#${HY2_RANGE_START} >= 1 && 10#${HY2_RANGE_END} <= 65535 && 10#${HY2_RANGE_START} <= 10#${HY2_RANGE_END} && 10#${HY2_MONITOR_PORT} == 10#${HY2_RANGE_START} )); then
+        _env_ok=1; _env_first=$((10#${HY2_MONITOR_PORT})); _env_start=$((10#${HY2_RANGE_START})); _env_end=$((10#${HY2_RANGE_END}))
+    fi
+    if [[ -n "${HY2_HOP:-}" && "${HY2_HOP:-}" != 'true' ]]; then _env_off=1; fi
+    if (( _cfg_rc == 0 )); then
+        if (( _env_ok == 1 )); then
+            if (( _env_first != _HY2HOP_FIRST || _env_start != _HY2HOP_START || _env_end != _HY2HOP_END )); then
+                msg "${YELLOW}[!] Hy2 hop identity conflict: config listen '${_cfg_listen}' vs .env range ${HY2_RANGE_START}-${HY2_RANGE_END} (monitor ${HY2_MONITOR_PORT}); refusing to delete firewall rules by either value.${NC}"
+                return 1
+            fi
+            _HY2HOP_SOURCE='both'
+        elif (( _env_off == 1 )); then
+            if (( _HY2HOP_HOP == 1 )); then
+                msg "${YELLOW}[!] Hy2 hop identity conflict: config listen '${_cfg_listen}' describes port hopping but .env says hopping is off; refusing to delete firewall rules.${NC}"
+                return 1
+            fi
+            _HY2HOP_SOURCE='both'
+        else
+            _HY2HOP_SOURCE='config'
+        fi
+    else
+        if (( _env_ok == 1 )); then
+            _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+            _HY2HOP_FIRST="$_env_first"; _HY2HOP_START="$_env_start"; _HY2HOP_END="$_env_end"
+            if (( _env_start == _env_end )); then _HY2HOP_UNION="$_env_start"; else _HY2HOP_UNION="$_env_start-$_env_end"; fi
+            _HY2HOP_HOP=0; (( _env_start < _env_end )) && _HY2HOP_HOP=1
+            _HY2HOP_SOURCE='env'
+        elif (( _env_off == 1 )); then
+            _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+            _HY2HOP_FIRST=''; _HY2HOP_START=''; _HY2HOP_END=''; _HY2HOP_UNION=''; _HY2HOP_HOP=0
+            _HY2HOP_SOURCE='env'
+        else
+            msg "${YELLOW}[!] Cannot determine this Hy2 instance's hop identity: no readable config and no complete .env hop record; refusing to delete firewall rules.${NC}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Expected nft rule lines for one family, from the resolved identity.
+# Prints one line per redirect rule (at most one: a single range).
+_hy2hop_nft_expected_rules() {
+    local _fam="$1" _rs=0 _re=0 _r=''
+    (( _HY2HOP_HOP == 1 )) || return 0
+    _rs=$(( _HY2HOP_START + 1 )); _re=$_HY2HOP_END
+    (( _rs <= _re )) || return 0
+    if (( _rs == _re )); then _r="$_rs"; else _r="$_rs-$_re"; fi
+    if [[ "$_fam" == 'ip6' && "$_HY2HOP_UNSPEC" == 0 && "$_HY2HOP_IS6" == 1 ]]; then
+        printf 'ip6 daddr %s udp dport %s dnat to [%s]:%s\n' "$_HY2HOP_IP" "$_r" "$_HY2HOP_IP" "$_HY2HOP_FIRST"
+    elif (( _HY2HOP_UNSPEC == 1 )); then
+        printf 'fib daddr type local udp dport %s redirect to :%s\n' "$_r" "$_HY2HOP_FIRST"
+    else
+        printf 'ip daddr %s udp dport %s redirect to :%s\n' "$_HY2HOP_IP" "$_r" "$_HY2HOP_FIRST"
+    fi
+}
+
+# Status of one nft table, from a ruleset text ($1), family ($2) and
+# table name ($3). Prints absent|match|empty|mismatch.
+# rc 0 = inspected, 1 = ruleset unusable (caller: inspection-failed).
+# match = exactly the upstream content (every expected rule in both
+# chains, no extras; duplicate identical rules are allowed -- a
+# crash-restart appends them). empty = the table exists but holds
+# no rules at all (deletable: it moves no traffic). Anything else
+# (extra chain/rule, missing expected rule, wrong hook/priority,
+# unclosed chain) is mismatch and must never be deleted.
+_hy2hop_nft_table_status() {
+    local _ruleset="$1" _fam="$2" _tbl="$3" _block='' _line='' _t='' _chain=''
+    local _chains=' ' _type_pre=0 _type_out=0 _rules_pre='' _rules_out='' _rules_total=0 _extra=0
+    local _expected='' _exp=''
+    if ! printf '%s\n' "$_ruleset" | grep -Eq "^[[:space:]]*table[[:space:]]+${_fam}[[:space:]]+${_tbl}([[:space:]]|\{)"; then
+        printf 'absent\n'; return 0
+    fi
+    _expected=$(_hy2hop_nft_expected_rules "$_fam")
+    _block=$(printf '%s\n' "$_ruleset" | awk -v fam="$_fam" -v tbl="$_tbl" '
+        function braces(s,    n, i, ch) { n=0; for (i=1; i<=length(s); i++) { ch=substr(s,i,1); if (ch=="{") n++; else if (ch=="}") n-- } return n }
+        /^[[:space:]]*#/ { next }
+        !inside {
+            if ($1=="table" && $2==fam) { nm=$3; gsub(/[{}]/, "", nm); if (nm==tbl) { inside=1; depth=braces($0) } }
+            next
+        }
+        inside {
+            depth += braces($0)
+            if (depth<=0) { inside=0; next }
+            print
+            next
+        }
+    ')
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _t="${_line#"${_line%%[![:space:]]*}"}"
+        _t="${_t%"${_t##*[![:space:]]}"}"
+        [[ -z "$_t" ]] && continue
+        [[ "$_t" == \#* ]] && continue
+        if [[ "$_t" =~ ^chain[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*\{[[:space:]]*$ ]]; then
+            [[ -n "$_chain" ]] && { _extra=1; continue; }
+            _chain="${BASH_REMATCH[1]}"
+            case "$_chain" in prerouting|output) ;; *) _extra=1 ;; esac
+            [[ "$_chains" == *" $_chain "* ]] && _extra=1
+            _chains+=" $_chain "
+            continue
+        fi
+        local _type_re='^type[[:space:]]+nat[[:space:]]+hook[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]+priority[[:space:]]+([^;[:space:]]+)[;][[:space:]]*policy[[:space:]]+accept[;][[:space:]]*$'
+        if [[ "$_t" =~ $_type_re ]]; then
+            [[ -n "$_chain" ]] || { _extra=1; continue; }
+            [[ "${BASH_REMATCH[1]}" == "$_chain" ]] || _extra=1
+            case "${BASH_REMATCH[2]}" in dstnat|-100) ;; *) _extra=1 ;; esac
+            if [[ "$_chain" == prerouting ]]; then [[ "$_type_pre" == 1 ]] && _extra=1; _type_pre=1;
+            elif [[ "$_chain" == output ]]; then [[ "$_type_out" == 1 ]] && _extra=1; _type_out=1;
+            else _extra=1; fi
+            continue
+        fi
+        if [[ "$_t" == '}' ]]; then
+            [[ -n "$_chain" ]] || { _extra=1; continue; }
+            if [[ "$_chain" == prerouting && "$_type_pre" == 0 ]]; then _extra=1; fi
+            if [[ "$_chain" == output && "$_type_out" == 0 ]]; then _extra=1; fi
+            _chain=''
+            continue
+        fi
+        [[ -n "$_chain" ]] || { _extra=1; continue; }
+        _rules_total=$(( _rules_total + 1 ))
+        if [[ "$_chain" == prerouting ]]; then _rules_pre+="$_t"$'\n'; else _rules_out+="$_t"$'\n'; fi
+    done <<< "$_block"
+    [[ -n "$_chain" ]] && _extra=1
+    if (( _extra == 1 )); then printf 'mismatch\n'; return 0; fi
+    if (( _rules_total == 0 )); then printf 'empty\n'; return 0; fi
+    while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+        [[ -z "$_exp" ]] && continue
+        grep -Fxq -- "$_exp" <<< "$_rules_pre" || { printf 'mismatch\n'; return 0; }
+        grep -Fxq -- "$_exp" <<< "$_rules_out" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_expected"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        grep -Fxq -- "$_line" <<< "$_expected" || { printf 'mismatch\n'; return 0; }
+    done <<< "${_rules_pre}${_rules_out}"
+    printf 'match\n'; return 0
+}
+
+# Normalize one `-A ...` line for comparison: drop the `-m udp`
+# pair (`iptables -S` inserts it before --dport although the rule
+# was added without it), strip /32|/128 host masks after -d, and
+# sort the tokens after the chain name (`iptables -S` reorders
+# matches: -p first, then the match extensions). The chain name
+# stays first, so a jump from a foreign chain can never compare
+# equal. Prints the normalized line; rc 1 on a malformed line.
+_hy2hop_ipt_norm_line() {
+    local _line="$1" _chain='' _tok='' _i=0 _n=0
+    local -a _toks=() _rest=() _sorted=()
+    [[ "$_line" == -A\ * ]] || return 1
+    _line="${_line#-A }"
+    read -r -a _toks <<< "$_line" || return 1
+    (( ${#_toks[@]} >= 1 )) || return 1
+    _chain="${_toks[0]}"
+    _n=${#_toks[@]}; _i=1
+    while (( _i < _n )); do
+        _tok="${_toks[_i]}"
+        if [[ "$_tok" == '-m' && $(( _i + 1 )) -lt $_n && "${_toks[_i+1]}" == 'udp' ]]; then
+            _i=$(( _i + 2 )); continue
+        fi
+        if [[ "$_tok" == '-d' && $(( _i + 1 )) -lt $_n ]]; then
+            _rest+=('-d')
+            _tok="${_toks[_i+1]}"; _tok="${_tok%/32}"; _tok="${_tok%/128}"
+            _rest+=("$_tok")
+            _i=$(( _i + 2 )); continue
+        fi
+        _rest+=("$_tok")
+        _i=$(( _i + 1 ))
+    done
+    if (( ${#_rest[@]} > 0 )); then
+        while IFS= read -r _tok; do _sorted+=("$_tok"); done < <(printf '%s\n' "${_rest[@]}" | LC_ALL=C sort)
+    fi
+    printf '%s' "$_chain"
+    for _tok in "${_sorted[@]}"; do printf ' %s' "$_tok"; done
+    printf '\n'
+}
+
+# Expected iptables target rule for $2 (chain) under binary $1,
+# normalized (see _hy2hop_ipt_norm_line). DNAT only for ip6tables
+# with a specific IPv6 listen address; everything else REDIRECTs.
+_hy2hop_ipt_expected_target() {
+    local _bin="$1" _chain="$2" _raw=''
+    if [[ "$_bin" == 'ip6tables' && "$_HY2HOP_UNSPEC" == 0 && "$_HY2HOP_IS6" == 1 ]]; then
+        _raw="-A $_chain -p udp -j DNAT --to-destination [$_HY2HOP_IP]:$_HY2HOP_FIRST"
+    else
+        _raw="-A $_chain -p udp -j REDIRECT --to-ports $_HY2HOP_FIRST"
+    fi
+    _hy2hop_ipt_norm_line "$_raw"
+}
+
+# Expected iptables jump rules for $1 (chain), normalized, one per
+# line (PREROUTING + OUTPUT). At most one redirect range exists.
+_hy2hop_ipt_expected_jumps() {
+    local _chain="$1" _rs=0 _re=0 _r='' _base='' _raw=''
+    (( _HY2HOP_HOP == 1 )) || return 0
+    _rs=$(( _HY2HOP_START + 1 )); _re=$_HY2HOP_END
+    (( _rs <= _re )) || return 0
+    if (( _rs == _re )); then _r="$_rs"; else _r="$_rs:$_re"; fi
+    for _base in PREROUTING OUTPUT; do
+        if (( _HY2HOP_UNSPEC == 1 )); then
+            _raw="-A $_base -m addrtype --dst-type LOCAL -p udp --dport $_r -j $_chain"
+        else
+            _raw="-A $_base -d $_HY2HOP_IP -p udp --dport $_r -j $_chain"
+        fi
+        _hy2hop_ipt_norm_line "$_raw"
+    done
+}
+
+# Status of one iptables chain + its jumps, from a `-t nat -S`
+# listing text ($1), binary name ($2) and chain ($3).
+# Prints absent|match|empty|dangling|mismatch. rc 0 = inspected.
+# dangling = the chain is gone but exactly-expected jumps remain
+# (deletable: they reference a nonexistent chain). match requires
+# the chain to hold exactly the expected target rule (duplicates
+# allowed) and the jumps to be exactly the expected set; empty is
+# a chain with no rules and no jumps. Any other rule in the chain,
+# any non-expected jump, or a partially-present expected set is
+# mismatch and must never be deleted.
+_hy2hop_ipt_chain_status() {
+    local _listing="$1" _bin="$2" _chain="$3" _line='' _norm='' _exp=''
+    local _has_chain=0 _chain_rules='' _jumps='' _n_chain=0 _n_jump=0
+    local _expected_target='' _expected_jumps=''
+    _expected_target=$(_hy2hop_ipt_expected_target "$_bin" "$_chain")
+    _expected_jumps=$(_hy2hop_ipt_expected_jumps "$_chain")
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        if [[ "$_line" == "-N $_chain" ]]; then _has_chain=1; continue; fi
+        [[ "$_line" == -A\ * ]] || continue
+        if [[ "$_line" == "-A $_chain "* ]]; then
+            _norm=$(_hy2hop_ipt_norm_line "$_line") || { printf 'mismatch\n'; return 0; }
+            _chain_rules+="$_norm"$'\n'; _n_chain=$(( _n_chain + 1 ))
+        elif [[ " $_line " == *' -j '"$_chain"' '* || " $_line " == *' -j '"$_chain" ]]; then
+            _norm=$(_hy2hop_ipt_norm_line "$_line") || { printf 'mismatch\n'; return 0; }
+            _jumps+="$_norm"$'\n'; _n_jump=$(( _n_jump + 1 ))
+        fi
+    done <<< "$_listing"
+    if (( _has_chain == 0 && _n_jump == 0 )); then printf 'absent\n'; return 0; fi
+    if (( _has_chain == 0 )); then
+        while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+            [[ -z "$_exp" ]] && continue
+            grep -Fxq -- "$_exp" <<< "$_jumps" || { printf 'mismatch\n'; return 0; }
+        done <<< "$_expected_jumps"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            [[ -z "$_line" ]] && continue
+            grep -Fxq -- "$_line" <<< "$_expected_jumps" || { printf 'mismatch\n'; return 0; }
+        done <<< "$_jumps"
+        printf 'dangling\n'; return 0
+    fi
+    if (( _n_chain == 0 && _n_jump == 0 )); then printf 'empty\n'; return 0; fi
+    (( _n_chain >= 1 )) || { printf 'mismatch\n'; return 0; }
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        [[ "$_line" == "$_expected_target" ]] || { printf 'mismatch\n'; return 0; }
+    done <<< "$_chain_rules"
+    while IFS= read -r _exp || [[ -n "$_exp" ]]; do
+        [[ -z "$_exp" ]] && continue
+        grep -Fxq -- "$_exp" <<< "$_jumps" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_expected_jumps"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        grep -Fxq -- "$_line" <<< "$_expected_jumps" || { printf 'mismatch\n'; return 0; }
+    done <<< "$_jumps"
+    printf 'match\n'; return 0
+}
+
+# Delete all jumps to $2 in $1's nat table (exact replay of the
+# listed lines), then flush + delete the chain itself when it
+# exists. Upstream cleanup order: jumps first, -F/-X last -- never
+# -F first, or a failed -X would leave a destroyed-but-present
+# chain. rc 0 = chain + jumps gone (verified by re-listing),
+# 1 = failed (a jump or the chain remains).
+_hy2hop_ipt_delete_chain() {
+    local _bin="$1" _chain="$2" _listing='' _line='' _n=0
+    local -a _argv=()
+    while (( _n < 128 )); do
+        _listing=$(_iptables_q "$_bin" -t nat -S 2>/dev/null) || return 1
+        _line=$(printf '%s\n' "$_listing" | awk -v ch="$_chain" '$1 == "-A" { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) == ch) { print; exit } }')
+        [[ -n "$_line" ]] || break
+        _line="${_line#-A }"
+        read -r -a _argv <<< "$_line" || return 1
+        _iptables_do "$_bin" -t nat -D "${_argv[@]}" >/dev/null 2>&1 || return 1
+        _n=$(( _n + 1 ))
+    done
+    _listing=$(_iptables_q "$_bin" -t nat -S 2>/dev/null) || return 1
+    if printf '%s\n' "$_listing" | awk -v ch="$_chain" '$1 == "-A" { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) == ch) { found=1 } } END { exit !found }'; then
+        return 1
+    fi
+    if printf '%s\n' "$_listing" | grep -qx -- "-N $_chain"; then
+        _iptables_do "$_bin" -t nat -F "$_chain" >/dev/null 2>&1 || return 1
+        _iptables_do "$_bin" -t nat -X "$_chain" >/dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+
+# Fetch `-t nat -S` for $1. Prints the listing. rc 0 = listing
+# printed (possibly empty), 1 = binary missing (caller: skip this
+# backend), 2 = query failed (caller: inspection-failed). A missing
+# nat table (container VPS without iptable_nat) means "no NAT
+# rules to clean", same exemption as clean_nat_rules M-14(3).
+_hy2hop_fetch_ipt_listing() {
+    local _bin="$1" _out='' _rc=0 _err=''
+    command -v "$_bin" >/dev/null 2>&1 || return 1
+    _out=$(_iptables_q "$_bin" -t nat -S 2>/dev/null); _rc=$?
+    if (( _rc != 0 )); then
+        _err=$(_iptables_q "$_bin" -t nat -S 2>&1 >/dev/null || true)
+        if printf '%s\n' "$_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool"; then
+            printf '%s' ''; return 0
+        fi
+        return 2
+    fi
+    printf '%s' "$_out"
+    return 0
+}
+
+# nft families in scope for the resolved identity, one per line.
+_hy2hop_nft_families() {
+    if (( _HY2HOP_UNSPEC == 1 )); then printf 'ip\nip6\n';
+    elif (( _HY2HOP_IS6 == 1 )); then printf 'ip6\n';
+    else printf 'ip\n'; fi
+}
+
+# iptables binaries in scope for the resolved identity, one per line.
+_hy2hop_ipt_bins() {
+    if (( _HY2HOP_UNSPEC == 1 )); then printf 'iptables\nip6tables\n';
+    elif (( _HY2HOP_IS6 == 1 )); then printf 'ip6tables\n';
+    else printf 'iptables\n'; fi
+}
+
+# Expected nft table name for $1 (family). rc 1 when the hash
+# cannot be computed (sha256sum unavailable).
+_hy2hop_nft_table() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "nft|$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'hysteria_%s' "$_h"
+}
+
+# Expected iptables chain name for $1 (binary). rc 1 when the hash
+# cannot be computed (sha256sum unavailable).
+_hy2hop_ipt_chain() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'HYSTERIA-PR-%s' "$_h"
+}
+
+# List all hysteria_* tables in a ruleset text ($1), "fam name"
+# one per line. Used only for the suspected-leftover report.
+_hy2hop_list_nft_tables() {
+    printf '%s\n' "$1" | awk '$1 == "table" && $3 ~ /^hysteria_[0-9a-fA-F]+$/ { nm=$3; gsub(/[{}]/, "", nm); print $2, nm }'
+}
+
+# List all HYSTERIA-PR-* chain names in a `-t nat -S` listing
+# text ($1), one per line (from -N lines and -j targets).
+# Used only for the suspected-leftover report.
+_hy2hop_list_ipt_chains() {
+    printf '%s\n' "$1" | awk '$1 == "-N" && $2 ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/ { print $2 } { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/) print $(i+1) }' | sort -u
+}
+
+# Reclaim the official-hop NAT rules of THIS hysteria instance.
+# rc 0 = this instance's hop objects are gone (deleted or already
+# absent; suspected leftovers of unknown ownership are only
+# reported); rc 1 = cleanup incomplete / unverifiable / refused.
+# Every failure prints its specific reason plus the summary line
+# "service is stopped, rule cleanup did not complete" -- never
+# "stop failed". Must run with the service stopped and no residual
+# process (verified again here), and BEFORE the unit, config and
+# credentials are deleted, so a failure is retryable.
+remove_hy2_official_hop_rules() {
+    local _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
+    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
+    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
+    local _listing='' _listing_ok=0 _listing_missing=0
+    local _st='' _mp='' _orc=0 _suspects='' _s='' _own_tbl='' _own_chain=''
+    # 0. Preconditions: stopped + no residual process. (The caller
+    # _remove_hy2_official already verified; the prune path only
+    # stop()s, so this guard is load-bearing there. A missing unit
+    # reports inactive/MainPID 0 via systemctl show, so a
+    # config-only residue passes here and is still guarded by
+    # the pgrep check below.)
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _st=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || { msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: cannot confirm the hysteria service is stopped.${NC}"; return 1; }
+        [[ "$_st" == inactive || "$_st" == failed ]] || { msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: the hysteria service is still ${_st}; stop it first.${NC}"; return 1; }
+        _mp=$(systemctl show -p MainPID --value hysteria 2>/dev/null || echo 0)
+        if [[ "$_mp" =~ ^[0-9]+$ ]] && (( _mp > 0 )) && [[ -d /proc/$_mp ]]; then
+            msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: hysteria process ${_mp} is still running.${NC}"; return 1
+        fi
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-service hysteria status >/dev/null 2>&1; _orc=$?
+        case "$_orc" in
+            3|16|32) : ;;
+            *) msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: the hysteria service is not stopped (rc-service status ${_orc}).${NC}"; return 1 ;;
+        esac
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then
+        msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: a hysteria process is still running.${NC}"; return 1
+    fi
+    # 1. Identity.
+    if ! _hy2hop_resolve_identity; then
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    # 2. Fetch listings once. A missing binary means that backend
+    # could not have built rules on this host (same-host deploy
+    # and delete); it is skipped as absent, not failed. A failed
+    # listing is inspection-failed.
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables)
+                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
+                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
+                ;;
+            ip6tables)
+                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
+                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
+                ;;
+        esac
+    done
+    if (( _HY2HOP_HOP == 0 )); then
+        # Confirmed no-hop: nothing of this instance can exist.
+        # Only report anything that looks like a leftover.
+        _suspects=''
+        if (( _ruleset_ok == 1 )); then
+            while IFS= read -r _s || [[ -n "$_s" ]]; do
+                [[ -n "$_s" ]] || continue
+                _suspects+="${_suspects:+, }${_s}"
+            done < <(_hy2hop_list_nft_tables "$_ruleset")
+        fi
+        for _bin in $(_hy2hop_ipt_bins); do
+            case "$_bin" in
+                iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok ;;
+                ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok ;;
+            esac
+            (( _listing_ok == 1 )) || continue
+            while IFS= read -r _s || [[ -n "$_s" ]]; do
+                [[ -n "$_s" ]] || continue
+                _suspects+="${_suspects:+, }${_bin} ${_s}"
+            done < <(_hy2hop_list_ipt_chains "$_listing")
+        done
+        if [[ -n "$_suspects" ]]; then
+            msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
+        fi
+        return 0
+    fi
+    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
+        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
+        _failed=1
+    fi
+    # 3. nft side: judge + delete per table.
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_nft_table "$_fam") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            if (( _src != 0 )); then
+                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
+            fi
+            case "$_status" in
+                absent) : ;;
+                match|empty)
+                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
+                    ;;
+                mismatch)
+                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
+                    _failed=1
+                    ;;
+            esac
+        done
+    fi
+    # 4. iptables side: judge + delete per chain. Each object is
+    # judged on its own gate: a refused object never blocks the
+    # deletion of an exactly-matching object on the other backend.
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        if (( _listing_ok == 0 && _listing_missing == 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
+            _failed=1; continue
+        fi
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_ipt_chain "$_bin") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        case "$_status" in
+            absent) : ;;
+            match|empty|dangling)
+                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
+                ;;
+            mismatch)
+                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
+                _failed=1
+                ;;
+        esac
+    done
+    # 5. Negative verification, per object: re-list fresh and
+    # require every expected object to be absent. This catches an
+    # empty chain, a single leftover jump, and one backend clean
+    # while the other still holds residue.
+    if (( _ruleset_missing == 0 )); then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+        if (( _ruleset_ok == 1 )); then
+            for _fam in $(_hy2hop_nft_families); do
+                _tbl=$(_hy2hop_nft_table "$_fam") || { _failed=1; continue; }
+                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+                if (( _src != 0 )); then
+                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+                fi
+                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+            done
+        else
+            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
+        fi
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        if (( _src != 0 )); then
+            if (( _src == 1 )); then continue; fi
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        _chain=$(_hy2hop_ipt_chain "$_bin") || { _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+    done
+    # 6. Suspected leftovers: any other hysteria_* table or
+    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
+    # delete it, and never count it as this instance's residue.
+    _suspects=''
+    if (( _ruleset_ok == 1 )); then
+        while IFS= read -r _s || [[ -n "$_s" ]]; do
+            [[ -n "$_s" ]] || continue
+            _own_tbl=''
+            _fam="${_s%% *}"; _tbl="${_s#* }"
+            _own_tbl=$(_hy2hop_nft_table "$_fam" 2>/dev/null || true)
+            [[ "$_tbl" == "$_own_tbl" ]] && continue
+            _suspects+="${_suspects:+, }${_fam} ${_tbl}"
+        done < <(_hy2hop_list_nft_tables "$_ruleset")
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin" 2>/dev/null); _src=$?
+        (( _src == 0 )) || continue
+        _own_chain=$(_hy2hop_ipt_chain "$_bin" 2>/dev/null || true)
+        while IFS= read -r _s || [[ -n "$_s" ]]; do
+            [[ -n "$_s" ]] || continue
+            [[ "$_s" == "$_own_chain" ]] && continue
+            _suspects+="${_suspects:+, }${_bin} ${_s}"
+        done < <(_hy2hop_list_ipt_chains "$_listing")
+    done
+    if [[ -n "$_suspects" ]]; then
+        msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
+    fi
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    return 0
 }
 
 # M-12(1): enumerate "proto/port" lines for the given inbound tags in a
@@ -2762,7 +3753,7 @@ firewall_recycle_freed_ports() {
 # $1 = core, rest = removed tags
 _protocol_removed_side_effects() {
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _sb_stripped=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _staleenv_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -2831,50 +3822,16 @@ _protocol_removed_side_effects() {
             _reg_failed=1
         fi
     done
-    # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key
-    # pair. Delete it only when no hysteria2 inbound remains and
-    # the pair is the script-managed /etc/sing-box/hy2.crt+key;
-    # anything else (shared, external path, still referenced) stays.
+    # SYD-B E16 (L4): a removed sing-box Hy2 inbound owns its cert/key
+    # pair. The verdict lives in _singbox_cleanup_hy2_certs_when_none_remain
+    # (extracted from this block); this site only merges what the helper
+    # actually deleted into _deleted, so the manifest drop at the foot
+    # of this function stays in one place. The helper never touches
+    # the manifest itself -- no double registration.
     if [[ "$core" == 'sing-box' ]]; then
-        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
-            # 2gq: delete the cert pair only when jq confirms no
-            # hysteria2 inbound remains (one-pass Boolean, rc 1);
-            # a jq failure or an empty config keeps it.
-            local _hy2_jq_rc=0
-            # M-6-residual (A-leg): jq -s over the stripped view; raw jq
-            # on a commented config fails with a parse error (rc 5),
-            # neither 0 nor 1, so the cert pair would wrongly survive
-            # when no hysteria2 inbound remains. Strip once here; the
-            # M-12 block below reuses the same view (the config is not
-            # rewritten between the two blocks). An empty-after-strip
-            # config is unverifiable, not a confirmation: keep the pair
-            # (rc 5, same as a jq failure).
-            if [[ -z "${_sb_stripped//[[:space:]]/}" ]]; then
-                _sb_stripped=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null) || _sb_stripped=''
-            fi
-            if [[ -n "${_sb_stripped//[[:space:]]/}" ]]; then
-                printf '%s' "$_sb_stripped" | jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' >/dev/null 2>&1 || _hy2_jq_rc=$?
-            else
-                _hy2_jq_rc=5
-            fi
-            if [[ "$_hy2_jq_rc" == 1 ]]; then
-                # 05f-H-05f-02: delete each file only when no inbound
-                # of ANY protocol still references it (a manual or
-                # other-protocol inbound may share the pair).
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.crt; then
-                    if [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]]; then
-                        rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.crt ]] || _deleted+=("/etc/sing-box/hy2.crt")
-                    fi
-                fi
-                if ! _singbox_cert_referenced /etc/sing-box/config.json /etc/sing-box/hy2.key; then
-                    if [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]]; then
-                        rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
-                        [[ -e /etc/sing-box/hy2.key ]] || _deleted+=("/etc/sing-box/hy2.key")
-                    fi
-                fi
-            fi
-        fi
+        local -a _hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _hy2_deleted
+        (( ${#_hy2_deleted[@]} > 0 )) && _deleted+=("${_hy2_deleted[@]}")
     fi
     # N5 (followup5 D-leg): a removed sing-box TUIC inbound owns its
     # per-tag cert/key pair (/etc/sing-box/tuic-<tag>-<hash>.crt/key,
@@ -2924,6 +3881,17 @@ _protocol_removed_side_effects() {
     if ! _clear_hy2_nonport_env_vars; then
         msg "${YELLOW}[!] Hy2 settings cleanup failed after removing ${core} protocol(s); stale Hy2 values may remain in .env.${NC}"
         _hy2env_failed=1
+    fi
+    # L2 (fix-leftover-20261126): same generalization for the remaining
+    # protocols' non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, the
+    # three SNI keys). The helper verifies "no inbound of that family
+    # remains" itself; a failure is surfaced like the Hy2 failure
+    # above. (Runs after sync; nothing below reads the cleared shell
+    # vars -- the M-12(1) hop-rule block captured its values up front,
+    # and the Argo/tuic blocks below read the live configs, not .env.)
+    if ! _clear_stale_nonport_env_vars; then
+        msg "${YELLOW}[!] Non-port protocol settings cleanup failed after removing ${core} protocol(s); stale values may remain in .env.${NC}"
+        _staleenv_failed=1
     fi
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
@@ -3010,7 +3978,7 @@ _protocol_removed_side_effects() {
     # _singbox_cleanup_tuic_certs_when_none_remain), or the manifest
     # drifts from disk (stale hash vs a same-name rebuild).
     (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
-    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 )); then return 1; fi
+    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 || _staleenv_failed == 1 )); then return 1; fi
     return 0
 }
 
@@ -3075,6 +4043,15 @@ _remove_hy2_official() {
         if [[ "$_hy2_main_pid" =~ ^[0-9]+$ ]] && (( _hy2_main_pid > 0 )) && [[ -d /proc/$_hy2_main_pid ]]; then return 1; fi
     fi
     if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
+    # L3 (2026-11-27): reclaim the official-hop NAT rules the
+    # hysteria binary built at startup (nft hysteria_<hash> tables /
+    # iptables HYSTERIA-PR-<hash> chains). The service is confirmed
+    # stopped and no residual process remains, and the unit, config
+    # and credentials still exist, so a failure here returns 1
+    # BEFORE any irreversible step: the same entry points can retry
+    # (cleanup-first ordering is the retry mechanism; no persisted
+    # cleanup record is needed). Never report this as a stop failure.
+    remove_hy2_official_hop_rules || return 1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service || return 1
@@ -3677,6 +4654,13 @@ clear_all_protocols() {
         # ports of surviving nodes; best-effort (a failed sync keeps
         # the ports, exactly like a skipped one did).
         sync_env_ports_after_removal || true
+        # L2 (fix-leftover-20261126): same gap, same fix, for the
+        # non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, SNI keys):
+        # when a core's config holds no inbounds the side effects
+        # above are skipped for that core, so a clear-all from an
+        # empty-config state would otherwise leave every non-port
+        # key behind. Best-effort like the sync above.
+        _clear_stale_nonport_env_vars || true
         # M-12(1): recycle the freed ports now that every removal has
         # succeeded; on partial wipe the rules stay (fail-closed).
         if [[ -s "$_freed_tmp" ]]; then firewall_recycle_freed_ports < "$_freed_tmp"; fi
@@ -3685,6 +4669,32 @@ clear_all_protocols() {
         # at clear time (side effects above are skipped for an empty
         # tag list), so orphan TUIC certs cannot survive a clear-all.
         _singbox_cleanup_tuic_certs_when_none_remain || true
+        # L4 (leftover 20261126): same backstop position for the Hy2
+        # pair -- the deploy tail and this wipe are the two paths that
+        # never ran the E16 cleanup. Runs outside the all_tags gate
+        # above, so an already-empty sing-box config still gets its
+        # certs deleted. Deleted paths go to the manifest drop here
+        # (the helper reports, the caller registers -- no double
+        # registration); a failed rm stays on disk and is warned
+        # about by the helper. Best-effort: a cleanup failure must
+        # not fail the clear.
+        local -a _cl_hy2_deleted=()
+        _singbox_cleanup_hy2_certs_when_none_remain _cl_hy2_deleted || true
+        if (( ${#_cl_hy2_deleted[@]} > 0 )); then
+            _manifest_drop_paths "${_cl_hy2_deleted[@]}" || true
+        fi
+        # L4: the .env Hy2 keys are the same wipe's second residue
+        # (S3 left the fingerprint behind with the certs). Same
+        # position -- wipe_ok, outside the all_tags gate -- and the
+        # same cross-core "Hy2 still lives anywhere, keep" verdict
+        # inside _clear_hy2_nonport_env_vars (by now the official
+        # Hy2 is gone and no sing-box Hy2 inbound can remain, so
+        # the keys clear; an unverifiable config keeps them and
+        # warns instead of silently swallowing the skip). A real
+        # write failure fails the wipe: the clear must not report
+        # success with Hy2 credentials still in .env. The helper
+        # already warns on the failure itself.
+        _clear_hy2_nonport_env_vars || wipe_ok=0
         # R39-M1: a failed registry wipe used to only warn while
         # wipe_ok stayed 1, so the clear reported green success with
         # user credentials still on disk. Fold it into the verdict.

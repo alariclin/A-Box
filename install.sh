@@ -52377,7 +52377,21 @@ sni_auto_select_default() {
     _sni_auto_caller_int_trap=$(trap -p INT 2>/dev/null || true)
     _sni_auto_caller_term_trap=$(trap -p TERM 2>/dev/null || true)
     _sni_auto_caller_trap=$(trap -p RETURN 2>/dev/null || true)
-    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_trap:-}" ]]; then eval "$_sni_auto_caller_trap"; fi; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
+    # L11: restore the caller's EXIT trap only in the main shell
+    # (BASHPID == $$). In a command-substitution subshell (BASHPID != $$,
+    # e.g. $(sni_auto_select_default) in pre_install_setup), re-installing
+    # it makes deployment_transaction_exit_abort fire at subshell exit;
+    # its rollback msg goes to stdout (msg has no >&2) and pollutes the
+    # captured SNI, so valid_sni fails although a candidate verified --
+    # 11 consecutive main-menu failures vs 5 §7 passes (no transaction
+    # trap there). A re-installed EXIT trap in a subshell can only fire
+    # at subshell exit, never usefully, so skipping the restore there
+    # loses nothing; the main shell keeps its transaction protection.
+    # Same hazard class as die()'s H-17 owner gate (a rollback hook must
+    # never run in a non-owner child shell); here the gate is the
+    # trap-agnostic main-shell check, since any stdout-printing caller
+    # EXIT trap would pollute the capture the same way.
+    trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_trap:-}" ]]; then eval "$_sni_auto_caller_trap"; fi; if [[ "$BASHPID" == "$$" && -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; if [[ -n "${_sni_auto_caller_int_trap:-}" ]]; then eval "$_sni_auto_caller_int_trap"; fi; if [[ -n "${_sni_auto_caller_term_trap:-}" ]]; then eval "$_sni_auto_caller_term_trap"; fi; true' RETURN
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi' EXIT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 130' INT
     trap 'trap - RETURN EXIT INT TERM; kill $(jobs -rp) 2>/dev/null || true; rm -rf -- "${workdir:-}" 2>/dev/null || true; if [[ -n "${_sni_auto_caller_exit_trap:-}" ]]; then eval "$_sni_auto_caller_exit_trap"; fi; exit 143' TERM

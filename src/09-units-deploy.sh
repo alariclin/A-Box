@@ -2326,6 +2326,92 @@ _clear_hy2_nonport_env_vars() {
     return 0
 }
 
+# L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2 non-port
+# cleanup above to the remaining protocols' non-port .env keys.
+# verify4 saw SS_PASS survive four SS deletes: sync_env_ports_after_removal
+# only reconciles listener PORTs, so the secret stayed in .env (and
+# write_env re-emits it on every later write). Same residue class for
+# SOCKS_USER/PASS, the main UUID and the three SNI keys.
+# Gate: each key clears only when no live inbound of the protocol that
+# OWNS it remains on either core. The classification mirrors
+# sync_env_ports_after_removal (tag first, protocol/type second), so an
+# Argo vless-ws-in never keeps the main UUID and a Hy2 listener never
+# keeps a VLESS key:
+#   SS_PASS        <- any shadowsocks inbound (xray protocol; sing-box
+#                     type WITH a listen_port -- the ShadowTLS loopback
+#                     companion has none and its own password, so it
+#                     must not keep SS_PASS)
+#   SOCKS_USER/PASS <- any socks inbound (xray protocol; sing-box type
+#                     socks|mixed)
+#   UUID           <- any VLESS-family inbound (Vision or XHTTP)
+#   VISION_SNI     <- Vision only
+#   XHTTP_SNI      <- XHTTP only
+#   VLESS_SNI      <- Vision or XHTTP (it is the shared fallback both
+#                     readers use: ${VISION_SNI:-${VLESS_SNI:-}} and
+#                     ${XHTTP_SNI:-${VLESS_SNI:-}})
+# Deploy regenerates every one of these keys (UUID/SS_PASS fresh per
+# deploy, src/08; SNI re-prompted or auto-selected, src/07; SOCKS
+# landing creds are prompted fresh per landing and never read from
+# .env), so clearing cannot break a later re-deploy. Anything
+# unverifiable (missing .env, symlinked/unreadable/unparseable config)
+# keeps the keys and returns 0 (skip, mirroring
+# _clear_hy2_nonport_env_vars); only a real write failure returns 1.
+_clear_stale_nonport_env_vars() {
+    local envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+    local _sbcfg="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+    local _stripped='' _jq_prog='' _labels='' _lab='' _key='' _failed=0
+    local _vision=0 _xhttp=0 _ss=0 _socks=0 _unverifiable=0
+    local _core='' _cfg=''
+    local -a _clear_keys=()
+    for _core in xray sing-box; do
+        if [[ "$_core" == 'xray' ]]; then
+            _cfg="$_xcfg"
+            _jq_prog='.inbounds[]? | if ((.tag // "") | test("vision")) then "VLESS" elif ((.tag // "") | test("xhttp")) then "XHTTP" elif .protocol == "shadowsocks" then "SS" elif .protocol == "socks" then "SOCKS" elif .protocol == "vless" then (if ((.streamSettings.network // "") == "xhttp") then "XHTTP" else "VLESS" end) else empty end'
+        else
+            _cfg="$_sbcfg"
+            _jq_prog='.inbounds[]? | if .type == "vless" and ((.tag // "") | test("vision")) then "VLESS" elif .type == "shadowsocks" and has("listen_port") then "SS" elif .type == "socks" or .type == "mixed" then "SOCKS" else empty end'
+        fi
+        # A symlinked config may still serve the protocol through its
+        # target: unverifiable, keep the keys. A missing config means
+        # no inbounds on this core; an existing non-regular or empty
+        # file is damage, not absence: unverifiable as well.
+        if [[ -L "$_cfg" ]]; then _unverifiable=1; continue; fi
+        [[ -e "$_cfg" ]] || continue
+        if [[ ! -f "$_cfg" || ! -s "$_cfg" ]]; then _unverifiable=1; continue; fi
+        _stripped=$(jsonc_strip_comments "$_cfg" 2>/dev/null) || { _unverifiable=1; continue; }
+        [[ -n "${_stripped//[[:space:]]/}" ]] || { _unverifiable=1; continue; }
+        _labels=$(printf '%s' "$_stripped" | jq -r "$_jq_prog" 2>/dev/null) || { _unverifiable=1; continue; }
+        while IFS= read -r _lab; do
+            case "$_lab" in
+                VLESS) _vision=1 ;;
+                XHTTP) _xhttp=1 ;;
+                SS) _ss=1 ;;
+                SOCKS) _socks=1 ;;
+            esac
+        done <<< "$_labels"
+    done
+    (( _unverifiable == 0 )) || return 0
+    [[ -f "$envf" && ! -L "$envf" ]] || return 0
+    if (( _ss == 0 )); then _clear_keys+=(SS_PASS); fi
+    if (( _socks == 0 )); then _clear_keys+=(SOCKS_USER SOCKS_PASS); fi
+    if (( _vision == 0 )); then _clear_keys+=(VISION_SNI); fi
+    if (( _xhttp == 0 )); then _clear_keys+=(XHTTP_SNI); fi
+    if (( _vision == 0 && _xhttp == 0 )); then _clear_keys+=(UUID VLESS_SNI); fi
+    for _key in "${_clear_keys[@]}"; do
+        if ! sed -i "s/^${_key}=.*/${_key}=\"\"/" "$envf" 2>/dev/null; then
+            _failed=1
+            continue
+        fi
+        unset "$_key" 2>/dev/null || true
+    done
+    if (( _failed == 1 )); then
+        msg "${YELLOW}[!] Failed to clear stale protocol settings from .env after removing protocol(s); stale values may remain.${NC}"
+        return 1
+    fi
+    return 0
+}
+
 # A protocol's .link file belongs to the core that serves it: deleting
 # one core's inbound must not delete the other core's still-valid link.
 # Returns 0 when the given core still serves that protocol, 1 when it
@@ -2762,7 +2848,7 @@ firewall_recycle_freed_ports() {
 # $1 = core, rest = removed tags
 _protocol_removed_side_effects() {
     local core="$1"; shift
-    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _sb_stripped=''
+    local tag='' cfg='' _stem2='' _tuic_removed=0 _reg_failed=0 _sync_failed=0 _hy2env_failed=0 _staleenv_failed=0 _sb_stripped=''
     local _ld="${ABOX_DIR:-/etc/ddr}"
     # M-12(1): hop parameters are captured up front: the .env port
     # reconciliation below may unset HY2_BASE_PORT before the tail
@@ -2925,6 +3011,17 @@ _protocol_removed_side_effects() {
         msg "${YELLOW}[!] Hy2 settings cleanup failed after removing ${core} protocol(s); stale Hy2 values may remain in .env.${NC}"
         _hy2env_failed=1
     fi
+    # L2 (fix-leftover-20261126): same generalization for the remaining
+    # protocols' non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, the
+    # three SNI keys). The helper verifies "no inbound of that family
+    # remains" itself; a failure is surfaced like the Hy2 failure
+    # above. (Runs after sync; nothing below reads the cleared shell
+    # vars -- the M-12(1) hop-rule block captured its values up front,
+    # and the Argo/tuic blocks below read the live configs, not .env.)
+    if ! _clear_stale_nonport_env_vars; then
+        msg "${YELLOW}[!] Non-port protocol settings cleanup failed after removing ${core} protocol(s); stale values may remain in .env.${NC}"
+        _staleenv_failed=1
+    fi
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
         cfg='/etc/sing-box/config.json'
@@ -3010,7 +3107,7 @@ _protocol_removed_side_effects() {
     # _singbox_cleanup_tuic_certs_when_none_remain), or the manifest
     # drifts from disk (stale hash vs a same-name rebuild).
     (( ${#_deleted[@]} > 0 )) && _manifest_drop_paths "${_deleted[@]}" || true
-    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 )); then return 1; fi
+    if (( _reg_failed == 1 || _sync_failed == 1 || _hy2env_failed == 1 || _staleenv_failed == 1 )); then return 1; fi
     return 0
 }
 
@@ -3677,6 +3774,13 @@ clear_all_protocols() {
         # ports of surviving nodes; best-effort (a failed sync keeps
         # the ports, exactly like a skipped one did).
         sync_env_ports_after_removal || true
+        # L2 (fix-leftover-20261126): same gap, same fix, for the
+        # non-port keys (SS_PASS, SOCKS_USER/PASS, UUID, SNI keys):
+        # when a core's config holds no inbounds the side effects
+        # above are skipped for that core, so a clear-all from an
+        # empty-config state would otherwise leave every non-port
+        # key behind. Best-effort like the sync above.
+        _clear_stale_nonport_env_vars || true
         # M-12(1): recycle the freed ports now that every removal has
         # succeeded; on partial wipe the rules stay (fail-closed).
         if [[ -s "$_freed_tmp" ]]; then firewall_recycle_freed_ports < "$_freed_tmp"; fi

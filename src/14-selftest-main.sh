@@ -3152,6 +3152,120 @@ EOF_W2F1
         fi
         XRAY_SLOT_CFG="$_w2_old_slot"; ABOX_DIR="$_w2_old_dir"; ABOX_ENV="$_w2_old_env"; ABOX_SB_CFG="$_w2_old_sb"; ABOX_HY2_CFG="$_w2_old_hy2"; XRAY_BIN="$_w2_old_xbin"
     }
+    # 9. L2 (fix-leftover-20261126): generalize the W7-OBS-4 Hy2
+    # non-port cleanup to SS_PASS / SOCKS_USER / SOCKS_PASS / UUID /
+    # VLESS_SNI / VISION_SNI / XHTTP_SNI. verify4 saw SS_PASS survive
+    # four SS deletes because sync_env_ports_after_removal only
+    # reconciles listener ports. Each key must clear only when no
+    # live inbound of the protocol that owns it remains on either
+    # core, and must survive while one does.
+    {
+        local _l2d="$tmp/l2keys" _l2_env=''
+        local _l2_old_slot="${XRAY_SLOT_CFG:-}" _l2_old_dir="${ABOX_DIR:-}" _l2_old_env="${ABOX_ENV:-}" _l2_old_sb="${ABOX_SB_CFG:-}" _l2_old_hy2="${ABOX_HY2_CFG:-}"
+        mkdir -p "$_l2d/ddr" || { echo 'FAIL: L2 test dir'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2d/xray.json"
+        ABOX_DIR="$_l2d/ddr"
+        ABOX_ENV="$_l2d/.env"
+        ABOX_SB_CFG="$_l2d/sb.json"
+        ABOX_HY2_CFG="$_l2d/hy2.yaml"
+        rm -f "$_l2d/hy2.yaml"
+        cat > "$_l2d/xray.json" <<'EOF_L2'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053},
+ {"tag":"socks5-landing","protocol":"socks","port":1080}
+]}
+EOF_L2
+        printf '{"inbounds":[]}' > "$_l2d/sb.json"
+        cat > "$_l2d/.env" <<'EOF_L2'
+CORE="xray"
+MODE="ALL"
+UUID="11111111-1111-4111-8111-111111111111"
+VLESS_SNI="www.microsoft.com"
+VISION_SNI="www.microsoft.com"
+XHTTP_SNI="www.microsoft.com"
+VLESS_PORT="443"
+XHTTP_PORT="8443"
+SS_PORT="2053"
+SOCKS_PORT="1080"
+SOCKS_USER="socksuser"
+SOCKS_PASS="sockspass"
+SS_PASS="sspass-stale"
+EOF_L2
+        # SS delete: the port sync clears SS_PORT; the helper must
+        # clear SS_PASS while keeping every surviving key.
+        jq --arg t ss '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must clear once no SS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_l2_env" == '11111111-1111-4111-8111-111111111111' ]] || { echo 'FAIL: L2 UUID must survive while Vision+XHTTP live'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must survive while Vision lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # Vision-only delete: VISION_SNI clears; UUID and VLESS_SNI
+        # survive as the XHTTP fallback still needs them.
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VISION_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VISION_SNI must clear when Vision is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 UUID must survive while XHTTP lives'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must survive as the XHTTP fallback while XHTTP lives'; failures=$((failures + 1)); }
+        # Vision+XHTTP delete: UUID and all three SNI keys clear;
+        # SOCKS credentials survive (SOCKS still lives).
+        jq --arg t xhttp '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after Vision+XHTTP delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 UUID must clear when no VLESS-family inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^XHTTP_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 XHTTP_SNI must clear when XHTTP is gone'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^VLESS_SNI=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 VLESS_SNI must clear when neither Vision nor XHTTP can fall back to it'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must survive while SOCKS lives'; failures=$((failures + 1)); }
+        # SOCKS delete on both cores clears the credentials; a live
+        # sing-box mixed inbound keeps them.
+        jq --arg t socks5-landing '.inbounds |= map(select(.tag != $t))' "$_l2d/xray.json" > "$_l2d/xray.new" && mv -f "$_l2d/xray.new" "$_l2d/xray.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail after SOCKS delete'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_PASS must clear when no SOCKS inbound remains'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"socks5-landing","type":"mixed","listen_port":1080}]}' > "$_l2d/sb.json"
+        sed -i 's/^SOCKS_USER=.*/SOCKS_USER="socksuser"/; s/^SOCKS_PASS=.*/SOCKS_PASS="sockspass"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SOCKS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SOCKS_USER=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SOCKS_USER must survive a live sing-box mixed inbound'; failures=$((failures + 1)); }
+        # Cross-core SS keep, ShadowTLS companion exclusion, corrupt
+        # config skip, and the Argo UUID exclusion.
+        printf '{"inbounds":[{"tag":"ss","type":"shadowsocks","listen_port":2053}]}' > "$_l2d/sb.json"
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with a live sing-box SS'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must survive a live sing-box SS inbound'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"shadowtls-ss","type":"shadowsocks","listen":"127.0.0.1","method":"2022-blake3-aes-128-gcm","password":"inner-not-ss-pass"}]}' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only a ShadowTLS companion'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 ShadowTLS loopback companion (own password, no listen_port) must not keep SS_PASS'; failures=$((failures + 1)); }
+        sed -i 's/^SS_PASS=.*/SS_PASS="sspass-stale"/' "$_l2d/.env"
+        printf 'this is not json{' > "$_l2d/sb.json"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must skip (rc 0) on an unverifiable config'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^SS_PASS=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -n "$_l2_env" ]] || { echo 'FAIL: L2 SS_PASS must be kept when survivorship is unverifiable'; failures=$((failures + 1)); }
+        printf '{"inbounds":[{"tag":"vless-ws-in","type":"vless","listen_port":10000}]}' > "$_l2d/sb.json"
+        sed -i 's/^UUID=.*/UUID="11111111-1111-4111-8111-111111111111"/' "$_l2d/.env"
+        _clear_stale_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L2 helper must not fail with only an Argo inbound'; failures=$((failures + 1)); }
+        _l2_env=$(sed -n 's/^UUID=//p' "$_l2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_l2_env" ]] || { echo 'FAIL: L2 Argo vless-ws-in (own ARGO_UUID) must not keep the main UUID'; failures=$((failures + 1)); }
+        g2_func_contains _protocol_removed_side_effects '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 _protocol_removed_side_effects must call the non-port cleanup'; failures=$((failures + 1)); }
+        g2_func_contains clear_all_protocols '_clear_stale_nonport_env_vars' || { echo 'FAIL: L2 clear_all_protocols must call the non-port cleanup'; failures=$((failures + 1)); }
+        XRAY_SLOT_CFG="$_l2_old_slot"; ABOX_DIR="$_l2_old_dir"; ABOX_ENV="$_l2_old_env"; ABOX_SB_CFG="$_l2_old_sb"; ABOX_HY2_CFG="$_l2_old_hy2"
+    }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup

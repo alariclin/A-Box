@@ -1659,11 +1659,6 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
-    # W4-tb3: Check.Place needs whiptail; without it the upstream script
-    # stops at an interactive apt prompt. Package names: deb whiptail,
-    # rpm newt (the newt package contains /usr/bin/whiptail), apk newt.
-    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
-    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     # M-15(2): option-capability probes. A present-but-crippled applet
     # (BusyBox) queues its GNU package for the best-effort install below;
     # the install never dies here, so a host that cannot install keeps
@@ -1694,6 +1689,18 @@ ensure_commands() {
         mapfile -t _cap_unique < <(printf '%s\n' "${_cap_pkgs[@]}" | awk 'NF && !seen[$0]++')
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${_cap_unique[@]}" >/dev/null 2>&1 || true
+    fi
+    # W4-tb3b: Check.Place.sh (toolbox 3) needs whiptail for its interactive
+    # menu; without it the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note). Best-effort only, aligned with tb2 (wget):
+    # whiptail is a toolbox dependency, never a startup gate -- a failed
+    # install must not die here; run_mirrored_test_script() reports the
+    # missing command instead. Mapping unchanged: deb whiptail, rpm newt
+    # (the newt package contains /usr/bin/whiptail), apk newt.
+    # install_optional_package is non-fatal (returns 1 on failure) by design.
+    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
+    if [[ -n "$_pkg" ]]; then
+        install_optional_package "$_pkg" >/dev/null 2>&1 || true
     fi
     local required=(curl jq openssl bc unzip tar iptables ip6tables ss lsof crontab logrotate python3 flock cmp)
     local c

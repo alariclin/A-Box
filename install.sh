@@ -13682,11 +13682,6 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
-    # W4-tb3: Check.Place needs whiptail; without it the upstream script
-    # stops at an interactive apt prompt. Package names: deb whiptail,
-    # rpm newt (the newt package contains /usr/bin/whiptail), apk newt.
-    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
-    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     # M-15(2): option-capability probes. A present-but-crippled applet
     # (BusyBox) queues its GNU package for the best-effort install below;
     # the install never dies here, so a host that cannot install keeps
@@ -13717,6 +13712,18 @@ ensure_commands() {
         mapfile -t _cap_unique < <(printf '%s\n' "${_cap_pkgs[@]}" | awk 'NF && !seen[$0]++')
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${_cap_unique[@]}" >/dev/null 2>&1 || true
+    fi
+    # W4-tb3b: Check.Place.sh (toolbox 3) needs whiptail for its interactive
+    # menu; without it the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note). Best-effort only, aligned with tb2 (wget):
+    # whiptail is a toolbox dependency, never a startup gate -- a failed
+    # install must not die here; run_mirrored_test_script() reports the
+    # missing command instead. Mapping unchanged: deb whiptail, rpm newt
+    # (the newt package contains /usr/bin/whiptail), apk newt.
+    # install_optional_package is non-fatal (returns 1 on failure) by design.
+    _pkg=$(__abox_missing_pkg_for "$release" whiptail whiptail newt newt)
+    if [[ -n "$_pkg" ]]; then
+        install_optional_package "$_pkg" >/dev/null 2>&1 || true
     fi
     local required=(curl jq openssl bc unzip tar iptables ip6tables ss lsof crontab logrotate python3 flock cmp)
     local c
@@ -57873,6 +57880,25 @@ case "${ABOX_LANG:-zh}" in
         *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
     esac
     if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
+    # W4-tb3b: Check.Place.sh needs whiptail for its interactive menu; on a
+    # host without whiptail the upstream script stalls at an interactive apt
+    # prompt (W4-tb3 note) instead of running. Refuse upfront with the
+    # missing command named instead of asking the user to confirm a run
+    # that cannot succeed. Scoped to Check.Place.sh only: other mirrored
+    # scripts have their own dependencies (tb2 owns wget for bench.sh).
+    if [[ "$asset" == 'Check.Place.sh' ]] && ! command -v whiptail >/dev/null 2>&1; then
+        rm -rf -- "$work"
+        msg "${RED}$(tprintf ec_missing 'whiptail (Check.Place.sh)')${NC}"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Check.Place.sh needs whiptail to show its interactive menu. Install whiptail and retry.${NC}" ;;
+            ru) msg "${RED}Check.Place.sh нужен whiptail для отображения интерактивного меню. Установите whiptail и повторите попытку.${NC}" ;;
+            fa) msg "${RED}Check.Place.sh برای نمایش منوی تعاملی به whiptail نیاز دارد. whiptail را نصب کنید و دوباره تلاش کنید.${NC}" ;;
+            zh-tw) msg "${RED}Check.Place.sh 需要 whiptail 才能顯示互動式選單。請安裝 whiptail 後重試。${NC}" ;;
+            ja) msg "${RED}Check.Place.sh は対話式メニューの表示に whiptail が必要です。whiptail をインストールして再試行してください。${NC}" ;;
+            *) msg "${RED}Check.Place.sh 需要 whiptail 才能显示交互式菜单。请安装 whiptail 后重试。${NC}" ;;
+        esac
+        return 1
+    fi
     if ! confirm_yes_no "$run_prompt"; then
         rm -rf -- "$work"
         return 130

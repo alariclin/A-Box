@@ -1283,6 +1283,24 @@ _xrc_restore_divergence_check() {
     return 0
 }
 
+# L6: an outstanding users_sync post-commit cleanup todo for the xray
+# core means the published desired file (and/or the .env port set) may
+# still describe the pre-deletion state: the deletion is committed to
+# the live config, but its tail (publish desired, reconcile ports) has
+# not landed yet. While such a todo exists, neither the desired file
+# nor any backup may be adopted as a recovery source: a backup that
+# covers the stale .env ports would resurrect the deleted inbound
+# just as surely as the stale desired file. rc 0 = a todo is pending.
+_xrc_cleanup_todo_pending() {
+    local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f=''
+    [[ -d "$_dir" ]] || return 1
+    for _f in "$_dir"/*.cleanup-pending; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        grep -q '"core"[[:space:]]*:[[:space:]]*"xray"' "$_f" 2>/dev/null && return 0
+    done
+    return 1
+}
+
 # W2-FAIL-1: decide whether the published desired config may serve as
 # the auto-recovery source. $1 = work file to stage the candidate into.
 # The file is trusted only when it is a root-owned 0600 regular file
@@ -1299,6 +1317,9 @@ _xrc_desired_config_usable() {
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local envf="${ABOX_ENV:-/etc/ddr/.env}"
     [[ -n "$dest" ]] || return 1
+    # L6: a pending xray cleanup todo means the desired file may still
+    # be the pre-deletion one; never adopt it until the todo clears.
+    _xrc_cleanup_todo_pending && return 1
     src=$(_xrc_desired_config_path) || return 1
     [[ -f "$src" && ! -L "$src" && -r "$src" ]] || return 1
     [[ "$(stat -c %u:%g "$src" 2>/dev/null || true)" == '0:0' ]] || return 1
@@ -1348,6 +1369,11 @@ xray_config_autorecover() {
     # is an error, never a cue to fall back to the legacy file.
     _desired=$(get_desired_state 2>/dev/null) || return 2
     [[ "$_desired" == 'RUNNING' ]] || return 2
+    # L6: a pending xray cleanup todo means the desired file and the
+    # .env port set may still describe the pre-deletion state. Return
+    # inconclusive (rc 2) instead of restoring from either source; the
+    # guard completes the todo, and the next probe cycle may recover.
+    _xrc_cleanup_todo_pending && return 2
     # Offline config test (bounded). rc 23 = xray "Failed to start", the
     # only confirmed config fault (measured on real xray v26.7.28 and
     # v26.10.21: malformed JSON, unknown protocol, wrong type, empty and

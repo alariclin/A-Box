@@ -7072,8 +7072,20 @@ ss_effective_password_for_user() {
 hy2_effective_password() {
     # ABOX_HY2_CONFIG is the config-path override (fixture hook, same
     # convention as hy2_effective_password_for_user).
-    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick=''
-    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || users=''
+    local cfg="${ABOX_HY2_CONFIG:-/etc/hysteria/config.yaml}" users='' pw_only='' login='' secret='' _pick='' _read_rc=0 _live_readable=0
+    # L6: "no usable credential" must not fall back to .env HY2_PASS.
+    # users_hy2_read_users prints [] with rc 0 for a live deny password
+    # (ABOX-DENY-*), and rc 1 for an unreadable file -- but also rc 1
+    # for a READABLE file with no usable credential (empty userpass,
+    # missing password). Only a missing/symlinked live config keeps
+    # the old fail-open to $HY2_PASS; a present, regular live config
+    # that yields no usable credential is authoritative: return 1 so
+    # no caller can publish the stale .env password as a live node.
+    [[ -f "$cfg" && ! -L "$cfg" ]] && _live_readable=1
+    users=$(users_hy2_read_users "$cfg" 2>/dev/null) || _read_rc=$?
+    if (( _live_readable == 1 )) && { (( _read_rc != 0 )) || [[ "$users" == '[]' ]]; }; then
+        return 1
+    fi
     if [[ -n "$users" && "$users" != '[]' ]]; then
         # M41-NEW-01 follow-up: the single-node/combo display must
         # show main's credential, not the first registered user's.

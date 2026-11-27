@@ -40742,7 +40742,10 @@ sync_env_ports_after_removal() {
     # of the VAR'S OWN protocol remains (e.g. VLESS_PORT survives on
     # an xray/sing-box Vision inbound, never on a Hy2 listener).
     # HY2 hop-range vars are not listener ports and are out of scope
-    # here.
+    # here. O-1 exception: HY2_BASE_PORT is likewise not a listener
+    # port while official hop is on (the listen spec is the hop
+    # range), so a live hop range keeps it -- see the O-1 block in
+    # the var loop below.
     local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _live_vless=() _live_xhttp=() _live_ss=() _live_socks=() _live_trojan=() _live_hy2=()
@@ -40890,6 +40893,25 @@ sync_env_ports_after_removal() {
             done
             (( _keep == 1 )) && break
         done
+        # O-1 (2026-11-27): HY2_BASE_PORT is not a listener port while
+        # official hop is on. Deploy writes the official listen spec
+        # as the hop range (src/07: HY2_LISTEN=":${HY2_RANGE_START}-
+        # ${HY2_RANGE_END}") while HY2_BASE_PORT keeps the prompted
+        # port (443), so the range-membership check above can never
+        # keep it: deleting Vision (also 443) cleared it and the menu
+        # showed "Hy2:?". A live range in the Hy2 live set proves Hy2
+        # still lives in hop mode, and HY2_BASE_PORT is its
+        # nominal/display port (menu Hy2:${HY2_BASE_PORT}), so keep it
+        # then. Only a range keeps it this way: a single-port listener
+        # still needs the exact/range match above, so a stale
+        # HY2_BASE_PORT with no listener behind it still clears, and
+        # with no live Hy2 at all (_live_hy2 empty) it still clears
+        # on Hy2 delete.
+        if [[ "$var" == 'HY2_BASE_PORT' && "$_keep" == 0 ]]; then
+            for _lp in "${live_ports[@]}"; do
+                if [[ "$_lp" =~ ^[0-9]+-[0-9]+$ ]]; then _keep=1; break; fi
+            done
+        fi
         (( _keep == 1 )) && continue
         if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1
@@ -72880,6 +72902,30 @@ EOF_W2F1
         [[ -z "$_w2_env" ]] || { echo 'FAIL: W2-FAIL-1 VLESS_PORT must clear when no Vision inbound remains (Hy2 alone must not keep it)'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^XHTTP_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == '8443' ]] || { echo 'FAIL: W2-FAIL-1 XHTTP_PORT must survive while XHTTP lives'; failures=$((failures + 1)); }
+        # O-1 (2026-11-27): official hop writes `listen: :20000-25000`
+        # in the Hysteria YAML while HY2_BASE_PORT stays 443, so the
+        # Vision delete must not clear it (the menu would show
+        # "Hy2:?"). Rebuild the fixture in hop mode and re-run the
+        # same Vision delete, then restore the non-hop fixture the
+        # rest of this block expects (api+xhttp+ss, listen :443).
+        printf 'listen: :20000-25000\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT="443"\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="20000"\nHY2_URI_PORTS="20000-25000"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
+        cat > "$_w2d/xray.json" <<'EOF_W2F1'
+{"inbounds":[
+ {"tag":"api","protocol":"dokodemo-door","port":10085,"listen":"127.0.0.1"},
+ {"tag":"vision","protocol":"vless","port":443},
+ {"tag":"xhttp","protocol":"vless","port":8443},
+ {"tag":"ss","protocol":"shadowsocks","port":2053}
+]}
+EOF_W2F1
+        jq --arg t vision '.inbounds |= map(select(.tag != $t))' "$_w2d/xray.json" > "$_w2d/xray.new" && mv -f "$_w2d/xray.new" "$_w2d/xray.json"
+        sync_env_ports_after_removal >/dev/null 2>&1 || { echo 'FAIL: O-1 sync after Vision delete (official hop)'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^HY2_BASE_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ "$_w2_env" == '443' ]] || { echo 'FAIL: O-1 HY2_BASE_PORT must survive a Vision delete while official-hop Hy2 lives'; failures=$((failures + 1)); }
+        _w2_env=$(sed -n 's/^VLESS_PORT=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
+        [[ -z "$_w2_env" ]] || { echo 'FAIL: O-1 VLESS_PORT must still clear on Vision delete (official hop)'; failures=$((failures + 1)); }
+        printf 'listen: :443\n' > "$_w2d/hy2.yaml"
+        printf 'CORE="xray"\nMODE="ALL"\nVLESS_PORT=""\nXHTTP_PORT="8443"\nSS_PORT="2053"\nHY2_BASE_PORT="443"\nHY2_MONITOR_PORT="443"\nHY2_URI_PORTS="443"\nSOCKS_PORT=""\nTROJAN_PORT=""\n' > "$_w2d/.env"
         _xrc_config_has_expected_data_inbound "$_w2d/xray.json" 2>/dev/null; _w2_cov=$?
         (( _w2_cov == 0 )) || { echo 'FAIL: W2-FAIL-1 coverage must pass after Vision delete (else the probe restores)'; failures=$((failures + 1)); }
         # Delete the remaining xray inbounds: every xray var clears

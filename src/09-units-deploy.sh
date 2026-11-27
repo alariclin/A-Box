@@ -2111,7 +2111,10 @@ sync_env_ports_after_removal() {
     # of the VAR'S OWN protocol remains (e.g. VLESS_PORT survives on
     # an xray/sing-box Vision inbound, never on a Hy2 listener).
     # HY2 hop-range vars are not listener ports and are out of scope
-    # here.
+    # here. O-1 exception: HY2_BASE_PORT is likewise not a listener
+    # port while official hop is on (the listen spec is the hop
+    # range), so a live hop range keeps it -- see the O-1 block in
+    # the var loop below.
     local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _stripped='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _live_vless=() _live_xhttp=() _live_ss=() _live_socks=() _live_trojan=() _live_hy2=()
@@ -2259,6 +2262,25 @@ sync_env_ports_after_removal() {
             done
             (( _keep == 1 )) && break
         done
+        # O-1 (2026-11-27): HY2_BASE_PORT is not a listener port while
+        # official hop is on. Deploy writes the official listen spec
+        # as the hop range (src/07: HY2_LISTEN=":${HY2_RANGE_START}-
+        # ${HY2_RANGE_END}") while HY2_BASE_PORT keeps the prompted
+        # port (443), so the range-membership check above can never
+        # keep it: deleting Vision (also 443) cleared it and the menu
+        # showed "Hy2:?". A live range in the Hy2 live set proves Hy2
+        # still lives in hop mode, and HY2_BASE_PORT is its
+        # nominal/display port (menu Hy2:${HY2_BASE_PORT}), so keep it
+        # then. Only a range keeps it this way: a single-port listener
+        # still needs the exact/range match above, so a stale
+        # HY2_BASE_PORT with no listener behind it still clears, and
+        # with no live Hy2 at all (_live_hy2 empty) it still clears
+        # on Hy2 delete.
+        if [[ "$var" == 'HY2_BASE_PORT' && "$_keep" == 0 ]]; then
+            for _lp in "${live_ports[@]}"; do
+                if [[ "$_lp" =~ ^[0-9]+-[0-9]+$ ]]; then _keep=1; break; fi
+            done
+        fi
         (( _keep == 1 )) && continue
         if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1

@@ -4853,6 +4853,9 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_flock_missing)${NC}" >&2; return 1; }
     # R9-03: a retired xray-latest coexist instance is outside the managed
     # core set and would never be stopped by a quota block. Refuse to
@@ -6034,7 +6037,11 @@ EOF_TRAFFIC
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_quota_snapshot_failed)${NC}" >&2; return 1; }
     local _tm_script="$ABOX_DIR/traffic_monitor.sh"
     if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_single_quote "$_tm_script"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    fi
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_snapshot_failed)${NC}" >&2; return 1; }
 }
 

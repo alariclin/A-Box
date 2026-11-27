@@ -1754,6 +1754,13 @@ PY_XRC_ENUM
 }
 
 setup_health_monitor() {
+    # L8: optional 'scripts-only' mode for restore: write the probe
+    # script but install no cron block. The restore path installs all
+    # four blocks in one merge from the backup (see
+    # restore_abox_cron_from_backup). Direct callers pass no argument
+    # and keep the old install behaviour.
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
     msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
@@ -2437,13 +2444,24 @@ EOF_PROBE
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
-    install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
+    fi
 }
 
 setup_geo_cron() {
+    # L8: optional 'scripts-only' mode (see setup_health_monitor).
+    local _l8_scripts_only=0
+    [[ "${1:-}" == 'scripts-only' ]] && _l8_scripts_only=1
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_geo_cron_flock_missing)"
     if ! abox_owns_service xray; then
-        remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        # L8: in 'scripts-only' mode the cron block is owned by the
+        # restore merge; only the helper script is removed here.
+        if (( _l8_scripts_only == 0 )); then
+            remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        fi
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
@@ -3079,6 +3097,10 @@ EOF_GEO
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
     chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
-    install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    # L8: in 'scripts-only' mode the cron block is installed by the
+    # restore merge, not here.
+    if (( _l8_scripts_only == 0 )); then
+        install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
+    fi
 }
 

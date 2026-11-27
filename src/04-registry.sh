@@ -1083,10 +1083,26 @@ remove_owned_core_family() {
 
 remove_all_owned_core_families() {
     # $1 force_heal forwarded to each family (1 = menu 17 / full uninstall only).
-    local force_heal="${1:-0}" failed=0
+    local force_heal="${1:-0}" failed=0 _hy2_hop_ok=1
     remove_owned_core_family xray "$force_heal" || failed=1
     remove_owned_core_family sing-box "$force_heal" || failed=1
-    remove_owned_core_family hysteria "$force_heal" || failed=1
+    # L3 (2026-11-27, menu-17 follow-up): a hysteria family removed
+    # here never passes through _remove_hy2_official, so reclaim its
+    # official-hop NAT rules here, after the caller's stop and before
+    # the family removal (same cleanup-first ordering as the prune
+    # hook: a failure leaves the unit/config/identity in place for a
+    # retry and fails the uninstall instead of reporting success over
+    # a residue). Only an A-Box-owned (or config-only) hysteria is
+    # cleaned: a foreign install's rules are not ours, and an absent
+    # install has no resolvable hop identity.
+    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+        remove_hy2_official_hop_rules || _hy2_hop_ok=0
+    fi
+    if (( _hy2_hop_ok == 1 )); then
+        remove_owned_core_family hysteria "$force_heal" || failed=1
+    else
+        failed=1
+    fi
     remove_owned_core_family xray-latest "$force_heal" || failed=1
     (( failed == 0 ))
 }
@@ -1101,6 +1117,21 @@ remove_owned_core_families_for_restore() {
     for srv in xray sing-box hysteria; do
         if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
             continue
+        fi
+        # L3 (2026-11-27, menu-17 follow-up): same as the prune hook
+        # and remove_all_owned_core_families -- a hysteria family
+        # removed here never passes through _remove_hy2_official, so
+        # reclaim its official-hop NAT rules after the caller's stop
+        # and before the family removal, for hysteria only. A failure
+        # skips this family's removal (unit/config/identity stay for
+        # a retry) and fails the restore instead of reporting success
+        # over a residue. The config-only skip above already ran, so
+        # a preserved live family never reaches this cleanup.
+        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+            if ! remove_hy2_official_hop_rules; then
+                failed=1
+                continue
+            fi
         fi
         remove_owned_core_family "$srv" 0 1 || failed=1
     done

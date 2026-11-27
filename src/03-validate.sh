@@ -1690,6 +1690,15 @@ ensure_commands() {
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${_cap_unique[@]}" >/dev/null 2>&1 || true
     fi
+    # W4-tb2: bench.sh (toolbox 2) downloads speedtest-cli with wget, so
+    # a minimal host without wget fails mid-benchmark. Best-effort only:
+    # wget is a toolbox dependency, never a startup gate -- a failed
+    # install must not die here; run_mirrored_test_script() reports the
+    # missing command instead. install_optional_package is non-fatal
+    # (returns 1 on failure) by design.
+    if ! command -v wget >/dev/null 2>&1; then
+        install_optional_package wget >/dev/null 2>&1 || true
+    fi
     local required=(curl jq openssl bc unzip tar iptables ip6tables ss lsof crontab logrotate python3 flock cmp)
     local c
     for c in "${required[@]}"; do

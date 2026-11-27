@@ -2001,6 +2001,12 @@ tr_msg() {
         fa:update_script_ota_url_not_immutable) echo 'نشانی URL مربوط به OTA به یک commit تغییرناپذیر A-Box اشاره نمی‌کند؛ به‌روزرسانی رد شد.' ;;
         zh-tw:update_script_ota_url_not_immutable) echo 'OTA URL 未指向不可變的 A-Box commit；已拒絕更新。' ;;
         ja:update_script_ota_url_not_immutable) echo 'OTA URL が A-Box の不変の commit を指していません。更新を拒否しました。' ;;
+        zh:update_script_already_latest) echo '已是最新版本，无需更新。' ;;
+        en:update_script_already_latest) echo 'Already on the latest version; no update needed.' ;;
+        ru:update_script_already_latest) echo 'Установлена последняя версия; обновление не требуется.' ;;
+        fa:update_script_already_latest) echo 'در حال حاضر آخرین نسخه نصب است؛ نیازی به به‌روزرسانی نیست.' ;;
+        zh-tw:update_script_already_latest) echo '已是最新版本，無需更新。' ;;
+        ja:update_script_already_latest) echo '最新バージョンです。更新は不要です。' ;;
         zh:update_script_tmp_create_failed) echo '更新脚本临时文件创建失败。' ;;
         en:update_script_tmp_create_failed) echo 'Failed to create a temporary file for the update script.' ;;
         ru:update_script_tmp_create_failed) echo 'Не удалось создать временный файл для скрипта обновления.' ;;
@@ -3765,6 +3771,12 @@ tr_msg() {
         fa:wl_remove_fail) echo '[!] حذف کانتینر wallos ناموفق بود.' ;;
         zh-tw:wl_remove_fail) echo '[!] 刪除 wallos 容器失敗，容器可能仍然存在。' ;;
         ja:wl_remove_fail) echo '[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。' ;;
+        zh:wl_remove_absent) echo 'Wallos 容器不存在，无需删除。' ;;
+        en:wl_remove_absent) echo 'Wallos container does not exist; nothing to remove.' ;;
+        ru:wl_remove_absent) echo 'Контейнер Wallos отсутствует; удалять нечего.' ;;
+        fa:wl_remove_absent) echo 'کانتینر Wallos وجود ندارد؛ چیزی برای حذف نیست.' ;;
+        zh-tw:wl_remove_absent) echo 'Wallos 容器不存在，無需刪除。' ;;
+        ja:wl_remove_absent) echo 'Wallos コンテナは存在しません。削除するものはありません。' ;;
         zh:wl_backup) echo '升级前备份：%s' ;;
         en:wl_backup) echo 'Pre-upgrade backup: %s' ;;
         ru:wl_backup) echo 'Резервная копия перед обновлением: %s' ;;
@@ -11523,6 +11535,12 @@ tr_msg() {
         fa:swap_menu_no_disk_swap) echo 'هیچ فایل Swap دیسکی که توسط A-Box ساخته شده باشد وجود ندارد.' ;;
         zh-tw:swap_menu_no_disk_swap) echo '沒有 A-Box 建立的磁碟 Swap 檔案。' ;;
         ja:swap_menu_no_disk_swap) echo 'A-Box が作成したディスクの Swap ファイルはありません。' ;;
+        zh:swap_menu_no_zram) echo '没有 A-Box 创建的 zram。' ;;
+        en:swap_menu_no_zram) echo 'No zram created by A-Box exists.' ;;
+        ru:swap_menu_no_zram) echo 'Нет zram, созданного A-Box.' ;;
+        fa:swap_menu_no_zram) echo 'هیچ zram ساخته‌شده توسط A-Box وجود ندارد.' ;;
+        zh-tw:swap_menu_no_zram) echo '沒有 A-Box 建立的 zram。' ;;
+        ja:swap_menu_no_zram) echo 'A-Box が作成した zram はありません。' ;;
         zh:swap_menu_remove_failed) echo '移除失败，请检查 /swapfile 与 /etc/fstab。' ;;
         en:swap_menu_remove_failed) echo 'Removal failed. Check /swapfile and /etc/fstab.' ;;
         ru:swap_menu_remove_failed) echo 'Удаление не удалось. Проверьте /swapfile и /etc/fstab.' ;;
@@ -12034,7 +12052,10 @@ tprintf() {
         fi
     done
     (( placeholder_count == $# )) || die "tprintf: argument count mismatch in translation '$key'"
-    printf "$fmt" "$@"
+    # W7-OBS-3: a format starting with dashes (e.g. tl_trying's "--- ...")
+    # is parsed as printf options without `--` ("printf: --: invalid
+    # option", stderr noise, empty output). `--` ends option parsing.
+    printf -- "$fmt" "$@"
 }
 
 proto_label() {
@@ -17621,6 +17642,30 @@ shortcut_custom_menu() {
             2)
                 if ! shortcut_resolve_desired ab abox; then
                     printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                fi
+                # W6-OBS-3: already the default set with every wrapper
+                # installed and managed: nothing to do. Previously the
+                # transaction re-ran and re-announced completion.
+                # Only a readable state counts: a corrupt state also
+                # prints the default but must still go through the
+                # M-34 heal path below, and missing/foreign wrappers
+                # must still be (re)installed by the transaction.
+                _names=$(shortcut_primary_names); _rc=$?
+                if (( _rc == 0 )) && [[ "$_names" == "$SHORTCUT_RESOLVED" ]]; then
+                    local _sc_all_managed=1
+                    for _n in $_names; do
+                        # shortcut_is_abox_managed already requires a
+                        # regular file (plus root ownership, safe mode
+                        # and the A-Box marker); no separate -f test.
+                        if shortcut_is_abox_managed "/usr/local/bin/$_n"; then
+                            :
+                        else
+                            _sc_all_managed=0; break
+                        fi
+                    done
+                    if (( _sc_all_managed == 1 )); then
+                        printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                    fi
                 fi
                 # M-34: a corrupt live state makes the transaction
                 # fail closed with no menu-reachable recovery;
@@ -34348,11 +34393,18 @@ _menu_info_display() {
     # row: 2 leading spaces + label display width + fullwidth colon (2)
     # + 2 spaces. A fixed indent only aligns when the label is 4 wide.
     printf -v _netpad '%*s' $(( $(_str_dwidth "$(tr_msg mi_net)") + 6 )) ''
-    [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
-    if [[ -n "$_MI_GEO_COUNTRY" ]]; then
+    # W5-OBS-1: GLOBAL_PUBLIC_IP follows the IP-preference cache, so
+    # under dual/ipv6 it can hold a v6 address; never print a v6
+    # address under the IPv4 label. The geo suffix is keyed to that
+    # same address, so it is only shown when the IPv4 cell really
+    # shows GLOBAL_PUBLIC_IP (otherwise the cell is unknown: `?`).
+    local _v4ip="${GLOBAL_PUBLIC_IP:-}"
+    [[ "$_v4ip" == *:* ]] && _v4ip=''
+    [[ -n "$_v4ip" ]] && _v4dot="${GREEN}●${NC}"
+    if [[ -n "$_v4ip" && -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${_v4ip:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
         msg "${_netpad}${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else
@@ -39041,8 +39093,15 @@ traffic_management_menu() {
         "$(tr_msg traffic_management_menu_status_ok)"
         "$(tr_msg traffic_management_menu_no_month_stats)"
     )
-    if [[ -n "$_tjson" ]]; then
-        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+    if [[ -z "$_tjson" ]]; then
+        # W7-OBS-1: without vnStat the menu showed only this warning
+        # and no dashboard at all. Keep the warning, but still render
+        # the dashboard frame over an empty dataset: the Python report
+        # below renders its title + "no month stats" line for `{}`.
+        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
+        _tjson='{}'
+    fi
+    python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] $(tr_msg traffic_management_menu_parse_failed)${NC}"
 import datetime, json, sys, unicodedata
 
@@ -39171,9 +39230,6 @@ else:
     out.append(f"{YELLOW}{TM_NO_MONTH_STATS}{NC}")
 sys.stdout.write("\n".join(out) + "\n")
 PY_TRAFFIC_DASH
-    else
-        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
-    fi
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "${CYAN}1.${NC}  $(tr_msg traffic_management_menu_set_limit)"
     msg "${CYAN}2.${NC}  $(tr_msg traffic_management_menu_remove_limit)"
@@ -40070,14 +40126,27 @@ do_cleanup() {
             # dnscrypt-proxy yourself if A-Box installed it.
             remove_owned_auxiliary_path /etc/systemd/resolved.conf.d/99-abox-dns.conf || die 'Failed to remove the A-Box DNS drop-in.'
             remove_owned_auxiliary_path /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || die 'Failed to remove the A-Box dnscrypt-proxy socket drop-in.'
+            local _resolved_restarted=0
             if command -v systemctl >/dev/null 2>&1; then
                 systemctl daemon-reload >/dev/null 2>&1 || msg "${YELLOW}[!] systemd daemon-reload failed during uninstall; DNS drop-in removal may not have taken effect.${NC}"
                 if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
                     systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
                 fi
-                systemctl restart systemd-resolved >/dev/null 2>&1 || msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                if systemctl restart systemd-resolved >/dev/null 2>&1; then
+                    _resolved_restarted=1
+                else
+                    msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                fi
             fi
-            msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            # W7-OBS-5: the old unconditional message claimed resolved
+            # "was restarted with distribution defaults" even when the
+            # restart above just failed (or systemd is absent). Word
+            # it by the observed outcome instead.
+            if (( _resolved_restarted == 1 )); then
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            else
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed but systemd-resolved was not restarted. DNS is left as-is; check DNS manually.${NC}"
+            fi
         fi
         if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
             restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" || die 'Timezone rollback snapshot restore failed; aborting uninstall before the snapshot is destroyed.'
@@ -53066,6 +53135,29 @@ EOF_ZRAM_RC
 }
 
 remove_zram_swap() {
+    # W5-OBS-3: abox_zram_teardown returns 0 for a no-op cleanup, so
+    # with no A-Box zram at all this used to print "zram 已移除" for
+    # nothing removed. Probe for any A-Box zram trace first (helper,
+    # state/conf, unit or enablement link, init script, or an actually
+    # active zram device) and say so explicitly when there is none --
+    # mirroring the disk-swap "没有 A-Box 创建的磁盘 Swap 文件。" path.
+    # The teardown itself is untouched: idempotent cleanup callers
+    # (uninstall, reset) still rely on its no-op success.
+    local _rz_any=0 _rz_p
+    for _rz_p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state /etc/init.d/abox-zram; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    for _rz_p in /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service \
+        /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    if grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null; then _rz_any=1; fi
+    if (( _rz_any == 0 )); then
+        msg "${YELLOW}$(tr_msg swap_menu_no_zram)${NC}"
+        swapon --show || true
+        pause_return
+        return 0
+    fi
     if abox_zram_teardown; then
         msg "${GREEN}$(tr_msg remove_zram_swap_removed)${NC}"
     else
@@ -56452,7 +56544,11 @@ PY_BACKUP_RETENTION
 cleanup_separated_backup_keys() {
     local keys_dir="${ABOX_BACKUP_KEYS_DIR:-/root/A-Box-backup-keys}" _name="${1:-}" _f='' _archive='' _present='' _answer='' _target='' _any=0
     (( EUID == 0 )) || return 1
-    [[ -d "$keys_dir" && ! -L "$keys_dir" ]] || return 1
+    # W6-OBS-1: a missing keys directory used to fail silently (zero
+    # output, straight to "press return"). Say so explicitly, like
+    # the empty-directory message below.
+    if [[ ! -d "$keys_dir" ]]; then msg '[*] No separated recovery keys (key directory does not exist).'; return 1; fi
+    [[ ! -L "$keys_dir" ]] || return 1
     path_parent_chain_safe "$keys_dir" || return 1
     if [[ -z "$_name" ]]; then
         for _f in "$keys_dir"/A-Box-backup-*.tar.gz.key; do
@@ -63945,10 +64041,17 @@ wallos_menu() {
                 # R14-07: only a container carrying the A-Box ownership
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
-                # absent container keeps the existing failure outcome.
+                # absent container is reported as already-gone, not as
+                # a removal failure (W6-OBS-2).
                 local _wl_label='' _wl_names='' _wl_id=''
+                # W6-OBS-2: an absent container is not a removal
+                # failure -- it is already gone (e.g. this option was
+                # run once already). Say so instead of the misleading
+                # wl_remove_fail ("may still exist"). The R14-07
+                # outcome below (removal attempted but not verified
+                # gone) keeps the failure message.
                 if ! docker container inspect wallos >/dev/null 2>&1; then
-                    msg "${RED}$(tr_msg wl_remove_fail)${NC}"
+                    msg "${YELLOW}$(tr_msg wl_remove_absent)${NC}"
                 elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]] || ! _wl_id=$(_wallos_container_id); then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
@@ -66648,6 +66751,17 @@ confirm_ota_script_hash() {
     is_yes "$answer"
 }
 
+# W7-OBS-2: true when the installed A-Box.sh already has the given
+# SHA256 (i.e. the OTA download is byte-identical to what is
+# installed). Fails closed on an empty sha, an unreadable installed
+# script, or any mismatch -- the caller then proceeds as before.
+ota_local_sha_matches() {
+    local _sha="${1:-}" _local=''
+    [[ -n "$_sha" ]] || return 1
+    _local=$(sha256sum "$ABOX_DIR/A-Box.sh" 2>/dev/null | awk '{print $1}') || return 1
+    [[ -n "$_local" && "$_local" == "$_sha" ]]
+}
+
 update_script() {
     clear
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
@@ -66683,6 +66797,15 @@ update_script() {
     fi
     sha=$(sha256sum "$tmp_update" | awk '{print $1}')
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
+    # W7-OBS-2: the download is byte-identical to the installed
+    # script -- report "already latest" instead of asking whether to
+    # install it. Nothing is changed (no SNI download, no install).
+    if ota_local_sha_matches "$sha"; then
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        msg "${GREEN}$(tr_msg update_script_already_latest)${NC}"
+        pause_return
+        return 0
+    fi
     if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] $(tr_msg update_script_sni_missing_cancelled)${NC}"

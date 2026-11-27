@@ -615,8 +615,15 @@ traffic_management_menu() {
         "$(tr_msg traffic_management_menu_status_ok)"
         "$(tr_msg traffic_management_menu_no_month_stats)"
     )
-    if [[ -n "$_tjson" ]]; then
-        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+    if [[ -z "$_tjson" ]]; then
+        # W7-OBS-1: without vnStat the menu showed only this warning
+        # and no dashboard at all. Keep the warning, but still render
+        # the dashboard frame over an empty dataset: the Python report
+        # below renders its title + "no month stats" line for `{}`.
+        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
+        _tjson='{}'
+    fi
+    python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] $(tr_msg traffic_management_menu_parse_failed)${NC}"
 import datetime, json, sys, unicodedata
 
@@ -745,9 +752,6 @@ else:
     out.append(f"{YELLOW}{TM_NO_MONTH_STATS}{NC}")
 sys.stdout.write("\n".join(out) + "\n")
 PY_TRAFFIC_DASH
-    else
-        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
-    fi
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "${CYAN}1.${NC}  $(tr_msg traffic_management_menu_set_limit)"
     msg "${CYAN}2.${NC}  $(tr_msg traffic_management_menu_remove_limit)"
@@ -1644,14 +1648,27 @@ do_cleanup() {
             # dnscrypt-proxy yourself if A-Box installed it.
             remove_owned_auxiliary_path /etc/systemd/resolved.conf.d/99-abox-dns.conf || die 'Failed to remove the A-Box DNS drop-in.'
             remove_owned_auxiliary_path /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || die 'Failed to remove the A-Box dnscrypt-proxy socket drop-in.'
+            local _resolved_restarted=0
             if command -v systemctl >/dev/null 2>&1; then
                 systemctl daemon-reload >/dev/null 2>&1 || msg "${YELLOW}[!] systemd daemon-reload failed during uninstall; DNS drop-in removal may not have taken effect.${NC}"
                 if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
                     systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
                 fi
-                systemctl restart systemd-resolved >/dev/null 2>&1 || msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                if systemctl restart systemd-resolved >/dev/null 2>&1; then
+                    _resolved_restarted=1
+                else
+                    msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+                fi
             fi
-            msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            # W7-OBS-5: the old unconditional message claimed resolved
+            # "was restarted with distribution defaults" even when the
+            # restart above just failed (or systemd is absent). Word
+            # it by the observed outcome instead.
+            if (( _resolved_restarted == 1 )); then
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+            else
+                msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed but systemd-resolved was not restarted. DNS is left as-is; check DNS manually.${NC}"
+            fi
         fi
         if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
             restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" || die 'Timezone rollback snapshot restore failed; aborting uninstall before the snapshot is destroyed.'

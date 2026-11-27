@@ -2571,6 +2571,29 @@ EOF_ZRAM_RC
 }
 
 remove_zram_swap() {
+    # W5-OBS-3: abox_zram_teardown returns 0 for a no-op cleanup, so
+    # with no A-Box zram at all this used to print "zram 已移除" for
+    # nothing removed. Probe for any A-Box zram trace first (helper,
+    # state/conf, unit or enablement link, init script, or an actually
+    # active zram device) and say so explicitly when there is none --
+    # mirroring the disk-swap "没有 A-Box 创建的磁盘 Swap 文件。" path.
+    # The teardown itself is untouched: idempotent cleanup callers
+    # (uninstall, reset) still rely on its no-op success.
+    local _rz_any=0 _rz_p
+    for _rz_p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state /etc/init.d/abox-zram; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    for _rz_p in /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service \
+        /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+        [[ -e "$_rz_p" || -L "$_rz_p" ]] && _rz_any=1
+    done
+    if grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null; then _rz_any=1; fi
+    if (( _rz_any == 0 )); then
+        msg "${YELLOW}$(tr_msg swap_menu_no_zram)${NC}"
+        swapon --show || true
+        pause_return
+        return 0
+    fi
     if abox_zram_teardown; then
         msg "${GREEN}$(tr_msg remove_zram_swap_removed)${NC}"
     else
@@ -5957,7 +5980,11 @@ PY_BACKUP_RETENTION
 cleanup_separated_backup_keys() {
     local keys_dir="${ABOX_BACKUP_KEYS_DIR:-/root/A-Box-backup-keys}" _name="${1:-}" _f='' _archive='' _present='' _answer='' _target='' _any=0
     (( EUID == 0 )) || return 1
-    [[ -d "$keys_dir" && ! -L "$keys_dir" ]] || return 1
+    # W6-OBS-1: a missing keys directory used to fail silently (zero
+    # output, straight to "press return"). Say so explicitly, like
+    # the empty-directory message below.
+    if [[ ! -d "$keys_dir" ]]; then msg '[*] No separated recovery keys (key directory does not exist).'; return 1; fi
+    [[ ! -L "$keys_dir" ]] || return 1
     path_parent_chain_safe "$keys_dir" || return 1
     if [[ -z "$_name" ]]; then
         for _f in "$keys_dir"/A-Box-backup-*.tar.gz.key; do

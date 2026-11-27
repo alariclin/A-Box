@@ -2065,6 +2065,17 @@ confirm_ota_script_hash() {
     is_yes "$answer"
 }
 
+# W7-OBS-2: true when the installed A-Box.sh already has the given
+# SHA256 (i.e. the OTA download is byte-identical to what is
+# installed). Fails closed on an empty sha, an unreadable installed
+# script, or any mismatch -- the caller then proceeds as before.
+ota_local_sha_matches() {
+    local _sha="${1:-}" _local=''
+    [[ -n "$_sha" ]] || return 1
+    _local=$(sha256sum "$ABOX_DIR/A-Box.sh" 2>/dev/null | awk '{print $1}') || return 1
+    [[ -n "$_local" && "$_local" == "$_sha" ]]
+}
+
 update_script() {
     clear
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
@@ -2100,6 +2111,15 @@ update_script() {
     fi
     sha=$(sha256sum "$tmp_update" | awk '{print $1}')
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
+    # W7-OBS-2: the download is byte-identical to the installed
+    # script -- report "already latest" instead of asking whether to
+    # install it. Nothing is changed (no SNI download, no install).
+    if ota_local_sha_matches "$sha"; then
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        msg "${GREEN}$(tr_msg update_script_already_latest)${NC}"
+        pause_return
+        return 0
+    fi
     if ! curl -fLsS --proto =https --proto-redir =https --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] $(tr_msg update_script_sni_missing_cancelled)${NC}"

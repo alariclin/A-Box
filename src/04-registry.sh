@@ -354,6 +354,16 @@ prune_owned_core_families_except() {
         [[ "$allowed" == *" $srv "* ]] && continue
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
+        # L3 (2026-11-27): a pruned hysteria family must not leave
+        # its official-hop NAT rules behind. The prune path never
+        # calls _remove_hy2_official, so reclaim them here, after
+        # the stop and before the manifest/force family removal
+        # (same cleanup-first ordering: a failure aborts the deploy
+        # before anything irreversible is deleted, and a retry
+        # re-runs this step).
+        if [[ "$srv" == 'hysteria' ]]; then
+            remove_hy2_official_hop_rules || die "$(tprintf pr_remove "$srv")"
+        fi
         remove_owned_core_family "$srv" 0 1 || die "$(tprintf pr_remove "$srv")"
         # M-18 (supplement): pruning hysteria leaves no consumer of
         # the xtables-lock grant; revoke it (service already stopped,

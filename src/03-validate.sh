@@ -550,6 +550,14 @@ sni_verified_amazon_fallback() {
 prompt_reality_sni() {
     local label="$1" port="$2" default_sni input answer prompt warned custom_tier dns_rc
     default_sni=$(default_sni_for_port "$port")
+    # F3 B2: one-shot rebuild default from the old .env (set only in
+    # the confirmed-rebuild branch). Validated here; an invalid value
+    # falls back to the normal default. Consumed on use, so a later
+    # prompt in the same run never inherits it.
+    if [[ -n "${ABOX_REBUILD_SNI_ONCE:-}" ]] && valid_sni "$ABOX_REBUILD_SNI_ONCE"; then
+        default_sni="$ABOX_REBUILD_SNI_ONCE"
+    fi
+    unset ABOX_REBUILD_SNI_ONCE
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
         read -r -p "$prompt" input || return 1

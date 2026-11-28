@@ -73,6 +73,15 @@ pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
     local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
+    # F3 B2: confirmed-rebuild defaults from the old .env. Each value
+    # is validated (numeric port, not reserved) before it may replace
+    # the stock default; an invalid value keeps the stock default, so
+    # a bad old .env can never break the wizard. These variables are
+    # cleared by the caller right after pre_install_setup returns.
+    if [[ -n "${ABOX_REBUILD_VLESS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_VLESS_PORT" && ! is_reserved_port "$ABOX_REBUILD_VLESS_PORT"; then DEF_V_PORT="$ABOX_REBUILD_VLESS_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_XHTTP_PORT:-}" ]] && valid_port "$ABOX_REBUILD_XHTTP_PORT" && ! is_reserved_port "$ABOX_REBUILD_XHTTP_PORT"; then DEF_X_PORT="$ABOX_REBUILD_XHTTP_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_HY2_BASE_PORT:-}" ]] && valid_port "$ABOX_REBUILD_HY2_BASE_PORT" && ! is_reserved_port "$ABOX_REBUILD_HY2_BASE_PORT"; then DEF_H_PORT="$ABOX_REBUILD_HY2_BASE_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_SS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_SS_PORT" && ! is_reserved_port "$ABOX_REBUILD_SS_PORT"; then DEF_S_PORT="$ABOX_REBUILD_SS_PORT"; fi
     local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
     local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
@@ -1547,6 +1556,20 @@ EOF_SVC
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         hy2_hop_xtables_lock_grant || die "$(tprintf hy2b_hop_lock)"
     fi
+    # F1 (2026-11-28): hop identity ledger -- pending row. The binary
+    # builds hop NAT rules when the service starts, so the pending row
+    # must be durable BEFORE the first rule can exist (GPT defect 1):
+    # identity + version + transaction id + capacity pre-check +
+    # pre-existing-object snapshot. A pending row is only a recovery
+    # clue: cleanup never deletes a pre-existing same-named object on
+    # its word (see remove_hy2_official_hop_rules). A write failure
+    # dies here, before any rule is built, in NORMAL and SILENT alike.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        local _hy2hop_tx="tx-$$-$(date +%s 2>/dev/null || printf '0')" _hy2hop_pre=''
+        _hy2hop_parse_listen "$HY2_LISTEN" >/dev/null 2>&1 || die "$(tr_msg hy2hop_pending_write_failed)"
+        _hy2hop_pre=$(_hy2hop_pending_premask) || die "$(tr_msg hy2hop_pending_write_failed)"
+        record_hy2_hop_pending "$HY2_LISTEN" "$_hy2hop_tx" "$_hy2hop_pre" || die "$(tr_msg hy2hop_pending_write_failed)"
+    fi
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
@@ -1555,6 +1578,18 @@ EOF_SVC
             sleep 1
             hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
         fi
+    fi
+    # F1 (2026-11-28): hop identity ledger -- confirm. Hop rules are
+    # verified present, so promote the pending row to a confirmed
+    # history row (and drop the pending row for this listen). A write
+    # failure dies, in NORMAL and SILENT alike, and propagates to the
+    # outer transaction; die is only the failure notice, not
+    # compensation for the rules already built -- the history/pending
+    # rows left behind are what let the next cleanup reclaim them
+    # (GPT Q8 / defect 1). Outside the IS_SILENT gate, like the hop
+    # check above, so SILENT sub-deploys record exactly like NORMAL.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        record_hy2_hop_identity "$HY2_LISTEN" "${_hy2hop_tx:-}" || die "$(tr_msg hy2hop_history_write_failed)"
     fi
     setup_active_defense
     setup_health_monitor
@@ -1757,9 +1792,55 @@ restore_deployment_transaction_traps() {
     ABOX_TX_PREV_TRAP_EXIT=''; ABOX_TX_PREV_TRAP_INT=''; ABOX_TX_PREV_TRAP_TERM=''; ABOX_TX_PREV_TRAP_HUP=''
 }
 
+# F3: signal critical section (GPT Q3, defect 2). The protected unit is
+# ONE ROLLBACK, however it was entered (signal, EXIT, die hook, explicit
+# call) -- not one handler entry. While a rollback runs, a further
+# INT/TERM/HUP must neither re-enter a handler nor kill the rollback.
+# The verdict prescribes `trap ''` (ignore) rather than `trap -`
+# (restore the default disposition, which lets the second signal kill
+# the rollback outright). A bare `trap ''` would additionally DROP the
+# request: ignored signals are not redelivered, so a termination that
+# arrives during an explicit rollback would be silently swallowed and
+# the caller would return to the menu and keep deploying. The recording
+# handler below implements the same ignore -- the signal is not acted
+# on for the duration of the rollback -- while retaining the FIRST
+# pending request so the wrapper can honour it when the rollback
+# finishes (exit with the pending code on explicit/die paths; the
+# signal/EXIT paths already exit with the first code). First request
+# wins; the pending request is cleared by begin/commit.
+_tx_record_terminate_request() {
+    local sig="$1" code="$2"
+    [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" ]] && return 0
+    ABOX_TX_TERMINATE_PENDING_SIG="$sig"
+    ABOX_TX_TERMINATE_PENDING_CODE="$code"
+}
+
+# Arm the critical section for the rollback about to run: further
+# INT/TERM/HUP only record a pending termination request. Idempotent:
+# arming twice installs the same traps. The pre-transaction traps are
+# NOT touched here; the rollback wrapper restores them when done.
+_tx_arm_rollback_critical_section() {
+    trap '_tx_record_terminate_request HUP 129' HUP
+    trap '_tx_record_terminate_request INT 130' INT
+    trap '_tx_record_terminate_request TERM 143' TERM
+    ABOX_TX_IN_ROLLBACK=1
+}
+
 deployment_transaction_signal_abort() {
     local signal="$1" code=1
     case "$signal" in INT) code=130 ;; HUP) code=129 ;; TERM) code=143 ;; esac
+    # A rollback is already running (entered via EXIT/die/explicit
+    # call): record this as the pending termination and let the running
+    # rollback finish; never re-enter it, never exit mid-rollback.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _tx_record_terminate_request "$signal" "$code"
+        return 0
+    fi
+    # First termination request: save its exit code. The rollback
+    # wrapper arms the critical section and runs the rollback to
+    # completion; this path then exits with the FIRST code (a pending
+    # second request is already honoured by exiting at all).
+    ABOX_TX_ROLLBACK_TERMINATING=1
     deployment_transaction_rollback "signal ${signal}" || true
     exit "$code"
 }
@@ -1767,7 +1848,15 @@ deployment_transaction_signal_abort() {
 deployment_transaction_exit_abort() {
     local code=$? _tx_abort_old_exit="${ABOX_TX_PREV_TRAP_EXIT:-}" _tx_abort_old_cmd=''
     trap - EXIT
-    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then deployment_transaction_rollback "unexpected shell exit ${code}" || true; fi
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        # EXIT-triggered active rollback is protected the same way:
+        # the wrapper arms the critical section, so a HUP/INT/TERM
+        # arriving mid-rollback only records a pending request. This
+        # path is already exiting with $code, so the pending request
+        # needs no separate exit.
+        ABOX_TX_ROLLBACK_TERMINATING=1
+        deployment_transaction_rollback "unexpected shell exit ${code}" || true
+    fi
     # The old EXIT handler must run explicitly: restoring it here and
     # then exiting does NOT re-trigger it (verified by experiment).
     # The saved string is trap -p output ("trap -- 'cmd' SIGNAL").
@@ -2049,19 +2138,309 @@ _rollback_abort_cron_best_effort() {
     return 0
 }
 
+# F3: per-family primary config path (production layout). The F3
+# fixture overrides this with its temp roots, exactly like the
+# mocked core_family_paths it already provides.
+_tx_family_config_path() {
+    case "$1" in
+        sing-box) printf '%s\n' /etc/sing-box/config.json ;;
+        xray) printf '%s\n' /usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3: archive member path for a family's primary config, in the
+# backup layout (root + production path). This is a property of the
+# backup FORMAT, independent of the live root: a test double may
+# relocate the live tree (by overriding _tx_family_config_path)
+# without changing the archive layout, so the byte-compare in
+# _tx_family_config_matches_backup keeps working.
+_tx_family_config_archive_member() {
+    case "$1" in
+        sing-box) printf '%s\n' root/etc/sing-box/config.json ;;
+        xray) printf '%s\n' root/usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' root/etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3 Q8: cheap, side-effect-free preflight, run AFTER the backup is
+# pinned and BEFORE the first destructive step (stop).
+#  (1) The pinned archive must list meta/services.state, the member
+#      both the restore tail and the N6-A fallback restart read. A
+#      backup without it cannot restore service state, so aborting
+#      here -- while services still run -- is strictly better than
+#      discovering it after stop/remove.
+#  (2) Every target family's paths must pass the same symlink/mount
+#      preflight remove_core_family_force runs, so a remove failure
+#      that used to abort AFTER services were stopped now aborts
+#      BEFORE them. A missing path is fine (nothing to remove).
+# A family config member is deliberately NOT required: a legitimate
+# pre-deployment backup may predate the family (L8's empty backups
+# prove it), and restore tolerates a missing family. Returns 0 when
+# the restore may proceed, 1 otherwise.
+_tx_preflight_restore_members() {
+    local _pinned_archive="$1" _members='' _srv _path _paths=''
+    [[ -n "$_pinned_archive" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || return 1
+    _members=$(tar -tzf "$_pinned_archive" 2>/dev/null) || return 1
+    { grep -Fxq 'meta/services.state' <<< "$_members" || grep -Fxq './meta/services.state' <<< "$_members"; } || return 1
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _paths=$(core_family_paths "$_srv" 2>/dev/null) || return 1
+        while IFS= read -r _path || [[ -n "$_path" ]]; do
+            [[ -n "$_path" ]] || continue
+            [[ -e "$_path" || -L "$_path" ]] || continue
+            [[ ! -L "$_path" ]] || return 1
+            path_tree_has_mountpoint "$_path" && return 1
+        done <<< "$_paths"
+    done
+    return 0
+}
+
+# F3: has this family's config ALREADY been restored from the pinned
+# backup (byte-identical to the archived member)? Tells "restore
+# succeeded but the stage record was never written" from "restore
+# never ran": re-deleting an already-restored family and re-running a
+# restore that then fails again would turn a healthy system back into
+# an orphan. rc 0 = restored, 1 = not restored (live config
+# absent/unsafe, member absent, or bytes differ), 2 = unknown family
+# (the caller must fail closed).
+# F3 A2: byte-compare the live family config against the member
+# stored in the pinned backup archive. Full-archive extraction to a
+# temp dir (the same mechanism the restore path uses), gated on the
+# member file's presence -- never on tar's exit code: tar reports rc=2
+# for ownership failures on some filesystems even when the files land,
+# and its single-member extraction proved intermittently unreliable in
+# the sandbox ("Not found in archive" on byte-identical inputs, with
+# the archive verified clean by header dump and full extraction).
+# A failure to determine a match returns 1 (conservative: the caller
+# takes the full re-run, never the cleanup-only path). Returns 0 only
+# when the live file and the archived member are byte-identical.
+_tx_family_config_matches_backup() {
+    local srv="$1" pinned_archive="$2" cfg='' member='' work='' archived='' _tries=0
+    cfg=$(_tx_family_config_path "$srv") || return 2
+    member=$(_tx_family_config_archive_member "$srv") || return 2
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    [[ -n "$pinned_archive" && -f "$pinned_archive" && ! -L "$pinned_archive" ]] || return 1
+    work=$(mktemp -d /tmp/A-Box-tx-compare.XXXXXX) || return 1
+    tar -xzf "$pinned_archive" -C "$work" 2>/dev/null
+    # Bounded retry on member visibility: the extracted file can be
+    # momentarily unstatable on filesystems with delayed visibility
+    # (observed in the sandbox: a just-extracted member failed [[ -f ]]
+    # and then stat'ed fine a moment later with identical inputs).
+    # A genuinely absent member still returns 1 after the budget.
+    _tries=0
+    while (( _tries < 5 )); do
+        if [[ -f "$work/$member" && ! -L "$work/$member" ]]; then
+            archived="$work/$member"
+            break
+        elif [[ -f "$work/./$member" && ! -L "$work/./$member" ]]; then
+            archived="$work/./$member"
+            break
+        fi
+        _tries=$(( _tries + 1 ))
+        sleep 0.1
+    done
+    if [[ -z "$archived" ]]; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    if cmp -s -- "$cfg" "$archived"; then rm -rf -- "$work"; return 0; fi
+    rm -rf -- "$work"
+    return 1
+}
+
+# F3 A2: resume tail for a transaction whose restore already
+# succeeded. Only the post-restore cleanup is re-run (pin dir, tx
+# tmp, ephemeral dir), with the same path patterns inner uses. Never
+# stops services, never removes families, never re-restores. Completes
+# the state file and clears the transaction context on success.
+_tx_resume_cleanup_only() {
+    local _pinned_dir="$1" _pinned_archive="$2"
+    local _tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" _eph="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    local _state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    # The files are restored, but services the snapshot marks active
+    # may still be down: a stop-services abort can leave a partial
+    # stop, and the restore's own restart never ran in that case.
+    # Best-effort restart from the pinned archive BEFORE the pin is
+    # removed (the restart reads the archive); a failure here does not
+    # fail the resume -- the files are restored -- matching the N6-A
+    # fallback's best-effort semantics. When the restore already ran,
+    # this is a no-op restart of already-running services.
+    rollback_restart_services_from_backup "$_pinned_archive" || true
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    ABOX_VERIFY_PINNED_WORK=''
+    if [[ -n "$_tx_tmp" ]]; then
+        rm -rf -- "$_tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $_tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
+    fi
+    if [[ -n "$_eph" && "$_eph" == /run/A-Box-uninstall-tx.* && "$_eph" != /run/ ]]; then
+        rm -rf -- "$_eph" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $_eph${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
+    fi
+    ABOX_DEPLOY_TX_TARGETS=''
+    ABOX_DEPLOY_TX_REASON=''
+    ABOX_DEPLOY_TX_BACKUP=''
+    ABOX_DEPLOY_TX_TMP=''
+    ABOX_DEPLOY_TX_BACKUP_DIR=''
+    ABOX_DEPLOY_TX_KEY_FILE=''
+    ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
+    standalone_preserve_cleanup
+    _tx_clear_services_state_snapshot
+    printf '%s\n' 'rollback: complete' >> "$_state" 2>/dev/null || true
+    return 0
+}
+
+# F3 A2: establish the serial-retry context from the rollback state
+# file (GPT Q7 option (b)). Same transaction, same pinned backup,
+# same targets -- nothing is guessed. All of these fail closed (the
+# bundle is retained and the original failure stands):
+#  * the state file must name a non-empty tx-id, and it must match
+#    the in-memory tx-id when one is set (fresh-process callers have
+#    none, so the file is the authority there);
+#  * backup, targets and pinned dir must exist and be safe (regular
+#    files/dirs, never symlinks); a key file, when recorded, must
+#    exist;
+#  * the retry budget is exactly one per transaction (a `retry:`
+#    line already in the state file refuses a second attempt);
+#  * no other rollback process may still be alive (the pid recorded
+#    in the state file, other than this process);
+#  * every target must be a known family.
+# On success the context is re-established in the transaction
+# variables and ABOX_DEPLOY_TX_RESUMING=1. On failure RESUMING is
+# left 0 and no variable is trusted.
+_tx_resume_establish_context() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local tx_id='' backup='' targets='' pinned_dir='' key_file='' snap='' retry_n=0 _rb_pid='' _srv
+    [[ -f "$state" && ! -L "$state" ]] || return 1
+    grep -Fq 'rollback: complete' "$state" 2>/dev/null && return 1
+    tx_id=$(grep '^tx-id: ' "$state" 2>/dev/null | tail -1 | sed 's/^tx-id: //')
+    [[ -n "$tx_id" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_ID:-}" && "$ABOX_DEPLOY_TX_ID" != "$tx_id" ]]; then return 1; fi
+    backup=$(grep '^backup: ' "$state" 2>/dev/null | tail -1 | sed 's/^backup: //')
+    targets=$(grep '^targets: ' "$state" 2>/dev/null | tail -1 | sed 's/^targets: //')
+    pinned_dir=$(grep '^pinned-dir: ' "$state" 2>/dev/null | tail -1 | sed 's/^pinned-dir: //')
+    key_file=$(grep '^key-file: ' "$state" 2>/dev/null | tail -1 | sed 's/^key-file: //')
+    snap=$(grep '^services-snapshot: ' "$state" 2>/dev/null | tail -1 | sed 's/^services-snapshot: //')
+    [[ -n "$backup" && -n "$targets" && -n "$pinned_dir" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_BACKUP:-}" && "$ABOX_DEPLOY_TX_BACKUP" != "$backup" ]]; then return 1; fi
+    if [[ -n "${ABOX_DEPLOY_TX_TARGETS:-}" && "$ABOX_DEPLOY_TX_TARGETS" != "$targets" ]]; then return 1; fi
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    [[ -d "$pinned_dir" && ! -L "$pinned_dir" ]] || return 1
+    [[ -f "$pinned_dir/$(basename -- "$backup")" && ! -L "$pinned_dir/$(basename -- "$backup")" ]] || return 1
+    if [[ -n "$key_file" ]]; then [[ -f "$key_file" && ! -L "$key_file" ]] || return 1; fi
+    retry_n=$(grep -c '^retry: ' "$state" 2>/dev/null || true)
+    [[ "$retry_n" =~ ^[0-9]+$ ]] || retry_n=0
+    (( retry_n == 0 )) || return 1
+    _rb_pid=$(grep '^pid: ' "$state" 2>/dev/null | tail -1 | sed 's/^pid: //')
+    if [[ "$_rb_pid" =~ ^[0-9]+$ && "$_rb_pid" != "$$" ]] && kill -0 "$_rb_pid" 2>/dev/null; then return 1; fi
+    for _srv in $targets; do
+        case "$_srv" in xray|sing-box|hysteria) ;; *) return 1 ;; esac
+    done
+    ABOX_DEPLOY_TX_ID="$tx_id"
+    ABOX_DEPLOY_TX_BACKUP="$backup"
+    ABOX_DEPLOY_TX_TARGETS="$targets"
+    ABOX_DEPLOY_TX_REASON="resume of $tx_id"
+    ABOX_DEPLOY_TX_KEY_FILE="$key_file"
+    ABOX_VERIFY_PINNED_WORK="$pinned_dir"
+    if [[ -n "$snap" && -f "$snap" && ! -L "$snap" ]]; then ABOX_DEPLOY_TX_STATE_SNAPSHOT="$snap"; fi
+    ABOX_DEPLOY_TX_RESUMING=1
+    ABOX_DEPLOY_TX_RETRY_COUNT=1
+    return 0
+}
+
+# F3 A2: run the serial retry once the context is established (same
+# process or a later process; the wrapper calls this inline after a
+# failed first attempt, and on a second wrapper call). Dispatches on
+# the recorded resume point:
+#  * restore already done (stage `restored`, or a post-restore abort
+#    stage): cleanup-only, never re-delete the restored families.
+#  * stage record may lag the real action: verify the live config
+#    against the pinned backup first. All families restored ->
+#    cleanup-only; none restored -> full re-run; a MIX is evidence
+#    contradiction -> refuse and report, bundle retained.
+#  * otherwise: full re-run of the same transaction from the stop
+#    stage (stop/firewall/remove/restore are idempotent over what the
+#    first attempt left; the same pinned backup is restored).
+# A retry that fails again keeps the bundle, records the failure
+# stage, and stops: there is no second retry.
+_tx_resume_run() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local abort_stage='' last_stage='' pinned_archive='' _srv _mrc _any_restored=0 _any_not=0 _unknown=0 _rrc=0
+    pinned_archive="${ABOX_VERIFY_PINNED_WORK:-}/$(basename -- "${ABOX_DEPLOY_TX_BACKUP:-}")"
+    printf 'retry: 1 at %s pid %s\n' "$(now_iso)" "$$" >> "$state" 2>/dev/null || true
+    abort_stage=$(grep '^abort-stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^abort-stage: //')
+    last_stage=$(grep '^stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^stage: //')
+    if [[ "$last_stage" == restored ]] || [[ "$abort_stage" == bundle-cleanup || "$abort_stage" == tx-tmp-cleanup || "$abort_stage" == ephemeral-cleanup ]]; then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _tx_family_config_matches_backup "$_srv" "$pinned_archive"; _mrc=$?
+        case "$_mrc" in
+            0) _any_restored=1 ;;
+            1) _any_not=1 ;;
+            *) _unknown=1 ;;
+        esac
+    done
+    if (( _unknown == 1 )); then
+        msg "${RED}[!] Rollback resume refused: cannot verify a target family against the pinned backup. Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 && _any_not == 1 )); then
+        msg "${RED}[!] Rollback resume refused: mixed state (some families already restored, some not). Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 )); then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    deployment_transaction_rollback_inner "resume ${ABOX_DEPLOY_TX_ID:-}"
+    _rrc=$?
+    ABOX_DEPLOY_TX_RESUMING=0
+    if (( _rrc != 0 )); then
+        msg "${RED}[!] Rollback resume failed (serial retry exhausted). Recovery bundle retained: $pinned_archive${NC}" >&2
+    fi
+    return "$_rrc"
+}
+
 deployment_transaction_rollback_inner() {
-    [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
+    # F3 A2: a serial retry runs with ACTIVE already cleared by the
+    # first attempt; RESUMING (established by
+    # _tx_resume_establish_context) is the entry ticket then. It never
+    # re-arms ACTIVE=1.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        :
+    elif [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        :
+    else
+        return 0
+    fi
     # B-C2: land a rollback state file FIRST, so a later inspection can
     # tell a rollback happened, when, why, and from which backup -- even
     # when the operator only killed the hung deploy or it timed out.
     # Best-effort: a failed write must never fail the rollback itself.
+    # F3 A2: a retry must NOT truncate the header (it would destroy
+    # the abort-stage/stage history the resume point is read from);
+    # it appends a resume line instead.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        printf 'resume: %s pid %s reason %s\n' "$(now_iso)" "$$" "${ABOX_DEPLOY_TX_REASON:-deployment}" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    else
     {
         printf 'time: %s\n' "$(now_iso)"
         printf 'pid: %s\n' "$$"
         printf 'reason: %s\n' "${ABOX_DEPLOY_TX_REASON:-deployment}"
         printf 'backup: %s\n' "${ABOX_DEPLOY_TX_BACKUP:-}"
         printf 'targets: %s\n' "${ABOX_DEPLOY_TX_TARGETS:-}"
+        printf 'tx-id: %s\n' "${ABOX_DEPLOY_TX_ID:-}"
     } > "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    fi
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
@@ -2083,6 +2462,15 @@ deployment_transaction_rollback_inner() {
     # restore_backup_prevalidate): the verified copy is retained and is
     # the object the restore consumes. A pin from an earlier
     # transaction is a recovery bundle: refuse, never overwrite it.
+    local _pinned_dir='' _pinned_archive=''
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        # Serial retry: reuse the already-verified pin established by
+        # the first attempt. Never re-read the shared backup path (it
+        # may have rotated since) and never trip the retained-bundle
+        # guard on the very bundle this retry must consume.
+        _pinned_dir="${ABOX_VERIFY_PINNED_WORK:-}"
+        _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    else
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
@@ -2101,13 +2489,30 @@ deployment_transaction_rollback_inner() {
     # be complete before any destructive step; a failed stop/cleanup/
     # remove/restore RETAINS it and names it. Only a successful restore
     # deletes it.
-    local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
-    local _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
+    _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    fi
     if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
         :
     else
         msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
         _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
+    # F3: record the bundle/snapshot context for a later serial retry
+    # (same or later process) and for the B1 orphan report.
+    {
+        printf 'pinned-dir: %s\n' "$_pinned_dir"
+        printf 'pinned-archive: %s\n' "$_pinned_archive"
+        printf 'services-snapshot: %s\n' "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}"
+        printf 'key-file: %s\n' "${tx_key_file:-}"
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    # F3 Q8: cheap preflight before the first destructive step (see
+    # _tx_preflight_restore_members). A failure aborts here, while
+    # services still run.
+    if ! _tx_preflight_restore_members "$_pinned_archive"; then
+        msg "${RED}[!] Rollback aborted before stopping services: restore preflight failed (pinned archive is missing the service state, or a target family path is unsafe to remove). Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_record_abort 'restore-preflight' 1
         return 1
     fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
@@ -2116,6 +2521,9 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'stop-services' 1
         return 1
     fi
+    # F3 A2: record each stage AFTER its action succeeds, so a later
+    # serial retry can tell how far the first attempt got.
+    printf 'stage: stopped\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
     clean_input_rules >/dev/null 2>&1 || cleanup_failed=1
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -2125,6 +2533,7 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
+    printf 'stage: firewall-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
 
     # (Backup pre-verified above, before any service stop or
     # firewall clear; see R4C8-03.)
@@ -2136,6 +2545,7 @@ deployment_transaction_rollback_inner() {
             _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
+        printf 'stage: family-removed:%s\n' "$srv" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     done
 
     if [[ -n "$tx_key_file" ]]; then
@@ -2155,7 +2565,9 @@ deployment_transaction_rollback_inner() {
             return 1
         fi
     fi
+    printf 'stage: restored\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    printf 'stage: bundle-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
@@ -2172,6 +2584,7 @@ deployment_transaction_rollback_inner() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
     # Carbon H-11(4): a deploy that reached rollback may have left a
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
@@ -2186,15 +2599,50 @@ deployment_transaction_rollback_inner() {
 # exit evals it forever (the global PREV never changes).
 # The wrapper guarantees the restore for all inner returns.
 deployment_transaction_rollback() {
-    local _rc
+    local _rc _had_tx=0
     # OBS-2: record whether the best-effort fallback restart ran and
     # what it returned, so die() can tier its warning (restart
     # attempted vs restart failed). Cleared on entry so a stale value
     # can never downgrade an unrelated later failure. The rollback
     # itself is unchanged: the failure rc is never masked.
     ABOX_ROLLBACK_FALLBACK_RC=''
-    deployment_transaction_rollback_inner "$@"
-    _rc=$?
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then _had_tx=1; fi
+    # F3 A1: the critical section covers the whole rollback, however
+    # it was entered (signal, EXIT, die hook, explicit call). Arm it
+    # here (idempotent) so a termination arriving mid-rollback only
+    # records a pending request instead of re-entering a handler or
+    # killing the rollback. The pre-transaction traps are restored at
+    # the end, exactly once, by restore_deployment_transaction_traps.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" != 1 ]]; then
+        _tx_arm_rollback_critical_section
+    fi
+    if (( _had_tx == 1 )); then
+        deployment_transaction_rollback_inner "$@"
+        _rc=$?
+        # F3 A2: one automatic serial retry of the SAME transaction
+        # (same tx-id, same pinned backup, same targets) when the
+        # first attempt aborted. Bounded (once per transaction, tracked
+        # in the state file), never nested or concurrent, never
+        # re-arming ACTIVE and never re-snapshotting service state.
+        # A retry whose contract cannot be established refuses and
+        # the original failure stands.
+        if (( _rc != 0 )) && [[ "${ABOX_DEPLOY_TX_RETRY_COUNT:-0}" == 0 ]] && _tx_resume_establish_context; then
+            if _tx_resume_run; then
+                _rc=0
+            else
+                _rc=$?
+            fi
+        fi
+    elif _tx_resume_establish_context; then
+        # Second call (same process or a later process) after a failed
+        # rollback: resume the same transaction instead of no-op'ing
+        # on ACTIVE==0.
+        _had_tx=1
+        _tx_resume_run
+        _rc=$?
+    else
+        _rc=0
+    fi
     # N6-A: the inner rollback can fail BEFORE any service restart
     # (pre-verification, retained pin, stop/firewall/remove failure)
     # while the deploy already stopped the services. A failed rollback
@@ -2209,16 +2657,45 @@ deployment_transaction_rollback() {
             ABOX_ROLLBACK_FALLBACK_RC='1'
         fi
     fi
-    # N6-A: the snapshot served its purpose (or there was no failure to
-    # cover); drop it so a later transaction can never reuse stale state.
-    _tx_clear_services_state_snapshot
+    # F3 A2: the pre-deployment services-state snapshot is the resume's
+    # restart evidence; it must survive a FAILED rollback (only a
+    # successful rollback -- or a later begin/commit -- may drop it).
+    # A no-op call (no transaction was active) must not drop a
+    # snapshot retained by an earlier failed rollback either.
+    if (( _rc == 0 && _had_tx == 1 )); then
+        _tx_clear_services_state_snapshot
+    fi
     restore_deployment_transaction_traps
+    ABOX_TX_IN_ROLLBACK=0
+    # F3 A1: a termination request recorded during an EXPLICIT or
+    # die-hook rollback must still be honoured: the caller would
+    # otherwise return to the menu and keep deploying. Termination
+    # paths (signal/exit abort) set ABOX_TX_ROLLBACK_TERMINATING=1
+    # and exit themselves with the first code, so they skip this.
+    if [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" && "${ABOX_TX_ROLLBACK_TERMINATING:-0}" != 1 ]]; then
+        local _pend_code="${ABOX_TX_TERMINATE_PENDING_CODE:-143}"
+        exit "$_pend_code"
+    fi
     return "$_rc"
 }
 
 begin_deployment_transaction() {
     local reason="$1"; shift
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die "$(tr_msg tx_nested)"
+    # F3 A2: bind the retry contract BEFORE the first destructive
+    # step: a transaction id, the (not yet taken) backup, the targets,
+    # and the service-state snapshot below. A later serial retry may
+    # only resume THIS transaction, with THIS backup. Stale retry
+    # state from an earlier transaction is cleared here, so a new
+    # transaction can never consume another transaction's pin.
+    ABOX_DEPLOY_TX_ID="tx-${BASHPID}-$(date +%s 2>/dev/null || printf '0')"
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
+    ABOX_VERIFY_PINNED_WORK=''
     ABOX_LAST_BACKUP=''
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir" || return 1
@@ -2296,6 +2773,13 @@ commit_deployment_transaction() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_ID=''
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
     ABOX_DIE_HOOK=''
     restore_deployment_transaction_traps
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then

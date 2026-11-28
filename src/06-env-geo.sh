@@ -2434,6 +2434,18 @@ printf '%s %s\n' "$count" "$last" > "$STATE"
 (( count >= 3 )) || exit 0
 (( now - last >= 600 )) || exit 0
 if restart_owned "$failed_srv"; then printf '0 %s\n' "$now" > "$STATE"; else printf '%s %s\n' "$count" "$now" > "$STATE"; fi
+# F3: orphan diagnostic (read-only report; never rebuilds). Runs only
+# after the failure-count (>=3) and 600s gates above, so a transient
+# failure never reports. CORE and DESIRED are already loaded above.
+# Prints one stderr line when the sing-box config is gone but this
+# host is recorded as a sing-box deployment that should still run;
+# the operator rebuilds from menu 6/10.
+if [[ "${CORE:-}" == singbox && ! -e /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+    if { [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && grep -q 'RUNNING' "$DESIRED" 2>/dev/null; } || { [[ -f /run/A-Box-deploy-rollback-state ]] && grep -q '^tx-id: ' /run/A-Box-deploy-rollback-state 2>/dev/null; }; then
+        printf '%s\n' "[A-Box] sing-box config missing but this host is recorded as a sing-box deployment that should still run (orphaned deployment). Rebuild from menu 6/10 as a fresh ALL deployment; nothing was rebuilt automatically." >&2
+    fi
+fi
+exit 0
 EOF_PROBE
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark)"

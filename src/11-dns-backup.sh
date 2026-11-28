@@ -4569,7 +4569,7 @@ def allowed(n):
  if n.startswith(prefix):
   rel=n[len(prefix):]
   if '/' in rel or not rel: return False
-  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
+  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.hy2-hop-history.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
   return rel in exact or rel.startswith('.deps.v')
  return any(n==x or n.startswith(x+'/') for x in allowed_prefixes if x!='root/etc/ddr')
 try: tf=tarfile.open(fn,'r:gz')
@@ -5338,8 +5338,12 @@ assert_restore_shortcut_safe() {
 }
 
 abox_restore_preserved_name() {
+    # F1 (2026-11-28): .hy2-hop-history.tsv is preserved, never cleared
+    # and never overwritten by a backup's copy (see
+    # _hy2hop_restore_handle_history): the live ledger outlives every
+    # restore, and a backup without the file must not clear it.
     case "$1" in
-        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|.hy2-hop-history.tsv|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -5580,6 +5584,14 @@ restore_abox_directory() {
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        # F1 (2026-11-28): a hop-pending file or hop-ledger lock file
+        # must never land on live from a backup, even if an archive
+        # somehow contains one (pending rows are transaction clues
+        # tied to the source host's deploy attempt, not ledger rows;
+        # the lock file is recreated on demand). The live ledger
+        # itself is a preserved name above, so it is neither cleared
+        # nor overwritten here.
+        case "$base" in .hy2-hop-pending.tsv|.hy2-hop-history.lock) continue ;; esac
         [[ ! -L "$child" ]] || return 1
         cp -a -- "$child" "$ABOX_DIR/" || return 1
     done
@@ -6400,6 +6412,7 @@ backup_current_config() {
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
                 --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' --exclude='./.tz-snap.*' --exclude='./.tz-rollback-new.*' --exclude='./.tune-backup-new.*' --exclude='./.deps.v*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
+                --exclude='./.hy2-hop-pending.tsv' --exclude='./.hy2-hop-history.lock' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
                 --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
@@ -6790,6 +6803,49 @@ restore_preserved_latest_firewall() {
     return 0
 }
 
+# F1 (2026-11-28): hop-ledger handling at restore time. The backup's
+# ledger is a DIAGNOSTIC CLUE ONLY: it is never merged into the live
+# ledger (GPT defect 3 -- an old backup cannot prove a row was not
+# already retired on this host, and a bare epoch cannot prove
+# same-ledger provenance; automatic union would need a verifiable
+# ledger generation + retirement record, which this ledger does not
+# carry). The live ledger is a preserved name, so
+# clear_abox_runtime_for_restore keeps it and restore_abox_directory
+# never copies the backup's copy over it; a backup without a ledger
+# file likewise never clears the live ledger. After the restored
+# services are started, the actually-running official-hop instance is
+# verified and re-recorded, so the ledger reflects what this restore
+# really started. Best-effort: never fails the restore.
+_hy2hop_restore_handle_history() {
+    local _root="${1:-}" _staged='' _out='' _rc=0 _n=0 _state=''
+    [[ -n "$_root" ]] || return 0
+    _staged="$_root${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    if [[ -e "$_staged" || -L "$_staged" ]]; then
+        _out=$(_hy2hop_history_load_file "$_staged" 2>/dev/null); _rc=$?
+        if (( _rc == 0 )); then
+            _n=0
+            if [[ -n "$_out" ]]; then _n=$(printf '%s\n' "$_out" | wc -l | tr -d ' '); fi
+            msg "$(tprintf hy2hop_restore_history_noted "$_n")"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_restore_history_bad)${NC}"
+        fi
+    fi
+    if abox_owns_service hysteria && [[ "${HY2_HOP:-}" == 'true' && "${HY2_HOP_IMPL:-none}" == 'official' ]]; then
+        _state=$(managed_service_state_value hysteria 2>/dev/null || true)
+        case "$_state" in
+            hysteria\|1\|*)
+                _hy2hop_live_identity_state
+                if [[ "${_HY2HOP_LIVE_STATE:-}" == 'hop' && -n "${_HY2HOP_LIVE_LISTEN:-}" ]] && hysteria_official_hop_firewall_ok "$_HY2HOP_START" "$_HY2HOP_END" "$_HY2HOP_FIRST"; then
+                    record_hy2_hop_identity "$_HY2HOP_LIVE_LISTEN" || msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                else
+                    msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                fi
+                ;;
+        esac
+    fi
+    return 0
+}
+
 restore_latest_backup_silent() {
     local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" key_file="${3:-}" work root backend mode=all srv
     [[ -d "$backup_dir" ]] || { msg "restore gate failed: backup-dir" >&2; return 1; }
@@ -6891,6 +6947,9 @@ PY_LATEST_BACKUP
     save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw (work preserved at $work)" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload (work preserved at $work)" >&2; return 1; }; fi
     restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state (work preserved at $work)" >&2; return 1; }
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
@@ -7083,6 +7142,9 @@ PY_RB_ENUM
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     # M-18 (supplement): a restored hopping hysteria on a host without
     # nft needs the grant script, which old backups never contained;
     # without it the service starts but the hop rules are never built,

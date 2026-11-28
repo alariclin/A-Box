@@ -10443,6 +10443,78 @@ tr_msg() {
         ru:hy2b_hop_missing) echo 'Официальные правила брандмауэра прыжков портов HY2 всё ещё отсутствуют; фиксация узла отклонена.' ;;
         fa:hy2b_hop_missing) echo 'قوانین دیوار آتش رسمی پرش پورت HY2 هنوز وجود ندارد؛ ثبت گره رد شد.' ;;
         ja:hy2b_hop_missing) echo '公式 HY2 ポートホッピングのファイアウォールルールがまだないため、ノードのコミットを拒否します。' ;;
+        zh:hy2hop_history_write_failed) echo 'Hy2 跳跃身份记录写入失败：%s（部署未提交，身份未记账）。' ;;
+        zh-tw:hy2hop_history_write_failed) echo 'Hy2 跳躍身份記錄寫入失敗：%s（部署未提交，身份未記帳）。' ;;
+        en:hy2hop_history_write_failed) echo 'Failed to write the Hy2 hop identity record: %s (deployment not committed; the identity was not recorded).' ;;
+        ru:hy2hop_history_write_failed) echo 'Не удалось записать запись идентификации прыжков портов Hy2: %s (развёртывание не зафиксировано; идентификация не записана).' ;;
+        fa:hy2hop_history_write_failed) echo 'نوشتن رکورد هویت پرش پورت Hy2 ناموفق بود: %s (استقرار ثبت نشد؛ هویت ثبت نشد).' ;;
+        ja:hy2hop_history_write_failed) echo 'Hy2 ホップの識別情報レコードの書き込みに失敗しました: %s（デプロイはコミットされず、識別情報は記録されませんでした）。' ;;
+        zh:hy2hop_pending_write_failed) echo 'Hy2 跳跃待确认身份写入失败，拒绝建规则。' ;;
+        zh-tw:hy2hop_pending_write_failed) echo 'Hy2 跳躍待確認身份寫入失敗，拒絕建立規則。' ;;
+        en:hy2hop_pending_write_failed) echo 'Failed to write the pending Hy2 hop identity; refusing to build hop rules.' ;;
+        ru:hy2hop_pending_write_failed) echo 'Не удалось записать ожидающую идентификацию прыжков портов Hy2; создание правил прыжков отклонено.' ;;
+        fa:hy2hop_pending_write_failed) echo 'نوشتن هویت در انتظار پرش پورت Hy2 ناموفق بود؛ ساخت قوانین پرش رد می‌شود.' ;;
+        ja:hy2hop_pending_write_failed) echo '保留中の Hy2 ホップ識別情報の書き込みに失敗したため、ホップルールの作成を拒否します。' ;;
+        zh:hy2hop_history_capacity_refused) echo 'Hy2 跳跃身份记录已满（128 个），拒绝为新身份建规则；请先清理旧身份。' ;;
+        zh-tw:hy2hop_history_capacity_refused) echo 'Hy2 跳躍身份記錄已滿（128 個），拒絕為新身份建立規則；請先清理舊身份。' ;;
+        en:hy2hop_history_capacity_refused) echo 'The Hy2 hop identity record is full (128 identities); refusing to build rules for a new identity. Clean up old identities first.' ;;
+        ru:hy2hop_history_capacity_refused) echo 'Запись идентификаций прыжков портов Hy2 заполнена (128 идентификаций); создание правил для новой идентификации отклонено. Сначала очистите старые идентификации.' ;;
+        fa:hy2hop_history_capacity_refused) echo 'رکورد هویت پرش پورت Hy2 پر است (128 هویت)؛ ساخت قوانین برای هویت جدید رد می‌شود. ابتدا هویت‌های قدیمی را پاک کنید.' ;;
+        ja:hy2hop_history_capacity_refused) echo 'Hy2 ホップ識別情報レコードがいっぱいです（128 件）。新しい識別情報のルール作成を拒否します。まず古い識別情報をクリーンアップしてください。' ;;
+        zh:hy2hop_history_corrupt) echo 'Hy2 跳跃身份记录不可读或已损坏（坏行、未知版本、权限或链接异常）；拒绝删除任何规则，本次零删除。' ;;
+        zh-tw:hy2hop_history_corrupt) echo 'Hy2 跳躍身份記錄無法讀取或已損壞（壞列、未知版本、權限或連結異常）；拒絕刪除任何規則，本次零刪除。' ;;
+        en:hy2hop_history_corrupt) echo 'The Hy2 hop identity record is unreadable or corrupt (bad row, unknown version, permission or link problem); refusing to delete any rules, nothing deleted.' ;;
+        ru:hy2hop_history_corrupt) echo 'Запись идентификаций прыжков портов Hy2 нечитаема или повреждена (плохая строка, неизвестная версия, проблема с правами или ссылкой); удаление любых правил отклонено, ничего не удалено.' ;;
+        fa:hy2hop_history_corrupt) echo 'رکورد هویت پرش پورت Hy2 خواندنی نیست یا خراب است (ردیف بد، نسخه ناشناخته، مشکل مجوز یا پیوند)؛ حذف هرگونه قانون رد می‌شود و چیزی حذف نشد.' ;;
+        ja:hy2hop_history_corrupt) echo 'Hy2 ホップ識別情報レコードが読めないか破損しています（不正な行、未知のバージョン、権限またはリンクの問題）。ルールの削除を拒否し、何も削除しませんでした。' ;;
+        zh:hy2hop_history_cleaning) echo '正在清理已记录的 Hy2 跳跃身份：%s' ;;
+        zh-tw:hy2hop_history_cleaning) echo '正在清理已記錄的 Hy2 跳躍身份：%s' ;;
+        en:hy2hop_history_cleaning) echo 'Cleaning the recorded Hy2 hop identity: %s' ;;
+        ru:hy2hop_history_cleaning) echo 'Очистка записанной идентификации прыжков портов Hy2: %s' ;;
+        fa:hy2hop_history_cleaning) echo 'در حال پاک‌سازی هویت ثبت‌شده پرش پورت Hy2: %s' ;;
+        ja:hy2hop_history_cleaning) echo '記録済みの Hy2 ホップ識別情報をクリーンアップしています: %s' ;;
+        zh:hy2hop_pending_unconfirmed) echo '未确认的 Hy2 跳跃待处理身份 %s 无法证明归属，已保留并报错，请人工复核。' ;;
+        zh-tw:hy2hop_pending_unconfirmed) echo '未確認的 Hy2 跳躍待處理身份 %s 無法證明歸屬，已保留並報錯，請人工複核。' ;;
+        en:hy2hop_pending_unconfirmed) echo 'Unconfirmed pending Hy2 hop identity %s cannot be proven to belong to this deployment; left in place, manual review needed.' ;;
+        ru:hy2hop_pending_unconfirmed) echo 'Неподтверждённая ожидающая идентификация прыжков портов Hy2 %s не может быть доказана как принадлежащая этому развёртыванию; оставлена на месте, требуется ручная проверка.' ;;
+        fa:hy2hop_pending_unconfirmed) echo 'هویت در انتظار تأییدنشده پرش پورت Hy2 %s را نمی‌توان متعلق به این استقرار دانست؛ سر جای خود باقی ماند و نیاز به بررسی دستی دارد.' ;;
+        ja:hy2hop_pending_unconfirmed) echo '未確認の保留中 Hy2 ホップ識別情報 %s は、このデプロイに属することを証明できないため、そのまま残し、手動での確認が必要です。' ;;
+        zh:hy2hop_history_only) echo '当前 Hy2 配置／.env 已无可用身份，按历史记录清理 %s 个已记录身份。' ;;
+        zh-tw:hy2hop_history_only) echo '目前 Hy2 設定／.env 已無可用身份，按歷史記錄清理 %s 個已記錄身份。' ;;
+        en:hy2hop_history_only) echo 'No usable Hy2 identity remains in the live config/.env; cleaning %s recorded identities from history.' ;;
+        ru:hy2hop_history_only) echo 'В живой конфигурации/.env Hy2 не осталось пригодной идентификации; очистка %s записанных идентификаций из истории.' ;;
+        fa:hy2hop_history_only) echo 'هویت قابل‌استفاده‌ای از Hy2 در پیکربندی زنده/.env باقی نمانده است؛ در حال پاک‌سازی %s هویت ثبت‌شده از تاریخچه.' ;;
+        ja:hy2hop_history_only) echo 'ライブ設定／.env に使用可能な Hy2 識別情報が残っていないため、履歴から記録済みの %s 件の識別情報をクリーンアップします。' ;;
+        zh:hy2hop_restore_history_noted) echo '备份含 %s 个已记录的 Hy2 跳跃身份，仅作诊断参考，不并入当前记录；本次恢复实际启动并核验的实例将重新记账。' ;;
+        zh-tw:hy2hop_restore_history_noted) echo '備份含 %s 個已記錄的 Hy2 跳躍身份，僅作診斷參考，不併入目前記錄；本次還原實際啟動並核驗的執行個體將重新記帳。' ;;
+        en:hy2hop_restore_history_noted) echo 'The backup contains %s recorded Hy2 hop identities; kept as diagnostic reference only and not merged into the live record. Instances actually started and verified by this restore will be recorded again.' ;;
+        ru:hy2hop_restore_history_noted) echo 'Резервная копия содержит %s записанных идентификаций прыжков портов Hy2; они сохранены только как диагностическая справка и не объединены с живой записью. Экземпляры, фактически запущенные и проверенные этим восстановлением, будут записаны заново.' ;;
+        fa:hy2hop_restore_history_noted) echo 'پشتیبان شامل %s هویت ثبت‌شده پرش پورت Hy2 است؛ فقط به‌عنوان مرجع تشخیصی نگه داشته می‌شود و با رکورد زنده ادغام نمی‌شود. نمونه‌هایی که این بازیابی واقعاً راه‌اندازی و تأیید کند، دوباره ثبت می‌شوند.' ;;
+        ja:hy2hop_restore_history_noted) echo 'バックアップには記録済みの Hy2 ホップ識別情報が %s 件含まれています。診断用の参考としてのみ保持し、ライブレコードにはマージしません。この復元で実際に起動・検証されたインスタンスは改めて記録されます。' ;;
+        zh:hy2hop_restore_history_bad) echo '备份中的 Hy2 跳跃身份记录不可读，已忽略；当前记录未动。' ;;
+        zh-tw:hy2hop_restore_history_bad) echo '備份中的 Hy2 跳躍身份記錄無法讀取，已忽略；目前記錄未動。' ;;
+        en:hy2hop_restore_history_bad) echo 'The Hy2 hop identity record in the backup is unreadable and was ignored; the live record is untouched.' ;;
+        ru:hy2hop_restore_history_bad) echo 'Запись идентификаций прыжков портов Hy2 в резервной копии нечитаема и проигнорирована; живая запись не тронута.' ;;
+        fa:hy2hop_restore_history_bad) echo 'رکورد هویت پرش پورت Hy2 در پشتیبان خواندنی نیست و نادیده گرفته شد؛ رکورد زنده دست‌نخورده باقی ماند.' ;;
+        ja:hy2hop_restore_history_bad) echo 'バックアップ内の Hy2 ホップ識別情報レコードが読めないため無視しました。ライブレコードは変更されていません。' ;;
+        zh:hy2hop_restore_rerecord_failed) echo '恢复后的 Hy2 跳跃实例未能核验通过，其身份未被重新记录；请检查服务状态，必要时重新部署。' ;;
+        zh-tw:hy2hop_restore_rerecord_failed) echo '還原後的 Hy2 跳躍執行個體未能核驗通過，其身份未被重新記錄；請檢查服務狀態，必要時重新部署。' ;;
+        en:hy2hop_restore_rerecord_failed) echo 'The restored Hy2 hop instance could not be verified, so its identity was not recorded again; check the service state and redeploy if needed.' ;;
+        ru:hy2hop_restore_rerecord_failed) echo 'Восстановленный экземпляр прыжков портов Hy2 не удалось проверить, поэтому его идентификация не была записана заново; проверьте состояние службы и при необходимости разверните заново.' ;;
+        fa:hy2hop_restore_rerecord_failed) echo 'نمونه پرش پورت Hy2 بازیابی‌شده تأیید نشد، بنابراین هویت آن دوباره ثبت نشد؛ وضعیت سرویس را بررسی کنید و در صورت نیاز دوباره مستقر کنید.' ;;
+        ja:hy2hop_restore_rerecord_failed) echo '復元後の Hy2 ホップインスタンスを検証できなかったため、その識別情報は再記録されませんでした。サービスの状態を確認し、必要に応じて再デプロイしてください。' ;;
+        zh:hy2hop_history_lock_failed) echo '无法获取 Hy2 跳跃身份记录锁，拒绝继续。' ;;
+        zh-tw:hy2hop_history_lock_failed) echo '無法取得 Hy2 跳躍身份記錄鎖，拒絕繼續。' ;;
+        en:hy2hop_history_lock_failed) echo 'Could not acquire the Hy2 hop identity record lock; refusing to continue.' ;;
+        ru:hy2hop_history_lock_failed) echo 'Не удалось получить блокировку записи идентификаций прыжков портов Hy2; продолжение отклонено.' ;;
+        fa:hy2hop_history_lock_failed) echo 'دریافت قفل رکورد هویت پرش پورت Hy2 ممکن نشد؛ ادامه رد می‌شود.' ;;
+        ja:hy2hop_history_lock_failed) echo 'Hy2 ホップ識別情報レコードのロックを取得できないため、続行を拒否します。' ;;
+        zh:hy2hop_prune_skipped_running) echo '检测到 Hysteria 仍在运行，跳过仅凭历史记录的剪枝清理；请用菜单卸载处理。' ;;
+        zh-tw:hy2hop_prune_skipped_running) echo '偵測到 Hysteria 仍在執行，跳過僅憑歷史記錄的剪枝清理；請用選單解除安裝處理。' ;;
+        en:hy2hop_prune_skipped_running) echo 'Hysteria still appears to be running, so the history-only prune cleanup was skipped; use the menu uninstall to handle it.' ;;
+        ru:hy2hop_prune_skipped_running) echo 'Похоже, Hysteria всё ещё работает, поэтому очистка при обрезке только по истории пропущена; обработайте это через удаление из меню.' ;;
+        fa:hy2hop_prune_skipped_running) echo 'به نظر می‌رسد Hysteria هنوز در حال اجراست، بنابراین پاک‌سازی هرسِ فقط‌بر‌اساس تاریخچه رد شد؛ از حذف از طریق منو استفاده کنید.' ;;
+        ja:hy2hop_prune_skipped_running) echo 'Hysteria がまだ実行中のようなので、履歴のみに基づくプルーンのクリーンアップをスキップしました。メニューのアンインストールで処理してください。' ;;
         zh:hy2b_hop_lock) echo '官方 HY2 端口跳跃需放行 xtables 锁给服务组，授权失败。' ;;
         zh-tw:hy2b_hop_lock) echo '官方 HY2 埠跳躍需放行 xtables 鎖給服務組，授權失敗。' ;;
         en:hy2b_hop_lock) echo 'Official HY2 port hopping needs the xtables lock opened to the service group, and that grant failed.' ;;
@@ -12585,6 +12657,14 @@ sni_verified_amazon_fallback() {
 prompt_reality_sni() {
     local label="$1" port="$2" default_sni input answer prompt warned custom_tier dns_rc
     default_sni=$(default_sni_for_port "$port")
+    # F3 B2: one-shot rebuild default from the old .env (set only in
+    # the confirmed-rebuild branch). Validated here; an invalid value
+    # falls back to the normal default. Consumed on use, so a later
+    # prompt in the same run never inherits it.
+    if [[ -n "${ABOX_REBUILD_SNI_ONCE:-}" ]] && valid_sni "$ABOX_REBUILD_SNI_ONCE"; then
+        default_sni="$ABOX_REBUILD_SNI_ONCE"
+    fi
+    unset ABOX_REBUILD_SNI_ONCE
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
         read -r -p "$prompt" input || return 1
@@ -15906,6 +15986,21 @@ prune_owned_core_families_except() {
         # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
         _prune_standalone_links "$srv"
     done
+    # F1 (2026-11-28): a rolled-back hysteria deploy leaves no family
+    # behind, so the loop above never visits it -- but its hop rules can
+    # still be recorded in the ledger. Reclaim them here when the ledger
+    # has entries and the service is confirmed stopped. A running (or
+    # unqueryable) hysteria is left for the menu uninstall path, which
+    # fails closed instead of silently skipping or failing an unrelated
+    # deploy; the helper itself re-verifies the stop when it does run.
+    # Hysteria as the allowed (kept) family is never cleaned here.
+    if [[ "$allowed" != *' hysteria '* ]] && ! abox_owns_service hysteria && ! abox_owns_config_only_core_dir hysteria && _hy2hop_history_has_entries; then
+        if _hy2hop_service_stopped_quiet; then
+            remove_hy2_official_hop_rules || die "$(tprintf pr_remove hysteria)"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_prune_skipped_running)${NC}"
+        fi
+    fi
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
     fi
@@ -16597,7 +16692,11 @@ remove_all_owned_core_families() {
     # a residue). Only an A-Box-owned (or config-only) hysteria is
     # cleaned: a foreign install's rules are not ours, and an absent
     # install has no resolvable hop identity.
-    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+    # F1 (2026-11-28): also enter when only the ledger remains (a
+    # rollback deleted the unit/config/family registration). The
+    # helper itself re-verifies the service is stopped, so entering
+    # it here cannot delete a live instance's rules.
+    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
         remove_hy2_official_hop_rules || _hy2_hop_ok=0
     fi
     if (( _hy2_hop_ok == 1 )); then
@@ -16629,7 +16728,9 @@ remove_owned_core_families_for_restore() {
         # a retry) and fails the restore instead of reporting success
         # over a residue. The config-only skip above already ran, so
         # a preserved live family never reaches this cleanup.
-        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+        # F1 (2026-11-28): also enter when only the ledger remains
+        # (a rolled-back deploy deleted the family).
+        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
             if ! remove_hy2_official_hop_rules; then
                 failed=1
                 continue
@@ -27537,6 +27638,18 @@ printf '%s %s\n' "$count" "$last" > "$STATE"
 (( count >= 3 )) || exit 0
 (( now - last >= 600 )) || exit 0
 if restart_owned "$failed_srv"; then printf '0 %s\n' "$now" > "$STATE"; else printf '%s %s\n' "$count" "$now" > "$STATE"; fi
+# F3: orphan diagnostic (read-only report; never rebuilds). Runs only
+# after the failure-count (>=3) and 600s gates above, so a transient
+# failure never reports. CORE and DESIRED are already loaded above.
+# Prints one stderr line when the sing-box config is gone but this
+# host is recorded as a sing-box deployment that should still run;
+# the operator rebuilds from menu 6/10.
+if [[ "${CORE:-}" == singbox && ! -e /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+    if { [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && grep -q 'RUNNING' "$DESIRED" 2>/dev/null; } || { [[ -f /run/A-Box-deploy-rollback-state ]] && grep -q '^tx-id: ' /run/A-Box-deploy-rollback-state 2>/dev/null; }; then
+        printf '%s\n' "[A-Box] sing-box config missing but this host is recorded as a sing-box deployment that should still run (orphaned deployment). Rebuild from menu 6/10 as a fresh ALL deployment; nothing was rebuilt automatically." >&2
+    fi
+fi
+exit 0
 EOF_PROBE
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark)"
@@ -28278,6 +28391,15 @@ pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
     local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
+    # F3 B2: confirmed-rebuild defaults from the old .env. Each value
+    # is validated (numeric port, not reserved) before it may replace
+    # the stock default; an invalid value keeps the stock default, so
+    # a bad old .env can never break the wizard. These variables are
+    # cleared by the caller right after pre_install_setup returns.
+    if [[ -n "${ABOX_REBUILD_VLESS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_VLESS_PORT" && ! is_reserved_port "$ABOX_REBUILD_VLESS_PORT"; then DEF_V_PORT="$ABOX_REBUILD_VLESS_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_XHTTP_PORT:-}" ]] && valid_port "$ABOX_REBUILD_XHTTP_PORT" && ! is_reserved_port "$ABOX_REBUILD_XHTTP_PORT"; then DEF_X_PORT="$ABOX_REBUILD_XHTTP_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_HY2_BASE_PORT:-}" ]] && valid_port "$ABOX_REBUILD_HY2_BASE_PORT" && ! is_reserved_port "$ABOX_REBUILD_HY2_BASE_PORT"; then DEF_H_PORT="$ABOX_REBUILD_HY2_BASE_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_SS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_SS_PORT" && ! is_reserved_port "$ABOX_REBUILD_SS_PORT"; then DEF_S_PORT="$ABOX_REBUILD_SS_PORT"; fi
     local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
     local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
@@ -29752,6 +29874,20 @@ EOF_SVC
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         hy2_hop_xtables_lock_grant || die "$(tprintf hy2b_hop_lock)"
     fi
+    # F1 (2026-11-28): hop identity ledger -- pending row. The binary
+    # builds hop NAT rules when the service starts, so the pending row
+    # must be durable BEFORE the first rule can exist (GPT defect 1):
+    # identity + version + transaction id + capacity pre-check +
+    # pre-existing-object snapshot. A pending row is only a recovery
+    # clue: cleanup never deletes a pre-existing same-named object on
+    # its word (see remove_hy2_official_hop_rules). A write failure
+    # dies here, before any rule is built, in NORMAL and SILENT alike.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        local _hy2hop_tx="tx-$$-$(date +%s 2>/dev/null || printf '0')" _hy2hop_pre=''
+        _hy2hop_parse_listen "$HY2_LISTEN" >/dev/null 2>&1 || die "$(tr_msg hy2hop_pending_write_failed)"
+        _hy2hop_pre=$(_hy2hop_pending_premask) || die "$(tr_msg hy2hop_pending_write_failed)"
+        record_hy2_hop_pending "$HY2_LISTEN" "$_hy2hop_tx" "$_hy2hop_pre" || die "$(tr_msg hy2hop_pending_write_failed)"
+    fi
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
@@ -29760,6 +29896,18 @@ EOF_SVC
             sleep 1
             hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
         fi
+    fi
+    # F1 (2026-11-28): hop identity ledger -- confirm. Hop rules are
+    # verified present, so promote the pending row to a confirmed
+    # history row (and drop the pending row for this listen). A write
+    # failure dies, in NORMAL and SILENT alike, and propagates to the
+    # outer transaction; die is only the failure notice, not
+    # compensation for the rules already built -- the history/pending
+    # rows left behind are what let the next cleanup reclaim them
+    # (GPT Q8 / defect 1). Outside the IS_SILENT gate, like the hop
+    # check above, so SILENT sub-deploys record exactly like NORMAL.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        record_hy2_hop_identity "$HY2_LISTEN" "${_hy2hop_tx:-}" || die "$(tr_msg hy2hop_history_write_failed)"
     fi
     setup_active_defense
     setup_health_monitor
@@ -29962,9 +30110,55 @@ restore_deployment_transaction_traps() {
     ABOX_TX_PREV_TRAP_EXIT=''; ABOX_TX_PREV_TRAP_INT=''; ABOX_TX_PREV_TRAP_TERM=''; ABOX_TX_PREV_TRAP_HUP=''
 }
 
+# F3: signal critical section (GPT Q3, defect 2). The protected unit is
+# ONE ROLLBACK, however it was entered (signal, EXIT, die hook, explicit
+# call) -- not one handler entry. While a rollback runs, a further
+# INT/TERM/HUP must neither re-enter a handler nor kill the rollback.
+# The verdict prescribes `trap ''` (ignore) rather than `trap -`
+# (restore the default disposition, which lets the second signal kill
+# the rollback outright). A bare `trap ''` would additionally DROP the
+# request: ignored signals are not redelivered, so a termination that
+# arrives during an explicit rollback would be silently swallowed and
+# the caller would return to the menu and keep deploying. The recording
+# handler below implements the same ignore -- the signal is not acted
+# on for the duration of the rollback -- while retaining the FIRST
+# pending request so the wrapper can honour it when the rollback
+# finishes (exit with the pending code on explicit/die paths; the
+# signal/EXIT paths already exit with the first code). First request
+# wins; the pending request is cleared by begin/commit.
+_tx_record_terminate_request() {
+    local sig="$1" code="$2"
+    [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" ]] && return 0
+    ABOX_TX_TERMINATE_PENDING_SIG="$sig"
+    ABOX_TX_TERMINATE_PENDING_CODE="$code"
+}
+
+# Arm the critical section for the rollback about to run: further
+# INT/TERM/HUP only record a pending termination request. Idempotent:
+# arming twice installs the same traps. The pre-transaction traps are
+# NOT touched here; the rollback wrapper restores them when done.
+_tx_arm_rollback_critical_section() {
+    trap '_tx_record_terminate_request HUP 129' HUP
+    trap '_tx_record_terminate_request INT 130' INT
+    trap '_tx_record_terminate_request TERM 143' TERM
+    ABOX_TX_IN_ROLLBACK=1
+}
+
 deployment_transaction_signal_abort() {
     local signal="$1" code=1
     case "$signal" in INT) code=130 ;; HUP) code=129 ;; TERM) code=143 ;; esac
+    # A rollback is already running (entered via EXIT/die/explicit
+    # call): record this as the pending termination and let the running
+    # rollback finish; never re-enter it, never exit mid-rollback.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _tx_record_terminate_request "$signal" "$code"
+        return 0
+    fi
+    # First termination request: save its exit code. The rollback
+    # wrapper arms the critical section and runs the rollback to
+    # completion; this path then exits with the FIRST code (a pending
+    # second request is already honoured by exiting at all).
+    ABOX_TX_ROLLBACK_TERMINATING=1
     deployment_transaction_rollback "signal ${signal}" || true
     exit "$code"
 }
@@ -29972,7 +30166,15 @@ deployment_transaction_signal_abort() {
 deployment_transaction_exit_abort() {
     local code=$? _tx_abort_old_exit="${ABOX_TX_PREV_TRAP_EXIT:-}" _tx_abort_old_cmd=''
     trap - EXIT
-    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then deployment_transaction_rollback "unexpected shell exit ${code}" || true; fi
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        # EXIT-triggered active rollback is protected the same way:
+        # the wrapper arms the critical section, so a HUP/INT/TERM
+        # arriving mid-rollback only records a pending request. This
+        # path is already exiting with $code, so the pending request
+        # needs no separate exit.
+        ABOX_TX_ROLLBACK_TERMINATING=1
+        deployment_transaction_rollback "unexpected shell exit ${code}" || true
+    fi
     # The old EXIT handler must run explicitly: restoring it here and
     # then exiting does NOT re-trigger it (verified by experiment).
     # The saved string is trap -p output ("trap -- 'cmd' SIGNAL").
@@ -30254,19 +30456,309 @@ _rollback_abort_cron_best_effort() {
     return 0
 }
 
+# F3: per-family primary config path (production layout). The F3
+# fixture overrides this with its temp roots, exactly like the
+# mocked core_family_paths it already provides.
+_tx_family_config_path() {
+    case "$1" in
+        sing-box) printf '%s\n' /etc/sing-box/config.json ;;
+        xray) printf '%s\n' /usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3: archive member path for a family's primary config, in the
+# backup layout (root + production path). This is a property of the
+# backup FORMAT, independent of the live root: a test double may
+# relocate the live tree (by overriding _tx_family_config_path)
+# without changing the archive layout, so the byte-compare in
+# _tx_family_config_matches_backup keeps working.
+_tx_family_config_archive_member() {
+    case "$1" in
+        sing-box) printf '%s\n' root/etc/sing-box/config.json ;;
+        xray) printf '%s\n' root/usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' root/etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3 Q8: cheap, side-effect-free preflight, run AFTER the backup is
+# pinned and BEFORE the first destructive step (stop).
+#  (1) The pinned archive must list meta/services.state, the member
+#      both the restore tail and the N6-A fallback restart read. A
+#      backup without it cannot restore service state, so aborting
+#      here -- while services still run -- is strictly better than
+#      discovering it after stop/remove.
+#  (2) Every target family's paths must pass the same symlink/mount
+#      preflight remove_core_family_force runs, so a remove failure
+#      that used to abort AFTER services were stopped now aborts
+#      BEFORE them. A missing path is fine (nothing to remove).
+# A family config member is deliberately NOT required: a legitimate
+# pre-deployment backup may predate the family (L8's empty backups
+# prove it), and restore tolerates a missing family. Returns 0 when
+# the restore may proceed, 1 otherwise.
+_tx_preflight_restore_members() {
+    local _pinned_archive="$1" _members='' _srv _path _paths=''
+    [[ -n "$_pinned_archive" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || return 1
+    _members=$(tar -tzf "$_pinned_archive" 2>/dev/null) || return 1
+    { grep -Fxq 'meta/services.state' <<< "$_members" || grep -Fxq './meta/services.state' <<< "$_members"; } || return 1
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _paths=$(core_family_paths "$_srv" 2>/dev/null) || return 1
+        while IFS= read -r _path || [[ -n "$_path" ]]; do
+            [[ -n "$_path" ]] || continue
+            [[ -e "$_path" || -L "$_path" ]] || continue
+            [[ ! -L "$_path" ]] || return 1
+            path_tree_has_mountpoint "$_path" && return 1
+        done <<< "$_paths"
+    done
+    return 0
+}
+
+# F3: has this family's config ALREADY been restored from the pinned
+# backup (byte-identical to the archived member)? Tells "restore
+# succeeded but the stage record was never written" from "restore
+# never ran": re-deleting an already-restored family and re-running a
+# restore that then fails again would turn a healthy system back into
+# an orphan. rc 0 = restored, 1 = not restored (live config
+# absent/unsafe, member absent, or bytes differ), 2 = unknown family
+# (the caller must fail closed).
+# F3 A2: byte-compare the live family config against the member
+# stored in the pinned backup archive. Full-archive extraction to a
+# temp dir (the same mechanism the restore path uses), gated on the
+# member file's presence -- never on tar's exit code: tar reports rc=2
+# for ownership failures on some filesystems even when the files land,
+# and its single-member extraction proved intermittently unreliable in
+# the sandbox ("Not found in archive" on byte-identical inputs, with
+# the archive verified clean by header dump and full extraction).
+# A failure to determine a match returns 1 (conservative: the caller
+# takes the full re-run, never the cleanup-only path). Returns 0 only
+# when the live file and the archived member are byte-identical.
+_tx_family_config_matches_backup() {
+    local srv="$1" pinned_archive="$2" cfg='' member='' work='' archived='' _tries=0
+    cfg=$(_tx_family_config_path "$srv") || return 2
+    member=$(_tx_family_config_archive_member "$srv") || return 2
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    [[ -n "$pinned_archive" && -f "$pinned_archive" && ! -L "$pinned_archive" ]] || return 1
+    work=$(mktemp -d /tmp/A-Box-tx-compare.XXXXXX) || return 1
+    tar -xzf "$pinned_archive" -C "$work" 2>/dev/null
+    # Bounded retry on member visibility: the extracted file can be
+    # momentarily unstatable on filesystems with delayed visibility
+    # (observed in the sandbox: a just-extracted member failed [[ -f ]]
+    # and then stat'ed fine a moment later with identical inputs).
+    # A genuinely absent member still returns 1 after the budget.
+    _tries=0
+    while (( _tries < 5 )); do
+        if [[ -f "$work/$member" && ! -L "$work/$member" ]]; then
+            archived="$work/$member"
+            break
+        elif [[ -f "$work/./$member" && ! -L "$work/./$member" ]]; then
+            archived="$work/./$member"
+            break
+        fi
+        _tries=$(( _tries + 1 ))
+        sleep 0.1
+    done
+    if [[ -z "$archived" ]]; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    if cmp -s -- "$cfg" "$archived"; then rm -rf -- "$work"; return 0; fi
+    rm -rf -- "$work"
+    return 1
+}
+
+# F3 A2: resume tail for a transaction whose restore already
+# succeeded. Only the post-restore cleanup is re-run (pin dir, tx
+# tmp, ephemeral dir), with the same path patterns inner uses. Never
+# stops services, never removes families, never re-restores. Completes
+# the state file and clears the transaction context on success.
+_tx_resume_cleanup_only() {
+    local _pinned_dir="$1" _pinned_archive="$2"
+    local _tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" _eph="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    local _state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    # The files are restored, but services the snapshot marks active
+    # may still be down: a stop-services abort can leave a partial
+    # stop, and the restore's own restart never ran in that case.
+    # Best-effort restart from the pinned archive BEFORE the pin is
+    # removed (the restart reads the archive); a failure here does not
+    # fail the resume -- the files are restored -- matching the N6-A
+    # fallback's best-effort semantics. When the restore already ran,
+    # this is a no-op restart of already-running services.
+    rollback_restart_services_from_backup "$_pinned_archive" || true
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    ABOX_VERIFY_PINNED_WORK=''
+    if [[ -n "$_tx_tmp" ]]; then
+        rm -rf -- "$_tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $_tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
+    fi
+    if [[ -n "$_eph" && "$_eph" == /run/A-Box-uninstall-tx.* && "$_eph" != /run/ ]]; then
+        rm -rf -- "$_eph" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $_eph${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
+    fi
+    ABOX_DEPLOY_TX_TARGETS=''
+    ABOX_DEPLOY_TX_REASON=''
+    ABOX_DEPLOY_TX_BACKUP=''
+    ABOX_DEPLOY_TX_TMP=''
+    ABOX_DEPLOY_TX_BACKUP_DIR=''
+    ABOX_DEPLOY_TX_KEY_FILE=''
+    ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
+    standalone_preserve_cleanup
+    _tx_clear_services_state_snapshot
+    printf '%s\n' 'rollback: complete' >> "$_state" 2>/dev/null || true
+    return 0
+}
+
+# F3 A2: establish the serial-retry context from the rollback state
+# file (GPT Q7 option (b)). Same transaction, same pinned backup,
+# same targets -- nothing is guessed. All of these fail closed (the
+# bundle is retained and the original failure stands):
+#  * the state file must name a non-empty tx-id, and it must match
+#    the in-memory tx-id when one is set (fresh-process callers have
+#    none, so the file is the authority there);
+#  * backup, targets and pinned dir must exist and be safe (regular
+#    files/dirs, never symlinks); a key file, when recorded, must
+#    exist;
+#  * the retry budget is exactly one per transaction (a `retry:`
+#    line already in the state file refuses a second attempt);
+#  * no other rollback process may still be alive (the pid recorded
+#    in the state file, other than this process);
+#  * every target must be a known family.
+# On success the context is re-established in the transaction
+# variables and ABOX_DEPLOY_TX_RESUMING=1. On failure RESUMING is
+# left 0 and no variable is trusted.
+_tx_resume_establish_context() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local tx_id='' backup='' targets='' pinned_dir='' key_file='' snap='' retry_n=0 _rb_pid='' _srv
+    [[ -f "$state" && ! -L "$state" ]] || return 1
+    grep -Fq 'rollback: complete' "$state" 2>/dev/null && return 1
+    tx_id=$(grep '^tx-id: ' "$state" 2>/dev/null | tail -1 | sed 's/^tx-id: //')
+    [[ -n "$tx_id" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_ID:-}" && "$ABOX_DEPLOY_TX_ID" != "$tx_id" ]]; then return 1; fi
+    backup=$(grep '^backup: ' "$state" 2>/dev/null | tail -1 | sed 's/^backup: //')
+    targets=$(grep '^targets: ' "$state" 2>/dev/null | tail -1 | sed 's/^targets: //')
+    pinned_dir=$(grep '^pinned-dir: ' "$state" 2>/dev/null | tail -1 | sed 's/^pinned-dir: //')
+    key_file=$(grep '^key-file: ' "$state" 2>/dev/null | tail -1 | sed 's/^key-file: //')
+    snap=$(grep '^services-snapshot: ' "$state" 2>/dev/null | tail -1 | sed 's/^services-snapshot: //')
+    [[ -n "$backup" && -n "$targets" && -n "$pinned_dir" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_BACKUP:-}" && "$ABOX_DEPLOY_TX_BACKUP" != "$backup" ]]; then return 1; fi
+    if [[ -n "${ABOX_DEPLOY_TX_TARGETS:-}" && "$ABOX_DEPLOY_TX_TARGETS" != "$targets" ]]; then return 1; fi
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    [[ -d "$pinned_dir" && ! -L "$pinned_dir" ]] || return 1
+    [[ -f "$pinned_dir/$(basename -- "$backup")" && ! -L "$pinned_dir/$(basename -- "$backup")" ]] || return 1
+    if [[ -n "$key_file" ]]; then [[ -f "$key_file" && ! -L "$key_file" ]] || return 1; fi
+    retry_n=$(grep -c '^retry: ' "$state" 2>/dev/null || true)
+    [[ "$retry_n" =~ ^[0-9]+$ ]] || retry_n=0
+    (( retry_n == 0 )) || return 1
+    _rb_pid=$(grep '^pid: ' "$state" 2>/dev/null | tail -1 | sed 's/^pid: //')
+    if [[ "$_rb_pid" =~ ^[0-9]+$ && "$_rb_pid" != "$$" ]] && kill -0 "$_rb_pid" 2>/dev/null; then return 1; fi
+    for _srv in $targets; do
+        case "$_srv" in xray|sing-box|hysteria) ;; *) return 1 ;; esac
+    done
+    ABOX_DEPLOY_TX_ID="$tx_id"
+    ABOX_DEPLOY_TX_BACKUP="$backup"
+    ABOX_DEPLOY_TX_TARGETS="$targets"
+    ABOX_DEPLOY_TX_REASON="resume of $tx_id"
+    ABOX_DEPLOY_TX_KEY_FILE="$key_file"
+    ABOX_VERIFY_PINNED_WORK="$pinned_dir"
+    if [[ -n "$snap" && -f "$snap" && ! -L "$snap" ]]; then ABOX_DEPLOY_TX_STATE_SNAPSHOT="$snap"; fi
+    ABOX_DEPLOY_TX_RESUMING=1
+    ABOX_DEPLOY_TX_RETRY_COUNT=1
+    return 0
+}
+
+# F3 A2: run the serial retry once the context is established (same
+# process or a later process; the wrapper calls this inline after a
+# failed first attempt, and on a second wrapper call). Dispatches on
+# the recorded resume point:
+#  * restore already done (stage `restored`, or a post-restore abort
+#    stage): cleanup-only, never re-delete the restored families.
+#  * stage record may lag the real action: verify the live config
+#    against the pinned backup first. All families restored ->
+#    cleanup-only; none restored -> full re-run; a MIX is evidence
+#    contradiction -> refuse and report, bundle retained.
+#  * otherwise: full re-run of the same transaction from the stop
+#    stage (stop/firewall/remove/restore are idempotent over what the
+#    first attempt left; the same pinned backup is restored).
+# A retry that fails again keeps the bundle, records the failure
+# stage, and stops: there is no second retry.
+_tx_resume_run() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local abort_stage='' last_stage='' pinned_archive='' _srv _mrc _any_restored=0 _any_not=0 _unknown=0 _rrc=0
+    pinned_archive="${ABOX_VERIFY_PINNED_WORK:-}/$(basename -- "${ABOX_DEPLOY_TX_BACKUP:-}")"
+    printf 'retry: 1 at %s pid %s\n' "$(now_iso)" "$$" >> "$state" 2>/dev/null || true
+    abort_stage=$(grep '^abort-stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^abort-stage: //')
+    last_stage=$(grep '^stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^stage: //')
+    if [[ "$last_stage" == restored ]] || [[ "$abort_stage" == bundle-cleanup || "$abort_stage" == tx-tmp-cleanup || "$abort_stage" == ephemeral-cleanup ]]; then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _tx_family_config_matches_backup "$_srv" "$pinned_archive"; _mrc=$?
+        case "$_mrc" in
+            0) _any_restored=1 ;;
+            1) _any_not=1 ;;
+            *) _unknown=1 ;;
+        esac
+    done
+    if (( _unknown == 1 )); then
+        msg "${RED}[!] Rollback resume refused: cannot verify a target family against the pinned backup. Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 && _any_not == 1 )); then
+        msg "${RED}[!] Rollback resume refused: mixed state (some families already restored, some not). Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 )); then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    deployment_transaction_rollback_inner "resume ${ABOX_DEPLOY_TX_ID:-}"
+    _rrc=$?
+    ABOX_DEPLOY_TX_RESUMING=0
+    if (( _rrc != 0 )); then
+        msg "${RED}[!] Rollback resume failed (serial retry exhausted). Recovery bundle retained: $pinned_archive${NC}" >&2
+    fi
+    return "$_rrc"
+}
+
 deployment_transaction_rollback_inner() {
-    [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
+    # F3 A2: a serial retry runs with ACTIVE already cleared by the
+    # first attempt; RESUMING (established by
+    # _tx_resume_establish_context) is the entry ticket then. It never
+    # re-arms ACTIVE=1.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        :
+    elif [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        :
+    else
+        return 0
+    fi
     # B-C2: land a rollback state file FIRST, so a later inspection can
     # tell a rollback happened, when, why, and from which backup -- even
     # when the operator only killed the hung deploy or it timed out.
     # Best-effort: a failed write must never fail the rollback itself.
+    # F3 A2: a retry must NOT truncate the header (it would destroy
+    # the abort-stage/stage history the resume point is read from);
+    # it appends a resume line instead.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        printf 'resume: %s pid %s reason %s\n' "$(now_iso)" "$$" "${ABOX_DEPLOY_TX_REASON:-deployment}" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    else
     {
         printf 'time: %s\n' "$(now_iso)"
         printf 'pid: %s\n' "$$"
         printf 'reason: %s\n' "${ABOX_DEPLOY_TX_REASON:-deployment}"
         printf 'backup: %s\n' "${ABOX_DEPLOY_TX_BACKUP:-}"
         printf 'targets: %s\n' "${ABOX_DEPLOY_TX_TARGETS:-}"
+        printf 'tx-id: %s\n' "${ABOX_DEPLOY_TX_ID:-}"
     } > "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    fi
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
@@ -30288,6 +30780,15 @@ deployment_transaction_rollback_inner() {
     # restore_backup_prevalidate): the verified copy is retained and is
     # the object the restore consumes. A pin from an earlier
     # transaction is a recovery bundle: refuse, never overwrite it.
+    local _pinned_dir='' _pinned_archive=''
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        # Serial retry: reuse the already-verified pin established by
+        # the first attempt. Never re-read the shared backup path (it
+        # may have rotated since) and never trip the retained-bundle
+        # guard on the very bundle this retry must consume.
+        _pinned_dir="${ABOX_VERIFY_PINNED_WORK:-}"
+        _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    else
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
@@ -30306,13 +30807,30 @@ deployment_transaction_rollback_inner() {
     # be complete before any destructive step; a failed stop/cleanup/
     # remove/restore RETAINS it and names it. Only a successful restore
     # deletes it.
-    local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
-    local _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
+    _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    fi
     if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
         :
     else
         msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
         _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
+    # F3: record the bundle/snapshot context for a later serial retry
+    # (same or later process) and for the B1 orphan report.
+    {
+        printf 'pinned-dir: %s\n' "$_pinned_dir"
+        printf 'pinned-archive: %s\n' "$_pinned_archive"
+        printf 'services-snapshot: %s\n' "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}"
+        printf 'key-file: %s\n' "${tx_key_file:-}"
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    # F3 Q8: cheap preflight before the first destructive step (see
+    # _tx_preflight_restore_members). A failure aborts here, while
+    # services still run.
+    if ! _tx_preflight_restore_members "$_pinned_archive"; then
+        msg "${RED}[!] Rollback aborted before stopping services: restore preflight failed (pinned archive is missing the service state, or a target family path is unsafe to remove). Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_record_abort 'restore-preflight' 1
         return 1
     fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
@@ -30321,6 +30839,9 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'stop-services' 1
         return 1
     fi
+    # F3 A2: record each stage AFTER its action succeeds, so a later
+    # serial retry can tell how far the first attempt got.
+    printf 'stage: stopped\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
     clean_input_rules >/dev/null 2>&1 || cleanup_failed=1
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -30330,6 +30851,7 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
+    printf 'stage: firewall-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
 
     # (Backup pre-verified above, before any service stop or
     # firewall clear; see R4C8-03.)
@@ -30341,6 +30863,7 @@ deployment_transaction_rollback_inner() {
             _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
+        printf 'stage: family-removed:%s\n' "$srv" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     done
 
     if [[ -n "$tx_key_file" ]]; then
@@ -30360,7 +30883,9 @@ deployment_transaction_rollback_inner() {
             return 1
         fi
     fi
+    printf 'stage: restored\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    printf 'stage: bundle-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
@@ -30377,6 +30902,7 @@ deployment_transaction_rollback_inner() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
     # Carbon H-11(4): a deploy that reached rollback may have left a
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
@@ -30391,15 +30917,50 @@ deployment_transaction_rollback_inner() {
 # exit evals it forever (the global PREV never changes).
 # The wrapper guarantees the restore for all inner returns.
 deployment_transaction_rollback() {
-    local _rc
+    local _rc _had_tx=0
     # OBS-2: record whether the best-effort fallback restart ran and
     # what it returned, so die() can tier its warning (restart
     # attempted vs restart failed). Cleared on entry so a stale value
     # can never downgrade an unrelated later failure. The rollback
     # itself is unchanged: the failure rc is never masked.
     ABOX_ROLLBACK_FALLBACK_RC=''
-    deployment_transaction_rollback_inner "$@"
-    _rc=$?
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then _had_tx=1; fi
+    # F3 A1: the critical section covers the whole rollback, however
+    # it was entered (signal, EXIT, die hook, explicit call). Arm it
+    # here (idempotent) so a termination arriving mid-rollback only
+    # records a pending request instead of re-entering a handler or
+    # killing the rollback. The pre-transaction traps are restored at
+    # the end, exactly once, by restore_deployment_transaction_traps.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" != 1 ]]; then
+        _tx_arm_rollback_critical_section
+    fi
+    if (( _had_tx == 1 )); then
+        deployment_transaction_rollback_inner "$@"
+        _rc=$?
+        # F3 A2: one automatic serial retry of the SAME transaction
+        # (same tx-id, same pinned backup, same targets) when the
+        # first attempt aborted. Bounded (once per transaction, tracked
+        # in the state file), never nested or concurrent, never
+        # re-arming ACTIVE and never re-snapshotting service state.
+        # A retry whose contract cannot be established refuses and
+        # the original failure stands.
+        if (( _rc != 0 )) && [[ "${ABOX_DEPLOY_TX_RETRY_COUNT:-0}" == 0 ]] && _tx_resume_establish_context; then
+            if _tx_resume_run; then
+                _rc=0
+            else
+                _rc=$?
+            fi
+        fi
+    elif _tx_resume_establish_context; then
+        # Second call (same process or a later process) after a failed
+        # rollback: resume the same transaction instead of no-op'ing
+        # on ACTIVE==0.
+        _had_tx=1
+        _tx_resume_run
+        _rc=$?
+    else
+        _rc=0
+    fi
     # N6-A: the inner rollback can fail BEFORE any service restart
     # (pre-verification, retained pin, stop/firewall/remove failure)
     # while the deploy already stopped the services. A failed rollback
@@ -30414,16 +30975,45 @@ deployment_transaction_rollback() {
             ABOX_ROLLBACK_FALLBACK_RC='1'
         fi
     fi
-    # N6-A: the snapshot served its purpose (or there was no failure to
-    # cover); drop it so a later transaction can never reuse stale state.
-    _tx_clear_services_state_snapshot
+    # F3 A2: the pre-deployment services-state snapshot is the resume's
+    # restart evidence; it must survive a FAILED rollback (only a
+    # successful rollback -- or a later begin/commit -- may drop it).
+    # A no-op call (no transaction was active) must not drop a
+    # snapshot retained by an earlier failed rollback either.
+    if (( _rc == 0 && _had_tx == 1 )); then
+        _tx_clear_services_state_snapshot
+    fi
     restore_deployment_transaction_traps
+    ABOX_TX_IN_ROLLBACK=0
+    # F3 A1: a termination request recorded during an EXPLICIT or
+    # die-hook rollback must still be honoured: the caller would
+    # otherwise return to the menu and keep deploying. Termination
+    # paths (signal/exit abort) set ABOX_TX_ROLLBACK_TERMINATING=1
+    # and exit themselves with the first code, so they skip this.
+    if [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" && "${ABOX_TX_ROLLBACK_TERMINATING:-0}" != 1 ]]; then
+        local _pend_code="${ABOX_TX_TERMINATE_PENDING_CODE:-143}"
+        exit "$_pend_code"
+    fi
     return "$_rc"
 }
 
 begin_deployment_transaction() {
     local reason="$1"; shift
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die "$(tr_msg tx_nested)"
+    # F3 A2: bind the retry contract BEFORE the first destructive
+    # step: a transaction id, the (not yet taken) backup, the targets,
+    # and the service-state snapshot below. A later serial retry may
+    # only resume THIS transaction, with THIS backup. Stale retry
+    # state from an earlier transaction is cleared here, so a new
+    # transaction can never consume another transaction's pin.
+    ABOX_DEPLOY_TX_ID="tx-${BASHPID}-$(date +%s 2>/dev/null || printf '0')"
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
+    ABOX_VERIFY_PINNED_WORK=''
     ABOX_LAST_BACKUP=''
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir" || return 1
@@ -30501,6 +31091,13 @@ commit_deployment_transaction() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_ID=''
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
     ABOX_DIE_HOOK=''
     restore_deployment_transaction_traps
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
@@ -37385,6 +37982,259 @@ EOF_SVC
 }
 
 
+# F3 B1/B2: sing-box orphan detection and rebuild offer.
+#
+# Orphaned deployment (the F3 failure): an SSH disconnect mid
+# menu-6 redeploy left the host with no /etc/sing-box/config.json
+# and every service stopped -- the rollback had aborted at the
+# restore step and nothing told the operator the deployment was
+# gone. The detector below grades the evidence instead of guessing:
+#   rebuild-offerable -- config truly missing, every surviving
+#     family path absent or provably A-Box-owned, .env CORE=singbox
+#     consistent with sing-box ownership rows, intent evidence
+#     (RUNNING desired state or an incomplete-transaction record
+#     whose recovery bundle still exists), and no active operation.
+#   suspect -- config missing and some orphan evidence exists, but
+#     at least one offerable condition fails (foreign or symlinked
+#     surviving path, .env/manifest mismatch, no intent evidence,
+#     service still running). Report only; never offer a rebuild,
+#     never weaken the existing conflict gates.
+#   none -- config present, or no orphan evidence at all (fresh
+#     install), or an active operation is in flight, or the A-Box
+#     home directory is gone (menu 20 complete uninstall).
+# desired-state=RUNNING and the existence of an old backup are only
+# evidence, never authorisation: a rebuild still needs the operator
+# to confirm explicitly in the menu (see
+# singbox_orphan_rebuild_prompt). A rebuild is a FRESH deployment
+# with NEW credentials, never a restoration of the old state.
+# All functions in this block are read-only except the prompt
+# (which only reads an answer) and _f3_preserve_rollback_bundle
+# (which copies the retained bundle to persistent storage).
+
+_f3_manifest_has_family() {
+    # $1 = family name; true when the ownership manifest holds at
+    # least one row for this family (rows are "F|D <tab> srv <tab>
+    # /path <tab> sha256").
+    local _srv="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -q $'^F\t'"$_srv"$'\t' "$_mf" 2>/dev/null || grep -q $'^D\t'"$_srv"$'\t' "$_mf" 2>/dev/null
+}
+
+_f3_manifest_has_path() {
+    # $1 = exact path; true when the manifest holds a row for it.
+    local _path="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -Fq "$(printf '\t%s\t' "$_path")" "$_mf" 2>/dev/null
+}
+
+detect_singbox_orphan_state() {
+    # Prints "orphan-verdict: none|suspect|rebuild-offerable" plus one
+    # "orphan-reason: ..." line per reason. Returns 0 only for
+    # rebuild-offerable. Read-only: writes, deletes and starts nothing.
+    local _cfg='/etc/sing-box/config.json'
+    local _verdict='none' _reasons='' _evidence=0
+    local _env_core='' _desired='' _rb_state='' _rb_tx='' _rb_archive='' _rb_pid='' _p=''
+    # A complete uninstall (menu 20) removes the A-Box home directory
+    # itself; a fresh install has none either. Either way there is no
+    # orphaned deployment to rebuild.
+    if [[ ! -d "${ABOX_DIR:-/root/A-Box}" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: no A-Box home directory (fresh install or complete uninstall)\n'
+        return 1
+    fi
+    # A present config means the deployment is not orphaned (it may be
+    # stopped, but the config to restart it exists).
+    if [[ -e "$_cfg" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: sing-box config present\n'
+        return 1
+    fi
+    # An active operation in flight is not an orphan: do not evaluate
+    # while a transaction, a live rollback, or an uninstall runs.
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then
+        printf 'orphan-verdict: none\norphan-reason: a deployment or upgrade transaction is active in this process\n'
+        return 1
+    fi
+    _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    if [[ -f "$_rb_state" ]]; then
+        _rb_pid=$(grep '^pid: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ "$_rb_pid" =~ ^[0-9]+$ ]] && kill -0 "$_rb_pid" 2>/dev/null; then
+            printf 'orphan-verdict: none\norphan-reason: rollback process %s is still running\n' "$_rb_pid"
+            return 1
+        fi
+    fi
+    local _u
+    for _u in /run/A-Box-uninstall-tx.*; do
+        if [[ -e "$_u" ]]; then
+            printf 'orphan-verdict: none\norphan-reason: an uninstall transaction is in progress (%s)\n' "$_u"
+            return 1
+        fi
+    done
+    # Evidence that a sing-box deployment existed and was expected to
+    # keep running. With none of it, this is a fresh install.
+    _f3_manifest_has_family sing-box && _evidence=1
+    _desired="${ABOX_DESIRED_STATE:-/etc/ddr/.desired_state}"
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _evidence=1; fi
+    if [[ -f "$_rb_state" ]]; then
+        _rb_tx=$(grep '^tx-id: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        _rb_archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _evidence=1; fi
+    fi
+    [[ -L "$_cfg" ]] && _evidence=1
+    if is_service_running sing-box 2>/dev/null; then _evidence=1; fi
+    if (( _evidence == 0 )); then
+        printf 'orphan-verdict: none\norphan-reason: no sing-box deployment evidence (fresh install)\n'
+        return 1
+    fi
+    # Grade the offerable conjunction; every failure downgrades to
+    # suspect with its reason. A dangling config symlink is foreign
+    # residue, never an offerable orphan.
+    if [[ -L "$_cfg" ]]; then
+        _verdict='suspect'; _reasons+='sing-box config path is a dangling symlink; '
+    fi
+    local _foreign=0
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        if [[ -L "$_p" ]]; then
+            _foreign=1; _reasons+="surviving ${_p} is a symlink; "; continue
+        fi
+        if [[ -e "$_p" ]]; then
+            if _f3_manifest_has_path "$_p"; then
+                :
+            else
+                _foreign=1; _reasons+="surviving ${_p} is not recorded as A-Box owned; "
+            fi
+        fi
+    done < <(core_family_paths sing-box 2>/dev/null || true)
+    if (( _foreign == 1 )); then _verdict='suspect'; fi
+    if load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
+        _env_core="${CORE:-}"
+    fi
+    if [[ "$_env_core" != 'singbox' ]]; then
+        _verdict='suspect'; _reasons+="recorded core is '${_env_core:-none}', not singbox; "
+    elif ! _f3_manifest_has_family sing-box; then
+        _verdict='suspect'; _reasons+='recorded core is singbox but no sing-box ownership rows; '
+    fi
+    local _intent=0
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _intent=1; fi
+    if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _intent=1; fi
+    if (( _intent == 0 )); then
+        _verdict='suspect'; _reasons+='no evidence this host should still run sing-box (no RUNNING desired state, no incomplete-transaction record); '
+    fi
+    if is_service_running sing-box 2>/dev/null; then
+        _verdict='suspect'; _reasons+='sing-box service is still running (config missing but process alive); '
+    fi
+    if [[ "$_verdict" == 'suspect' ]]; then
+        printf 'orphan-verdict: suspect\norphan-reason: %s\n' "${_reasons%'; '}"
+        return 1
+    fi
+    printf 'orphan-verdict: rebuild-offerable\norphan-reason: sing-box config missing; surviving paths are A-Box owned; recorded core is singbox with ownership rows; intent evidence present; no active operation\n'
+    return 0
+}
+
+_f3_preserve_rollback_bundle() {
+    # Preserve the retained recovery bundle (pinned archive + .sha256
+    # / .hmac sidecars) in /root/A-Box-backups before a rebuild, so
+    # the rebuild's own begin() backup rotation can never destroy the
+    # last copy of the pre-failure state (the pin itself lives in
+    # /tmp, which a reboot or tmp cleaner may wipe). The separated
+    # key file is never copied. Returns 0 when there was nothing to
+    # preserve or the copy verified; 1 when a bundle exists but could
+    # not be preserved (fail closed: the caller must not rebuild).
+    local _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local _archive='' _dir='' _base='' _dest_dir='/root/A-Box-backups' _f=''
+    [[ -f "$_rb_state" ]] || return 0
+    _archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+    [[ -n "$_archive" && -f "$_archive" ]] || return 0
+    _dir=$(dirname -- "$_archive"); _base=$(basename -- "$_archive")
+    mkdir -p "$_dest_dir" || return 1
+    for _f in "$_dir/$_base" "$_dir/$_base.sha256" "$_dir/$_base.hmac"; do
+        [[ -f "$_f" ]] || continue
+        cp -- "$_f" "$_dest_dir/" || return 1
+    done
+    if [[ -f "$_dest_dir/$_base.sha256" ]]; then
+        backup_checksum_verify "$_dest_dir/$_base" "$_dest_dir/$_base.sha256" || return 1
+    else
+        [[ "$(sha256sum < "$_archive" 2>/dev/null | awk '{print $1}')" == "$(sha256sum < "$_dest_dir/$_base" 2>/dev/null | awk '{print $1}')" ]] || return 1
+    fi
+    msg "Preserved the retained recovery bundle as ${_dest_dir}/${_base} (archive + sidecars)."
+    return 0
+}
+
+singbox_orphan_rebuild_prompt() {
+    # Ask explicitly whether to rebuild the orphaned sing-box
+    # deployment as a fresh ALL deployment. Default NO; EOF / no TTY
+    # refuses (confirm_yes_no); a refusal writes nothing. Returns 0
+    # only on an explicit 'y'/'Y'. $1 = the MODE_IN that was asked
+    # for (VISION or ALL).
+    local _mode_in="$1" _other='' _c
+    for _c in xray hysteria; do
+        if abox_owns_service "$_c" || abox_owns_config_only_core_dir "$_c"; then
+            _other+="$_c "
+        fi
+    done
+    msg "${YELLOW}[!] Orphaned sing-box deployment detected: the sing-box config is gone but this host is recorded as a sing-box deployment that should still be running.${NC}"
+    msg "${YELLOW}[!] A rebuild starts a FRESH sing-box deployment; it does NOT restore the old deployment.${NC}"
+    msg "    - New credentials will be generated; rotate every client config and re-pull the subscription after the rebuild."
+    if [[ "$_mode_in" == 'ALL' ]]; then
+        msg "    - Deploying as: sing-box ALL (as requested, menu 10 path)."
+    else
+        msg "    - Menu 6 asked for VISION only; the rebuild upgrades this run to ALL (menu 10 path), because a partial rebuild cannot restore the other modes."
+    fi
+    if [[ -n "$_other" ]]; then
+        msg "    - Other A-Box stacks present (${_other% }): the rebuild stops managed services and prunes non-preserved stacks, as a normal menu 10 deploy does."
+    else
+        msg "    - No other A-Box stacks are recorded on this host."
+    fi
+    msg "    - The retained recovery bundle (if any) is preserved in /root/A-Box-backups before the rebuild."
+    msg "    - Answering no changes nothing on disk."
+    # confirm_yes_no: a failed read (EOF / no TTY) refuses; only a
+    # successful read of 'y'/'Y' confirms. Default is NO.
+    if confirm_yes_no "Rebuild sing-box as a fresh ALL deployment now? [y/N] "; then
+        return 0
+    fi
+    return 1
+}
+
+_f3_load_rebuild_wizard_defaults() {
+    # Whitelist-read the old .env values (ports/SNI) for the wizard
+    # defaults, only inside the confirmed rebuild branch. Values are
+    # validated at the use site (pre_install_setup /
+    # prompt_reality_sni); missing or invalid values fall back to the
+    # normal wizard. Cleared by _f3_clear_rebuild_wizard_defaults
+    # immediately after pre_install_setup, so no stale default can
+    # leak into a later menu choice in the same process.
+    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || return 0
+    [[ -n "${VLESS_PORT:-}" ]] && ABOX_REBUILD_VLESS_PORT="$VLESS_PORT"
+    [[ -n "${XHTTP_PORT:-}" ]] && ABOX_REBUILD_XHTTP_PORT="$XHTTP_PORT"
+    [[ -n "${HY2_BASE_PORT:-}" ]] && ABOX_REBUILD_HY2_BASE_PORT="$HY2_BASE_PORT"
+    [[ -n "${SS_PORT:-}" ]] && ABOX_REBUILD_SS_PORT="$SS_PORT"
+    if [[ -n "${VISION_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VISION_SNI";
+    elif [[ -n "${VLESS_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VLESS_SNI"; fi
+    export ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+_f3_clear_rebuild_wizard_defaults() {
+    unset ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+singbox_orphan_banner_report() {
+    # Menu-banner orphan report (read-only; never rebuilds). Prints at
+    # most one line, only when the verdict is not none.
+    local _out='' _verdict=''
+    _out=$(detect_singbox_orphan_state 2>/dev/null || true)
+    _verdict=$(printf '%s\n' "$_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+    case "$_verdict" in
+        suspect)
+            msg "${YELLOW}[!] sing-box state looks orphaned (config missing, evidence incomplete). Run menu 6/10 for details; nothing was rebuilt.${NC}"
+            ;;
+        rebuild-offerable)
+            msg "${YELLOW}[!] Orphaned sing-box deployment detected (config missing). Menu 6/10 can rebuild it as a fresh ALL deployment (new credentials).${NC}"
+            ;;
+    esac
+    return 0
+}
+
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
     # G3: Probe -w support for service templates (global compat, not just self-use).
@@ -37397,6 +38247,36 @@ deploy_singbox() {
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
+    # F3 B1/B2: orphan check before any transaction begins (after
+    # light_preflight_check, before residue_takeover_plan /
+    # assert_no_foreign_core_conflicts, so the existing conflict gates
+    # are not weakened). Suspect only reports; offerable asks
+    # explicitly, defaults to NO, and on confirm preserves the
+    # retained bundle, loads the .env wizard defaults, and continues
+    # this same invocation as ALL -- no recursion, no second
+    # transaction, menu 6 never silently becomes ALL without the
+    # operator's explicit yes. A refusal writes nothing and aborts
+    # the deploy.
+    if [[ "$MODE_IN" == VISION || "$MODE_IN" == ALL ]]; then
+        local _f3_out='' _f3_verdict='' _f3_rebuild=0
+        _f3_out=$(detect_singbox_orphan_state 2>/dev/null || true)
+        _f3_verdict=$(printf '%s\n' "$_f3_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+        case "$_f3_verdict" in
+            suspect)
+                printf '%s\n' "$_f3_out"
+                ;;
+            rebuild-offerable)
+                if singbox_orphan_rebuild_prompt "$MODE_IN"; then
+                    _f3_preserve_rollback_bundle || { msg "${RED}[!] Rebuild refused: the retained recovery bundle could not be preserved.${NC}" >&2; return 1; }
+                    _f3_rebuild=1
+                    MODE_IN=ALL
+                else
+                    msg "${YELLOW}[!] Rebuild declined; nothing was changed. Run menu 6/10 again when ready.${NC}"
+                    return 1
+                fi
+                ;;
+        esac
+    fi
     residue_takeover_plan sing-box || return 1
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
@@ -37406,7 +38286,14 @@ deploy_singbox() {
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    # F3 B2: the .env wizard defaults are loaded only in the
+    # confirmed-rebuild branch (_f3_rebuild==1), in the narrow window
+    # just before pre_install_setup, and cleared right after it, so a
+    # normal deploy never inherits old ports/SNI and no stale default
+    # can leak into a later menu choice in this process.
+    (( ${_f3_rebuild:-0} == 1 )) && _f3_load_rebuild_wizard_defaults
+    pre_install_setup singbox "$MODE_IN" || { _f3_clear_rebuild_wizard_defaults; deployment_transaction_rollback; return 1; }
+    _f3_clear_rebuild_wizard_defaults
     abox_fetch_guard_start "sing-box ${MODE_IN}"
     release_ports
     get_architecture
@@ -42195,22 +43082,755 @@ _hy2hop_list_ipt_chains() {
     printf '%s\n' "$1" | awk '$1 == "-N" && $2 ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/ { print $2 } { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/) print $(i+1) }' | sort -u
 }
 
-# Reclaim the official-hop NAT rules of THIS hysteria instance.
-# rc 0 = this instance's hop objects are gone (deleted or already
-# absent; suspected leftovers of unknown ownership are only
+# F1 (2026-11-28): hop identity ledger.
+#
+# Problem (see f1 DESIGN.md): deploying official Hy2 with hop on builds
+# kernel NAT objects (nft tables hysteria_<hash>, iptables chains
+# HYSTERIA-PR-<hash>) whose identity lived only in the live config
+# listen + .env hop keys. Anything outside the CURRENT identity (an
+# earlier range, a hand-edited listen, a config deleted by a rollback)
+# was unnameable: cleanup could only report it as a suspect, never
+# delete it. This ledger records every verified hop identity so later
+# cleanup can reclaim it.
+#
+# Storage (GPT Q1/Q2: scheme B): one independent history file,
+#   ${ABOX_DIR}/.hy2-hop-history.tsv   (ABOX_DIR is fixed /etc/ddr)
+# append-only in effect: one row per confirmed identity,
+#   v1<TAB><listen, verbatim><TAB><epoch><TAB>official
+# Only the listen input that was VERIFIED (hop rules observed present)
+# is stored; the four derived names are recomputed at cleanup time.
+# v1 pins the parse + naming algorithm (see _hy2hop_nft_table_v1 /
+# _hy2hop_ipt_chain_v1): if upstream ever renames the objects, old rows
+# still compute names with the v1 formula. Deduplication is by the exact
+# listen string, never by derived name: two different listen inputs that
+# happen to derive the same name are kept as separate rows.
+#
+# Pending rows (GPT defect 1): before the first hop rule can exist
+# (service start), deploy durably writes a pending row to
+#   ${ABOX_DIR}/.hy2-hop-pending.tsv
+#   v1<TAB><listen><TAB><epoch><TAB>official<TAB><txid><TAB><premask>
+# premask is 4 chars 0/1 (nft-ip, nft-ip6, iptables, ip6tables) recording
+# whether each object already existed BEFORE this deploy. A pending row
+# is only a recovery clue, never an authority: cleanup may reclaim its
+# objects only when premask proves none of them pre-existed AND every
+# present object passes the content gate; otherwise the row is kept and
+# the cleanup fails closed for manual review.
+#
+# Ledger invariants (GPT Q3/Q5/Q6 + checklist):
+# - Whole-file validation before any deletion: any bad row, unknown
+#   version, untrusted file or read error makes the cleanup rc=1 with
+#   ZERO deletions. Only a confirmed-absent file means "no record".
+# - Trust boundary: the parent chain must be symlink-free, the file
+#   itself must not be a symlink or a mountpoint, and must be a
+#   root:root 0600 regular file with exactly one hard link. No
+#   source/eval of file content, ever.
+# - Capacity: at most 128 unique identities, file hard limit 64 KiB,
+#   no eviction. The 129th distinct identity is refused BEFORE any
+#   rule is built (pending write); a restore merge over the limit is
+#   refused BEFORE any destructive pre-cleanup (restore never merges
+#   -- see _hy2hop_restore_handle_history in src/11).
+# - A history row is retired only after EVERY object of that identity
+#   is negative-verified absent. A mismatch keeps the object AND the
+#   row, and the cleanup stays retryable (rc=1).
+# - Concurrency: every ledger read-modify-write (record, pending,
+#   retire, cleanup) runs under one dedicated flock on
+#   ${ABOX_DIR}/.hy2-hop-history.lock, held across the whole cleanup
+#   (read, delete, negative verification, retire), not just the mv.
+#   The lock is re-entrant within one process (depth counter) so a
+#   record issued from inside a locked section cannot self-deadlock.
+#   Crash-recovery writes (pending + confirm) are fsynced (file and
+#   parent directory) via install_file_atomically.
+# - The record is a discovery mechanism, never a deletion authority:
+#   every identity still goes through the L3 content gate + negative
+#   verification, object by object. Suspects are never claimed.
+
+# Frozen v1 naming (F1 / GPT Q2). The history file stores only the
+# listen input; v1 rows MUST keep computing names with the formula that
+# was current when v1 was defined, even if the live _hy2hop_nft_table /
+# _hy2hop_ipt_chain formulas change for a future upstream rename. Do
+# not "simplify" these into calls to the live functions.
+_hy2hop_nft_table_v1() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "nft|$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'hysteria_%s' "$_h"
+}
+
+# Frozen v1 naming (see _hy2hop_nft_table_v1).
+_hy2hop_ipt_chain_v1() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'HYSTERIA-PR-%s' "$_h"
+}
+
+# Expected nft table name for $1 (family) under formula $2 (0 = live, 1 = v1).
+_hy2hop_table_name() {
+    if [[ "${2:-0}" == '1' ]]; then _hy2hop_nft_table_v1 "$1"; else _hy2hop_nft_table "$1"; fi
+}
+
+# Expected iptables chain name for $1 (binary) under formula $2 (0 = live, 1 = v1).
+_hy2hop_chain_name() {
+    if [[ "${2:-0}" == '1' ]]; then _hy2hop_ipt_chain_v1 "$1"; else _hy2hop_ipt_chain "$1"; fi
+}
+
+# Acquire the hop-ledger lock (dedicated flock file in ABOX_DIR).
+# Re-entrant within one process via _HY2HOP_LOCK_DEPTH. rc 0 = held,
+# 1 = flock unavailable, lock file unsafe, or not acquired within
+# ${_HY2HOP_LOCK_TIMEOUT_S:-30} seconds. Uses flock -n in a retry loop
+# (no -w: some flock builds lack it); never blocks forever.
+_hy2hop_history_lock() {
+    local _lock="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.lock" _fd='' _i=0 _locked=0
+    local _t="${_HY2HOP_LOCK_TIMEOUT_S:-30}"
+    if [[ "${_HY2HOP_LOCK_DEPTH:-0}" -gt 0 ]]; then _HY2HOP_LOCK_DEPTH=$((_HY2HOP_LOCK_DEPTH + 1)); return 0; fi
+    command -v flock >/dev/null 2>&1 || return 1
+    [[ "$_t" =~ ^[0-9]+$ ]] || _t=30
+    if [[ ! -e "$_lock" ]]; then (umask 077; set -o noclobber; : > "$_lock") 2>/dev/null || true; fi
+    [[ -f "$_lock" && ! -L "$_lock" ]] || return 1
+    if [[ $EUID -eq 0 ]]; then chown root:root "$_lock" 2>/dev/null || true; fi
+    chmod 600 "$_lock" 2>/dev/null || true
+    exec {_fd}>>"$_lock" || return 1
+    for ((_i = 0; _i < _t; _i++)); do
+        if flock -n "$_fd" 2>/dev/null; then _locked=1; break; fi
+        sleep 1
+    done
+    if (( _locked == 0 )); then eval "exec ${_fd}>&-" 2>/dev/null || true; return 1; fi
+    _HY2HOP_LOCK_FD="$_fd"
+    _HY2HOP_LOCK_DEPTH=1
+    return 0
+}
+
+# Release one level of the hop-ledger lock (see _hy2hop_history_lock).
+_hy2hop_history_unlock() {
+    [[ "${_HY2HOP_LOCK_DEPTH:-0}" -gt 0 ]] || return 0
+    _HY2HOP_LOCK_DEPTH=$((_HY2HOP_LOCK_DEPTH - 1))
+    if (( _HY2HOP_LOCK_DEPTH == 0 )) && [[ -n "${_HY2HOP_LOCK_FD:-}" ]]; then
+        eval "exec ${_HY2HOP_LOCK_FD}>&-" 2>/dev/null || true
+        _HY2HOP_LOCK_FD=''
+    fi
+    return 0
+}
+
+# Trust check for a ledger file ($1): regular file, not a symlink, not
+# itself a mountpoint (a bind mount swapped in place of the ledger must
+# never be read or overwritten), root:root 0600, exactly one hard link,
+# symlink-free parent chain. rc 0 = trusted, 1 = not. Fail closed on
+# any stat/python failure.
+_hy2hop_ledger_trust_check() {
+    local _f="${1:-}"
+    [[ -n "$_f" ]] || return 1
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    [[ "$(stat -c %u:%g "$_f" 2>/dev/null || true)" == '0:0' ]] || return 1
+    [[ "$(stat -c %a "$_f" 2>/dev/null || true)" == '600' ]] || return 1
+    [[ "$(stat -c %h "$_f" 2>/dev/null || echo 0)" == '1' ]] || return 1
+    path_tree_has_mountpoint "$_f" && return 1
+    path_parent_chain_safe "$_f" || return 1
+    return 0
+}
+
+# Strict row validation for a ledger file ($1, $2 = history|pending).
+# Every row must be well-formed: exact field count, v1, impl official,
+# numeric epoch, and a listen value that parses as a hop range
+# (_HY2HOP_HOP == 1). Pending rows additionally need a safe txid and a
+# 4-char 0/1 premask. Also enforced: no NUL bytes, at most 128 rows,
+# at most 64 KiB. rc 0 = valid, 1 = invalid. Never sources the file.
+_hy2hop_ledger_rows_valid() {
+    local _f="${1:-}" _kind="${2:-}" _size=0 _lines=0 _line='' _v='' _listen='' _epoch='' _impl='' _txid='' _pre='' _rest=''
+    local _stripped=0 _orig=0 TAB=$'\t'
+    [[ -n "$_f" && -n "$_kind" ]] || return 1
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _size=$(stat -c %s "$_f" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || return 1
+    _stripped=$(tr -d '\000' < "$_f" | wc -c)
+    _orig=$(wc -c < "$_f")
+    (( _stripped == _orig )) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _lines=$(( _lines + 1 ))
+        (( _lines <= 128 )) || return 1
+        local _notabs="${_line//$TAB/}"
+        if [[ "$_kind" == 'history' ]]; then
+            [[ "$(( ${#_line} - ${#_notabs} ))" -eq 3 ]] || return 1
+            IFS="$TAB" read -r _v _listen _epoch _impl _rest <<< "$_line" || return 1
+            [[ -z "${_rest:-}" ]] || return 1
+        elif [[ "$_kind" == 'pending' ]]; then
+            [[ "$(( ${#_line} - ${#_notabs} ))" -eq 5 ]] || return 1
+            IFS="$TAB" read -r _v _listen _epoch _impl _txid _pre _rest <<< "$_line" || return 1
+            [[ -z "${_rest:-}" ]] || return 1
+            [[ "$_txid" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+            [[ "$_pre" =~ ^[01]{4}$ ]] || return 1
+        else
+            return 1
+        fi
+        [[ "$_v" == 'v1' ]] || return 1
+        [[ "$_impl" == 'official' ]] || return 1
+        [[ "$_epoch" =~ ^[0-9]+$ ]] && (( 10#$_epoch > 0 )) || return 1
+        _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+        (( _HY2HOP_HOP == 1 )) || return 1
+    done < "$_f"
+    return 0
+}
+
+# Print the validated unique listen values of the history file at $1,
+# one per line (dedup by exact listen string; two inputs that derive
+# the same name are never merged). rc 0 = loaded (possibly empty),
+# 1 = unusable, 2 = file absent.
+_hy2hop_history_load_file() {
+    local _f="${1:-}"
+    [[ -n "$_f" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 2
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" history || return 1
+    awk -F'\t' '!seen[$2]++ { print $2 }' "$_f" 2>/dev/null || return 1
+    return 0
+}
+
+# Load the live history file (see _hy2hop_history_load_file).
+_hy2hop_history_load() {
+    _hy2hop_history_load_file "${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+}
+
+# Print the validated pending rows of the live pending file, one per
+# line as listen<TAB>txid<TAB>premask. rc 0 = loaded (possibly empty),
+# 1 = unusable, 2 = file absent.
+_hy2hop_pending_load() {
+    local _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 2
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" pending || return 1
+    awk -F'\t' '{ print $2 "\t" $5 "\t" $6 }' "$_f" 2>/dev/null || return 1
+    return 0
+}
+
+# Atomically publish $1 (source file holding the new content) as $2,
+# root:root 0600, same-dir staging + fsync + rename (install_file_atomically).
+# An existing destination is trust-checked first; a symlink, directory
+# or hardlinked destination fails closed. rc 0 = published, 1 = failed.
+_hy2hop_ledger_publish() {
+    local _src="${1:-}" _dest="${2:-}"
+    [[ -n "$_src" && -n "$_dest" ]] || return 1
+    [[ -f "$_src" && ! -L "$_src" ]] || return 1
+    if [[ -e "$_dest" || -L "$_dest" ]]; then
+        _hy2hop_ledger_trust_check "$_dest" || return 1
+    fi
+    install_file_atomically "$_src" "$_dest" 600
+}
+
+# Record one CONFIRMED identity row. $1 listen, $2 txid (optional:
+# when given, pending rows for the same listen are dropped as
+# superseded by the confirmed row). Caller must hold the history lock.
+# Appends the row (replacing any row for the same exact listen with the
+# newest epoch); refuses the 129th distinct identity and any write that
+# would exceed 64 KiB. The history row is published BEFORE the pending
+# row is dropped, so a crash between the two leaves both -- cleanup
+# processes history first and drops the stale pending row afterwards.
+# rc 0 = recorded, 1 = failed (nothing published, or history published
+# but the pending drop failed -- the caller must still fail: the
+# pending row stays as a recovery clue for the next cleanup).
+_hy2hop_record_unlocked() {
+    local _listen="${1:-}" _txid="${2:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    local _now=0 _tmp='' _line='' _v='' _l='' _e='' _i='' _rest='' _size=0
+    local -a _rows=()
+    local -A _seen=()
+    [[ -n "$_listen" ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] && (( 10#$_now > 0 )) || return 1
+    if [[ -e "$_f" || -L "$_f" ]]; then
+        _hy2hop_ledger_trust_check "$_f" || return 1
+        _hy2hop_ledger_rows_valid "$_f" history || return 1
+        mapfile -t _rows < "$_f" || return 1
+    fi
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || return 1
+        [[ -z "${_seen[$_l]:-}" ]] && _seen["$_l"]=1
+    done
+    if [[ -z "${_seen[$_listen]:-}" ]]; then
+        (( ${#_seen[@]} < 128 )) || return 1
+    fi
+    _tmp=$(mktemp) || return 1
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    done
+    printf 'v1\t%s\t%s\tofficial\n' "$_listen" "$_now" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    _size=$(wc -c < "$_tmp" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || { rm -f -- "$_tmp"; return 1; }
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    if [[ -n "$_txid" ]]; then
+        _hy2hop_pending_drop_unlocked "$_listen" || return 1
+    fi
+    return 0
+}
+
+# Record one confirmed hop identity (locked wrapper around
+# _hy2hop_record_unlocked). $1 listen, $2 txid (optional, see above).
+record_hy2_hop_identity() {
+    local _rc=0
+    _hy2hop_history_lock || return 1
+    _hy2hop_record_unlocked "${1:-}" "${2:-}"; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
+}
+
+# Write one pending row. $1 listen, $2 txid, $3 premask (see the file
+# header). Caller must hold the history lock. Same capacity/size caps
+# as the history file; the 129th distinct identity is refused BEFORE
+# any rule is built. rc 0 = written, 1 = failed.
+_hy2hop_pending_write_unlocked() {
+    local _listen="${1:-}" _txid="${2:-}" _pre="${3:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    local _now=0 _tmp='' _line='' _v='' _l='' _e='' _i='' _tx='' _pr='' _rest='' _size=0
+    local -a _rows=()
+    local -A _seen=()
+    [[ -n "$_listen" && -n "$_txid" && -n "$_pre" ]] || return 1
+    [[ "$_txid" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    [[ "$_pre" =~ ^[01]{4}$ ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] && (( 10#$_now > 0 )) || return 1
+    if [[ -e "$_f" || -L "$_f" ]]; then
+        _hy2hop_ledger_trust_check "$_f" || return 1
+        _hy2hop_ledger_rows_valid "$_f" pending || return 1
+        mapfile -t _rows < "$_f" || return 1
+    fi
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pr _rest <<< "$_line" || return 1
+        [[ -z "${_seen[$_l]:-}" ]] && _seen["$_l"]=1
+    done
+    if [[ -z "${_seen[$_listen]:-}" ]]; then
+        (( ${#_seen[@]} < 128 )) || return 1
+    fi
+    _tmp=$(mktemp) || return 1
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pr _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    done
+    printf 'v1\t%s\t%s\tofficial\t%s\t%s\n' "$_listen" "$_now" "$_txid" "$_pre" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    _size=$(wc -c < "$_tmp" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || { rm -f -- "$_tmp"; return 1; }
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Write one pending hop identity row (locked wrapper around
+# _hy2hop_pending_write_unlocked). $1 listen, $2 txid, $3 premask.
+record_hy2_hop_pending() {
+    local _rc=0
+    _hy2hop_history_lock || return 1
+    _hy2hop_pending_write_unlocked "${1:-}" "${2:-}" "${3:-}"; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
+}
+
+# Drop every pending row for $1 (listen). Caller must hold the history
+# lock. A file left with no rows is unlinked (absent = no record).
+# rc 0 = dropped (or nothing to drop), 1 = failed.
+_hy2hop_pending_drop_unlocked() {
+    local _listen="${1:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    local _tmp='' _line='' _v='' _l='' _e='' _i='' _tx='' _pre='' _rest='' _kept=0
+    [[ -n "$_listen" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 0
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" pending || return 1
+    _tmp=$(mktemp) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pre _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+        _kept=1
+    done < "$_f"
+    if (( _kept == 0 )); then
+        rm -f -- "$_tmp" || true
+        rm -f -- "$_f" || return 1
+        return 0
+    fi
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Retire (delete) the history row for $1 (listen). Caller must hold the
+# history lock, and must call this ONLY after every object of that
+# identity was negative-verified absent. A file left with no rows is
+# unlinked. A missing row/file is a no-op success (idempotent retry).
+# rc 0 = retired (or already gone), 1 = failed -- the row stays so the
+# next cleanup can retry the retire.
+_hy2hop_history_retire_unlocked() {
+    local _listen="${1:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    local _tmp='' _line='' _v='' _l='' _e='' _i='' _rest='' _kept=0 _found=0
+    [[ -n "$_listen" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 0
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" history || return 1
+    _tmp=$(mktemp) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        if [[ "$_l" == "$_listen" ]]; then _found=1; continue; fi
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+        _kept=1
+    done < "$_f"
+    (( _found == 1 )) || { rm -f -- "$_tmp"; return 0; }
+    if (( _kept == 0 )); then
+        rm -f -- "$_tmp" || true
+        rm -f -- "$_f" || return 1
+        return 0
+    fi
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Pre-existence mask for the CURRENT _HY2HOP_* identity: 4 chars 0/1
+# (nft-ip, nft-ip6, iptables, ip6tables) recording whether each object
+# already exists right now. Printed on stdout. rc 0 = mask printed,
+# 1 = a backend could not be inspected (fail closed: the pending row
+# must not be written without a proven pre-state). A missing backend
+# binary means absent: that backend could not have built rules on
+# this host. Uses the LIVE naming formula (the pending row is written
+# by the current deploy, under the current formula).
+_hy2hop_pending_premask() {
+    local _ruleset='' _ok=0 _listing='' _src=0 _st='' _fam='' _bin='' _tbl='' _chain=''
+    local -a _b=(0 0 0 0)
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ok=1 || return 1
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_nft_table "$_fam") || return 1
+            _st=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            (( _src == 0 )) || return 1
+            if [[ "$_st" != absent ]]; then
+                case "$_fam" in ip) _b[0]=1 ;; ip6) _b[1]=1 ;; esac
+            fi
+        done
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        case "$_src" in
+            0) ;;
+            1) continue ;;
+            *) return 1 ;;
+        esac
+        _chain=$(_hy2hop_ipt_chain "$_bin") || return 1
+        _st=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        (( _src == 0 )) || return 1
+        if [[ "$_st" != absent ]]; then
+            case "$_bin" in iptables) _b[2]=1 ;; ip6tables) _b[3]=1 ;; esac
+        fi
+    done
+    printf '%s%s%s%s' "${_b[0]}" "${_b[1]}" "${_b[2]}" "${_b[3]}"
+    return 0
+}
+
+# Cheap entry predicate for the cleanup call sites (src/04): rc 0 when
+# the history file or the pending file exists and is non-empty. This is
+# only a gate to ENTER the cleanup; the cleanup itself validates both
+# files strictly, so a corrupt file fails closed there, never here.
+_hy2hop_history_has_entries() {
+    local _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv" _p="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    [[ -s "$_f" || -s "$_p" ]]
+}
+
+# Quiet pre-check for the prune path (src/04): rc 0 only when the
+# hysteria service is confirmed stopped AND no hysteria process is
+# running. Anything else (running, transitional, unqueryable) returns
+# 1 so the caller skips the history-only cleanup instead of failing
+# an unrelated deploy; the helper itself re-verifies strictly when it
+# does run. Prints nothing.
+_hy2hop_service_stopped_quiet() {
+    local _st='' _mp='' _orc=0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _st=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || return 1
+        [[ "$_st" == inactive || "$_st" == failed ]] || return 1
+        _mp=$(systemctl show -p MainPID --value hysteria 2>/dev/null || echo 0)
+        if [[ "$_mp" =~ ^[0-9]+$ ]] && (( _mp > 0 )) && [[ -d /proc/$_mp ]]; then return 1; fi
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-service hysteria status >/dev/null 2>&1; _orc=$?
+        case "$_orc" in 3|16|32) : ;; *) return 1 ;; esac
+    else
+        return 1
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
+    return 0
+}
+
+# Classify the LIVE hop identity without deleting anything. Sets
+# _HY2HOP_* globals exactly as _hy2hop_resolve_identity does when the
+# identity is resolvable, plus _HY2HOP_LIVE_STATE (hop|nohop|gone|bad)
+# and _HY2HOP_LIVE_LISTEN (the exact listen string for the live
+# identity: the config value when config-sourced, :START-END when
+# env-sourced, empty otherwise). Prints nothing; callers message.
+#   hop   = live identity resolved and hopping (rules may exist).
+#   nohop = hop is positively confirmed off (single-port listen, or
+#           .env says off with no config).
+#   gone  = no config file AND no usable .env hop record (live sources
+#           are gone; history alone may still name the instance).
+#   bad   = live sources exist but are unusable: config listen
+#           unparseable, or config/.env positively disagree (GPT Q4a:
+#           history must NOT arbitrate this; cleanup stops, rc=1).
+_hy2hop_live_identity_state() {
+    local _cfg_listen='' _cfg_rc=0 _env_ok=0 _env_off=0 _env_first=0 _env_start=0 _env_end=0
+    _HY2HOP_LIVE_LISTEN=''
+    _HY2HOP_LIVE_STATE='bad'
+    _cfg_listen=$(_hy2hop_read_config_listen 2>/dev/null); _cfg_rc=$?
+    if (( _cfg_rc == 2 )); then
+        _HY2HOP_LIVE_STATE='bad'
+        return 0
+    fi
+    if (( _cfg_rc == 0 )) && ! _hy2hop_parse_listen "$_cfg_listen"; then
+        _HY2HOP_LIVE_STATE='bad'
+        return 0
+    fi
+    if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${HY2_MONITOR_PORT:-}" ]] &&
+       [[ "${HY2_RANGE_START:-}" =~ ^[0-9]+$ && "${HY2_RANGE_END:-}" =~ ^[0-9]+$ && "${HY2_MONITOR_PORT:-}" =~ ^[0-9]+$ ]] &&
+       (( 10#${HY2_RANGE_START} >= 1 && 10#${HY2_RANGE_END} <= 65535 && 10#${HY2_RANGE_START} <= 10#${HY2_RANGE_END} && 10#${HY2_MONITOR_PORT} == 10#${HY2_RANGE_START} )); then
+        _env_ok=1; _env_first=$((10#${HY2_MONITOR_PORT})); _env_start=$((10#${HY2_RANGE_START})); _env_end=$((10#${HY2_RANGE_END}))
+    fi
+    if [[ -n "${HY2_HOP:-}" && "${HY2_HOP:-}" != 'true' ]]; then _env_off=1; fi
+    if (( _cfg_rc == 0 )); then
+        _HY2HOP_LIVE_LISTEN="$_cfg_listen"
+        if (( _env_ok == 1 )); then
+            if (( _env_first != _HY2HOP_FIRST || _env_start != _HY2HOP_START || _env_end != _HY2HOP_END )); then
+                _HY2HOP_LIVE_STATE='bad'
+                return 0
+            fi
+            _HY2HOP_SOURCE='both'
+        elif (( _env_off == 1 )); then
+            if (( _HY2HOP_HOP == 1 )); then
+                _HY2HOP_LIVE_STATE='bad'
+                return 0
+            fi
+            _HY2HOP_SOURCE='both'
+        else
+            _HY2HOP_SOURCE='config'
+        fi
+        if (( _HY2HOP_HOP == 1 )); then _HY2HOP_LIVE_STATE='hop'; else _HY2HOP_LIVE_STATE='nohop'; fi
+        return 0
+    fi
+    if (( _env_ok == 1 )); then
+        _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+        _HY2HOP_FIRST="$_env_first"; _HY2HOP_START="$_env_start"; _HY2HOP_END="$_env_end"
+        if (( _env_start == _env_end )); then _HY2HOP_UNION="$_env_start"; else _HY2HOP_UNION="$_env_start-$_env_end"; fi
+        _HY2HOP_HOP=0; (( _env_start < _env_end )) && _HY2HOP_HOP=1
+        _HY2HOP_SOURCE='env'
+        _HY2HOP_LIVE_LISTEN=":${_env_start}-${_env_end}"
+        if (( _HY2HOP_HOP == 1 )); then _HY2HOP_LIVE_STATE='hop'; else _HY2HOP_LIVE_STATE='nohop'; fi
+        return 0
+    fi
+    if (( _env_off == 1 )); then
+        _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+        _HY2HOP_FIRST=''; _HY2HOP_START=''; _HY2HOP_END=''; _HY2HOP_UNION=''; _HY2HOP_HOP=0
+        _HY2HOP_SOURCE='env'
+        _HY2HOP_LIVE_LISTEN=''
+        _HY2HOP_LIVE_STATE='nohop'
+        return 0
+    fi
+    _HY2HOP_LIVE_STATE='gone'
+    return 0
+}
+
+# Presence probe for ONE identity ($1 listen, $2 v1 flag 0|1).
+# rc 0 = every object of this identity is absent; 1 = at least one is
+# present; 2 = a backend could not be inspected, or the listen does
+# not parse (unknown -- never read as absent).
+_hy2hop_identity_objects_absent() {
+    local _listen="${1:-}" _v1="${2:-0}" _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0 _listing='' _listing_ok=0 _listing_missing=0
+    local _present=0
+    [[ -n "$_listen" ]] || return 2
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 2
+    (( _HY2HOP_HOP == 1 )) || return 0
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || return 2
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            (( _src == 0 )) || return 2
+            [[ "$_status" == absent ]] || _present=1
+        done
+    elif (( _ruleset_missing == 0 )); then
+        return 2
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        _listing=''; _listing_ok=0; _listing_missing=0
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        case "$_src" in
+            0) _listing_ok=1 ;;
+            1) _listing_missing=1 ;;
+            *) return 2 ;;
+        esac
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || return 2
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        (( _src == 0 )) || return 2
+        [[ "$_status" == absent ]] || _present=1
+    done
+    (( _present == 0 ))
+}
+
+# Clean the hop objects of ONE identity ($1 listen, $2 v1 flag 0|1).
+# This is the L3 step 2-5 pipeline (fetch listings once, judge + delete
+# per object through the content gate, then negative-verify every
+# object), generalized from "the current identity" to any identity.
+# rc 0 = every object of this identity is absent now (deleted or
+# already absent); rc 1 = a deletion failed, an object refused
+# (mismatch), or a backend could not be inspected. Never touches any
+# other identity's objects. A no-hop identity is a no-op success.
+_hy2hop_cleanup_identity() {
+    local _listen="${1:-}" _v1="${2:-0}" _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
+    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
+    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
+    local _listing='' _listing_ok=0 _listing_missing=0
+    [[ -n "$_listen" ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 0
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables)
+                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
+                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
+                ;;
+            ip6tables)
+                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
+                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
+                ;;
+        esac
+    done
+    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
+        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
+        _failed=1
+    fi
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            if (( _src != 0 )); then
+                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
+            fi
+            case "$_status" in
+                absent) : ;;
+                match|empty)
+                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
+                    ;;
+                mismatch)
+                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
+                    _failed=1
+                    ;;
+            esac
+        done
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        if (( _listing_ok == 0 && _listing_missing == 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
+            _failed=1; continue
+        fi
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        case "$_status" in
+            absent) : ;;
+            match|empty|dangling)
+                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
+                ;;
+            mismatch)
+                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
+                _failed=1
+                ;;
+        esac
+    done
+    if (( _ruleset_missing == 0 )); then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+        if (( _ruleset_ok == 1 )); then
+            for _fam in $(_hy2hop_nft_families); do
+                _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || { _failed=1; continue; }
+                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+                if (( _src != 0 )); then
+                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+                fi
+                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+            done
+        else
+            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
+        fi
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        if (( _src != 0 )); then
+            if (( _src == 1 )); then continue; fi
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || { _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+    done
+    (( _failed == 0 ))
+}
+
+# Reclaim the official-hop NAT rules of the hysteria instances named by
+# the live identity AND the hop ledger (locked body of
+# remove_hy2_official_hop_rules; the caller must hold the history lock).
+# rc 0 = every named instance's hop objects are gone (deleted or
+# already absent; suspected leftovers of unknown ownership are only
 # reported); rc 1 = cleanup incomplete / unverifiable / refused.
 # Every failure prints its specific reason plus the summary line
 # "service is stopped, rule cleanup did not complete" -- never
 # "stop failed". Must run with the service stopped and no residual
 # process (verified again here), and BEFORE the unit, config and
 # credentials are deleted, so a failure is retryable.
-remove_hy2_official_hop_rules() {
+#
+# Identity-set semantics (F1 / GPT defect 2 -- NOT a single rc):
+#   live hop   -> clean the live identity (live formula) PLUS every
+#                 history identity (v1 formula), deduplicated.
+#   live nohop -> hop is confirmed off, but history is still traversed.
+#   live gone  -> live sources are gone; with a trusted history, clean
+#                 the history identities alone; all verified absent
+#                 means success for the known set. With neither live
+#                 sources nor history, keep the L3 unknown failure.
+#   live bad   -> unparseable config or config/.env conflict: stop
+#                 (GPT Q4a), zero deletions, history is never used as
+#                 a tiebreaker.
+# Ledger validation runs BEFORE any deletion (GPT Q3): a corrupt
+# history or pending file is rc=1 with zero deletions. Pending rows
+# are handled after the confirmed identities (history first): a
+# pending row for an already-cleaned identity is dropped; a
+# pending-only identity is reclaimed only when its premask proves
+# none of its objects pre-existed AND the content gate passes;
+# otherwise it is kept and reported, and the cleanup fails.
+_remove_hy2_official_hop_rules_locked() {
     local _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
     local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
-    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
-    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
     local _listing='' _listing_ok=0 _listing_missing=0
     local _st='' _mp='' _orc=0 _suspects='' _s='' _own_tbl='' _own_chain=''
+    local _live_state='' _hist_out='' _hist_rc=0 _pend_out='' _pend_rc=0
+    local _listen='' _v1=0 _txid='' _pre='' _abs_rc=0 _i=0
+    local -a _hist_listens=() _ident_listens=() _ident_v1=()
+    local -A _ident_seen=() _ident_ok=() _hist_seen=()
     # 0. Preconditions: stopped + no residual process. (The caller
     # _remove_hy2_official already verified; the prune path only
     # stop()s, so this guard is load-bearing there. A missing unit
@@ -42234,174 +43854,155 @@ remove_hy2_official_hop_rules() {
     if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then
         msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: a hysteria process is still running.${NC}"; return 1
     fi
-    # 1. Identity.
-    if ! _hy2hop_resolve_identity; then
+    # 1. Validate ALL inputs before deleting anything.
+    _hy2hop_live_identity_state
+    _live_state="${_HY2HOP_LIVE_STATE:-bad}"
+    if [[ "$_live_state" == 'bad' ]]; then
+        _hy2hop_resolve_identity || true
         msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
         return 1
     fi
-    # 2. Fetch listings once. A missing binary means that backend
-    # could not have built rules on this host (same-host deploy
-    # and delete); it is skipped as absent, not failed. A failed
-    # listing is inspection-failed.
+    if [[ "$_live_state" == 'hop' && -z "${_HY2HOP_LIVE_LISTEN:-}" ]]; then
+        _hy2hop_resolve_identity || true
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    _hist_out=$(_hy2hop_history_load 2>/dev/null); _hist_rc=$?
+    if (( _hist_rc == 1 )); then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_corrupt)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if (( _hist_rc == 0 )) && [[ -n "$_hist_out" ]]; then
+        mapfile -t _hist_listens <<< "$_hist_out"
+    fi
+    _pend_out=$(_hy2hop_pending_load 2>/dev/null); _pend_rc=$?
+    if (( _pend_rc == 1 )); then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_corrupt)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if [[ "$_live_state" == 'gone' && ${#_hist_listens[@]} -eq 0 && -z "$_pend_out" ]]; then
+        _hy2hop_resolve_identity || true
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if [[ "$_live_state" == 'hop' ]]; then
+        _ident_listens+=("$_HY2HOP_LIVE_LISTEN"); _ident_v1+=(0)
+        _ident_seen["$_HY2HOP_LIVE_LISTEN"]=1
+    fi
+    for _listen in "${_hist_listens[@]}"; do
+        [[ -n "$_listen" ]] || continue
+        # F1 (2026-11-28, fixture-caught): dedup history rows ONLY
+        # against other history rows, never against the live listen.
+        # The live entry (v1=0) cleans with the live formula and never
+        # retires a row, so a history row whose string equals the live
+        # listen would otherwise never be retired while the instance
+        # is live, even after its objects were negative-verified
+        # absent. The second pass is idempotent (objects already
+        # absent) and retires the row.
+        if [[ -z "${_hist_seen[$_listen]:-}" ]]; then
+            _ident_listens+=("$_listen"); _ident_v1+=(1); _hist_seen["$_listen"]=1; _ident_seen["$_listen"]=1
+        fi
+    done
+    if { [[ "$_live_state" == 'gone' ]] || [[ "$_live_state" == 'nohop' ]]; } && (( ${#_hist_listens[@]} > 0 )); then
+        msg "${YELLOW}[!] $(tprintf hy2hop_history_only "${#_hist_listens[@]}")${NC}"
+    fi
+    # 2. Clean each identity; retire its history row only after every
+    # object of that identity is negative-verified absent (a failed
+    # identity keeps its row, so the next run can retry it).
+    for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+        _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+        if (( _v1 == 1 )); then
+            msg "$(tprintf hy2hop_history_cleaning "$_listen")"
+        fi
+        if _hy2hop_cleanup_identity "$_listen" "$_v1"; then
+            _ident_ok["$_listen"]=1
+            if (( _v1 == 1 )); then
+                _hy2hop_history_retire_unlocked "$_listen" || _failed=1
+            fi
+        else
+            _ident_ok["$_listen"]=0
+            _failed=1
+        fi
+    done
+    # 3. Pending rows: recovery clues, never an authority on their own.
+    # History identities were handled above; a pending row for one of
+    # them is dropped once that identity is verified clean. A
+    # pending-only identity is reclaimed only when its premask proves
+    # none of its objects pre-existed (0000) and the content gate
+    # passes; otherwise it is kept and reported, and the cleanup fails.
+    if [[ -n "$_pend_out" ]]; then
+        while IFS=$'\t' read -r _listen _txid _pre || [[ -n "$_listen" ]]; do
+            [[ -n "$_listen" ]] || continue
+            if [[ -n "${_ident_seen[$_listen]:-}" ]]; then
+                if [[ "${_ident_ok[$_listen]:-0}" == '1' ]]; then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                fi
+                continue
+            fi
+            if [[ "$_pre" == '0000' ]]; then
+                if _hy2hop_cleanup_identity "$_listen" 0; then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                else
+                    _failed=1
+                fi
+            else
+                _hy2hop_identity_objects_absent "$_listen" 0; _abs_rc=$?
+                if (( _abs_rc == 0 )); then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                elif (( _abs_rc == 1 )); then
+                    msg "${YELLOW}[!] $(tprintf hy2hop_pending_unconfirmed "$_listen")${NC}"
+                    _failed=1
+                else
+                    msg "${YELLOW}[!] Cannot inspect the hop objects of unconfirmed pending identity ${_listen}; left in place.${NC}"
+                    _failed=1
+                fi
+            fi
+        done <<< "$_pend_out"
+    fi
+    # 4. Suspected leftovers: any other hysteria_* table or
+    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
+    # delete it, and never count it as a named instance's residue.
+    # Ownership is the union of every identity cleaned above (live +
+    # history); pending-only identities stay suspects by design.
+    _suspects=''
+    _own_tbl=''; _own_chain=''
     if command -v nft >/dev/null 2>&1; then
         _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
     else
         _ruleset_missing=1
     fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables)
-                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
-                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
-                ;;
-            ip6tables)
-                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
-                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
-                ;;
-        esac
-    done
-    if (( _HY2HOP_HOP == 0 )); then
-        # Confirmed no-hop: nothing of this instance can exist.
-        # Only report anything that looks like a leftover.
-        _suspects=''
-        if (( _ruleset_ok == 1 )); then
-            while IFS= read -r _s || [[ -n "$_s" ]]; do
-                [[ -n "$_s" ]] || continue
-                _suspects+="${_suspects:+, }${_s}"
-            done < <(_hy2hop_list_nft_tables "$_ruleset")
-        fi
-        for _bin in $(_hy2hop_ipt_bins); do
-            case "$_bin" in
-                iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok ;;
-                ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok ;;
-            esac
-            (( _listing_ok == 1 )) || continue
-            while IFS= read -r _s || [[ -n "$_s" ]]; do
-                [[ -n "$_s" ]] || continue
-                _suspects+="${_suspects:+, }${_bin} ${_s}"
-            done < <(_hy2hop_list_ipt_chains "$_listing")
-        done
-        if [[ -n "$_suspects" ]]; then
-            msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
-        fi
-        return 0
-    fi
-    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
-        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
-        _failed=1
-    fi
-    # 3. nft side: judge + delete per table.
-    if (( _ruleset_ok == 1 )); then
-        for _fam in $(_hy2hop_nft_families); do
-            _tbl=$(_hy2hop_nft_table "$_fam") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
-            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
-            if (( _src != 0 )); then
-                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
-            fi
-            case "$_status" in
-                absent) : ;;
-                match|empty)
-                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
-                    ;;
-                mismatch)
-                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
-                    _failed=1
-                    ;;
-            esac
-        done
-    fi
-    # 4. iptables side: judge + delete per chain. Each object is
-    # judged on its own gate: a refused object never blocks the
-    # deletion of an exactly-matching object on the other backend.
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        if (( _listing_ok == 0 && _listing_missing == 0 )); then
-            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
-            _failed=1; continue
-        fi
-        (( _listing_ok == 1 )) || continue
-        _chain=$(_hy2hop_ipt_chain "$_bin") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
-        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
-        if (( _src != 0 )); then
-            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        case "$_status" in
-            absent) : ;;
-            match|empty|dangling)
-                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
-                ;;
-            mismatch)
-                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
-                _failed=1
-                ;;
-        esac
-    done
-    # 5. Negative verification, per object: re-list fresh and
-    # require every expected object to be absent. This catches an
-    # empty chain, a single leftover jump, and one backend clean
-    # while the other still holds residue.
-    if (( _ruleset_missing == 0 )); then
-        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
-        if (( _ruleset_ok == 1 )); then
-            for _fam in $(_hy2hop_nft_families); do
-                _tbl=$(_hy2hop_nft_table "$_fam") || { _failed=1; continue; }
-                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
-                if (( _src != 0 )); then
-                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-                fi
-                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
-            done
-        else
-            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
-        fi
-    fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        (( _listing_missing == 1 )) && continue
-        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
-        if (( _src != 0 )); then
-            if (( _src == 1 )); then continue; fi
-            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        _chain=$(_hy2hop_ipt_chain "$_bin") || { _failed=1; continue; }
-        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
-        if (( _src != 0 )); then
-            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
-    done
-    # 6. Suspected leftovers: any other hysteria_* table or
-    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
-    # delete it, and never count it as this instance's residue.
-    _suspects=''
     if (( _ruleset_ok == 1 )); then
         while IFS= read -r _s || [[ -n "$_s" ]]; do
             [[ -n "$_s" ]] || continue
-            _own_tbl=''
             _fam="${_s%% *}"; _tbl="${_s#* }"
-            _own_tbl=$(_hy2hop_nft_table "$_fam" 2>/dev/null || true)
-            [[ "$_tbl" == "$_own_tbl" ]] && continue
-            _suspects+="${_suspects:+, }${_fam} ${_tbl}"
+            _own_tbl=''
+            for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+                _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+                _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || continue
+                _own_tbl=$(_hy2hop_table_name "$_fam" "$_v1" 2>/dev/null || true)
+                [[ "$_tbl" == "$_own_tbl" ]] && break
+                _own_tbl=''
+            done
+            [[ -n "$_own_tbl" ]] && continue
+            _suspects+="${_suspects:+, }${_s}"
         done < <(_hy2hop_list_nft_tables "$_ruleset")
     fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        (( _listing_missing == 1 )) && continue
+    for _bin in iptables ip6tables; do
         _listing=$(_hy2hop_fetch_ipt_listing "$_bin" 2>/dev/null); _src=$?
         (( _src == 0 )) || continue
-        _own_chain=$(_hy2hop_ipt_chain "$_bin" 2>/dev/null || true)
         while IFS= read -r _s || [[ -n "$_s" ]]; do
             [[ -n "$_s" ]] || continue
-            [[ "$_s" == "$_own_chain" ]] && continue
+            _own_chain=''
+            for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+                _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+                _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || continue
+                _own_chain=$(_hy2hop_chain_name "$_bin" "$_v1" 2>/dev/null || true)
+                [[ "$_s" == "$_own_chain" ]] && break
+                _own_chain=''
+            done
+            [[ -n "$_own_chain" ]] && continue
             _suspects+="${_suspects:+, }${_bin} ${_s}"
         done < <(_hy2hop_list_ipt_chains "$_listing")
     done
@@ -42413,6 +44014,22 @@ remove_hy2_official_hop_rules() {
         return 1
     fi
     return 0
+}
+
+# Reclaim the official-hop NAT rules of the hysteria instances named by
+# the live identity and the hop ledger (see
+# _remove_hy2_official_hop_rules_locked). The whole run -- read,
+# delete, negative verification, row retire -- holds the ledger lock.
+remove_hy2_official_hop_rules() {
+    local _rc=0
+    if ! _hy2hop_history_lock; then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_lock_failed)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    _remove_hy2_official_hop_rules_locked; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
 }
 
 # M-12(1): enumerate "proto/port" lines for the given inbound tags in a
@@ -42871,10 +44488,81 @@ _removed_tags_absent_from_config() { # $1 = cfg, rest = tags
     return 0
 }
 
+# F4 (2026-11-28): manifest rows _remove_hy2_official deletes files
+# for: the unit file plus every recorded hysteria path under
+# /etc/hysteria. Prints one path per line. The binary row is never
+# listed: the binary survives (cores are kept by design) and its row
+# is the proof a later redeploy / orphan check needs
+# (core_binary_managed_registered). A missing/unreadable manifest
+# prints nothing (the caller treats that as "nothing to drop").
+_hy2_manifest_doomed_paths() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _u1='' _u2=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _u1='/etc/systemd/system/hysteria.service';
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then _u1='/etc/init.d/hysteria'; _u2='/etc/conf.d/hysteria'; fi
+    [[ -n "$_u1" ]] && printf '%s\n' "$_u1"
+    [[ -n "$_u2" ]] && printf '%s\n' "$_u2"
+    awk -F'\t' '$2=="hysteria" && ($3=="/etc/hysteria" || index($3, "/etc/hysteria/")==1) {print $3}' "$_mf" 2>/dev/null || true
+    return 0
+}
+
+# F4: true only when the manifest holds no hysteria row outside the
+# set {surviving binary} ∪ {rows _remove_hy2_official deletes}.
+# A missing/unreadable manifest is unprovable and returns 1 (fail
+# closed); a row for any other path refuses as well.
+_hy2_manifest_only_binary_or_doomed() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _u1='' _u2=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _u1='/etc/systemd/system/hysteria.service';
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then _u1='/etc/init.d/hysteria'; _u2='/etc/conf.d/hysteria'; fi
+    awk -F'\t' -v u1="$_u1" -v u2="$_u2" '$2=="hysteria" && $3!="/usr/local/bin/hysteria" && $3!="/etc/hysteria" && index($3, "/etc/hysteria/")!=1 && $3!=u1 && $3!=u2 {found=1; exit} END {exit found+0}' "$_mf" 2>/dev/null
+}
+
+# F4: the surviving binary is ours only when the manifest records it
+# (row present, regular file) or when it is absent altogether. A
+# present but unrecorded binary is foreign residue. A
+# missing/unreadable manifest cannot prove anything (fail closed).
+# The row's hash is deliberately not re-checked here: this branch
+# deletes nothing but already-absent paths and links, and a
+# redeploy re-records the binary with its live hash.
+_hy2_binary_residue_is_ours() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    if [[ ! -e /usr/local/bin/hysteria && ! -L /usr/local/bin/hysteria ]]; then return 0; fi
+    [[ -f /usr/local/bin/hysteria && ! -L /usr/local/bin/hysteria ]] || return 1
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    awk -F'\t' '$2=="hysteria" && $3=="/usr/local/bin/hysteria" {found=1; exit} END {exit !found+0}' "$_mf" 2>/dev/null
+}
+
 _remove_hy2_official() {
     # Destructive: only ever remove a hysteria install whose service
     # unit is A-Box-managed. A foreign official install shares the
     # same name and paths and must not be deleted by name alone.
+    # F4 (2026-11-28): idempotent repeat (and self-heal for rows a
+    # pre-fix uninstall leaked). A second uninstall finds no unit and
+    # no config dir; when the manifest holds nothing beyond the
+    # surviving binary row and the rows this uninstall deletes, there
+    # is nothing left to uninstall: drop any such stale rows, remove
+    # leftover links, return 0. The binary must either be recorded
+    # (row present, regular file) or absent; a binary with no manifest
+    # row is foreign residue and falls through to the refusal below,
+    # as does a missing/unreadable manifest (fail closed).
+    local _hy2_gone=0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        [[ ! -e /etc/systemd/system/hysteria.service && ! -L /etc/systemd/system/hysteria.service ]] && _hy2_gone=1
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        [[ ! -e /etc/init.d/hysteria && ! -L /etc/init.d/hysteria && ! -e /etc/conf.d/hysteria && ! -L /etc/conf.d/hysteria ]] && _hy2_gone=1
+    fi
+    if (( _hy2_gone == 1 )) && [[ ! -e /etc/hysteria && ! -L /etc/hysteria ]] \
+        && _hy2_manifest_only_binary_or_doomed && _hy2_binary_residue_is_ours; then
+        # Both helpers are best-effort here: nothing destructive
+        # remains in this state, so a drop failure must not turn a
+        # completed uninstall into a reported failure.
+        local -a _hy2_stale=()
+        mapfile -t _hy2_stale < <(_hy2_manifest_doomed_paths) || true
+        (( ${#_hy2_stale[@]} > 0 )) && _manifest_drop_paths "${_hy2_stale[@]}" || true
+        rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+        return 0
+    fi
     if ! abox_owns_service hysteria; then
         msg "${YELLOW}[!] $(tr_msg hy2_skip_foreign)${NC}"
         return 1
@@ -42918,6 +44606,16 @@ _remove_hy2_official() {
     # (cleanup-first ordering is the retry mechanism; no persisted
     # cleanup record is needed). Never report this as a stop failure.
     remove_hy2_official_hop_rules || return 1
+    # F4 (2026-11-28): collect the manifest rows this uninstall is
+    # about to orphan, BEFORE deleting anything (the TUIC/L4-cert
+    # contract: only rows for paths this uninstall actually deletes).
+    # The binary row is deliberately NOT collected: the binary
+    # survives (cores are kept by design) and its row is the proof a
+    # later redeploy / orphan check needs. A missing/unreadable
+    # manifest simply collects nothing; the drop below is
+    # best-effort.
+    local -a _hy2_manifest_doomed=()
+    mapfile -t _hy2_manifest_doomed < <(_hy2_manifest_doomed_paths) || true
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service || return 1
@@ -42934,6 +44632,18 @@ _remove_hy2_official() {
     hy2_hop_xtables_lock_revoke || return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+    # F4 (2026-11-28): the files above are gone; their manifest rows
+    # must go with them (the L4 observation: 6 rows survived the
+    # uninstall). Only the collected rows are dropped, so the
+    # surviving binary row stays. Best-effort (rc 0, same contract as
+    # the TUIC/L4-cert call sites): the deletion already happened, and
+    # a stale row is low-severity drift that must never turn a
+    # completed uninstall into a reported failure -- and a failure
+    # here must not leave the uninstall un-retryable (the ownership
+    # guard would refuse the retry as foreign). The no-op branch at
+    # the top of this function heals any rows a pre-fix uninstall
+    # already leaked.
+    (( ${#_hy2_manifest_doomed[@]} > 0 )) && _manifest_drop_paths "${_hy2_manifest_doomed[@]}" || true
     # R38-M1: propagate a failed registry removal (the caller
     # reports the Hy2 removal as failed); the old unconditional
     # `return 0` reported a surviving credential registry as deleted.
@@ -57242,7 +58952,7 @@ def allowed(n):
  if n.startswith(prefix):
   rel=n[len(prefix):]
   if '/' in rel or not rel: return False
-  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
+  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.hy2-hop-history.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
   return rel in exact or rel.startswith('.deps.v')
  return any(n==x or n.startswith(x+'/') for x in allowed_prefixes if x!='root/etc/ddr')
 try: tf=tarfile.open(fn,'r:gz')
@@ -58011,8 +59721,12 @@ assert_restore_shortcut_safe() {
 }
 
 abox_restore_preserved_name() {
+    # F1 (2026-11-28): .hy2-hop-history.tsv is preserved, never cleared
+    # and never overwritten by a backup's copy (see
+    # _hy2hop_restore_handle_history): the live ledger outlives every
+    # restore, and a backup without the file must not clear it.
     case "$1" in
-        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|.hy2-hop-history.tsv|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -58253,6 +59967,14 @@ restore_abox_directory() {
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        # F1 (2026-11-28): a hop-pending file or hop-ledger lock file
+        # must never land on live from a backup, even if an archive
+        # somehow contains one (pending rows are transaction clues
+        # tied to the source host's deploy attempt, not ledger rows;
+        # the lock file is recreated on demand). The live ledger
+        # itself is a preserved name above, so it is neither cleared
+        # nor overwritten here.
+        case "$base" in .hy2-hop-pending.tsv|.hy2-hop-history.lock) continue ;; esac
         [[ ! -L "$child" ]] || return 1
         cp -a -- "$child" "$ABOX_DIR/" || return 1
     done
@@ -59073,6 +60795,7 @@ backup_current_config() {
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
                 --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' --exclude='./.tz-snap.*' --exclude='./.tz-rollback-new.*' --exclude='./.tune-backup-new.*' --exclude='./.deps.v*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
+                --exclude='./.hy2-hop-pending.tsv' --exclude='./.hy2-hop-history.lock' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
                 --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
@@ -59463,6 +61186,49 @@ restore_preserved_latest_firewall() {
     return 0
 }
 
+# F1 (2026-11-28): hop-ledger handling at restore time. The backup's
+# ledger is a DIAGNOSTIC CLUE ONLY: it is never merged into the live
+# ledger (GPT defect 3 -- an old backup cannot prove a row was not
+# already retired on this host, and a bare epoch cannot prove
+# same-ledger provenance; automatic union would need a verifiable
+# ledger generation + retirement record, which this ledger does not
+# carry). The live ledger is a preserved name, so
+# clear_abox_runtime_for_restore keeps it and restore_abox_directory
+# never copies the backup's copy over it; a backup without a ledger
+# file likewise never clears the live ledger. After the restored
+# services are started, the actually-running official-hop instance is
+# verified and re-recorded, so the ledger reflects what this restore
+# really started. Best-effort: never fails the restore.
+_hy2hop_restore_handle_history() {
+    local _root="${1:-}" _staged='' _out='' _rc=0 _n=0 _state=''
+    [[ -n "$_root" ]] || return 0
+    _staged="$_root${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    if [[ -e "$_staged" || -L "$_staged" ]]; then
+        _out=$(_hy2hop_history_load_file "$_staged" 2>/dev/null); _rc=$?
+        if (( _rc == 0 )); then
+            _n=0
+            if [[ -n "$_out" ]]; then _n=$(printf '%s\n' "$_out" | wc -l | tr -d ' '); fi
+            msg "$(tprintf hy2hop_restore_history_noted "$_n")"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_restore_history_bad)${NC}"
+        fi
+    fi
+    if abox_owns_service hysteria && [[ "${HY2_HOP:-}" == 'true' && "${HY2_HOP_IMPL:-none}" == 'official' ]]; then
+        _state=$(managed_service_state_value hysteria 2>/dev/null || true)
+        case "$_state" in
+            hysteria\|1\|*)
+                _hy2hop_live_identity_state
+                if [[ "${_HY2HOP_LIVE_STATE:-}" == 'hop' && -n "${_HY2HOP_LIVE_LISTEN:-}" ]] && hysteria_official_hop_firewall_ok "$_HY2HOP_START" "$_HY2HOP_END" "$_HY2HOP_FIRST"; then
+                    record_hy2_hop_identity "$_HY2HOP_LIVE_LISTEN" || msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                else
+                    msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                fi
+                ;;
+        esac
+    fi
+    return 0
+}
+
 restore_latest_backup_silent() {
     local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" key_file="${3:-}" work root backend mode=all srv
     [[ -d "$backup_dir" ]] || { msg "restore gate failed: backup-dir" >&2; return 1; }
@@ -59564,6 +61330,9 @@ PY_LATEST_BACKUP
     save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw (work preserved at $work)" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload (work preserved at $work)" >&2; return 1; }; fi
     restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state (work preserved at $work)" >&2; return 1; }
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
@@ -59756,6 +61525,9 @@ PY_RB_ENUM
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     # M-18 (supplement): a restored hopping hysteria on a host without
     # nft needs the grant script, which old backups never contained;
     # without it the service starts but the hop rules are never built,
@@ -71141,13 +72913,33 @@ core_upgrade_rollback_backup_valid() {
 }
 
 core_upgrade_transaction_rollback() {
-    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || return 0
+    # F3: signal critical section (same mechanism as src/07, scope
+    # limited to this critical section; abort records and staged
+    # resume stay out of src/13 per GPT Q6). Mark the section FIRST,
+    # before the ACTIVE check, so a second signal arriving anywhere
+    # in this function finds the flag set and only records a pending
+    # request instead of re-entering a handler or killing the
+    # rollback. Every caller of this rollback terminates afterwards
+    # (signal abort, EXIT guard, die hook, attempt runner), so a
+    # pending request needs no separate exit here; it is honoured by
+    # the caller's own exit.
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || { ABOX_CORE_TX_IN_ROLLBACK=0; return 0; }
     local backup="${ABOX_CORE_UPGRADE_BACKUP:-}" targets="${ABOX_CORE_UPGRADE_TARGETS:-}" srv core_tmp="${ABOX_CORE_UPGRADE_TMP:-}"
     # Disable recursive EXIT handling but retain backup/target/temp context until
     # the prior snapshot is actually restored and verified.
     ABOX_CORE_UPGRADE_ACTIVE=0
     ABOX_DIE_HOOK=''
     restore_core_upgrade_transaction_traps
+    # The restore above returns traps to their pre-transaction state,
+    # which would let a second signal kill the rollback (default
+    # disposition) or re-enter a handler. Re-arm the recording traps
+    # immediately: further INT/TERM/HUP only record a pending request
+    # (see _core_tx_record_terminate_request) for the rest of the
+    # rollback. This is the ignore the GPT Q3 verdict prescribes
+    # (`trap ''`, not `trap -`); the recording form additionally
+    # retains the first pending request instead of dropping it.
+    _core_tx_arm_rollback_critical_section
     msg "${YELLOW}[!] Core upgrade failed or was interrupted; restoring the exact pre-upgrade snapshot.${NC}"
     # R5C16-03: verify the restore archive BEFORE any destructive step.
     # A missing or invalid backup must abort here, not after services
@@ -71210,6 +73002,15 @@ core_upgrade_transaction_signal_abort() {
     local sig="$1" code=130
     [[ "$sig" == TERM ]] && code=143
     [[ "$sig" == HUP ]] && code=129
+    # F3: a second signal during an in-flight rollback only records
+    # a pending request (the first abort already owns the rollback
+    # and will exit with its own first code); it must not re-enter
+    # this handler and run a second rollback.
+    if [[ "${ABOX_CORE_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _core_tx_record_terminate_request "$sig" "$code"
+        return 0
+    fi
+    ABOX_CORE_TX_IN_ROLLBACK=1
     core_upgrade_transaction_rollback
     exit "$code"
 }
@@ -71218,6 +73019,30 @@ core_upgrade_transaction_exit_guard() {
     local rc="$1"
     if [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then core_upgrade_transaction_rollback; fi
     return "$rc"
+}
+
+# F3: signal critical section for the core-upgrade rollback (src/13
+# counterpart of src/07 _tx_record_terminate_request /
+# _tx_arm_rollback_critical_section; see the src/07 comment block for
+# the full rationale). The traps record the first termination request
+# and ignore the rest while the rollback runs; every rollback caller
+# terminates afterwards, so the pending request is honoured by the
+# caller's own exit and no separate exit is needed here.
+_core_tx_record_terminate_request() {
+    local sig="$1" code="${2:-143}"
+    if [[ -z "${ABOX_CORE_TX_TERMINATE_PENDING_SIG:-}" ]]; then
+        ABOX_CORE_TX_TERMINATE_PENDING_SIG="$sig"
+        ABOX_CORE_TX_TERMINATE_PENDING_CODE="$code"
+    fi
+    return 0
+}
+
+_core_tx_arm_rollback_critical_section() {
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    trap '_core_tx_record_terminate_request HUP 129' HUP
+    trap '_core_tx_record_terminate_request INT 130' INT
+    trap '_core_tx_record_terminate_request TERM 143' TERM
+    return 0
 }
 
 install_core_upgrade_transaction_traps() {
@@ -71233,6 +73058,12 @@ install_core_upgrade_transaction_traps() {
 
 begin_core_upgrade_transaction() {
     ABOX_LAST_BACKUP=''
+    # F3: clear any stale critical-section state from an earlier
+    # upgrade (all rollback callers terminate, so this is hygiene
+    # for a later transaction in the same process).
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     auto_backup_silent 'all-core atomic upgrade' "$ABOX_DIR/backups"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg begin_core_upgrade_transaction_backup_failed)"
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
@@ -71268,6 +73099,9 @@ commit_core_upgrade_transaction() {
     ABOX_CORE_UPGRADE_TARGETS=''
     ABOX_CORE_UPGRADE_TMP=''
     ABOX_DIE_HOOK=''
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     restore_core_upgrade_transaction_traps
 }
 
@@ -75622,6 +77456,17 @@ EOF_W2F1
         _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
+        # F4 (follow-up 20261128): official-hysteria uninstall must
+        # drop the manifest rows for the files it deletes (the L4
+        # observation: 6 rows survived), keep the surviving binary
+        # row, and be an idempotent no-op on repeat. Wiring only --
+        # the end states are proven by fixture-hy2manifest-f4.sh.
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths' || { echo 'FAIL: F4 _remove_hy2_official must drop the manifest rows for the files it deletes'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_doomed_paths' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed manifest rows before deleting'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_only_binary_or_doomed' || { echo 'FAIL: F4 _remove_hy2_official must gate the idempotent repeat on the manifest state'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_binary_residue_is_ours' || { echo 'FAIL: F4 _remove_hy2_official must prove the surviving binary is ours before a no-op repeat'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official 'mapfile -t _hy2_manifest_doomed' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed rows before deleting files'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths "${_hy2_manifest_doomed[@]}"' || { echo 'FAIL: F4 _remove_hy2_official must drop exactly the collected rows after the deletion'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
@@ -75858,6 +77703,8 @@ main_loop() {
         fi
         clear
         _menu_banner
+        # F3 B1: menu-banner orphan report (read-only; never rebuilds).
+        singbox_orphan_banner_report || true
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_info_display

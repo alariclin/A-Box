@@ -3715,13 +3715,33 @@ core_upgrade_rollback_backup_valid() {
 }
 
 core_upgrade_transaction_rollback() {
-    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || return 0
+    # F3: signal critical section (same mechanism as src/07, scope
+    # limited to this critical section; abort records and staged
+    # resume stay out of src/13 per GPT Q6). Mark the section FIRST,
+    # before the ACTIVE check, so a second signal arriving anywhere
+    # in this function finds the flag set and only records a pending
+    # request instead of re-entering a handler or killing the
+    # rollback. Every caller of this rollback terminates afterwards
+    # (signal abort, EXIT guard, die hook, attempt runner), so a
+    # pending request needs no separate exit here; it is honoured by
+    # the caller's own exit.
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || { ABOX_CORE_TX_IN_ROLLBACK=0; return 0; }
     local backup="${ABOX_CORE_UPGRADE_BACKUP:-}" targets="${ABOX_CORE_UPGRADE_TARGETS:-}" srv core_tmp="${ABOX_CORE_UPGRADE_TMP:-}"
     # Disable recursive EXIT handling but retain backup/target/temp context until
     # the prior snapshot is actually restored and verified.
     ABOX_CORE_UPGRADE_ACTIVE=0
     ABOX_DIE_HOOK=''
     restore_core_upgrade_transaction_traps
+    # The restore above returns traps to their pre-transaction state,
+    # which would let a second signal kill the rollback (default
+    # disposition) or re-enter a handler. Re-arm the recording traps
+    # immediately: further INT/TERM/HUP only record a pending request
+    # (see _core_tx_record_terminate_request) for the rest of the
+    # rollback. This is the ignore the GPT Q3 verdict prescribes
+    # (`trap ''`, not `trap -`); the recording form additionally
+    # retains the first pending request instead of dropping it.
+    _core_tx_arm_rollback_critical_section
     msg "${YELLOW}[!] Core upgrade failed or was interrupted; restoring the exact pre-upgrade snapshot.${NC}"
     # R5C16-03: verify the restore archive BEFORE any destructive step.
     # A missing or invalid backup must abort here, not after services
@@ -3784,6 +3804,15 @@ core_upgrade_transaction_signal_abort() {
     local sig="$1" code=130
     [[ "$sig" == TERM ]] && code=143
     [[ "$sig" == HUP ]] && code=129
+    # F3: a second signal during an in-flight rollback only records
+    # a pending request (the first abort already owns the rollback
+    # and will exit with its own first code); it must not re-enter
+    # this handler and run a second rollback.
+    if [[ "${ABOX_CORE_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _core_tx_record_terminate_request "$sig" "$code"
+        return 0
+    fi
+    ABOX_CORE_TX_IN_ROLLBACK=1
     core_upgrade_transaction_rollback
     exit "$code"
 }
@@ -3792,6 +3821,30 @@ core_upgrade_transaction_exit_guard() {
     local rc="$1"
     if [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then core_upgrade_transaction_rollback; fi
     return "$rc"
+}
+
+# F3: signal critical section for the core-upgrade rollback (src/13
+# counterpart of src/07 _tx_record_terminate_request /
+# _tx_arm_rollback_critical_section; see the src/07 comment block for
+# the full rationale). The traps record the first termination request
+# and ignore the rest while the rollback runs; every rollback caller
+# terminates afterwards, so the pending request is honoured by the
+# caller's own exit and no separate exit is needed here.
+_core_tx_record_terminate_request() {
+    local sig="$1" code="${2:-143}"
+    if [[ -z "${ABOX_CORE_TX_TERMINATE_PENDING_SIG:-}" ]]; then
+        ABOX_CORE_TX_TERMINATE_PENDING_SIG="$sig"
+        ABOX_CORE_TX_TERMINATE_PENDING_CODE="$code"
+    fi
+    return 0
+}
+
+_core_tx_arm_rollback_critical_section() {
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    trap '_core_tx_record_terminate_request HUP 129' HUP
+    trap '_core_tx_record_terminate_request INT 130' INT
+    trap '_core_tx_record_terminate_request TERM 143' TERM
+    return 0
 }
 
 install_core_upgrade_transaction_traps() {
@@ -3807,6 +3860,12 @@ install_core_upgrade_transaction_traps() {
 
 begin_core_upgrade_transaction() {
     ABOX_LAST_BACKUP=''
+    # F3: clear any stale critical-section state from an earlier
+    # upgrade (all rollback callers terminate, so this is hygiene
+    # for a later transaction in the same process).
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     auto_backup_silent 'all-core atomic upgrade' "$ABOX_DIR/backups"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg begin_core_upgrade_transaction_backup_failed)"
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
@@ -3842,6 +3901,9 @@ commit_core_upgrade_transaction() {
     ABOX_CORE_UPGRADE_TARGETS=''
     ABOX_CORE_UPGRADE_TMP=''
     ABOX_DIE_HOOK=''
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     restore_core_upgrade_transaction_traps
 }
 

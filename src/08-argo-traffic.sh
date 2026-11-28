@@ -4562,6 +4562,259 @@ EOF_SVC
 }
 
 
+# F3 B1/B2: sing-box orphan detection and rebuild offer.
+#
+# Orphaned deployment (the F3 failure): an SSH disconnect mid
+# menu-6 redeploy left the host with no /etc/sing-box/config.json
+# and every service stopped -- the rollback had aborted at the
+# restore step and nothing told the operator the deployment was
+# gone. The detector below grades the evidence instead of guessing:
+#   rebuild-offerable -- config truly missing, every surviving
+#     family path absent or provably A-Box-owned, .env CORE=singbox
+#     consistent with sing-box ownership rows, intent evidence
+#     (RUNNING desired state or an incomplete-transaction record
+#     whose recovery bundle still exists), and no active operation.
+#   suspect -- config missing and some orphan evidence exists, but
+#     at least one offerable condition fails (foreign or symlinked
+#     surviving path, .env/manifest mismatch, no intent evidence,
+#     service still running). Report only; never offer a rebuild,
+#     never weaken the existing conflict gates.
+#   none -- config present, or no orphan evidence at all (fresh
+#     install), or an active operation is in flight, or the A-Box
+#     home directory is gone (menu 20 complete uninstall).
+# desired-state=RUNNING and the existence of an old backup are only
+# evidence, never authorisation: a rebuild still needs the operator
+# to confirm explicitly in the menu (see
+# singbox_orphan_rebuild_prompt). A rebuild is a FRESH deployment
+# with NEW credentials, never a restoration of the old state.
+# All functions in this block are read-only except the prompt
+# (which only reads an answer) and _f3_preserve_rollback_bundle
+# (which copies the retained bundle to persistent storage).
+
+_f3_manifest_has_family() {
+    # $1 = family name; true when the ownership manifest holds at
+    # least one row for this family (rows are "F|D <tab> srv <tab>
+    # /path <tab> sha256").
+    local _srv="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -q $'^F\t'"$_srv"$'\t' "$_mf" 2>/dev/null || grep -q $'^D\t'"$_srv"$'\t' "$_mf" 2>/dev/null
+}
+
+_f3_manifest_has_path() {
+    # $1 = exact path; true when the manifest holds a row for it.
+    local _path="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -Fq "$(printf '\t%s\t' "$_path")" "$_mf" 2>/dev/null
+}
+
+detect_singbox_orphan_state() {
+    # Prints "orphan-verdict: none|suspect|rebuild-offerable" plus one
+    # "orphan-reason: ..." line per reason. Returns 0 only for
+    # rebuild-offerable. Read-only: writes, deletes and starts nothing.
+    local _cfg='/etc/sing-box/config.json'
+    local _verdict='none' _reasons='' _evidence=0
+    local _env_core='' _desired='' _rb_state='' _rb_tx='' _rb_archive='' _rb_pid='' _p=''
+    # A complete uninstall (menu 20) removes the A-Box home directory
+    # itself; a fresh install has none either. Either way there is no
+    # orphaned deployment to rebuild.
+    if [[ ! -d "${ABOX_DIR:-/root/A-Box}" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: no A-Box home directory (fresh install or complete uninstall)\n'
+        return 1
+    fi
+    # A present config means the deployment is not orphaned (it may be
+    # stopped, but the config to restart it exists).
+    if [[ -e "$_cfg" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: sing-box config present\n'
+        return 1
+    fi
+    # An active operation in flight is not an orphan: do not evaluate
+    # while a transaction, a live rollback, or an uninstall runs.
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then
+        printf 'orphan-verdict: none\norphan-reason: a deployment or upgrade transaction is active in this process\n'
+        return 1
+    fi
+    _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    if [[ -f "$_rb_state" ]]; then
+        _rb_pid=$(grep '^pid: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ "$_rb_pid" =~ ^[0-9]+$ ]] && kill -0 "$_rb_pid" 2>/dev/null; then
+            printf 'orphan-verdict: none\norphan-reason: rollback process %s is still running\n' "$_rb_pid"
+            return 1
+        fi
+    fi
+    local _u
+    for _u in /run/A-Box-uninstall-tx.*; do
+        if [[ -e "$_u" ]]; then
+            printf 'orphan-verdict: none\norphan-reason: an uninstall transaction is in progress (%s)\n' "$_u"
+            return 1
+        fi
+    done
+    # Evidence that a sing-box deployment existed and was expected to
+    # keep running. With none of it, this is a fresh install.
+    _f3_manifest_has_family sing-box && _evidence=1
+    _desired="${ABOX_DESIRED_STATE:-/etc/ddr/.desired_state}"
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _evidence=1; fi
+    if [[ -f "$_rb_state" ]]; then
+        _rb_tx=$(grep '^tx-id: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        _rb_archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _evidence=1; fi
+    fi
+    [[ -L "$_cfg" ]] && _evidence=1
+    if is_service_running sing-box 2>/dev/null; then _evidence=1; fi
+    if (( _evidence == 0 )); then
+        printf 'orphan-verdict: none\norphan-reason: no sing-box deployment evidence (fresh install)\n'
+        return 1
+    fi
+    # Grade the offerable conjunction; every failure downgrades to
+    # suspect with its reason. A dangling config symlink is foreign
+    # residue, never an offerable orphan.
+    if [[ -L "$_cfg" ]]; then
+        _verdict='suspect'; _reasons+='sing-box config path is a dangling symlink; '
+    fi
+    local _foreign=0
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        if [[ -L "$_p" ]]; then
+            _foreign=1; _reasons+="surviving ${_p} is a symlink; "; continue
+        fi
+        if [[ -e "$_p" ]]; then
+            if _f3_manifest_has_path "$_p"; then
+                :
+            else
+                _foreign=1; _reasons+="surviving ${_p} is not recorded as A-Box owned; "
+            fi
+        fi
+    done < <(core_family_paths sing-box 2>/dev/null || true)
+    if (( _foreign == 1 )); then _verdict='suspect'; fi
+    if load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
+        _env_core="${CORE:-}"
+    fi
+    if [[ "$_env_core" != 'singbox' ]]; then
+        _verdict='suspect'; _reasons+="recorded core is '${_env_core:-none}', not singbox; "
+    elif ! _f3_manifest_has_family sing-box; then
+        _verdict='suspect'; _reasons+='recorded core is singbox but no sing-box ownership rows; '
+    fi
+    local _intent=0
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _intent=1; fi
+    if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _intent=1; fi
+    if (( _intent == 0 )); then
+        _verdict='suspect'; _reasons+='no evidence this host should still run sing-box (no RUNNING desired state, no incomplete-transaction record); '
+    fi
+    if is_service_running sing-box 2>/dev/null; then
+        _verdict='suspect'; _reasons+='sing-box service is still running (config missing but process alive); '
+    fi
+    if [[ "$_verdict" == 'suspect' ]]; then
+        printf 'orphan-verdict: suspect\norphan-reason: %s\n' "${_reasons%'; '}"
+        return 1
+    fi
+    printf 'orphan-verdict: rebuild-offerable\norphan-reason: sing-box config missing; surviving paths are A-Box owned; recorded core is singbox with ownership rows; intent evidence present; no active operation\n'
+    return 0
+}
+
+_f3_preserve_rollback_bundle() {
+    # Preserve the retained recovery bundle (pinned archive + .sha256
+    # / .hmac sidecars) in /root/A-Box-backups before a rebuild, so
+    # the rebuild's own begin() backup rotation can never destroy the
+    # last copy of the pre-failure state (the pin itself lives in
+    # /tmp, which a reboot or tmp cleaner may wipe). The separated
+    # key file is never copied. Returns 0 when there was nothing to
+    # preserve or the copy verified; 1 when a bundle exists but could
+    # not be preserved (fail closed: the caller must not rebuild).
+    local _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local _archive='' _dir='' _base='' _dest_dir='/root/A-Box-backups' _f=''
+    [[ -f "$_rb_state" ]] || return 0
+    _archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+    [[ -n "$_archive" && -f "$_archive" ]] || return 0
+    _dir=$(dirname -- "$_archive"); _base=$(basename -- "$_archive")
+    mkdir -p "$_dest_dir" || return 1
+    for _f in "$_dir/$_base" "$_dir/$_base.sha256" "$_dir/$_base.hmac"; do
+        [[ -f "$_f" ]] || continue
+        cp -- "$_f" "$_dest_dir/" || return 1
+    done
+    if [[ -f "$_dest_dir/$_base.sha256" ]]; then
+        backup_checksum_verify "$_dest_dir/$_base" "$_dest_dir/$_base.sha256" || return 1
+    else
+        [[ "$(sha256sum < "$_archive" 2>/dev/null | awk '{print $1}')" == "$(sha256sum < "$_dest_dir/$_base" 2>/dev/null | awk '{print $1}')" ]] || return 1
+    fi
+    msg "Preserved the retained recovery bundle as ${_dest_dir}/${_base} (archive + sidecars)."
+    return 0
+}
+
+singbox_orphan_rebuild_prompt() {
+    # Ask explicitly whether to rebuild the orphaned sing-box
+    # deployment as a fresh ALL deployment. Default NO; EOF / no TTY
+    # refuses (confirm_yes_no); a refusal writes nothing. Returns 0
+    # only on an explicit 'y'/'Y'. $1 = the MODE_IN that was asked
+    # for (VISION or ALL).
+    local _mode_in="$1" _other='' _c
+    for _c in xray hysteria; do
+        if abox_owns_service "$_c" || abox_owns_config_only_core_dir "$_c"; then
+            _other+="$_c "
+        fi
+    done
+    msg "${YELLOW}[!] Orphaned sing-box deployment detected: the sing-box config is gone but this host is recorded as a sing-box deployment that should still be running.${NC}"
+    msg "${YELLOW}[!] A rebuild starts a FRESH sing-box deployment; it does NOT restore the old deployment.${NC}"
+    msg "    - New credentials will be generated; rotate every client config and re-pull the subscription after the rebuild."
+    if [[ "$_mode_in" == 'ALL' ]]; then
+        msg "    - Deploying as: sing-box ALL (as requested, menu 10 path)."
+    else
+        msg "    - Menu 6 asked for VISION only; the rebuild upgrades this run to ALL (menu 10 path), because a partial rebuild cannot restore the other modes."
+    fi
+    if [[ -n "$_other" ]]; then
+        msg "    - Other A-Box stacks present (${_other% }): the rebuild stops managed services and prunes non-preserved stacks, as a normal menu 10 deploy does."
+    else
+        msg "    - No other A-Box stacks are recorded on this host."
+    fi
+    msg "    - The retained recovery bundle (if any) is preserved in /root/A-Box-backups before the rebuild."
+    msg "    - Answering no changes nothing on disk."
+    # confirm_yes_no: a failed read (EOF / no TTY) refuses; only a
+    # successful read of 'y'/'Y' confirms. Default is NO.
+    if confirm_yes_no "Rebuild sing-box as a fresh ALL deployment now? [y/N] "; then
+        return 0
+    fi
+    return 1
+}
+
+_f3_load_rebuild_wizard_defaults() {
+    # Whitelist-read the old .env values (ports/SNI) for the wizard
+    # defaults, only inside the confirmed rebuild branch. Values are
+    # validated at the use site (pre_install_setup /
+    # prompt_reality_sni); missing or invalid values fall back to the
+    # normal wizard. Cleared by _f3_clear_rebuild_wizard_defaults
+    # immediately after pre_install_setup, so no stale default can
+    # leak into a later menu choice in the same process.
+    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || return 0
+    [[ -n "${VLESS_PORT:-}" ]] && ABOX_REBUILD_VLESS_PORT="$VLESS_PORT"
+    [[ -n "${XHTTP_PORT:-}" ]] && ABOX_REBUILD_XHTTP_PORT="$XHTTP_PORT"
+    [[ -n "${HY2_BASE_PORT:-}" ]] && ABOX_REBUILD_HY2_BASE_PORT="$HY2_BASE_PORT"
+    [[ -n "${SS_PORT:-}" ]] && ABOX_REBUILD_SS_PORT="$SS_PORT"
+    if [[ -n "${VISION_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VISION_SNI";
+    elif [[ -n "${VLESS_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VLESS_SNI"; fi
+    export ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+_f3_clear_rebuild_wizard_defaults() {
+    unset ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+singbox_orphan_banner_report() {
+    # Menu-banner orphan report (read-only; never rebuilds). Prints at
+    # most one line, only when the verdict is not none.
+    local _out='' _verdict=''
+    _out=$(detect_singbox_orphan_state 2>/dev/null || true)
+    _verdict=$(printf '%s\n' "$_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+    case "$_verdict" in
+        suspect)
+            msg "${YELLOW}[!] sing-box state looks orphaned (config missing, evidence incomplete). Run menu 6/10 for details; nothing was rebuilt.${NC}"
+            ;;
+        rebuild-offerable)
+            msg "${YELLOW}[!] Orphaned sing-box deployment detected (config missing). Menu 6/10 can rebuild it as a fresh ALL deployment (new credentials).${NC}"
+            ;;
+    esac
+    return 0
+}
+
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
     # G3: Probe -w support for service templates (global compat, not just self-use).
@@ -4574,6 +4827,36 @@ deploy_singbox() {
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
+    # F3 B1/B2: orphan check before any transaction begins (after
+    # light_preflight_check, before residue_takeover_plan /
+    # assert_no_foreign_core_conflicts, so the existing conflict gates
+    # are not weakened). Suspect only reports; offerable asks
+    # explicitly, defaults to NO, and on confirm preserves the
+    # retained bundle, loads the .env wizard defaults, and continues
+    # this same invocation as ALL -- no recursion, no second
+    # transaction, menu 6 never silently becomes ALL without the
+    # operator's explicit yes. A refusal writes nothing and aborts
+    # the deploy.
+    if [[ "$MODE_IN" == VISION || "$MODE_IN" == ALL ]]; then
+        local _f3_out='' _f3_verdict='' _f3_rebuild=0
+        _f3_out=$(detect_singbox_orphan_state 2>/dev/null || true)
+        _f3_verdict=$(printf '%s\n' "$_f3_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+        case "$_f3_verdict" in
+            suspect)
+                printf '%s\n' "$_f3_out"
+                ;;
+            rebuild-offerable)
+                if singbox_orphan_rebuild_prompt "$MODE_IN"; then
+                    _f3_preserve_rollback_bundle || { msg "${RED}[!] Rebuild refused: the retained recovery bundle could not be preserved.${NC}" >&2; return 1; }
+                    _f3_rebuild=1
+                    MODE_IN=ALL
+                else
+                    msg "${YELLOW}[!] Rebuild declined; nothing was changed. Run menu 6/10 again when ready.${NC}"
+                    return 1
+                fi
+                ;;
+        esac
+    fi
     residue_takeover_plan sing-box || return 1
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
@@ -4583,7 +4866,14 @@ deploy_singbox() {
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    # F3 B2: the .env wizard defaults are loaded only in the
+    # confirmed-rebuild branch (_f3_rebuild==1), in the narrow window
+    # just before pre_install_setup, and cleared right after it, so a
+    # normal deploy never inherits old ports/SNI and no stale default
+    # can leak into a later menu choice in this process.
+    (( ${_f3_rebuild:-0} == 1 )) && _f3_load_rebuild_wizard_defaults
+    pre_install_setup singbox "$MODE_IN" || { _f3_clear_rebuild_wizard_defaults; deployment_transaction_rollback; return 1; }
+    _f3_clear_rebuild_wizard_defaults
     abox_fetch_guard_start "sing-box ${MODE_IN}"
     release_ports
     get_architecture

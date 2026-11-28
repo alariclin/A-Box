@@ -3528,6 +3528,8 @@ main_loop() {
         fi
         clear
         _menu_banner
+        # F3 B1: menu-banner orphan report (read-only; never rebuilds).
+        singbox_orphan_banner_report || true
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_info_display

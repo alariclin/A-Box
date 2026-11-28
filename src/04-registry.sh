@@ -404,6 +404,21 @@ prune_owned_core_families_except() {
         # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
         _prune_standalone_links "$srv"
     done
+    # F1 (2026-11-28): a rolled-back hysteria deploy leaves no family
+    # behind, so the loop above never visits it -- but its hop rules can
+    # still be recorded in the ledger. Reclaim them here when the ledger
+    # has entries and the service is confirmed stopped. A running (or
+    # unqueryable) hysteria is left for the menu uninstall path, which
+    # fails closed instead of silently skipping or failing an unrelated
+    # deploy; the helper itself re-verifies the stop when it does run.
+    # Hysteria as the allowed (kept) family is never cleaned here.
+    if [[ "$allowed" != *' hysteria '* ]] && ! abox_owns_service hysteria && ! abox_owns_config_only_core_dir hysteria && _hy2hop_history_has_entries; then
+        if _hy2hop_service_stopped_quiet; then
+            remove_hy2_official_hop_rules || die "$(tprintf pr_remove hysteria)"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_prune_skipped_running)${NC}"
+        fi
+    fi
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
     fi
@@ -1095,7 +1110,11 @@ remove_all_owned_core_families() {
     # a residue). Only an A-Box-owned (or config-only) hysteria is
     # cleaned: a foreign install's rules are not ours, and an absent
     # install has no resolvable hop identity.
-    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+    # F1 (2026-11-28): also enter when only the ledger remains (a
+    # rollback deleted the unit/config/family registration). The
+    # helper itself re-verifies the service is stopped, so entering
+    # it here cannot delete a live instance's rules.
+    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
         remove_hy2_official_hop_rules || _hy2_hop_ok=0
     fi
     if (( _hy2_hop_ok == 1 )); then
@@ -1127,7 +1146,9 @@ remove_owned_core_families_for_restore() {
         # a retry) and fails the restore instead of reporting success
         # over a residue. The config-only skip above already ran, so
         # a preserved live family never reaches this cleanup.
-        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+        # F1 (2026-11-28): also enter when only the ledger remains
+        # (a rolled-back deploy deleted the family).
+        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
             if ! remove_hy2_official_hop_rules; then
                 failed=1
                 continue

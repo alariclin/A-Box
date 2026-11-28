@@ -1547,6 +1547,20 @@ EOF_SVC
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         hy2_hop_xtables_lock_grant || die "$(tprintf hy2b_hop_lock)"
     fi
+    # F1 (2026-11-28): hop identity ledger -- pending row. The binary
+    # builds hop NAT rules when the service starts, so the pending row
+    # must be durable BEFORE the first rule can exist (GPT defect 1):
+    # identity + version + transaction id + capacity pre-check +
+    # pre-existing-object snapshot. A pending row is only a recovery
+    # clue: cleanup never deletes a pre-existing same-named object on
+    # its word (see remove_hy2_official_hop_rules). A write failure
+    # dies here, before any rule is built, in NORMAL and SILENT alike.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        local _hy2hop_tx="tx-$$-$(date +%s 2>/dev/null || printf '0')" _hy2hop_pre=''
+        _hy2hop_parse_listen "$HY2_LISTEN" >/dev/null 2>&1 || die "$(tr_msg hy2hop_pending_write_failed)"
+        _hy2hop_pre=$(_hy2hop_pending_premask) || die "$(tr_msg hy2hop_pending_write_failed)"
+        record_hy2_hop_pending "$HY2_LISTEN" "$_hy2hop_tx" "$_hy2hop_pre" || die "$(tr_msg hy2hop_pending_write_failed)"
+    fi
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
@@ -1555,6 +1569,18 @@ EOF_SVC
             sleep 1
             hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
         fi
+    fi
+    # F1 (2026-11-28): hop identity ledger -- confirm. Hop rules are
+    # verified present, so promote the pending row to a confirmed
+    # history row (and drop the pending row for this listen). A write
+    # failure dies, in NORMAL and SILENT alike, and propagates to the
+    # outer transaction; die is only the failure notice, not
+    # compensation for the rules already built -- the history/pending
+    # rows left behind are what let the next cleanup reclaim them
+    # (GPT Q8 / defect 1). Outside the IS_SILENT gate, like the hop
+    # check above, so SILENT sub-deploys record exactly like NORMAL.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        record_hy2_hop_identity "$HY2_LISTEN" "${_hy2hop_tx:-}" || die "$(tr_msg hy2hop_history_write_failed)"
     fi
     setup_active_defense
     setup_health_monitor

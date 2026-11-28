@@ -10443,6 +10443,78 @@ tr_msg() {
         ru:hy2b_hop_missing) echo 'Официальные правила брандмауэра прыжков портов HY2 всё ещё отсутствуют; фиксация узла отклонена.' ;;
         fa:hy2b_hop_missing) echo 'قوانین دیوار آتش رسمی پرش پورت HY2 هنوز وجود ندارد؛ ثبت گره رد شد.' ;;
         ja:hy2b_hop_missing) echo '公式 HY2 ポートホッピングのファイアウォールルールがまだないため、ノードのコミットを拒否します。' ;;
+        zh:hy2hop_history_write_failed) echo 'Hy2 跳跃身份记录写入失败：%s（部署未提交，身份未记账）。' ;;
+        zh-tw:hy2hop_history_write_failed) echo 'Hy2 跳躍身份記錄寫入失敗：%s（部署未提交，身份未記帳）。' ;;
+        en:hy2hop_history_write_failed) echo 'Failed to write the Hy2 hop identity record: %s (deployment not committed; the identity was not recorded).' ;;
+        ru:hy2hop_history_write_failed) echo 'Не удалось записать запись идентификации прыжков портов Hy2: %s (развёртывание не зафиксировано; идентификация не записана).' ;;
+        fa:hy2hop_history_write_failed) echo 'نوشتن رکورد هویت پرش پورت Hy2 ناموفق بود: %s (استقرار ثبت نشد؛ هویت ثبت نشد).' ;;
+        ja:hy2hop_history_write_failed) echo 'Hy2 ホップの識別情報レコードの書き込みに失敗しました: %s（デプロイはコミットされず、識別情報は記録されませんでした）。' ;;
+        zh:hy2hop_pending_write_failed) echo 'Hy2 跳跃待确认身份写入失败，拒绝建规则。' ;;
+        zh-tw:hy2hop_pending_write_failed) echo 'Hy2 跳躍待確認身份寫入失敗，拒絕建立規則。' ;;
+        en:hy2hop_pending_write_failed) echo 'Failed to write the pending Hy2 hop identity; refusing to build hop rules.' ;;
+        ru:hy2hop_pending_write_failed) echo 'Не удалось записать ожидающую идентификацию прыжков портов Hy2; создание правил прыжков отклонено.' ;;
+        fa:hy2hop_pending_write_failed) echo 'نوشتن هویت در انتظار پرش پورت Hy2 ناموفق بود؛ ساخت قوانین پرش رد می‌شود.' ;;
+        ja:hy2hop_pending_write_failed) echo '保留中の Hy2 ホップ識別情報の書き込みに失敗したため、ホップルールの作成を拒否します。' ;;
+        zh:hy2hop_history_capacity_refused) echo 'Hy2 跳跃身份记录已满（128 个），拒绝为新身份建规则；请先清理旧身份。' ;;
+        zh-tw:hy2hop_history_capacity_refused) echo 'Hy2 跳躍身份記錄已滿（128 個），拒絕為新身份建立規則；請先清理舊身份。' ;;
+        en:hy2hop_history_capacity_refused) echo 'The Hy2 hop identity record is full (128 identities); refusing to build rules for a new identity. Clean up old identities first.' ;;
+        ru:hy2hop_history_capacity_refused) echo 'Запись идентификаций прыжков портов Hy2 заполнена (128 идентификаций); создание правил для новой идентификации отклонено. Сначала очистите старые идентификации.' ;;
+        fa:hy2hop_history_capacity_refused) echo 'رکورد هویت پرش پورت Hy2 پر است (128 هویت)؛ ساخت قوانین برای هویت جدید رد می‌شود. ابتدا هویت‌های قدیمی را پاک کنید.' ;;
+        ja:hy2hop_history_capacity_refused) echo 'Hy2 ホップ識別情報レコードがいっぱいです（128 件）。新しい識別情報のルール作成を拒否します。まず古い識別情報をクリーンアップしてください。' ;;
+        zh:hy2hop_history_corrupt) echo 'Hy2 跳跃身份记录不可读或已损坏（坏行、未知版本、权限或链接异常）；拒绝删除任何规则，本次零删除。' ;;
+        zh-tw:hy2hop_history_corrupt) echo 'Hy2 跳躍身份記錄無法讀取或已損壞（壞列、未知版本、權限或連結異常）；拒絕刪除任何規則，本次零刪除。' ;;
+        en:hy2hop_history_corrupt) echo 'The Hy2 hop identity record is unreadable or corrupt (bad row, unknown version, permission or link problem); refusing to delete any rules, nothing deleted.' ;;
+        ru:hy2hop_history_corrupt) echo 'Запись идентификаций прыжков портов Hy2 нечитаема или повреждена (плохая строка, неизвестная версия, проблема с правами или ссылкой); удаление любых правил отклонено, ничего не удалено.' ;;
+        fa:hy2hop_history_corrupt) echo 'رکورد هویت پرش پورت Hy2 خواندنی نیست یا خراب است (ردیف بد، نسخه ناشناخته، مشکل مجوز یا پیوند)؛ حذف هرگونه قانون رد می‌شود و چیزی حذف نشد.' ;;
+        ja:hy2hop_history_corrupt) echo 'Hy2 ホップ識別情報レコードが読めないか破損しています（不正な行、未知のバージョン、権限またはリンクの問題）。ルールの削除を拒否し、何も削除しませんでした。' ;;
+        zh:hy2hop_history_cleaning) echo '正在清理已记录的 Hy2 跳跃身份：%s' ;;
+        zh-tw:hy2hop_history_cleaning) echo '正在清理已記錄的 Hy2 跳躍身份：%s' ;;
+        en:hy2hop_history_cleaning) echo 'Cleaning the recorded Hy2 hop identity: %s' ;;
+        ru:hy2hop_history_cleaning) echo 'Очистка записанной идентификации прыжков портов Hy2: %s' ;;
+        fa:hy2hop_history_cleaning) echo 'در حال پاک‌سازی هویت ثبت‌شده پرش پورت Hy2: %s' ;;
+        ja:hy2hop_history_cleaning) echo '記録済みの Hy2 ホップ識別情報をクリーンアップしています: %s' ;;
+        zh:hy2hop_pending_unconfirmed) echo '未确认的 Hy2 跳跃待处理身份 %s 无法证明归属，已保留并报错，请人工复核。' ;;
+        zh-tw:hy2hop_pending_unconfirmed) echo '未確認的 Hy2 跳躍待處理身份 %s 無法證明歸屬，已保留並報錯，請人工複核。' ;;
+        en:hy2hop_pending_unconfirmed) echo 'Unconfirmed pending Hy2 hop identity %s cannot be proven to belong to this deployment; left in place, manual review needed.' ;;
+        ru:hy2hop_pending_unconfirmed) echo 'Неподтверждённая ожидающая идентификация прыжков портов Hy2 %s не может быть доказана как принадлежащая этому развёртыванию; оставлена на месте, требуется ручная проверка.' ;;
+        fa:hy2hop_pending_unconfirmed) echo 'هویت در انتظار تأییدنشده پرش پورت Hy2 %s را نمی‌توان متعلق به این استقرار دانست؛ سر جای خود باقی ماند و نیاز به بررسی دستی دارد.' ;;
+        ja:hy2hop_pending_unconfirmed) echo '未確認の保留中 Hy2 ホップ識別情報 %s は、このデプロイに属することを証明できないため、そのまま残し、手動での確認が必要です。' ;;
+        zh:hy2hop_history_only) echo '当前 Hy2 配置／.env 已无可用身份，按历史记录清理 %s 个已记录身份。' ;;
+        zh-tw:hy2hop_history_only) echo '目前 Hy2 設定／.env 已無可用身份，按歷史記錄清理 %s 個已記錄身份。' ;;
+        en:hy2hop_history_only) echo 'No usable Hy2 identity remains in the live config/.env; cleaning %s recorded identities from history.' ;;
+        ru:hy2hop_history_only) echo 'В живой конфигурации/.env Hy2 не осталось пригодной идентификации; очистка %s записанных идентификаций из истории.' ;;
+        fa:hy2hop_history_only) echo 'هویت قابل‌استفاده‌ای از Hy2 در پیکربندی زنده/.env باقی نمانده است؛ در حال پاک‌سازی %s هویت ثبت‌شده از تاریخچه.' ;;
+        ja:hy2hop_history_only) echo 'ライブ設定／.env に使用可能な Hy2 識別情報が残っていないため、履歴から記録済みの %s 件の識別情報をクリーンアップします。' ;;
+        zh:hy2hop_restore_history_noted) echo '备份含 %s 个已记录的 Hy2 跳跃身份，仅作诊断参考，不并入当前记录；本次恢复实际启动并核验的实例将重新记账。' ;;
+        zh-tw:hy2hop_restore_history_noted) echo '備份含 %s 個已記錄的 Hy2 跳躍身份，僅作診斷參考，不併入目前記錄；本次還原實際啟動並核驗的執行個體將重新記帳。' ;;
+        en:hy2hop_restore_history_noted) echo 'The backup contains %s recorded Hy2 hop identities; kept as diagnostic reference only and not merged into the live record. Instances actually started and verified by this restore will be recorded again.' ;;
+        ru:hy2hop_restore_history_noted) echo 'Резервная копия содержит %s записанных идентификаций прыжков портов Hy2; они сохранены только как диагностическая справка и не объединены с живой записью. Экземпляры, фактически запущенные и проверенные этим восстановлением, будут записаны заново.' ;;
+        fa:hy2hop_restore_history_noted) echo 'پشتیبان شامل %s هویت ثبت‌شده پرش پورت Hy2 است؛ فقط به‌عنوان مرجع تشخیصی نگه داشته می‌شود و با رکورد زنده ادغام نمی‌شود. نمونه‌هایی که این بازیابی واقعاً راه‌اندازی و تأیید کند، دوباره ثبت می‌شوند.' ;;
+        ja:hy2hop_restore_history_noted) echo 'バックアップには記録済みの Hy2 ホップ識別情報が %s 件含まれています。診断用の参考としてのみ保持し、ライブレコードにはマージしません。この復元で実際に起動・検証されたインスタンスは改めて記録されます。' ;;
+        zh:hy2hop_restore_history_bad) echo '备份中的 Hy2 跳跃身份记录不可读，已忽略；当前记录未动。' ;;
+        zh-tw:hy2hop_restore_history_bad) echo '備份中的 Hy2 跳躍身份記錄無法讀取，已忽略；目前記錄未動。' ;;
+        en:hy2hop_restore_history_bad) echo 'The Hy2 hop identity record in the backup is unreadable and was ignored; the live record is untouched.' ;;
+        ru:hy2hop_restore_history_bad) echo 'Запись идентификаций прыжков портов Hy2 в резервной копии нечитаема и проигнорирована; живая запись не тронута.' ;;
+        fa:hy2hop_restore_history_bad) echo 'رکورد هویت پرش پورت Hy2 در پشتیبان خواندنی نیست و نادیده گرفته شد؛ رکورد زنده دست‌نخورده باقی ماند.' ;;
+        ja:hy2hop_restore_history_bad) echo 'バックアップ内の Hy2 ホップ識別情報レコードが読めないため無視しました。ライブレコードは変更されていません。' ;;
+        zh:hy2hop_restore_rerecord_failed) echo '恢复后的 Hy2 跳跃实例未能核验通过，其身份未被重新记录；请检查服务状态，必要时重新部署。' ;;
+        zh-tw:hy2hop_restore_rerecord_failed) echo '還原後的 Hy2 跳躍執行個體未能核驗通過，其身份未被重新記錄；請檢查服務狀態，必要時重新部署。' ;;
+        en:hy2hop_restore_rerecord_failed) echo 'The restored Hy2 hop instance could not be verified, so its identity was not recorded again; check the service state and redeploy if needed.' ;;
+        ru:hy2hop_restore_rerecord_failed) echo 'Восстановленный экземпляр прыжков портов Hy2 не удалось проверить, поэтому его идентификация не была записана заново; проверьте состояние службы и при необходимости разверните заново.' ;;
+        fa:hy2hop_restore_rerecord_failed) echo 'نمونه پرش پورت Hy2 بازیابی‌شده تأیید نشد، بنابراین هویت آن دوباره ثبت نشد؛ وضعیت سرویس را بررسی کنید و در صورت نیاز دوباره مستقر کنید.' ;;
+        ja:hy2hop_restore_rerecord_failed) echo '復元後の Hy2 ホップインスタンスを検証できなかったため、その識別情報は再記録されませんでした。サービスの状態を確認し、必要に応じて再デプロイしてください。' ;;
+        zh:hy2hop_history_lock_failed) echo '无法获取 Hy2 跳跃身份记录锁，拒绝继续。' ;;
+        zh-tw:hy2hop_history_lock_failed) echo '無法取得 Hy2 跳躍身份記錄鎖，拒絕繼續。' ;;
+        en:hy2hop_history_lock_failed) echo 'Could not acquire the Hy2 hop identity record lock; refusing to continue.' ;;
+        ru:hy2hop_history_lock_failed) echo 'Не удалось получить блокировку записи идентификаций прыжков портов Hy2; продолжение отклонено.' ;;
+        fa:hy2hop_history_lock_failed) echo 'دریافت قفل رکورد هویت پرش پورت Hy2 ممکن نشد؛ ادامه رد می‌شود.' ;;
+        ja:hy2hop_history_lock_failed) echo 'Hy2 ホップ識別情報レコードのロックを取得できないため、続行を拒否します。' ;;
+        zh:hy2hop_prune_skipped_running) echo '检测到 Hysteria 仍在运行，跳过仅凭历史记录的剪枝清理；请用菜单卸载处理。' ;;
+        zh-tw:hy2hop_prune_skipped_running) echo '偵測到 Hysteria 仍在執行，跳過僅憑歷史記錄的剪枝清理；請用選單解除安裝處理。' ;;
+        en:hy2hop_prune_skipped_running) echo 'Hysteria still appears to be running, so the history-only prune cleanup was skipped; use the menu uninstall to handle it.' ;;
+        ru:hy2hop_prune_skipped_running) echo 'Похоже, Hysteria всё ещё работает, поэтому очистка при обрезке только по истории пропущена; обработайте это через удаление из меню.' ;;
+        fa:hy2hop_prune_skipped_running) echo 'به نظر می‌رسد Hysteria هنوز در حال اجراست، بنابراین پاک‌سازی هرسِ فقط‌بر‌اساس تاریخچه رد شد؛ از حذف از طریق منو استفاده کنید.' ;;
+        ja:hy2hop_prune_skipped_running) echo 'Hysteria がまだ実行中のようなので、履歴のみに基づくプルーンのクリーンアップをスキップしました。メニューのアンインストールで処理してください。' ;;
         zh:hy2b_hop_lock) echo '官方 HY2 端口跳跃需放行 xtables 锁给服务组，授权失败。' ;;
         zh-tw:hy2b_hop_lock) echo '官方 HY2 埠跳躍需放行 xtables 鎖給服務組，授權失敗。' ;;
         en:hy2b_hop_lock) echo 'Official HY2 port hopping needs the xtables lock opened to the service group, and that grant failed.' ;;
@@ -15906,6 +15978,21 @@ prune_owned_core_families_except() {
         # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
         _prune_standalone_links "$srv"
     done
+    # F1 (2026-11-28): a rolled-back hysteria deploy leaves no family
+    # behind, so the loop above never visits it -- but its hop rules can
+    # still be recorded in the ledger. Reclaim them here when the ledger
+    # has entries and the service is confirmed stopped. A running (or
+    # unqueryable) hysteria is left for the menu uninstall path, which
+    # fails closed instead of silently skipping or failing an unrelated
+    # deploy; the helper itself re-verifies the stop when it does run.
+    # Hysteria as the allowed (kept) family is never cleaned here.
+    if [[ "$allowed" != *' hysteria '* ]] && ! abox_owns_service hysteria && ! abox_owns_config_only_core_dir hysteria && _hy2hop_history_has_entries; then
+        if _hy2hop_service_stopped_quiet; then
+            remove_hy2_official_hop_rules || die "$(tprintf pr_remove hysteria)"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_prune_skipped_running)${NC}"
+        fi
+    fi
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
     fi
@@ -16597,7 +16684,11 @@ remove_all_owned_core_families() {
     # a residue). Only an A-Box-owned (or config-only) hysteria is
     # cleaned: a foreign install's rules are not ours, and an absent
     # install has no resolvable hop identity.
-    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+    # F1 (2026-11-28): also enter when only the ledger remains (a
+    # rollback deleted the unit/config/family registration). The
+    # helper itself re-verifies the service is stopped, so entering
+    # it here cannot delete a live instance's rules.
+    if { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
         remove_hy2_official_hop_rules || _hy2_hop_ok=0
     fi
     if (( _hy2_hop_ok == 1 )); then
@@ -16629,7 +16720,9 @@ remove_owned_core_families_for_restore() {
         # a retry) and fails the restore instead of reporting success
         # over a residue. The config-only skip above already ran, so
         # a preserved live family never reaches this cleanup.
-        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria; }; then
+        # F1 (2026-11-28): also enter when only the ledger remains
+        # (a rolled-back deploy deleted the family).
+        if [[ "$srv" == 'hysteria' ]] && { abox_owns_service hysteria || abox_owns_config_only_core_dir hysteria || _hy2hop_history_has_entries; }; then
             if ! remove_hy2_official_hop_rules; then
                 failed=1
                 continue
@@ -29752,6 +29845,20 @@ EOF_SVC
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         hy2_hop_xtables_lock_grant || die "$(tprintf hy2b_hop_lock)"
     fi
+    # F1 (2026-11-28): hop identity ledger -- pending row. The binary
+    # builds hop NAT rules when the service starts, so the pending row
+    # must be durable BEFORE the first rule can exist (GPT defect 1):
+    # identity + version + transaction id + capacity pre-check +
+    # pre-existing-object snapshot. A pending row is only a recovery
+    # clue: cleanup never deletes a pre-existing same-named object on
+    # its word (see remove_hy2_official_hop_rules). A write failure
+    # dies here, before any rule is built, in NORMAL and SILENT alike.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        local _hy2hop_tx="tx-$$-$(date +%s 2>/dev/null || printf '0')" _hy2hop_pre=''
+        _hy2hop_parse_listen "$HY2_LISTEN" >/dev/null 2>&1 || die "$(tr_msg hy2hop_pending_write_failed)"
+        _hy2hop_pre=$(_hy2hop_pending_premask) || die "$(tr_msg hy2hop_pending_write_failed)"
+        record_hy2_hop_pending "$HY2_LISTEN" "$_hy2hop_tx" "$_hy2hop_pre" || die "$(tr_msg hy2hop_pending_write_failed)"
+    fi
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
@@ -29760,6 +29867,18 @@ EOF_SVC
             sleep 1
             hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
         fi
+    fi
+    # F1 (2026-11-28): hop identity ledger -- confirm. Hop rules are
+    # verified present, so promote the pending row to a confirmed
+    # history row (and drop the pending row for this listen). A write
+    # failure dies, in NORMAL and SILENT alike, and propagates to the
+    # outer transaction; die is only the failure notice, not
+    # compensation for the rules already built -- the history/pending
+    # rows left behind are what let the next cleanup reclaim them
+    # (GPT Q8 / defect 1). Outside the IS_SILENT gate, like the hop
+    # check above, so SILENT sub-deploys record exactly like NORMAL.
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        record_hy2_hop_identity "$HY2_LISTEN" "${_hy2hop_tx:-}" || die "$(tr_msg hy2hop_history_write_failed)"
     fi
     setup_active_defense
     setup_health_monitor
@@ -42195,22 +42314,755 @@ _hy2hop_list_ipt_chains() {
     printf '%s\n' "$1" | awk '$1 == "-N" && $2 ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/ { print $2 } { for (i=2; i<=NF; i++) if ($i == "-j" && $(i+1) ~ /^HYSTERIA-PR-[0-9a-fA-F]+$/) print $(i+1) }' | sort -u
 }
 
-# Reclaim the official-hop NAT rules of THIS hysteria instance.
-# rc 0 = this instance's hop objects are gone (deleted or already
-# absent; suspected leftovers of unknown ownership are only
+# F1 (2026-11-28): hop identity ledger.
+#
+# Problem (see f1 DESIGN.md): deploying official Hy2 with hop on builds
+# kernel NAT objects (nft tables hysteria_<hash>, iptables chains
+# HYSTERIA-PR-<hash>) whose identity lived only in the live config
+# listen + .env hop keys. Anything outside the CURRENT identity (an
+# earlier range, a hand-edited listen, a config deleted by a rollback)
+# was unnameable: cleanup could only report it as a suspect, never
+# delete it. This ledger records every verified hop identity so later
+# cleanup can reclaim it.
+#
+# Storage (GPT Q1/Q2: scheme B): one independent history file,
+#   ${ABOX_DIR}/.hy2-hop-history.tsv   (ABOX_DIR is fixed /etc/ddr)
+# append-only in effect: one row per confirmed identity,
+#   v1<TAB><listen, verbatim><TAB><epoch><TAB>official
+# Only the listen input that was VERIFIED (hop rules observed present)
+# is stored; the four derived names are recomputed at cleanup time.
+# v1 pins the parse + naming algorithm (see _hy2hop_nft_table_v1 /
+# _hy2hop_ipt_chain_v1): if upstream ever renames the objects, old rows
+# still compute names with the v1 formula. Deduplication is by the exact
+# listen string, never by derived name: two different listen inputs that
+# happen to derive the same name are kept as separate rows.
+#
+# Pending rows (GPT defect 1): before the first hop rule can exist
+# (service start), deploy durably writes a pending row to
+#   ${ABOX_DIR}/.hy2-hop-pending.tsv
+#   v1<TAB><listen><TAB><epoch><TAB>official<TAB><txid><TAB><premask>
+# premask is 4 chars 0/1 (nft-ip, nft-ip6, iptables, ip6tables) recording
+# whether each object already existed BEFORE this deploy. A pending row
+# is only a recovery clue, never an authority: cleanup may reclaim its
+# objects only when premask proves none of them pre-existed AND every
+# present object passes the content gate; otherwise the row is kept and
+# the cleanup fails closed for manual review.
+#
+# Ledger invariants (GPT Q3/Q5/Q6 + checklist):
+# - Whole-file validation before any deletion: any bad row, unknown
+#   version, untrusted file or read error makes the cleanup rc=1 with
+#   ZERO deletions. Only a confirmed-absent file means "no record".
+# - Trust boundary: the parent chain must be symlink-free, the file
+#   itself must not be a symlink or a mountpoint, and must be a
+#   root:root 0600 regular file with exactly one hard link. No
+#   source/eval of file content, ever.
+# - Capacity: at most 128 unique identities, file hard limit 64 KiB,
+#   no eviction. The 129th distinct identity is refused BEFORE any
+#   rule is built (pending write); a restore merge over the limit is
+#   refused BEFORE any destructive pre-cleanup (restore never merges
+#   -- see _hy2hop_restore_handle_history in src/11).
+# - A history row is retired only after EVERY object of that identity
+#   is negative-verified absent. A mismatch keeps the object AND the
+#   row, and the cleanup stays retryable (rc=1).
+# - Concurrency: every ledger read-modify-write (record, pending,
+#   retire, cleanup) runs under one dedicated flock on
+#   ${ABOX_DIR}/.hy2-hop-history.lock, held across the whole cleanup
+#   (read, delete, negative verification, retire), not just the mv.
+#   The lock is re-entrant within one process (depth counter) so a
+#   record issued from inside a locked section cannot self-deadlock.
+#   Crash-recovery writes (pending + confirm) are fsynced (file and
+#   parent directory) via install_file_atomically.
+# - The record is a discovery mechanism, never a deletion authority:
+#   every identity still goes through the L3 content gate + negative
+#   verification, object by object. Suspects are never claimed.
+
+# Frozen v1 naming (F1 / GPT Q2). The history file stores only the
+# listen input; v1 rows MUST keep computing names with the formula that
+# was current when v1 was defined, even if the live _hy2hop_nft_table /
+# _hy2hop_ipt_chain formulas change for a future upstream rename. Do
+# not "simplify" these into calls to the live functions.
+_hy2hop_nft_table_v1() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "nft|$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'hysteria_%s' "$_h"
+}
+
+# Frozen v1 naming (see _hy2hop_nft_table_v1).
+_hy2hop_ipt_chain_v1() {
+    local _h=''
+    _h=$(_hy2hop_sha8 "$1|$_HY2HOP_IPSTR|$_HY2HOP_FIRST|$_HY2HOP_UNION") || return 1
+    printf 'HYSTERIA-PR-%s' "$_h"
+}
+
+# Expected nft table name for $1 (family) under formula $2 (0 = live, 1 = v1).
+_hy2hop_table_name() {
+    if [[ "${2:-0}" == '1' ]]; then _hy2hop_nft_table_v1 "$1"; else _hy2hop_nft_table "$1"; fi
+}
+
+# Expected iptables chain name for $1 (binary) under formula $2 (0 = live, 1 = v1).
+_hy2hop_chain_name() {
+    if [[ "${2:-0}" == '1' ]]; then _hy2hop_ipt_chain_v1 "$1"; else _hy2hop_ipt_chain "$1"; fi
+}
+
+# Acquire the hop-ledger lock (dedicated flock file in ABOX_DIR).
+# Re-entrant within one process via _HY2HOP_LOCK_DEPTH. rc 0 = held,
+# 1 = flock unavailable, lock file unsafe, or not acquired within
+# ${_HY2HOP_LOCK_TIMEOUT_S:-30} seconds. Uses flock -n in a retry loop
+# (no -w: some flock builds lack it); never blocks forever.
+_hy2hop_history_lock() {
+    local _lock="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.lock" _fd='' _i=0 _locked=0
+    local _t="${_HY2HOP_LOCK_TIMEOUT_S:-30}"
+    if [[ "${_HY2HOP_LOCK_DEPTH:-0}" -gt 0 ]]; then _HY2HOP_LOCK_DEPTH=$((_HY2HOP_LOCK_DEPTH + 1)); return 0; fi
+    command -v flock >/dev/null 2>&1 || return 1
+    [[ "$_t" =~ ^[0-9]+$ ]] || _t=30
+    if [[ ! -e "$_lock" ]]; then (umask 077; set -o noclobber; : > "$_lock") 2>/dev/null || true; fi
+    [[ -f "$_lock" && ! -L "$_lock" ]] || return 1
+    if [[ $EUID -eq 0 ]]; then chown root:root "$_lock" 2>/dev/null || true; fi
+    chmod 600 "$_lock" 2>/dev/null || true
+    exec {_fd}>>"$_lock" || return 1
+    for ((_i = 0; _i < _t; _i++)); do
+        if flock -n "$_fd" 2>/dev/null; then _locked=1; break; fi
+        sleep 1
+    done
+    if (( _locked == 0 )); then eval "exec ${_fd}>&-" 2>/dev/null || true; return 1; fi
+    _HY2HOP_LOCK_FD="$_fd"
+    _HY2HOP_LOCK_DEPTH=1
+    return 0
+}
+
+# Release one level of the hop-ledger lock (see _hy2hop_history_lock).
+_hy2hop_history_unlock() {
+    [[ "${_HY2HOP_LOCK_DEPTH:-0}" -gt 0 ]] || return 0
+    _HY2HOP_LOCK_DEPTH=$((_HY2HOP_LOCK_DEPTH - 1))
+    if (( _HY2HOP_LOCK_DEPTH == 0 )) && [[ -n "${_HY2HOP_LOCK_FD:-}" ]]; then
+        eval "exec ${_HY2HOP_LOCK_FD}>&-" 2>/dev/null || true
+        _HY2HOP_LOCK_FD=''
+    fi
+    return 0
+}
+
+# Trust check for a ledger file ($1): regular file, not a symlink, not
+# itself a mountpoint (a bind mount swapped in place of the ledger must
+# never be read or overwritten), root:root 0600, exactly one hard link,
+# symlink-free parent chain. rc 0 = trusted, 1 = not. Fail closed on
+# any stat/python failure.
+_hy2hop_ledger_trust_check() {
+    local _f="${1:-}"
+    [[ -n "$_f" ]] || return 1
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    [[ "$(stat -c %u:%g "$_f" 2>/dev/null || true)" == '0:0' ]] || return 1
+    [[ "$(stat -c %a "$_f" 2>/dev/null || true)" == '600' ]] || return 1
+    [[ "$(stat -c %h "$_f" 2>/dev/null || echo 0)" == '1' ]] || return 1
+    path_tree_has_mountpoint "$_f" && return 1
+    path_parent_chain_safe "$_f" || return 1
+    return 0
+}
+
+# Strict row validation for a ledger file ($1, $2 = history|pending).
+# Every row must be well-formed: exact field count, v1, impl official,
+# numeric epoch, and a listen value that parses as a hop range
+# (_HY2HOP_HOP == 1). Pending rows additionally need a safe txid and a
+# 4-char 0/1 premask. Also enforced: no NUL bytes, at most 128 rows,
+# at most 64 KiB. rc 0 = valid, 1 = invalid. Never sources the file.
+_hy2hop_ledger_rows_valid() {
+    local _f="${1:-}" _kind="${2:-}" _size=0 _lines=0 _line='' _v='' _listen='' _epoch='' _impl='' _txid='' _pre='' _rest=''
+    local _stripped=0 _orig=0 TAB=$'\t'
+    [[ -n "$_f" && -n "$_kind" ]] || return 1
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    _size=$(stat -c %s "$_f" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || return 1
+    _stripped=$(tr -d '\000' < "$_f" | wc -c)
+    _orig=$(wc -c < "$_f")
+    (( _stripped == _orig )) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _lines=$(( _lines + 1 ))
+        (( _lines <= 128 )) || return 1
+        local _notabs="${_line//$TAB/}"
+        if [[ "$_kind" == 'history' ]]; then
+            [[ "$(( ${#_line} - ${#_notabs} ))" -eq 3 ]] || return 1
+            IFS="$TAB" read -r _v _listen _epoch _impl _rest <<< "$_line" || return 1
+            [[ -z "${_rest:-}" ]] || return 1
+        elif [[ "$_kind" == 'pending' ]]; then
+            [[ "$(( ${#_line} - ${#_notabs} ))" -eq 5 ]] || return 1
+            IFS="$TAB" read -r _v _listen _epoch _impl _txid _pre _rest <<< "$_line" || return 1
+            [[ -z "${_rest:-}" ]] || return 1
+            [[ "$_txid" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+            [[ "$_pre" =~ ^[01]{4}$ ]] || return 1
+        else
+            return 1
+        fi
+        [[ "$_v" == 'v1' ]] || return 1
+        [[ "$_impl" == 'official' ]] || return 1
+        [[ "$_epoch" =~ ^[0-9]+$ ]] && (( 10#$_epoch > 0 )) || return 1
+        _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+        (( _HY2HOP_HOP == 1 )) || return 1
+    done < "$_f"
+    return 0
+}
+
+# Print the validated unique listen values of the history file at $1,
+# one per line (dedup by exact listen string; two inputs that derive
+# the same name are never merged). rc 0 = loaded (possibly empty),
+# 1 = unusable, 2 = file absent.
+_hy2hop_history_load_file() {
+    local _f="${1:-}"
+    [[ -n "$_f" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 2
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" history || return 1
+    awk -F'\t' '!seen[$2]++ { print $2 }' "$_f" 2>/dev/null || return 1
+    return 0
+}
+
+# Load the live history file (see _hy2hop_history_load_file).
+_hy2hop_history_load() {
+    _hy2hop_history_load_file "${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+}
+
+# Print the validated pending rows of the live pending file, one per
+# line as listen<TAB>txid<TAB>premask. rc 0 = loaded (possibly empty),
+# 1 = unusable, 2 = file absent.
+_hy2hop_pending_load() {
+    local _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 2
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" pending || return 1
+    awk -F'\t' '{ print $2 "\t" $5 "\t" $6 }' "$_f" 2>/dev/null || return 1
+    return 0
+}
+
+# Atomically publish $1 (source file holding the new content) as $2,
+# root:root 0600, same-dir staging + fsync + rename (install_file_atomically).
+# An existing destination is trust-checked first; a symlink, directory
+# or hardlinked destination fails closed. rc 0 = published, 1 = failed.
+_hy2hop_ledger_publish() {
+    local _src="${1:-}" _dest="${2:-}"
+    [[ -n "$_src" && -n "$_dest" ]] || return 1
+    [[ -f "$_src" && ! -L "$_src" ]] || return 1
+    if [[ -e "$_dest" || -L "$_dest" ]]; then
+        _hy2hop_ledger_trust_check "$_dest" || return 1
+    fi
+    install_file_atomically "$_src" "$_dest" 600
+}
+
+# Record one CONFIRMED identity row. $1 listen, $2 txid (optional:
+# when given, pending rows for the same listen are dropped as
+# superseded by the confirmed row). Caller must hold the history lock.
+# Appends the row (replacing any row for the same exact listen with the
+# newest epoch); refuses the 129th distinct identity and any write that
+# would exceed 64 KiB. The history row is published BEFORE the pending
+# row is dropped, so a crash between the two leaves both -- cleanup
+# processes history first and drops the stale pending row afterwards.
+# rc 0 = recorded, 1 = failed (nothing published, or history published
+# but the pending drop failed -- the caller must still fail: the
+# pending row stays as a recovery clue for the next cleanup).
+_hy2hop_record_unlocked() {
+    local _listen="${1:-}" _txid="${2:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    local _now=0 _tmp='' _line='' _v='' _l='' _e='' _i='' _rest='' _size=0
+    local -a _rows=()
+    local -A _seen=()
+    [[ -n "$_listen" ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] && (( 10#$_now > 0 )) || return 1
+    if [[ -e "$_f" || -L "$_f" ]]; then
+        _hy2hop_ledger_trust_check "$_f" || return 1
+        _hy2hop_ledger_rows_valid "$_f" history || return 1
+        mapfile -t _rows < "$_f" || return 1
+    fi
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || return 1
+        [[ -z "${_seen[$_l]:-}" ]] && _seen["$_l"]=1
+    done
+    if [[ -z "${_seen[$_listen]:-}" ]]; then
+        (( ${#_seen[@]} < 128 )) || return 1
+    fi
+    _tmp=$(mktemp) || return 1
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    done
+    printf 'v1\t%s\t%s\tofficial\n' "$_listen" "$_now" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    _size=$(wc -c < "$_tmp" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || { rm -f -- "$_tmp"; return 1; }
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    if [[ -n "$_txid" ]]; then
+        _hy2hop_pending_drop_unlocked "$_listen" || return 1
+    fi
+    return 0
+}
+
+# Record one confirmed hop identity (locked wrapper around
+# _hy2hop_record_unlocked). $1 listen, $2 txid (optional, see above).
+record_hy2_hop_identity() {
+    local _rc=0
+    _hy2hop_history_lock || return 1
+    _hy2hop_record_unlocked "${1:-}" "${2:-}"; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
+}
+
+# Write one pending row. $1 listen, $2 txid, $3 premask (see the file
+# header). Caller must hold the history lock. Same capacity/size caps
+# as the history file; the 129th distinct identity is refused BEFORE
+# any rule is built. rc 0 = written, 1 = failed.
+_hy2hop_pending_write_unlocked() {
+    local _listen="${1:-}" _txid="${2:-}" _pre="${3:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    local _now=0 _tmp='' _line='' _v='' _l='' _e='' _i='' _tx='' _pr='' _rest='' _size=0
+    local -a _rows=()
+    local -A _seen=()
+    [[ -n "$_listen" && -n "$_txid" && -n "$_pre" ]] || return 1
+    [[ "$_txid" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    [[ "$_pre" =~ ^[01]{4}$ ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 1
+    _now=$(date +%s 2>/dev/null || printf '0')
+    [[ "$_now" =~ ^[0-9]+$ ]] && (( 10#$_now > 0 )) || return 1
+    if [[ -e "$_f" || -L "$_f" ]]; then
+        _hy2hop_ledger_trust_check "$_f" || return 1
+        _hy2hop_ledger_rows_valid "$_f" pending || return 1
+        mapfile -t _rows < "$_f" || return 1
+    fi
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pr _rest <<< "$_line" || return 1
+        [[ -z "${_seen[$_l]:-}" ]] && _seen["$_l"]=1
+    done
+    if [[ -z "${_seen[$_listen]:-}" ]]; then
+        (( ${#_seen[@]} < 128 )) || return 1
+    fi
+    _tmp=$(mktemp) || return 1
+    for _line in "${_rows[@]}"; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pr _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    done
+    printf 'v1\t%s\t%s\tofficial\t%s\t%s\n' "$_listen" "$_now" "$_txid" "$_pre" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    _size=$(wc -c < "$_tmp" 2>/dev/null || echo 99999999)
+    (( _size <= 65536 )) || { rm -f -- "$_tmp"; return 1; }
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Write one pending hop identity row (locked wrapper around
+# _hy2hop_pending_write_unlocked). $1 listen, $2 txid, $3 premask.
+record_hy2_hop_pending() {
+    local _rc=0
+    _hy2hop_history_lock || return 1
+    _hy2hop_pending_write_unlocked "${1:-}" "${2:-}" "${3:-}"; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
+}
+
+# Drop every pending row for $1 (listen). Caller must hold the history
+# lock. A file left with no rows is unlinked (absent = no record).
+# rc 0 = dropped (or nothing to drop), 1 = failed.
+_hy2hop_pending_drop_unlocked() {
+    local _listen="${1:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    local _tmp='' _line='' _v='' _l='' _e='' _i='' _tx='' _pre='' _rest='' _kept=0
+    [[ -n "$_listen" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 0
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" pending || return 1
+    _tmp=$(mktemp) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        IFS=$'\t' read -r _v _l _e _i _tx _pre _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        [[ "$_l" == "$_listen" ]] && continue
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+        _kept=1
+    done < "$_f"
+    if (( _kept == 0 )); then
+        rm -f -- "$_tmp" || true
+        rm -f -- "$_f" || return 1
+        return 0
+    fi
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Retire (delete) the history row for $1 (listen). Caller must hold the
+# history lock, and must call this ONLY after every object of that
+# identity was negative-verified absent. A file left with no rows is
+# unlinked. A missing row/file is a no-op success (idempotent retry).
+# rc 0 = retired (or already gone), 1 = failed -- the row stays so the
+# next cleanup can retry the retire.
+_hy2hop_history_retire_unlocked() {
+    local _listen="${1:-}" _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    local _tmp='' _line='' _v='' _l='' _e='' _i='' _rest='' _kept=0 _found=0
+    [[ -n "$_listen" ]] || return 1
+    [[ ! -e "$_f" && ! -L "$_f" ]] && return 0
+    _hy2hop_ledger_trust_check "$_f" || return 1
+    _hy2hop_ledger_rows_valid "$_f" history || return 1
+    _tmp=$(mktemp) || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        IFS=$'\t' read -r _v _l _e _i _rest <<< "$_line" || { rm -f -- "$_tmp"; return 1; }
+        if [[ "$_l" == "$_listen" ]]; then _found=1; continue; fi
+        printf '%s\n' "$_line" >> "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+        _kept=1
+    done < "$_f"
+    (( _found == 1 )) || { rm -f -- "$_tmp"; return 0; }
+    if (( _kept == 0 )); then
+        rm -f -- "$_tmp" || true
+        rm -f -- "$_f" || return 1
+        return 0
+    fi
+    _hy2hop_ledger_publish "$_tmp" "$_f" || { rm -f -- "$_tmp"; return 1; }
+    rm -f -- "$_tmp" || true
+    return 0
+}
+
+# Pre-existence mask for the CURRENT _HY2HOP_* identity: 4 chars 0/1
+# (nft-ip, nft-ip6, iptables, ip6tables) recording whether each object
+# already exists right now. Printed on stdout. rc 0 = mask printed,
+# 1 = a backend could not be inspected (fail closed: the pending row
+# must not be written without a proven pre-state). A missing backend
+# binary means absent: that backend could not have built rules on
+# this host. Uses the LIVE naming formula (the pending row is written
+# by the current deploy, under the current formula).
+_hy2hop_pending_premask() {
+    local _ruleset='' _ok=0 _listing='' _src=0 _st='' _fam='' _bin='' _tbl='' _chain=''
+    local -a _b=(0 0 0 0)
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ok=1 || return 1
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_nft_table "$_fam") || return 1
+            _st=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            (( _src == 0 )) || return 1
+            if [[ "$_st" != absent ]]; then
+                case "$_fam" in ip) _b[0]=1 ;; ip6) _b[1]=1 ;; esac
+            fi
+        done
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        case "$_src" in
+            0) ;;
+            1) continue ;;
+            *) return 1 ;;
+        esac
+        _chain=$(_hy2hop_ipt_chain "$_bin") || return 1
+        _st=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        (( _src == 0 )) || return 1
+        if [[ "$_st" != absent ]]; then
+            case "$_bin" in iptables) _b[2]=1 ;; ip6tables) _b[3]=1 ;; esac
+        fi
+    done
+    printf '%s%s%s%s' "${_b[0]}" "${_b[1]}" "${_b[2]}" "${_b[3]}"
+    return 0
+}
+
+# Cheap entry predicate for the cleanup call sites (src/04): rc 0 when
+# the history file or the pending file exists and is non-empty. This is
+# only a gate to ENTER the cleanup; the cleanup itself validates both
+# files strictly, so a corrupt file fails closed there, never here.
+_hy2hop_history_has_entries() {
+    local _f="${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv" _p="${ABOX_DIR:-/etc/ddr}/.hy2-hop-pending.tsv"
+    [[ -s "$_f" || -s "$_p" ]]
+}
+
+# Quiet pre-check for the prune path (src/04): rc 0 only when the
+# hysteria service is confirmed stopped AND no hysteria process is
+# running. Anything else (running, transitional, unqueryable) returns
+# 1 so the caller skips the history-only cleanup instead of failing
+# an unrelated deploy; the helper itself re-verifies strictly when it
+# does run. Prints nothing.
+_hy2hop_service_stopped_quiet() {
+    local _st='' _mp='' _orc=0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _st=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || return 1
+        [[ "$_st" == inactive || "$_st" == failed ]] || return 1
+        _mp=$(systemctl show -p MainPID --value hysteria 2>/dev/null || echo 0)
+        if [[ "$_mp" =~ ^[0-9]+$ ]] && (( _mp > 0 )) && [[ -d /proc/$_mp ]]; then return 1; fi
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-service hysteria status >/dev/null 2>&1; _orc=$?
+        case "$_orc" in 3|16|32) : ;; *) return 1 ;; esac
+    else
+        return 1
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
+    return 0
+}
+
+# Classify the LIVE hop identity without deleting anything. Sets
+# _HY2HOP_* globals exactly as _hy2hop_resolve_identity does when the
+# identity is resolvable, plus _HY2HOP_LIVE_STATE (hop|nohop|gone|bad)
+# and _HY2HOP_LIVE_LISTEN (the exact listen string for the live
+# identity: the config value when config-sourced, :START-END when
+# env-sourced, empty otherwise). Prints nothing; callers message.
+#   hop   = live identity resolved and hopping (rules may exist).
+#   nohop = hop is positively confirmed off (single-port listen, or
+#           .env says off with no config).
+#   gone  = no config file AND no usable .env hop record (live sources
+#           are gone; history alone may still name the instance).
+#   bad   = live sources exist but are unusable: config listen
+#           unparseable, or config/.env positively disagree (GPT Q4a:
+#           history must NOT arbitrate this; cleanup stops, rc=1).
+_hy2hop_live_identity_state() {
+    local _cfg_listen='' _cfg_rc=0 _env_ok=0 _env_off=0 _env_first=0 _env_start=0 _env_end=0
+    _HY2HOP_LIVE_LISTEN=''
+    _HY2HOP_LIVE_STATE='bad'
+    _cfg_listen=$(_hy2hop_read_config_listen 2>/dev/null); _cfg_rc=$?
+    if (( _cfg_rc == 2 )); then
+        _HY2HOP_LIVE_STATE='bad'
+        return 0
+    fi
+    if (( _cfg_rc == 0 )) && ! _hy2hop_parse_listen "$_cfg_listen"; then
+        _HY2HOP_LIVE_STATE='bad'
+        return 0
+    fi
+    if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${HY2_MONITOR_PORT:-}" ]] &&
+       [[ "${HY2_RANGE_START:-}" =~ ^[0-9]+$ && "${HY2_RANGE_END:-}" =~ ^[0-9]+$ && "${HY2_MONITOR_PORT:-}" =~ ^[0-9]+$ ]] &&
+       (( 10#${HY2_RANGE_START} >= 1 && 10#${HY2_RANGE_END} <= 65535 && 10#${HY2_RANGE_START} <= 10#${HY2_RANGE_END} && 10#${HY2_MONITOR_PORT} == 10#${HY2_RANGE_START} )); then
+        _env_ok=1; _env_first=$((10#${HY2_MONITOR_PORT})); _env_start=$((10#${HY2_RANGE_START})); _env_end=$((10#${HY2_RANGE_END}))
+    fi
+    if [[ -n "${HY2_HOP:-}" && "${HY2_HOP:-}" != 'true' ]]; then _env_off=1; fi
+    if (( _cfg_rc == 0 )); then
+        _HY2HOP_LIVE_LISTEN="$_cfg_listen"
+        if (( _env_ok == 1 )); then
+            if (( _env_first != _HY2HOP_FIRST || _env_start != _HY2HOP_START || _env_end != _HY2HOP_END )); then
+                _HY2HOP_LIVE_STATE='bad'
+                return 0
+            fi
+            _HY2HOP_SOURCE='both'
+        elif (( _env_off == 1 )); then
+            if (( _HY2HOP_HOP == 1 )); then
+                _HY2HOP_LIVE_STATE='bad'
+                return 0
+            fi
+            _HY2HOP_SOURCE='both'
+        else
+            _HY2HOP_SOURCE='config'
+        fi
+        if (( _HY2HOP_HOP == 1 )); then _HY2HOP_LIVE_STATE='hop'; else _HY2HOP_LIVE_STATE='nohop'; fi
+        return 0
+    fi
+    if (( _env_ok == 1 )); then
+        _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+        _HY2HOP_FIRST="$_env_first"; _HY2HOP_START="$_env_start"; _HY2HOP_END="$_env_end"
+        if (( _env_start == _env_end )); then _HY2HOP_UNION="$_env_start"; else _HY2HOP_UNION="$_env_start-$_env_end"; fi
+        _HY2HOP_HOP=0; (( _env_start < _env_end )) && _HY2HOP_HOP=1
+        _HY2HOP_SOURCE='env'
+        _HY2HOP_LIVE_LISTEN=":${_env_start}-${_env_end}"
+        if (( _HY2HOP_HOP == 1 )); then _HY2HOP_LIVE_STATE='hop'; else _HY2HOP_LIVE_STATE='nohop'; fi
+        return 0
+    fi
+    if (( _env_off == 1 )); then
+        _HY2HOP_IP=''; _HY2HOP_IPSTR='<nil>'; _HY2HOP_IS6=0; _HY2HOP_UNSPEC=1
+        _HY2HOP_FIRST=''; _HY2HOP_START=''; _HY2HOP_END=''; _HY2HOP_UNION=''; _HY2HOP_HOP=0
+        _HY2HOP_SOURCE='env'
+        _HY2HOP_LIVE_LISTEN=''
+        _HY2HOP_LIVE_STATE='nohop'
+        return 0
+    fi
+    _HY2HOP_LIVE_STATE='gone'
+    return 0
+}
+
+# Presence probe for ONE identity ($1 listen, $2 v1 flag 0|1).
+# rc 0 = every object of this identity is absent; 1 = at least one is
+# present; 2 = a backend could not be inspected, or the listen does
+# not parse (unknown -- never read as absent).
+_hy2hop_identity_objects_absent() {
+    local _listen="${1:-}" _v1="${2:-0}" _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0 _listing='' _listing_ok=0 _listing_missing=0
+    local _present=0
+    [[ -n "$_listen" ]] || return 2
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 2
+    (( _HY2HOP_HOP == 1 )) || return 0
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || return 2
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            (( _src == 0 )) || return 2
+            [[ "$_status" == absent ]] || _present=1
+        done
+    elif (( _ruleset_missing == 0 )); then
+        return 2
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        _listing=''; _listing_ok=0; _listing_missing=0
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        case "$_src" in
+            0) _listing_ok=1 ;;
+            1) _listing_missing=1 ;;
+            *) return 2 ;;
+        esac
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || return 2
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        (( _src == 0 )) || return 2
+        [[ "$_status" == absent ]] || _present=1
+    done
+    (( _present == 0 ))
+}
+
+# Clean the hop objects of ONE identity ($1 listen, $2 v1 flag 0|1).
+# This is the L3 step 2-5 pipeline (fetch listings once, judge + delete
+# per object through the content gate, then negative-verify every
+# object), generalized from "the current identity" to any identity.
+# rc 0 = every object of this identity is absent now (deleted or
+# already absent); rc 1 = a deletion failed, an object refused
+# (mismatch), or a backend could not be inspected. Never touches any
+# other identity's objects. A no-hop identity is a no-op success.
+_hy2hop_cleanup_identity() {
+    local _listen="${1:-}" _v1="${2:-0}" _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
+    local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
+    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
+    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
+    local _listing='' _listing_ok=0 _listing_missing=0
+    [[ -n "$_listen" ]] || return 1
+    _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || return 1
+    (( _HY2HOP_HOP == 1 )) || return 0
+    if command -v nft >/dev/null 2>&1; then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+    else
+        _ruleset_missing=1
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables)
+                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
+                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
+                ;;
+            ip6tables)
+                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
+                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
+                ;;
+        esac
+    done
+    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
+        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
+        _failed=1
+    fi
+    if (( _ruleset_ok == 1 )); then
+        for _fam in $(_hy2hop_nft_families); do
+            _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+            if (( _src != 0 )); then
+                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
+            fi
+            case "$_status" in
+                absent) : ;;
+                match|empty)
+                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
+                    ;;
+                mismatch)
+                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
+                    _failed=1
+                    ;;
+            esac
+        done
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        if (( _listing_ok == 0 && _listing_missing == 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
+            _failed=1; continue
+        fi
+        (( _listing_ok == 1 )) || continue
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        case "$_status" in
+            absent) : ;;
+            match|empty|dangling)
+                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
+                ;;
+            mismatch)
+                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
+                _failed=1
+                ;;
+        esac
+    done
+    if (( _ruleset_missing == 0 )); then
+        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
+        if (( _ruleset_ok == 1 )); then
+            for _fam in $(_hy2hop_nft_families); do
+                _tbl=$(_hy2hop_table_name "$_fam" "$_v1") || { _failed=1; continue; }
+                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
+                if (( _src != 0 )); then
+                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+                fi
+                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+            done
+        else
+            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
+        fi
+    fi
+    for _bin in $(_hy2hop_ipt_bins); do
+        case "$_bin" in
+            iptables) _listing_missing=$_lst_ipt_missing ;;
+            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
+        esac
+        (( _listing_missing == 1 )) && continue
+        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
+        if (( _src != 0 )); then
+            if (( _src == 1 )); then continue; fi
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        _chain=$(_hy2hop_chain_name "$_bin" "$_v1") || { _failed=1; continue; }
+        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
+        if (( _src != 0 )); then
+            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
+        fi
+        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
+    done
+    (( _failed == 0 ))
+}
+
+# Reclaim the official-hop NAT rules of the hysteria instances named by
+# the live identity AND the hop ledger (locked body of
+# remove_hy2_official_hop_rules; the caller must hold the history lock).
+# rc 0 = every named instance's hop objects are gone (deleted or
+# already absent; suspected leftovers of unknown ownership are only
 # reported); rc 1 = cleanup incomplete / unverifiable / refused.
 # Every failure prints its specific reason plus the summary line
 # "service is stopped, rule cleanup did not complete" -- never
 # "stop failed". Must run with the service stopped and no residual
 # process (verified again here), and BEFORE the unit, config and
 # credentials are deleted, so a failure is retryable.
-remove_hy2_official_hop_rules() {
+#
+# Identity-set semantics (F1 / GPT defect 2 -- NOT a single rc):
+#   live hop   -> clean the live identity (live formula) PLUS every
+#                 history identity (v1 formula), deduplicated.
+#   live nohop -> hop is confirmed off, but history is still traversed.
+#   live gone  -> live sources are gone; with a trusted history, clean
+#                 the history identities alone; all verified absent
+#                 means success for the known set. With neither live
+#                 sources nor history, keep the L3 unknown failure.
+#   live bad   -> unparseable config or config/.env conflict: stop
+#                 (GPT Q4a), zero deletions, history is never used as
+#                 a tiebreaker.
+# Ledger validation runs BEFORE any deletion (GPT Q3): a corrupt
+# history or pending file is rc=1 with zero deletions. Pending rows
+# are handled after the confirmed identities (history first): a
+# pending row for an already-cleaned identity is dropped; a
+# pending-only identity is reclaimed only when its premask proves
+# none of its objects pre-existed AND the content gate passes;
+# otherwise it is kept and reported, and the cleanup fails.
+_remove_hy2_official_hop_rules_locked() {
     local _failed=0 _fam='' _tbl='' _bin='' _chain='' _status='' _src=0
     local _ruleset='' _ruleset_ok=0 _ruleset_missing=0
-    local _lst_ipt='' _lst_ipt_ok=0 _lst_ipt_missing=0
-    local _lst_ipt6='' _lst_ipt6_ok=0 _lst_ipt6_missing=0
     local _listing='' _listing_ok=0 _listing_missing=0
     local _st='' _mp='' _orc=0 _suspects='' _s='' _own_tbl='' _own_chain=''
+    local _live_state='' _hist_out='' _hist_rc=0 _pend_out='' _pend_rc=0
+    local _listen='' _v1=0 _txid='' _pre='' _abs_rc=0 _i=0
+    local -a _hist_listens=() _ident_listens=() _ident_v1=()
+    local -A _ident_seen=() _ident_ok=() _hist_seen=()
     # 0. Preconditions: stopped + no residual process. (The caller
     # _remove_hy2_official already verified; the prune path only
     # stop()s, so this guard is load-bearing there. A missing unit
@@ -42234,174 +43086,155 @@ remove_hy2_official_hop_rules() {
     if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then
         msg "${YELLOW}[!] Refusing to clean Hy2 hop NAT rules: a hysteria process is still running.${NC}"; return 1
     fi
-    # 1. Identity.
-    if ! _hy2hop_resolve_identity; then
+    # 1. Validate ALL inputs before deleting anything.
+    _hy2hop_live_identity_state
+    _live_state="${_HY2HOP_LIVE_STATE:-bad}"
+    if [[ "$_live_state" == 'bad' ]]; then
+        _hy2hop_resolve_identity || true
         msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
         return 1
     fi
-    # 2. Fetch listings once. A missing binary means that backend
-    # could not have built rules on this host (same-host deploy
-    # and delete); it is skipped as absent, not failed. A failed
-    # listing is inspection-failed.
+    if [[ "$_live_state" == 'hop' && -z "${_HY2HOP_LIVE_LISTEN:-}" ]]; then
+        _hy2hop_resolve_identity || true
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    _hist_out=$(_hy2hop_history_load 2>/dev/null); _hist_rc=$?
+    if (( _hist_rc == 1 )); then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_corrupt)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if (( _hist_rc == 0 )) && [[ -n "$_hist_out" ]]; then
+        mapfile -t _hist_listens <<< "$_hist_out"
+    fi
+    _pend_out=$(_hy2hop_pending_load 2>/dev/null); _pend_rc=$?
+    if (( _pend_rc == 1 )); then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_corrupt)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if [[ "$_live_state" == 'gone' && ${#_hist_listens[@]} -eq 0 && -z "$_pend_out" ]]; then
+        _hy2hop_resolve_identity || true
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    if [[ "$_live_state" == 'hop' ]]; then
+        _ident_listens+=("$_HY2HOP_LIVE_LISTEN"); _ident_v1+=(0)
+        _ident_seen["$_HY2HOP_LIVE_LISTEN"]=1
+    fi
+    for _listen in "${_hist_listens[@]}"; do
+        [[ -n "$_listen" ]] || continue
+        # F1 (2026-11-28, fixture-caught): dedup history rows ONLY
+        # against other history rows, never against the live listen.
+        # The live entry (v1=0) cleans with the live formula and never
+        # retires a row, so a history row whose string equals the live
+        # listen would otherwise never be retired while the instance
+        # is live, even after its objects were negative-verified
+        # absent. The second pass is idempotent (objects already
+        # absent) and retires the row.
+        if [[ -z "${_hist_seen[$_listen]:-}" ]]; then
+            _ident_listens+=("$_listen"); _ident_v1+=(1); _hist_seen["$_listen"]=1; _ident_seen["$_listen"]=1
+        fi
+    done
+    if { [[ "$_live_state" == 'gone' ]] || [[ "$_live_state" == 'nohop' ]]; } && (( ${#_hist_listens[@]} > 0 )); then
+        msg "${YELLOW}[!] $(tprintf hy2hop_history_only "${#_hist_listens[@]}")${NC}"
+    fi
+    # 2. Clean each identity; retire its history row only after every
+    # object of that identity is negative-verified absent (a failed
+    # identity keeps its row, so the next run can retry it).
+    for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+        _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+        if (( _v1 == 1 )); then
+            msg "$(tprintf hy2hop_history_cleaning "$_listen")"
+        fi
+        if _hy2hop_cleanup_identity "$_listen" "$_v1"; then
+            _ident_ok["$_listen"]=1
+            if (( _v1 == 1 )); then
+                _hy2hop_history_retire_unlocked "$_listen" || _failed=1
+            fi
+        else
+            _ident_ok["$_listen"]=0
+            _failed=1
+        fi
+    done
+    # 3. Pending rows: recovery clues, never an authority on their own.
+    # History identities were handled above; a pending row for one of
+    # them is dropped once that identity is verified clean. A
+    # pending-only identity is reclaimed only when its premask proves
+    # none of its objects pre-existed (0000) and the content gate
+    # passes; otherwise it is kept and reported, and the cleanup fails.
+    if [[ -n "$_pend_out" ]]; then
+        while IFS=$'\t' read -r _listen _txid _pre || [[ -n "$_listen" ]]; do
+            [[ -n "$_listen" ]] || continue
+            if [[ -n "${_ident_seen[$_listen]:-}" ]]; then
+                if [[ "${_ident_ok[$_listen]:-0}" == '1' ]]; then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                fi
+                continue
+            fi
+            if [[ "$_pre" == '0000' ]]; then
+                if _hy2hop_cleanup_identity "$_listen" 0; then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                else
+                    _failed=1
+                fi
+            else
+                _hy2hop_identity_objects_absent "$_listen" 0; _abs_rc=$?
+                if (( _abs_rc == 0 )); then
+                    _hy2hop_pending_drop_unlocked "$_listen" || _failed=1
+                elif (( _abs_rc == 1 )); then
+                    msg "${YELLOW}[!] $(tprintf hy2hop_pending_unconfirmed "$_listen")${NC}"
+                    _failed=1
+                else
+                    msg "${YELLOW}[!] Cannot inspect the hop objects of unconfirmed pending identity ${_listen}; left in place.${NC}"
+                    _failed=1
+                fi
+            fi
+        done <<< "$_pend_out"
+    fi
+    # 4. Suspected leftovers: any other hysteria_* table or
+    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
+    # delete it, and never count it as a named instance's residue.
+    # Ownership is the union of every identity cleaned above (live +
+    # history); pending-only identities stay suspects by design.
+    _suspects=''
+    _own_tbl=''; _own_chain=''
     if command -v nft >/dev/null 2>&1; then
         _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
     else
         _ruleset_missing=1
     fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables)
-                _listing=$(_hy2hop_fetch_ipt_listing iptables); _src=$?
-                case "$_src" in 0) _lst_ipt="$_listing"; _lst_ipt_ok=1 ;; 1) _lst_ipt_missing=1 ;; *) _lst_ipt_ok=0 ;; esac
-                ;;
-            ip6tables)
-                _listing=$(_hy2hop_fetch_ipt_listing ip6tables); _src=$?
-                case "$_src" in 0) _lst_ipt6="$_listing"; _lst_ipt6_ok=1 ;; 1) _lst_ipt6_missing=1 ;; *) _lst_ipt6_ok=0 ;; esac
-                ;;
-        esac
-    done
-    if (( _HY2HOP_HOP == 0 )); then
-        # Confirmed no-hop: nothing of this instance can exist.
-        # Only report anything that looks like a leftover.
-        _suspects=''
-        if (( _ruleset_ok == 1 )); then
-            while IFS= read -r _s || [[ -n "$_s" ]]; do
-                [[ -n "$_s" ]] || continue
-                _suspects+="${_suspects:+, }${_s}"
-            done < <(_hy2hop_list_nft_tables "$_ruleset")
-        fi
-        for _bin in $(_hy2hop_ipt_bins); do
-            case "$_bin" in
-                iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok ;;
-                ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok ;;
-            esac
-            (( _listing_ok == 1 )) || continue
-            while IFS= read -r _s || [[ -n "$_s" ]]; do
-                [[ -n "$_s" ]] || continue
-                _suspects+="${_suspects:+, }${_bin} ${_s}"
-            done < <(_hy2hop_list_ipt_chains "$_listing")
-        done
-        if [[ -n "$_suspects" ]]; then
-            msg "${YELLOW}[!] Suspected leftover official-Hy2 hop rules from an earlier instance (not this one; left in place, manual review needed): ${_suspects}.${NC}"
-        fi
-        return 0
-    fi
-    if (( _ruleset_ok == 0 && _ruleset_missing == 0 )); then
-        msg "${YELLOW}[!] Cannot inspect nft ruleset for this Hy2 instance's hop tables; cleanup is unverifiable.${NC}"
-        _failed=1
-    fi
-    # 3. nft side: judge + delete per table.
-    if (( _ruleset_ok == 1 )); then
-        for _fam in $(_hy2hop_nft_families); do
-            _tbl=$(_hy2hop_nft_table "$_fam") || { msg "${YELLOW}[!] Cannot compute the nft hop table name for family ${_fam} (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
-            _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
-            if (( _src != 0 )); then
-                msg "${YELLOW}[!] Cannot inspect nft table ${_fam} ${_tbl}; cleanup is unverifiable.${NC}"; _failed=1; continue
-            fi
-            case "$_status" in
-                absent) : ;;
-                match|empty)
-                    nft delete table "$_fam" "$_tbl" >/dev/null 2>&1 || { msg "${YELLOW}[!] Failed to delete nft table ${_fam} ${_tbl}.${NC}"; _failed=1; }
-                    ;;
-                mismatch)
-                    msg "${YELLOW}[!] Refusing to delete nft table ${_fam} ${_tbl}: its content does not match the rules this instance would have created (extra or missing rules); left in place.${NC}"
-                    _failed=1
-                    ;;
-            esac
-        done
-    fi
-    # 4. iptables side: judge + delete per chain. Each object is
-    # judged on its own gate: a refused object never blocks the
-    # deletion of an exactly-matching object on the other backend.
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing="$_lst_ipt"; _listing_ok=$_lst_ipt_ok; _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing="$_lst_ipt6"; _listing_ok=$_lst_ipt6_ok; _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        if (( _listing_ok == 0 && _listing_missing == 0 )); then
-            msg "${YELLOW}[!] Cannot inspect ${_bin} nat rules for this Hy2 instance's hop chain; cleanup is unverifiable.${NC}"
-            _failed=1; continue
-        fi
-        (( _listing_ok == 1 )) || continue
-        _chain=$(_hy2hop_ipt_chain "$_bin") || { msg "${YELLOW}[!] Cannot compute the ${_bin} hop chain name (sha256sum unavailable); cleanup is unverifiable.${NC}"; _failed=1; continue; }
-        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
-        if (( _src != 0 )); then
-            msg "${YELLOW}[!] Cannot inspect ${_bin} chain ${_chain}; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        case "$_status" in
-            absent) : ;;
-            match|empty|dangling)
-                _hy2hop_ipt_delete_chain "$_bin" "$_chain" || { msg "${YELLOW}[!] Failed to delete ${_bin} hop chain ${_chain} (jumps or chain remain).${NC}"; _failed=1; }
-                ;;
-            mismatch)
-                msg "${YELLOW}[!] Refusing to delete ${_bin} chain ${_chain}: its content does not match the rules this instance would have created (extra or missing rules, or an unknown reference); left in place.${NC}"
-                _failed=1
-                ;;
-        esac
-    done
-    # 5. Negative verification, per object: re-list fresh and
-    # require every expected object to be absent. This catches an
-    # empty chain, a single leftover jump, and one backend clean
-    # while the other still holds residue.
-    if (( _ruleset_missing == 0 )); then
-        _ruleset=$(nft list ruleset 2>/dev/null) && _ruleset_ok=1 || _ruleset_ok=0
-        if (( _ruleset_ok == 1 )); then
-            for _fam in $(_hy2hop_nft_families); do
-                _tbl=$(_hy2hop_nft_table "$_fam") || { _failed=1; continue; }
-                _status=$(_hy2hop_nft_table_status "$_ruleset" "$_fam" "$_tbl"); _src=$?
-                if (( _src != 0 )); then
-                    msg "${YELLOW}[!] Cannot re-inspect nft table ${_fam} ${_tbl} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-                fi
-                [[ "$_status" == absent ]] || { msg "${YELLOW}[!] nft table ${_fam} ${_tbl} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
-            done
-        else
-            msg "${YELLOW}[!] Cannot re-inspect the nft ruleset after cleanup; cleanup is unverifiable.${NC}"; _failed=1
-        fi
-    fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        (( _listing_missing == 1 )) && continue
-        _listing=$(_hy2hop_fetch_ipt_listing "$_bin"); _src=$?
-        if (( _src != 0 )); then
-            if (( _src == 1 )); then continue; fi
-            msg "${YELLOW}[!] Cannot re-inspect ${_bin} nat rules after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        _chain=$(_hy2hop_ipt_chain "$_bin") || { _failed=1; continue; }
-        _status=$(_hy2hop_ipt_chain_status "$_listing" "$_bin" "$_chain"); _src=$?
-        if (( _src != 0 )); then
-            msg "${YELLOW}[!] Cannot re-inspect ${_bin} chain ${_chain} after cleanup; cleanup is unverifiable.${NC}"; _failed=1; continue
-        fi
-        [[ "$_status" == absent ]] || { msg "${YELLOW}[!] ${_bin} chain ${_chain} is still present after cleanup (status ${_status}).${NC}"; _failed=1; }
-    done
-    # 6. Suspected leftovers: any other hysteria_* table or
-    # HYSTERIA-PR-* chain is unknown ownership -- report it, never
-    # delete it, and never count it as this instance's residue.
-    _suspects=''
     if (( _ruleset_ok == 1 )); then
         while IFS= read -r _s || [[ -n "$_s" ]]; do
             [[ -n "$_s" ]] || continue
-            _own_tbl=''
             _fam="${_s%% *}"; _tbl="${_s#* }"
-            _own_tbl=$(_hy2hop_nft_table "$_fam" 2>/dev/null || true)
-            [[ "$_tbl" == "$_own_tbl" ]] && continue
-            _suspects+="${_suspects:+, }${_fam} ${_tbl}"
+            _own_tbl=''
+            for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+                _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+                _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || continue
+                _own_tbl=$(_hy2hop_table_name "$_fam" "$_v1" 2>/dev/null || true)
+                [[ "$_tbl" == "$_own_tbl" ]] && break
+                _own_tbl=''
+            done
+            [[ -n "$_own_tbl" ]] && continue
+            _suspects+="${_suspects:+, }${_s}"
         done < <(_hy2hop_list_nft_tables "$_ruleset")
     fi
-    for _bin in $(_hy2hop_ipt_bins); do
-        case "$_bin" in
-            iptables) _listing_missing=$_lst_ipt_missing ;;
-            ip6tables) _listing_missing=$_lst_ipt6_missing ;;
-        esac
-        (( _listing_missing == 1 )) && continue
+    for _bin in iptables ip6tables; do
         _listing=$(_hy2hop_fetch_ipt_listing "$_bin" 2>/dev/null); _src=$?
         (( _src == 0 )) || continue
-        _own_chain=$(_hy2hop_ipt_chain "$_bin" 2>/dev/null || true)
         while IFS= read -r _s || [[ -n "$_s" ]]; do
             [[ -n "$_s" ]] || continue
-            [[ "$_s" == "$_own_chain" ]] && continue
+            _own_chain=''
+            for ((_i = 0; _i < ${#_ident_listens[@]}; _i++)); do
+                _listen="${_ident_listens[$_i]}"; _v1="${_ident_v1[$_i]}"
+                _hy2hop_parse_listen "$_listen" >/dev/null 2>&1 || continue
+                _own_chain=$(_hy2hop_chain_name "$_bin" "$_v1" 2>/dev/null || true)
+                [[ "$_s" == "$_own_chain" ]] && break
+                _own_chain=''
+            done
+            [[ -n "$_own_chain" ]] && continue
             _suspects+="${_suspects:+, }${_bin} ${_s}"
         done < <(_hy2hop_list_ipt_chains "$_listing")
     done
@@ -42413,6 +43246,22 @@ remove_hy2_official_hop_rules() {
         return 1
     fi
     return 0
+}
+
+# Reclaim the official-hop NAT rules of the hysteria instances named by
+# the live identity and the hop ledger (see
+# _remove_hy2_official_hop_rules_locked). The whole run -- read,
+# delete, negative verification, row retire -- holds the ledger lock.
+remove_hy2_official_hop_rules() {
+    local _rc=0
+    if ! _hy2hop_history_lock; then
+        msg "${YELLOW}[!] $(tr_msg hy2hop_history_lock_failed)${NC}"
+        msg "${YELLOW}[!] Hysteria service is stopped, but official hop NAT rule cleanup did not complete.${NC}"
+        return 1
+    fi
+    _remove_hy2_official_hop_rules_locked; _rc=$?
+    _hy2hop_history_unlock
+    return "$_rc"
 }
 
 # M-12(1): enumerate "proto/port" lines for the given inbound tags in a
@@ -57242,7 +58091,7 @@ def allowed(n):
  if n.startswith(prefix):
   rel=n[len(prefix):]
   if '/' in rel or not rel: return False
-  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
+  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.hy2-hop-history.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
   return rel in exact or rel.startswith('.deps.v')
  return any(n==x or n.startswith(x+'/') for x in allowed_prefixes if x!='root/etc/ddr')
 try: tf=tarfile.open(fn,'r:gz')
@@ -58011,8 +58860,12 @@ assert_restore_shortcut_safe() {
 }
 
 abox_restore_preserved_name() {
+    # F1 (2026-11-28): .hy2-hop-history.tsv is preserved, never cleared
+    # and never overwritten by a backup's copy (see
+    # _hy2hop_restore_handle_history): the live ledger outlives every
+    # restore, and a backup without the file must not clear it.
     case "$1" in
-        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|.hy2-hop-history.tsv|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -58253,6 +59106,14 @@ restore_abox_directory() {
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        # F1 (2026-11-28): a hop-pending file or hop-ledger lock file
+        # must never land on live from a backup, even if an archive
+        # somehow contains one (pending rows are transaction clues
+        # tied to the source host's deploy attempt, not ledger rows;
+        # the lock file is recreated on demand). The live ledger
+        # itself is a preserved name above, so it is neither cleared
+        # nor overwritten here.
+        case "$base" in .hy2-hop-pending.tsv|.hy2-hop-history.lock) continue ;; esac
         [[ ! -L "$child" ]] || return 1
         cp -a -- "$child" "$ABOX_DIR/" || return 1
     done
@@ -59073,6 +59934,7 @@ backup_current_config() {
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
                 --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' --exclude='./.tz-snap.*' --exclude='./.tz-rollback-new.*' --exclude='./.tune-backup-new.*' --exclude='./.deps.v*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
+                --exclude='./.hy2-hop-pending.tsv' --exclude='./.hy2-hop-history.lock' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
                 --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
@@ -59463,6 +60325,49 @@ restore_preserved_latest_firewall() {
     return 0
 }
 
+# F1 (2026-11-28): hop-ledger handling at restore time. The backup's
+# ledger is a DIAGNOSTIC CLUE ONLY: it is never merged into the live
+# ledger (GPT defect 3 -- an old backup cannot prove a row was not
+# already retired on this host, and a bare epoch cannot prove
+# same-ledger provenance; automatic union would need a verifiable
+# ledger generation + retirement record, which this ledger does not
+# carry). The live ledger is a preserved name, so
+# clear_abox_runtime_for_restore keeps it and restore_abox_directory
+# never copies the backup's copy over it; a backup without a ledger
+# file likewise never clears the live ledger. After the restored
+# services are started, the actually-running official-hop instance is
+# verified and re-recorded, so the ledger reflects what this restore
+# really started. Best-effort: never fails the restore.
+_hy2hop_restore_handle_history() {
+    local _root="${1:-}" _staged='' _out='' _rc=0 _n=0 _state=''
+    [[ -n "$_root" ]] || return 0
+    _staged="$_root${ABOX_DIR:-/etc/ddr}/.hy2-hop-history.tsv"
+    if [[ -e "$_staged" || -L "$_staged" ]]; then
+        _out=$(_hy2hop_history_load_file "$_staged" 2>/dev/null); _rc=$?
+        if (( _rc == 0 )); then
+            _n=0
+            if [[ -n "$_out" ]]; then _n=$(printf '%s\n' "$_out" | wc -l | tr -d ' '); fi
+            msg "$(tprintf hy2hop_restore_history_noted "$_n")"
+        else
+            msg "${YELLOW}[!] $(tr_msg hy2hop_restore_history_bad)${NC}"
+        fi
+    fi
+    if abox_owns_service hysteria && [[ "${HY2_HOP:-}" == 'true' && "${HY2_HOP_IMPL:-none}" == 'official' ]]; then
+        _state=$(managed_service_state_value hysteria 2>/dev/null || true)
+        case "$_state" in
+            hysteria\|1\|*)
+                _hy2hop_live_identity_state
+                if [[ "${_HY2HOP_LIVE_STATE:-}" == 'hop' && -n "${_HY2HOP_LIVE_LISTEN:-}" ]] && hysteria_official_hop_firewall_ok "$_HY2HOP_START" "$_HY2HOP_END" "$_HY2HOP_FIRST"; then
+                    record_hy2_hop_identity "$_HY2HOP_LIVE_LISTEN" || msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                else
+                    msg "${YELLOW}[!] $(tr_msg hy2hop_restore_rerecord_failed)${NC}"
+                fi
+                ;;
+        esac
+    fi
+    return 0
+}
+
 restore_latest_backup_silent() {
     local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" key_file="${3:-}" work root backend mode=all srv
     [[ -d "$backup_dir" ]] || { msg "restore gate failed: backup-dir" >&2; return 1; }
@@ -59564,6 +60469,9 @@ PY_LATEST_BACKUP
     save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw (work preserved at $work)" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload (work preserved at $work)" >&2; return 1; }; fi
     restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state (work preserved at $work)" >&2; return 1; }
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
@@ -59756,6 +60664,9 @@ PY_RB_ENUM
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
+    # F1 (2026-11-28): hop-ledger diagnostic + re-record of the instance
+    # this restore actually started (never merges the backup's ledger).
+    _hy2hop_restore_handle_history "$root" || true
     # M-18 (supplement): a restored hopping hysteria on a host without
     # nft needs the grant script, which old backups never contained;
     # without it the service starts but the hop rules are never built,

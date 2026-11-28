@@ -12585,6 +12585,14 @@ sni_verified_amazon_fallback() {
 prompt_reality_sni() {
     local label="$1" port="$2" default_sni input answer prompt warned custom_tier dns_rc
     default_sni=$(default_sni_for_port "$port")
+    # F3 B2: one-shot rebuild default from the old .env (set only in
+    # the confirmed-rebuild branch). Validated here; an invalid value
+    # falls back to the normal default. Consumed on use, so a later
+    # prompt in the same run never inherits it.
+    if [[ -n "${ABOX_REBUILD_SNI_ONCE:-}" ]] && valid_sni "$ABOX_REBUILD_SNI_ONCE"; then
+        default_sni="$ABOX_REBUILD_SNI_ONCE"
+    fi
+    unset ABOX_REBUILD_SNI_ONCE
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
         read -r -p "$prompt" input || return 1
@@ -27537,6 +27545,18 @@ printf '%s %s\n' "$count" "$last" > "$STATE"
 (( count >= 3 )) || exit 0
 (( now - last >= 600 )) || exit 0
 if restart_owned "$failed_srv"; then printf '0 %s\n' "$now" > "$STATE"; else printf '%s %s\n' "$count" "$now" > "$STATE"; fi
+# F3: orphan diagnostic (read-only report; never rebuilds). Runs only
+# after the failure-count (>=3) and 600s gates above, so a transient
+# failure never reports. CORE and DESIRED are already loaded above.
+# Prints one stderr line when the sing-box config is gone but this
+# host is recorded as a sing-box deployment that should still run;
+# the operator rebuilds from menu 6/10.
+if [[ "${CORE:-}" == singbox && ! -e /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+    if { [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && grep -q 'RUNNING' "$DESIRED" 2>/dev/null; } || { [[ -f /run/A-Box-deploy-rollback-state ]] && grep -q '^tx-id: ' /run/A-Box-deploy-rollback-state 2>/dev/null; }; then
+        printf '%s\n' "[A-Box] sing-box config missing but this host is recorded as a sing-box deployment that should still run (orphaned deployment). Rebuild from menu 6/10 as a fresh ALL deployment; nothing was rebuilt automatically." >&2
+    fi
+fi
+exit 0
 EOF_PROBE
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark)"
@@ -28278,6 +28298,15 @@ pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
     local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
+    # F3 B2: confirmed-rebuild defaults from the old .env. Each value
+    # is validated (numeric port, not reserved) before it may replace
+    # the stock default; an invalid value keeps the stock default, so
+    # a bad old .env can never break the wizard. These variables are
+    # cleared by the caller right after pre_install_setup returns.
+    if [[ -n "${ABOX_REBUILD_VLESS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_VLESS_PORT" && ! is_reserved_port "$ABOX_REBUILD_VLESS_PORT"; then DEF_V_PORT="$ABOX_REBUILD_VLESS_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_XHTTP_PORT:-}" ]] && valid_port "$ABOX_REBUILD_XHTTP_PORT" && ! is_reserved_port "$ABOX_REBUILD_XHTTP_PORT"; then DEF_X_PORT="$ABOX_REBUILD_XHTTP_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_HY2_BASE_PORT:-}" ]] && valid_port "$ABOX_REBUILD_HY2_BASE_PORT" && ! is_reserved_port "$ABOX_REBUILD_HY2_BASE_PORT"; then DEF_H_PORT="$ABOX_REBUILD_HY2_BASE_PORT"; fi
+    if [[ -n "${ABOX_REBUILD_SS_PORT:-}" ]] && valid_port "$ABOX_REBUILD_SS_PORT" && ! is_reserved_port "$ABOX_REBUILD_SS_PORT"; then DEF_S_PORT="$ABOX_REBUILD_SS_PORT"; fi
     local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
     local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
@@ -29962,9 +29991,55 @@ restore_deployment_transaction_traps() {
     ABOX_TX_PREV_TRAP_EXIT=''; ABOX_TX_PREV_TRAP_INT=''; ABOX_TX_PREV_TRAP_TERM=''; ABOX_TX_PREV_TRAP_HUP=''
 }
 
+# F3: signal critical section (GPT Q3, defect 2). The protected unit is
+# ONE ROLLBACK, however it was entered (signal, EXIT, die hook, explicit
+# call) -- not one handler entry. While a rollback runs, a further
+# INT/TERM/HUP must neither re-enter a handler nor kill the rollback.
+# The verdict prescribes `trap ''` (ignore) rather than `trap -`
+# (restore the default disposition, which lets the second signal kill
+# the rollback outright). A bare `trap ''` would additionally DROP the
+# request: ignored signals are not redelivered, so a termination that
+# arrives during an explicit rollback would be silently swallowed and
+# the caller would return to the menu and keep deploying. The recording
+# handler below implements the same ignore -- the signal is not acted
+# on for the duration of the rollback -- while retaining the FIRST
+# pending request so the wrapper can honour it when the rollback
+# finishes (exit with the pending code on explicit/die paths; the
+# signal/EXIT paths already exit with the first code). First request
+# wins; the pending request is cleared by begin/commit.
+_tx_record_terminate_request() {
+    local sig="$1" code="$2"
+    [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" ]] && return 0
+    ABOX_TX_TERMINATE_PENDING_SIG="$sig"
+    ABOX_TX_TERMINATE_PENDING_CODE="$code"
+}
+
+# Arm the critical section for the rollback about to run: further
+# INT/TERM/HUP only record a pending termination request. Idempotent:
+# arming twice installs the same traps. The pre-transaction traps are
+# NOT touched here; the rollback wrapper restores them when done.
+_tx_arm_rollback_critical_section() {
+    trap '_tx_record_terminate_request HUP 129' HUP
+    trap '_tx_record_terminate_request INT 130' INT
+    trap '_tx_record_terminate_request TERM 143' TERM
+    ABOX_TX_IN_ROLLBACK=1
+}
+
 deployment_transaction_signal_abort() {
     local signal="$1" code=1
     case "$signal" in INT) code=130 ;; HUP) code=129 ;; TERM) code=143 ;; esac
+    # A rollback is already running (entered via EXIT/die/explicit
+    # call): record this as the pending termination and let the running
+    # rollback finish; never re-enter it, never exit mid-rollback.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _tx_record_terminate_request "$signal" "$code"
+        return 0
+    fi
+    # First termination request: save its exit code. The rollback
+    # wrapper arms the critical section and runs the rollback to
+    # completion; this path then exits with the FIRST code (a pending
+    # second request is already honoured by exiting at all).
+    ABOX_TX_ROLLBACK_TERMINATING=1
     deployment_transaction_rollback "signal ${signal}" || true
     exit "$code"
 }
@@ -29972,7 +30047,15 @@ deployment_transaction_signal_abort() {
 deployment_transaction_exit_abort() {
     local code=$? _tx_abort_old_exit="${ABOX_TX_PREV_TRAP_EXIT:-}" _tx_abort_old_cmd=''
     trap - EXIT
-    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then deployment_transaction_rollback "unexpected shell exit ${code}" || true; fi
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        # EXIT-triggered active rollback is protected the same way:
+        # the wrapper arms the critical section, so a HUP/INT/TERM
+        # arriving mid-rollback only records a pending request. This
+        # path is already exiting with $code, so the pending request
+        # needs no separate exit.
+        ABOX_TX_ROLLBACK_TERMINATING=1
+        deployment_transaction_rollback "unexpected shell exit ${code}" || true
+    fi
     # The old EXIT handler must run explicitly: restoring it here and
     # then exiting does NOT re-trigger it (verified by experiment).
     # The saved string is trap -p output ("trap -- 'cmd' SIGNAL").
@@ -30254,19 +30337,309 @@ _rollback_abort_cron_best_effort() {
     return 0
 }
 
+# F3: per-family primary config path (production layout). The F3
+# fixture overrides this with its temp roots, exactly like the
+# mocked core_family_paths it already provides.
+_tx_family_config_path() {
+    case "$1" in
+        sing-box) printf '%s\n' /etc/sing-box/config.json ;;
+        xray) printf '%s\n' /usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' /etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3: archive member path for a family's primary config, in the
+# backup layout (root + production path). This is a property of the
+# backup FORMAT, independent of the live root: a test double may
+# relocate the live tree (by overriding _tx_family_config_path)
+# without changing the archive layout, so the byte-compare in
+# _tx_family_config_matches_backup keeps working.
+_tx_family_config_archive_member() {
+    case "$1" in
+        sing-box) printf '%s\n' root/etc/sing-box/config.json ;;
+        xray) printf '%s\n' root/usr/local/etc/xray/config.json ;;
+        hysteria) printf '%s\n' root/etc/hysteria/config.yaml ;;
+        *) return 1 ;;
+    esac
+}
+
+# F3 Q8: cheap, side-effect-free preflight, run AFTER the backup is
+# pinned and BEFORE the first destructive step (stop).
+#  (1) The pinned archive must list meta/services.state, the member
+#      both the restore tail and the N6-A fallback restart read. A
+#      backup without it cannot restore service state, so aborting
+#      here -- while services still run -- is strictly better than
+#      discovering it after stop/remove.
+#  (2) Every target family's paths must pass the same symlink/mount
+#      preflight remove_core_family_force runs, so a remove failure
+#      that used to abort AFTER services were stopped now aborts
+#      BEFORE them. A missing path is fine (nothing to remove).
+# A family config member is deliberately NOT required: a legitimate
+# pre-deployment backup may predate the family (L8's empty backups
+# prove it), and restore tolerates a missing family. Returns 0 when
+# the restore may proceed, 1 otherwise.
+_tx_preflight_restore_members() {
+    local _pinned_archive="$1" _members='' _srv _path _paths=''
+    [[ -n "$_pinned_archive" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || return 1
+    _members=$(tar -tzf "$_pinned_archive" 2>/dev/null) || return 1
+    { grep -Fxq 'meta/services.state' <<< "$_members" || grep -Fxq './meta/services.state' <<< "$_members"; } || return 1
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _paths=$(core_family_paths "$_srv" 2>/dev/null) || return 1
+        while IFS= read -r _path || [[ -n "$_path" ]]; do
+            [[ -n "$_path" ]] || continue
+            [[ -e "$_path" || -L "$_path" ]] || continue
+            [[ ! -L "$_path" ]] || return 1
+            path_tree_has_mountpoint "$_path" && return 1
+        done <<< "$_paths"
+    done
+    return 0
+}
+
+# F3: has this family's config ALREADY been restored from the pinned
+# backup (byte-identical to the archived member)? Tells "restore
+# succeeded but the stage record was never written" from "restore
+# never ran": re-deleting an already-restored family and re-running a
+# restore that then fails again would turn a healthy system back into
+# an orphan. rc 0 = restored, 1 = not restored (live config
+# absent/unsafe, member absent, or bytes differ), 2 = unknown family
+# (the caller must fail closed).
+# F3 A2: byte-compare the live family config against the member
+# stored in the pinned backup archive. Full-archive extraction to a
+# temp dir (the same mechanism the restore path uses), gated on the
+# member file's presence -- never on tar's exit code: tar reports rc=2
+# for ownership failures on some filesystems even when the files land,
+# and its single-member extraction proved intermittently unreliable in
+# the sandbox ("Not found in archive" on byte-identical inputs, with
+# the archive verified clean by header dump and full extraction).
+# A failure to determine a match returns 1 (conservative: the caller
+# takes the full re-run, never the cleanup-only path). Returns 0 only
+# when the live file and the archived member are byte-identical.
+_tx_family_config_matches_backup() {
+    local srv="$1" pinned_archive="$2" cfg='' member='' work='' archived='' _tries=0
+    cfg=$(_tx_family_config_path "$srv") || return 2
+    member=$(_tx_family_config_archive_member "$srv") || return 2
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    [[ -n "$pinned_archive" && -f "$pinned_archive" && ! -L "$pinned_archive" ]] || return 1
+    work=$(mktemp -d /tmp/A-Box-tx-compare.XXXXXX) || return 1
+    tar -xzf "$pinned_archive" -C "$work" 2>/dev/null
+    # Bounded retry on member visibility: the extracted file can be
+    # momentarily unstatable on filesystems with delayed visibility
+    # (observed in the sandbox: a just-extracted member failed [[ -f ]]
+    # and then stat'ed fine a moment later with identical inputs).
+    # A genuinely absent member still returns 1 after the budget.
+    _tries=0
+    while (( _tries < 5 )); do
+        if [[ -f "$work/$member" && ! -L "$work/$member" ]]; then
+            archived="$work/$member"
+            break
+        elif [[ -f "$work/./$member" && ! -L "$work/./$member" ]]; then
+            archived="$work/./$member"
+            break
+        fi
+        _tries=$(( _tries + 1 ))
+        sleep 0.1
+    done
+    if [[ -z "$archived" ]]; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    if cmp -s -- "$cfg" "$archived"; then rm -rf -- "$work"; return 0; fi
+    rm -rf -- "$work"
+    return 1
+}
+
+# F3 A2: resume tail for a transaction whose restore already
+# succeeded. Only the post-restore cleanup is re-run (pin dir, tx
+# tmp, ephemeral dir), with the same path patterns inner uses. Never
+# stops services, never removes families, never re-restores. Completes
+# the state file and clears the transaction context on success.
+_tx_resume_cleanup_only() {
+    local _pinned_dir="$1" _pinned_archive="$2"
+    local _tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" _eph="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}"
+    local _state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    # The files are restored, but services the snapshot marks active
+    # may still be down: a stop-services abort can leave a partial
+    # stop, and the restore's own restart never ran in that case.
+    # Best-effort restart from the pinned archive BEFORE the pin is
+    # removed (the restart reads the archive); a failure here does not
+    # fail the resume -- the files are restored -- matching the N6-A
+    # fallback's best-effort semantics. When the restore already ran,
+    # this is a no-op restart of already-running services.
+    rollback_restart_services_from_backup "$_pinned_archive" || true
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    ABOX_VERIFY_PINNED_WORK=''
+    if [[ -n "$_tx_tmp" ]]; then
+        rm -rf -- "$_tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $_tx_tmp${NC}" >&2; _rollback_record_abort 'tx-tmp-cleanup' 1; return 1; }
+    fi
+    if [[ -n "$_eph" && "$_eph" == /run/A-Box-uninstall-tx.* && "$_eph" != /run/ ]]; then
+        rm -rf -- "$_eph" 2>/dev/null || { msg "${RED}[!] Prior state restored, but ephemeral transaction cleanup failed: $_eph${NC}" >&2; _rollback_record_abort 'ephemeral-cleanup' 1; return 1; }
+    fi
+    ABOX_DEPLOY_TX_TARGETS=''
+    ABOX_DEPLOY_TX_REASON=''
+    ABOX_DEPLOY_TX_BACKUP=''
+    ABOX_DEPLOY_TX_TMP=''
+    ABOX_DEPLOY_TX_BACKUP_DIR=''
+    ABOX_DEPLOY_TX_KEY_FILE=''
+    ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
+    ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
+    standalone_preserve_cleanup
+    _tx_clear_services_state_snapshot
+    printf '%s\n' 'rollback: complete' >> "$_state" 2>/dev/null || true
+    return 0
+}
+
+# F3 A2: establish the serial-retry context from the rollback state
+# file (GPT Q7 option (b)). Same transaction, same pinned backup,
+# same targets -- nothing is guessed. All of these fail closed (the
+# bundle is retained and the original failure stands):
+#  * the state file must name a non-empty tx-id, and it must match
+#    the in-memory tx-id when one is set (fresh-process callers have
+#    none, so the file is the authority there);
+#  * backup, targets and pinned dir must exist and be safe (regular
+#    files/dirs, never symlinks); a key file, when recorded, must
+#    exist;
+#  * the retry budget is exactly one per transaction (a `retry:`
+#    line already in the state file refuses a second attempt);
+#  * no other rollback process may still be alive (the pid recorded
+#    in the state file, other than this process);
+#  * every target must be a known family.
+# On success the context is re-established in the transaction
+# variables and ABOX_DEPLOY_TX_RESUMING=1. On failure RESUMING is
+# left 0 and no variable is trusted.
+_tx_resume_establish_context() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local tx_id='' backup='' targets='' pinned_dir='' key_file='' snap='' retry_n=0 _rb_pid='' _srv
+    [[ -f "$state" && ! -L "$state" ]] || return 1
+    grep -Fq 'rollback: complete' "$state" 2>/dev/null && return 1
+    tx_id=$(grep '^tx-id: ' "$state" 2>/dev/null | tail -1 | sed 's/^tx-id: //')
+    [[ -n "$tx_id" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_ID:-}" && "$ABOX_DEPLOY_TX_ID" != "$tx_id" ]]; then return 1; fi
+    backup=$(grep '^backup: ' "$state" 2>/dev/null | tail -1 | sed 's/^backup: //')
+    targets=$(grep '^targets: ' "$state" 2>/dev/null | tail -1 | sed 's/^targets: //')
+    pinned_dir=$(grep '^pinned-dir: ' "$state" 2>/dev/null | tail -1 | sed 's/^pinned-dir: //')
+    key_file=$(grep '^key-file: ' "$state" 2>/dev/null | tail -1 | sed 's/^key-file: //')
+    snap=$(grep '^services-snapshot: ' "$state" 2>/dev/null | tail -1 | sed 's/^services-snapshot: //')
+    [[ -n "$backup" && -n "$targets" && -n "$pinned_dir" ]] || return 1
+    if [[ -n "${ABOX_DEPLOY_TX_BACKUP:-}" && "$ABOX_DEPLOY_TX_BACKUP" != "$backup" ]]; then return 1; fi
+    if [[ -n "${ABOX_DEPLOY_TX_TARGETS:-}" && "$ABOX_DEPLOY_TX_TARGETS" != "$targets" ]]; then return 1; fi
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    [[ -d "$pinned_dir" && ! -L "$pinned_dir" ]] || return 1
+    [[ -f "$pinned_dir/$(basename -- "$backup")" && ! -L "$pinned_dir/$(basename -- "$backup")" ]] || return 1
+    if [[ -n "$key_file" ]]; then [[ -f "$key_file" && ! -L "$key_file" ]] || return 1; fi
+    retry_n=$(grep -c '^retry: ' "$state" 2>/dev/null || true)
+    [[ "$retry_n" =~ ^[0-9]+$ ]] || retry_n=0
+    (( retry_n == 0 )) || return 1
+    _rb_pid=$(grep '^pid: ' "$state" 2>/dev/null | tail -1 | sed 's/^pid: //')
+    if [[ "$_rb_pid" =~ ^[0-9]+$ && "$_rb_pid" != "$$" ]] && kill -0 "$_rb_pid" 2>/dev/null; then return 1; fi
+    for _srv in $targets; do
+        case "$_srv" in xray|sing-box|hysteria) ;; *) return 1 ;; esac
+    done
+    ABOX_DEPLOY_TX_ID="$tx_id"
+    ABOX_DEPLOY_TX_BACKUP="$backup"
+    ABOX_DEPLOY_TX_TARGETS="$targets"
+    ABOX_DEPLOY_TX_REASON="resume of $tx_id"
+    ABOX_DEPLOY_TX_KEY_FILE="$key_file"
+    ABOX_VERIFY_PINNED_WORK="$pinned_dir"
+    if [[ -n "$snap" && -f "$snap" && ! -L "$snap" ]]; then ABOX_DEPLOY_TX_STATE_SNAPSHOT="$snap"; fi
+    ABOX_DEPLOY_TX_RESUMING=1
+    ABOX_DEPLOY_TX_RETRY_COUNT=1
+    return 0
+}
+
+# F3 A2: run the serial retry once the context is established (same
+# process or a later process; the wrapper calls this inline after a
+# failed first attempt, and on a second wrapper call). Dispatches on
+# the recorded resume point:
+#  * restore already done (stage `restored`, or a post-restore abort
+#    stage): cleanup-only, never re-delete the restored families.
+#  * stage record may lag the real action: verify the live config
+#    against the pinned backup first. All families restored ->
+#    cleanup-only; none restored -> full re-run; a MIX is evidence
+#    contradiction -> refuse and report, bundle retained.
+#  * otherwise: full re-run of the same transaction from the stop
+#    stage (stop/firewall/remove/restore are idempotent over what the
+#    first attempt left; the same pinned backup is restored).
+# A retry that fails again keeps the bundle, records the failure
+# stage, and stops: there is no second retry.
+_tx_resume_run() {
+    local state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local abort_stage='' last_stage='' pinned_archive='' _srv _mrc _any_restored=0 _any_not=0 _unknown=0 _rrc=0
+    pinned_archive="${ABOX_VERIFY_PINNED_WORK:-}/$(basename -- "${ABOX_DEPLOY_TX_BACKUP:-}")"
+    printf 'retry: 1 at %s pid %s\n' "$(now_iso)" "$$" >> "$state" 2>/dev/null || true
+    abort_stage=$(grep '^abort-stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^abort-stage: //')
+    last_stage=$(grep '^stage: ' "$state" 2>/dev/null | tail -1 | sed 's/^stage: //')
+    if [[ "$last_stage" == restored ]] || [[ "$abort_stage" == bundle-cleanup || "$abort_stage" == tx-tmp-cleanup || "$abort_stage" == ephemeral-cleanup ]]; then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    for _srv in ${ABOX_DEPLOY_TX_TARGETS:-}; do
+        _tx_family_config_matches_backup "$_srv" "$pinned_archive"; _mrc=$?
+        case "$_mrc" in
+            0) _any_restored=1 ;;
+            1) _any_not=1 ;;
+            *) _unknown=1 ;;
+        esac
+    done
+    if (( _unknown == 1 )); then
+        msg "${RED}[!] Rollback resume refused: cannot verify a target family against the pinned backup. Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 && _any_not == 1 )); then
+        msg "${RED}[!] Rollback resume refused: mixed state (some families already restored, some not). Recovery bundle retained: $pinned_archive${NC}" >&2
+        ABOX_DEPLOY_TX_RESUMING=0
+        return 1
+    fi
+    if (( _any_restored == 1 )); then
+        _tx_resume_cleanup_only "${ABOX_VERIFY_PINNED_WORK:-}" "$pinned_archive"
+        _rrc=$?
+        ABOX_DEPLOY_TX_RESUMING=0
+        return "$_rrc"
+    fi
+    deployment_transaction_rollback_inner "resume ${ABOX_DEPLOY_TX_ID:-}"
+    _rrc=$?
+    ABOX_DEPLOY_TX_RESUMING=0
+    if (( _rrc != 0 )); then
+        msg "${RED}[!] Rollback resume failed (serial retry exhausted). Recovery bundle retained: $pinned_archive${NC}" >&2
+    fi
+    return "$_rrc"
+}
+
 deployment_transaction_rollback_inner() {
-    [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
+    # F3 A2: a serial retry runs with ACTIVE already cleared by the
+    # first attempt; RESUMING (established by
+    # _tx_resume_establish_context) is the entry ticket then. It never
+    # re-arms ACTIVE=1.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        :
+    elif [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then
+        :
+    else
+        return 0
+    fi
     # B-C2: land a rollback state file FIRST, so a later inspection can
     # tell a rollback happened, when, why, and from which backup -- even
     # when the operator only killed the hung deploy or it timed out.
     # Best-effort: a failed write must never fail the rollback itself.
+    # F3 A2: a retry must NOT truncate the header (it would destroy
+    # the abort-stage/stage history the resume point is read from);
+    # it appends a resume line instead.
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        printf 'resume: %s pid %s reason %s\n' "$(now_iso)" "$$" "${ABOX_DEPLOY_TX_REASON:-deployment}" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    else
     {
         printf 'time: %s\n' "$(now_iso)"
         printf 'pid: %s\n' "$$"
         printf 'reason: %s\n' "${ABOX_DEPLOY_TX_REASON:-deployment}"
         printf 'backup: %s\n' "${ABOX_DEPLOY_TX_BACKUP:-}"
         printf 'targets: %s\n' "${ABOX_DEPLOY_TX_TARGETS:-}"
+        printf 'tx-id: %s\n' "${ABOX_DEPLOY_TX_ID:-}"
     } > "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    fi
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
     # Disable recursive EXIT rollback, but keep the snapshot/context fields until
@@ -30288,6 +30661,15 @@ deployment_transaction_rollback_inner() {
     # restore_backup_prevalidate): the verified copy is retained and is
     # the object the restore consumes. A pin from an earlier
     # transaction is a recovery bundle: refuse, never overwrite it.
+    local _pinned_dir='' _pinned_archive=''
+    if [[ "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then
+        # Serial retry: reuse the already-verified pin established by
+        # the first attempt. Never re-read the shared backup path (it
+        # may have rotated since) and never trip the retained-bundle
+        # guard on the very bundle this retry must consume.
+        _pinned_dir="${ABOX_VERIFY_PINNED_WORK:-}"
+        _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    else
     if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
         if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
             msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
@@ -30306,13 +30688,30 @@ deployment_transaction_rollback_inner() {
     # be complete before any destructive step; a failed stop/cleanup/
     # remove/restore RETAINS it and names it. Only a successful restore
     # deletes it.
-    local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
-    local _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
+    _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    fi
     if [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]]; then
         :
     else
         msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2
         _rollback_record_abort 'pinned-incomplete' 1
+        return 1
+    fi
+    # F3: record the bundle/snapshot context for a later serial retry
+    # (same or later process) and for the B1 orphan report.
+    {
+        printf 'pinned-dir: %s\n' "$_pinned_dir"
+        printf 'pinned-archive: %s\n' "$_pinned_archive"
+        printf 'services-snapshot: %s\n' "${ABOX_DEPLOY_TX_STATE_SNAPSHOT:-}"
+        printf 'key-file: %s\n' "${tx_key_file:-}"
+    } >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
+    # F3 Q8: cheap preflight before the first destructive step (see
+    # _tx_preflight_restore_members). A failure aborts here, while
+    # services still run.
+    if ! _tx_preflight_restore_members "$_pinned_archive"; then
+        msg "${RED}[!] Rollback aborted before stopping services: restore preflight failed (pinned archive is missing the service state, or a target family path is unsafe to remove). Recovery bundle retained: $_pinned_archive${NC}" >&2
+        _rollback_record_abort 'restore-preflight' 1
         return 1
     fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
@@ -30321,6 +30720,9 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'stop-services' 1
         return 1
     fi
+    # F3 A2: record each stage AFTER its action succeeds, so a later
+    # serial retry can tell how far the first attempt got.
+    printf 'stage: stopped\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
     clean_input_rules >/dev/null 2>&1 || cleanup_failed=1
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
@@ -30330,6 +30732,7 @@ deployment_transaction_rollback_inner() {
         _rollback_record_abort 'firewall-cleanup' 1
         return 1
     fi
+    printf 'stage: firewall-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
 
     # (Backup pre-verified above, before any service stop or
     # firewall clear; see R4C8-03.)
@@ -30341,6 +30744,7 @@ deployment_transaction_rollback_inner() {
             _rollback_record_abort 'remove-core-family' 1
             return 1
         fi
+        printf 'stage: family-removed:%s\n' "$srv" >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     done
 
     if [[ -n "$tx_key_file" ]]; then
@@ -30360,7 +30764,9 @@ deployment_transaction_rollback_inner() {
             return 1
         fi
     fi
+    printf 'stage: restored\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; _rollback_record_abort 'bundle-cleanup' 1; return 1; }
+    printf 'stage: bundle-cleaned\n' >> "${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}" 2>/dev/null || true
     ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
@@ -30377,6 +30783,7 @@ deployment_transaction_rollback_inner() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_RESUMING=0
     # Carbon H-11(4): a deploy that reached rollback may have left a
     # preserve snapshot behind; reap it now that the pre-operation
     # state is restored (diagnostics copy first, then remove).
@@ -30391,15 +30798,50 @@ deployment_transaction_rollback_inner() {
 # exit evals it forever (the global PREV never changes).
 # The wrapper guarantees the restore for all inner returns.
 deployment_transaction_rollback() {
-    local _rc
+    local _rc _had_tx=0
     # OBS-2: record whether the best-effort fallback restart ran and
     # what it returned, so die() can tier its warning (restart
     # attempted vs restart failed). Cleared on entry so a stale value
     # can never downgrade an unrelated later failure. The rollback
     # itself is unchanged: the failure rc is never masked.
     ABOX_ROLLBACK_FALLBACK_RC=''
-    deployment_transaction_rollback_inner "$@"
-    _rc=$?
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_DEPLOY_TX_RESUMING:-0}" == 1 ]]; then _had_tx=1; fi
+    # F3 A1: the critical section covers the whole rollback, however
+    # it was entered (signal, EXIT, die hook, explicit call). Arm it
+    # here (idempotent) so a termination arriving mid-rollback only
+    # records a pending request instead of re-entering a handler or
+    # killing the rollback. The pre-transaction traps are restored at
+    # the end, exactly once, by restore_deployment_transaction_traps.
+    if [[ "${ABOX_TX_IN_ROLLBACK:-0}" != 1 ]]; then
+        _tx_arm_rollback_critical_section
+    fi
+    if (( _had_tx == 1 )); then
+        deployment_transaction_rollback_inner "$@"
+        _rc=$?
+        # F3 A2: one automatic serial retry of the SAME transaction
+        # (same tx-id, same pinned backup, same targets) when the
+        # first attempt aborted. Bounded (once per transaction, tracked
+        # in the state file), never nested or concurrent, never
+        # re-arming ACTIVE and never re-snapshotting service state.
+        # A retry whose contract cannot be established refuses and
+        # the original failure stands.
+        if (( _rc != 0 )) && [[ "${ABOX_DEPLOY_TX_RETRY_COUNT:-0}" == 0 ]] && _tx_resume_establish_context; then
+            if _tx_resume_run; then
+                _rc=0
+            else
+                _rc=$?
+            fi
+        fi
+    elif _tx_resume_establish_context; then
+        # Second call (same process or a later process) after a failed
+        # rollback: resume the same transaction instead of no-op'ing
+        # on ACTIVE==0.
+        _had_tx=1
+        _tx_resume_run
+        _rc=$?
+    else
+        _rc=0
+    fi
     # N6-A: the inner rollback can fail BEFORE any service restart
     # (pre-verification, retained pin, stop/firewall/remove failure)
     # while the deploy already stopped the services. A failed rollback
@@ -30414,16 +30856,45 @@ deployment_transaction_rollback() {
             ABOX_ROLLBACK_FALLBACK_RC='1'
         fi
     fi
-    # N6-A: the snapshot served its purpose (or there was no failure to
-    # cover); drop it so a later transaction can never reuse stale state.
-    _tx_clear_services_state_snapshot
+    # F3 A2: the pre-deployment services-state snapshot is the resume's
+    # restart evidence; it must survive a FAILED rollback (only a
+    # successful rollback -- or a later begin/commit -- may drop it).
+    # A no-op call (no transaction was active) must not drop a
+    # snapshot retained by an earlier failed rollback either.
+    if (( _rc == 0 && _had_tx == 1 )); then
+        _tx_clear_services_state_snapshot
+    fi
     restore_deployment_transaction_traps
+    ABOX_TX_IN_ROLLBACK=0
+    # F3 A1: a termination request recorded during an EXPLICIT or
+    # die-hook rollback must still be honoured: the caller would
+    # otherwise return to the menu and keep deploying. Termination
+    # paths (signal/exit abort) set ABOX_TX_ROLLBACK_TERMINATING=1
+    # and exit themselves with the first code, so they skip this.
+    if [[ -n "${ABOX_TX_TERMINATE_PENDING_SIG:-}" && "${ABOX_TX_ROLLBACK_TERMINATING:-0}" != 1 ]]; then
+        local _pend_code="${ABOX_TX_TERMINATE_PENDING_CODE:-143}"
+        exit "$_pend_code"
+    fi
     return "$_rc"
 }
 
 begin_deployment_transaction() {
     local reason="$1"; shift
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die "$(tr_msg tx_nested)"
+    # F3 A2: bind the retry contract BEFORE the first destructive
+    # step: a transaction id, the (not yet taken) backup, the targets,
+    # and the service-state snapshot below. A later serial retry may
+    # only resume THIS transaction, with THIS backup. Stale retry
+    # state from an earlier transaction is cleared here, so a new
+    # transaction can never consume another transaction's pin.
+    ABOX_DEPLOY_TX_ID="tx-${BASHPID}-$(date +%s 2>/dev/null || printf '0')"
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
+    ABOX_VERIFY_PINNED_WORK=''
     ABOX_LAST_BACKUP=''
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir" || return 1
@@ -30501,6 +30972,13 @@ commit_deployment_transaction() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     ABOX_DEPLOY_TX_OWNER=''
+    ABOX_DEPLOY_TX_ID=''
+    ABOX_DEPLOY_TX_RETRY_COUNT=0
+    ABOX_DEPLOY_TX_RESUMING=0
+    ABOX_TX_TERMINATE_PENDING_SIG=''
+    ABOX_TX_TERMINATE_PENDING_CODE=''
+    ABOX_TX_ROLLBACK_TERMINATING=0
+    ABOX_TX_IN_ROLLBACK=0
     ABOX_DIE_HOOK=''
     restore_deployment_transaction_traps
     if [[ -n "$tx_ephemeral_dir" && "$tx_ephemeral_dir" == /run/A-Box-uninstall-tx.* && "$tx_ephemeral_dir" != /run/ ]]; then
@@ -37385,6 +37863,259 @@ EOF_SVC
 }
 
 
+# F3 B1/B2: sing-box orphan detection and rebuild offer.
+#
+# Orphaned deployment (the F3 failure): an SSH disconnect mid
+# menu-6 redeploy left the host with no /etc/sing-box/config.json
+# and every service stopped -- the rollback had aborted at the
+# restore step and nothing told the operator the deployment was
+# gone. The detector below grades the evidence instead of guessing:
+#   rebuild-offerable -- config truly missing, every surviving
+#     family path absent or provably A-Box-owned, .env CORE=singbox
+#     consistent with sing-box ownership rows, intent evidence
+#     (RUNNING desired state or an incomplete-transaction record
+#     whose recovery bundle still exists), and no active operation.
+#   suspect -- config missing and some orphan evidence exists, but
+#     at least one offerable condition fails (foreign or symlinked
+#     surviving path, .env/manifest mismatch, no intent evidence,
+#     service still running). Report only; never offer a rebuild,
+#     never weaken the existing conflict gates.
+#   none -- config present, or no orphan evidence at all (fresh
+#     install), or an active operation is in flight, or the A-Box
+#     home directory is gone (menu 20 complete uninstall).
+# desired-state=RUNNING and the existence of an old backup are only
+# evidence, never authorisation: a rebuild still needs the operator
+# to confirm explicitly in the menu (see
+# singbox_orphan_rebuild_prompt). A rebuild is a FRESH deployment
+# with NEW credentials, never a restoration of the old state.
+# All functions in this block are read-only except the prompt
+# (which only reads an answer) and _f3_preserve_rollback_bundle
+# (which copies the retained bundle to persistent storage).
+
+_f3_manifest_has_family() {
+    # $1 = family name; true when the ownership manifest holds at
+    # least one row for this family (rows are "F|D <tab> srv <tab>
+    # /path <tab> sha256").
+    local _srv="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -q $'^F\t'"$_srv"$'\t' "$_mf" 2>/dev/null || grep -q $'^D\t'"$_srv"$'\t' "$_mf" 2>/dev/null
+}
+
+_f3_manifest_has_path() {
+    # $1 = exact path; true when the manifest holds a row for it.
+    local _path="$1" _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" ]] || return 1
+    grep -Fq "$(printf '\t%s\t' "$_path")" "$_mf" 2>/dev/null
+}
+
+detect_singbox_orphan_state() {
+    # Prints "orphan-verdict: none|suspect|rebuild-offerable" plus one
+    # "orphan-reason: ..." line per reason. Returns 0 only for
+    # rebuild-offerable. Read-only: writes, deletes and starts nothing.
+    local _cfg='/etc/sing-box/config.json'
+    local _verdict='none' _reasons='' _evidence=0
+    local _env_core='' _desired='' _rb_state='' _rb_tx='' _rb_archive='' _rb_pid='' _p=''
+    # A complete uninstall (menu 20) removes the A-Box home directory
+    # itself; a fresh install has none either. Either way there is no
+    # orphaned deployment to rebuild.
+    if [[ ! -d "${ABOX_DIR:-/root/A-Box}" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: no A-Box home directory (fresh install or complete uninstall)\n'
+        return 1
+    fi
+    # A present config means the deployment is not orphaned (it may be
+    # stopped, but the config to restart it exists).
+    if [[ -e "$_cfg" ]]; then
+        printf 'orphan-verdict: none\norphan-reason: sing-box config present\n'
+        return 1
+    fi
+    # An active operation in flight is not an orphan: do not evaluate
+    # while a transaction, a live rollback, or an uninstall runs.
+    if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 || "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then
+        printf 'orphan-verdict: none\norphan-reason: a deployment or upgrade transaction is active in this process\n'
+        return 1
+    fi
+    _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    if [[ -f "$_rb_state" ]]; then
+        _rb_pid=$(grep '^pid: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ "$_rb_pid" =~ ^[0-9]+$ ]] && kill -0 "$_rb_pid" 2>/dev/null; then
+            printf 'orphan-verdict: none\norphan-reason: rollback process %s is still running\n' "$_rb_pid"
+            return 1
+        fi
+    fi
+    local _u
+    for _u in /run/A-Box-uninstall-tx.*; do
+        if [[ -e "$_u" ]]; then
+            printf 'orphan-verdict: none\norphan-reason: an uninstall transaction is in progress (%s)\n' "$_u"
+            return 1
+        fi
+    done
+    # Evidence that a sing-box deployment existed and was expected to
+    # keep running. With none of it, this is a fresh install.
+    _f3_manifest_has_family sing-box && _evidence=1
+    _desired="${ABOX_DESIRED_STATE:-/etc/ddr/.desired_state}"
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _evidence=1; fi
+    if [[ -f "$_rb_state" ]]; then
+        _rb_tx=$(grep '^tx-id: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        _rb_archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+        if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _evidence=1; fi
+    fi
+    [[ -L "$_cfg" ]] && _evidence=1
+    if is_service_running sing-box 2>/dev/null; then _evidence=1; fi
+    if (( _evidence == 0 )); then
+        printf 'orphan-verdict: none\norphan-reason: no sing-box deployment evidence (fresh install)\n'
+        return 1
+    fi
+    # Grade the offerable conjunction; every failure downgrades to
+    # suspect with its reason. A dangling config symlink is foreign
+    # residue, never an offerable orphan.
+    if [[ -L "$_cfg" ]]; then
+        _verdict='suspect'; _reasons+='sing-box config path is a dangling symlink; '
+    fi
+    local _foreign=0
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        if [[ -L "$_p" ]]; then
+            _foreign=1; _reasons+="surviving ${_p} is a symlink; "; continue
+        fi
+        if [[ -e "$_p" ]]; then
+            if _f3_manifest_has_path "$_p"; then
+                :
+            else
+                _foreign=1; _reasons+="surviving ${_p} is not recorded as A-Box owned; "
+            fi
+        fi
+    done < <(core_family_paths sing-box 2>/dev/null || true)
+    if (( _foreign == 1 )); then _verdict='suspect'; fi
+    if load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
+        _env_core="${CORE:-}"
+    fi
+    if [[ "$_env_core" != 'singbox' ]]; then
+        _verdict='suspect'; _reasons+="recorded core is '${_env_core:-none}', not singbox; "
+    elif ! _f3_manifest_has_family sing-box; then
+        _verdict='suspect'; _reasons+='recorded core is singbox but no sing-box ownership rows; '
+    fi
+    local _intent=0
+    if [[ -f "$_desired" ]] && grep -q 'RUNNING' "$_desired" 2>/dev/null; then _intent=1; fi
+    if [[ -n "$_rb_tx" ]] && { grep -q '^abort-stage: ' "$_rb_state" 2>/dev/null || grep -q '^retry: ' "$_rb_state" 2>/dev/null; } && [[ -n "$_rb_archive" && -f "$_rb_archive" ]]; then _intent=1; fi
+    if (( _intent == 0 )); then
+        _verdict='suspect'; _reasons+='no evidence this host should still run sing-box (no RUNNING desired state, no incomplete-transaction record); '
+    fi
+    if is_service_running sing-box 2>/dev/null; then
+        _verdict='suspect'; _reasons+='sing-box service is still running (config missing but process alive); '
+    fi
+    if [[ "$_verdict" == 'suspect' ]]; then
+        printf 'orphan-verdict: suspect\norphan-reason: %s\n' "${_reasons%'; '}"
+        return 1
+    fi
+    printf 'orphan-verdict: rebuild-offerable\norphan-reason: sing-box config missing; surviving paths are A-Box owned; recorded core is singbox with ownership rows; intent evidence present; no active operation\n'
+    return 0
+}
+
+_f3_preserve_rollback_bundle() {
+    # Preserve the retained recovery bundle (pinned archive + .sha256
+    # / .hmac sidecars) in /root/A-Box-backups before a rebuild, so
+    # the rebuild's own begin() backup rotation can never destroy the
+    # last copy of the pre-failure state (the pin itself lives in
+    # /tmp, which a reboot or tmp cleaner may wipe). The separated
+    # key file is never copied. Returns 0 when there was nothing to
+    # preserve or the copy verified; 1 when a bundle exists but could
+    # not be preserved (fail closed: the caller must not rebuild).
+    local _rb_state="${ABOX_DEPLOY_ROLLBACK_STATE_FILE:-/run/A-Box-deploy-rollback-state}"
+    local _archive='' _dir='' _base='' _dest_dir='/root/A-Box-backups' _f=''
+    [[ -f "$_rb_state" ]] || return 0
+    _archive=$(grep '^pinned-archive: ' "$_rb_state" 2>/dev/null | tail -1 | cut -d' ' -f2-)
+    [[ -n "$_archive" && -f "$_archive" ]] || return 0
+    _dir=$(dirname -- "$_archive"); _base=$(basename -- "$_archive")
+    mkdir -p "$_dest_dir" || return 1
+    for _f in "$_dir/$_base" "$_dir/$_base.sha256" "$_dir/$_base.hmac"; do
+        [[ -f "$_f" ]] || continue
+        cp -- "$_f" "$_dest_dir/" || return 1
+    done
+    if [[ -f "$_dest_dir/$_base.sha256" ]]; then
+        backup_checksum_verify "$_dest_dir/$_base" "$_dest_dir/$_base.sha256" || return 1
+    else
+        [[ "$(sha256sum < "$_archive" 2>/dev/null | awk '{print $1}')" == "$(sha256sum < "$_dest_dir/$_base" 2>/dev/null | awk '{print $1}')" ]] || return 1
+    fi
+    msg "Preserved the retained recovery bundle as ${_dest_dir}/${_base} (archive + sidecars)."
+    return 0
+}
+
+singbox_orphan_rebuild_prompt() {
+    # Ask explicitly whether to rebuild the orphaned sing-box
+    # deployment as a fresh ALL deployment. Default NO; EOF / no TTY
+    # refuses (confirm_yes_no); a refusal writes nothing. Returns 0
+    # only on an explicit 'y'/'Y'. $1 = the MODE_IN that was asked
+    # for (VISION or ALL).
+    local _mode_in="$1" _other='' _c
+    for _c in xray hysteria; do
+        if abox_owns_service "$_c" || abox_owns_config_only_core_dir "$_c"; then
+            _other+="$_c "
+        fi
+    done
+    msg "${YELLOW}[!] Orphaned sing-box deployment detected: the sing-box config is gone but this host is recorded as a sing-box deployment that should still be running.${NC}"
+    msg "${YELLOW}[!] A rebuild starts a FRESH sing-box deployment; it does NOT restore the old deployment.${NC}"
+    msg "    - New credentials will be generated; rotate every client config and re-pull the subscription after the rebuild."
+    if [[ "$_mode_in" == 'ALL' ]]; then
+        msg "    - Deploying as: sing-box ALL (as requested, menu 10 path)."
+    else
+        msg "    - Menu 6 asked for VISION only; the rebuild upgrades this run to ALL (menu 10 path), because a partial rebuild cannot restore the other modes."
+    fi
+    if [[ -n "$_other" ]]; then
+        msg "    - Other A-Box stacks present (${_other% }): the rebuild stops managed services and prunes non-preserved stacks, as a normal menu 10 deploy does."
+    else
+        msg "    - No other A-Box stacks are recorded on this host."
+    fi
+    msg "    - The retained recovery bundle (if any) is preserved in /root/A-Box-backups before the rebuild."
+    msg "    - Answering no changes nothing on disk."
+    # confirm_yes_no: a failed read (EOF / no TTY) refuses; only a
+    # successful read of 'y'/'Y' confirms. Default is NO.
+    if confirm_yes_no "Rebuild sing-box as a fresh ALL deployment now? [y/N] "; then
+        return 0
+    fi
+    return 1
+}
+
+_f3_load_rebuild_wizard_defaults() {
+    # Whitelist-read the old .env values (ports/SNI) for the wizard
+    # defaults, only inside the confirmed rebuild branch. Values are
+    # validated at the use site (pre_install_setup /
+    # prompt_reality_sni); missing or invalid values fall back to the
+    # normal wizard. Cleared by _f3_clear_rebuild_wizard_defaults
+    # immediately after pre_install_setup, so no stale default can
+    # leak into a later menu choice in the same process.
+    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || return 0
+    [[ -n "${VLESS_PORT:-}" ]] && ABOX_REBUILD_VLESS_PORT="$VLESS_PORT"
+    [[ -n "${XHTTP_PORT:-}" ]] && ABOX_REBUILD_XHTTP_PORT="$XHTTP_PORT"
+    [[ -n "${HY2_BASE_PORT:-}" ]] && ABOX_REBUILD_HY2_BASE_PORT="$HY2_BASE_PORT"
+    [[ -n "${SS_PORT:-}" ]] && ABOX_REBUILD_SS_PORT="$SS_PORT"
+    if [[ -n "${VISION_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VISION_SNI";
+    elif [[ -n "${VLESS_SNI:-}" ]]; then ABOX_REBUILD_SNI_ONCE="$VLESS_SNI"; fi
+    export ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+_f3_clear_rebuild_wizard_defaults() {
+    unset ABOX_REBUILD_VLESS_PORT ABOX_REBUILD_XHTTP_PORT ABOX_REBUILD_HY2_BASE_PORT ABOX_REBUILD_SS_PORT ABOX_REBUILD_SNI_ONCE
+    return 0
+}
+
+singbox_orphan_banner_report() {
+    # Menu-banner orphan report (read-only; never rebuilds). Prints at
+    # most one line, only when the verdict is not none.
+    local _out='' _verdict=''
+    _out=$(detect_singbox_orphan_state 2>/dev/null || true)
+    _verdict=$(printf '%s\n' "$_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+    case "$_verdict" in
+        suspect)
+            msg "${YELLOW}[!] sing-box state looks orphaned (config missing, evidence incomplete). Run menu 6/10 for details; nothing was rebuilt.${NC}"
+            ;;
+        rebuild-offerable)
+            msg "${YELLOW}[!] Orphaned sing-box deployment detected (config missing). Menu 6/10 can rebuild it as a fresh ALL deployment (new credentials).${NC}"
+            ;;
+    esac
+    return 0
+}
+
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
     # G3: Probe -w support for service templates (global compat, not just self-use).
@@ -37397,6 +38128,36 @@ deploy_singbox() {
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
+    # F3 B1/B2: orphan check before any transaction begins (after
+    # light_preflight_check, before residue_takeover_plan /
+    # assert_no_foreign_core_conflicts, so the existing conflict gates
+    # are not weakened). Suspect only reports; offerable asks
+    # explicitly, defaults to NO, and on confirm preserves the
+    # retained bundle, loads the .env wizard defaults, and continues
+    # this same invocation as ALL -- no recursion, no second
+    # transaction, menu 6 never silently becomes ALL without the
+    # operator's explicit yes. A refusal writes nothing and aborts
+    # the deploy.
+    if [[ "$MODE_IN" == VISION || "$MODE_IN" == ALL ]]; then
+        local _f3_out='' _f3_verdict='' _f3_rebuild=0
+        _f3_out=$(detect_singbox_orphan_state 2>/dev/null || true)
+        _f3_verdict=$(printf '%s\n' "$_f3_out" | grep '^orphan-verdict: ' | cut -d' ' -f2-)
+        case "$_f3_verdict" in
+            suspect)
+                printf '%s\n' "$_f3_out"
+                ;;
+            rebuild-offerable)
+                if singbox_orphan_rebuild_prompt "$MODE_IN"; then
+                    _f3_preserve_rollback_bundle || { msg "${RED}[!] Rebuild refused: the retained recovery bundle could not be preserved.${NC}" >&2; return 1; }
+                    _f3_rebuild=1
+                    MODE_IN=ALL
+                else
+                    msg "${YELLOW}[!] Rebuild declined; nothing was changed. Run menu 6/10 again when ready.${NC}"
+                    return 1
+                fi
+                ;;
+        esac
+    fi
     residue_takeover_plan sing-box || return 1
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
@@ -37406,7 +38167,14 @@ deploy_singbox() {
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    # F3 B2: the .env wizard defaults are loaded only in the
+    # confirmed-rebuild branch (_f3_rebuild==1), in the narrow window
+    # just before pre_install_setup, and cleared right after it, so a
+    # normal deploy never inherits old ports/SNI and no stale default
+    # can leak into a later menu choice in this process.
+    (( ${_f3_rebuild:-0} == 1 )) && _f3_load_rebuild_wizard_defaults
+    pre_install_setup singbox "$MODE_IN" || { _f3_clear_rebuild_wizard_defaults; deployment_transaction_rollback; return 1; }
+    _f3_clear_rebuild_wizard_defaults
     abox_fetch_guard_start "sing-box ${MODE_IN}"
     release_ports
     get_architecture
@@ -71141,13 +71909,33 @@ core_upgrade_rollback_backup_valid() {
 }
 
 core_upgrade_transaction_rollback() {
-    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || return 0
+    # F3: signal critical section (same mechanism as src/07, scope
+    # limited to this critical section; abort records and staged
+    # resume stay out of src/13 per GPT Q6). Mark the section FIRST,
+    # before the ACTIVE check, so a second signal arriving anywhere
+    # in this function finds the flag set and only records a pending
+    # request instead of re-entering a handler or killing the
+    # rollback. Every caller of this rollback terminates afterwards
+    # (signal abort, EXIT guard, die hook, attempt runner), so a
+    # pending request needs no separate exit here; it is honoured by
+    # the caller's own exit.
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || { ABOX_CORE_TX_IN_ROLLBACK=0; return 0; }
     local backup="${ABOX_CORE_UPGRADE_BACKUP:-}" targets="${ABOX_CORE_UPGRADE_TARGETS:-}" srv core_tmp="${ABOX_CORE_UPGRADE_TMP:-}"
     # Disable recursive EXIT handling but retain backup/target/temp context until
     # the prior snapshot is actually restored and verified.
     ABOX_CORE_UPGRADE_ACTIVE=0
     ABOX_DIE_HOOK=''
     restore_core_upgrade_transaction_traps
+    # The restore above returns traps to their pre-transaction state,
+    # which would let a second signal kill the rollback (default
+    # disposition) or re-enter a handler. Re-arm the recording traps
+    # immediately: further INT/TERM/HUP only record a pending request
+    # (see _core_tx_record_terminate_request) for the rest of the
+    # rollback. This is the ignore the GPT Q3 verdict prescribes
+    # (`trap ''`, not `trap -`); the recording form additionally
+    # retains the first pending request instead of dropping it.
+    _core_tx_arm_rollback_critical_section
     msg "${YELLOW}[!] Core upgrade failed or was interrupted; restoring the exact pre-upgrade snapshot.${NC}"
     # R5C16-03: verify the restore archive BEFORE any destructive step.
     # A missing or invalid backup must abort here, not after services
@@ -71210,6 +71998,15 @@ core_upgrade_transaction_signal_abort() {
     local sig="$1" code=130
     [[ "$sig" == TERM ]] && code=143
     [[ "$sig" == HUP ]] && code=129
+    # F3: a second signal during an in-flight rollback only records
+    # a pending request (the first abort already owns the rollback
+    # and will exit with its own first code); it must not re-enter
+    # this handler and run a second rollback.
+    if [[ "${ABOX_CORE_TX_IN_ROLLBACK:-0}" == 1 ]]; then
+        _core_tx_record_terminate_request "$sig" "$code"
+        return 0
+    fi
+    ABOX_CORE_TX_IN_ROLLBACK=1
     core_upgrade_transaction_rollback
     exit "$code"
 }
@@ -71218,6 +72015,30 @@ core_upgrade_transaction_exit_guard() {
     local rc="$1"
     if [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]]; then core_upgrade_transaction_rollback; fi
     return "$rc"
+}
+
+# F3: signal critical section for the core-upgrade rollback (src/13
+# counterpart of src/07 _tx_record_terminate_request /
+# _tx_arm_rollback_critical_section; see the src/07 comment block for
+# the full rationale). The traps record the first termination request
+# and ignore the rest while the rollback runs; every rollback caller
+# terminates afterwards, so the pending request is honoured by the
+# caller's own exit and no separate exit is needed here.
+_core_tx_record_terminate_request() {
+    local sig="$1" code="${2:-143}"
+    if [[ -z "${ABOX_CORE_TX_TERMINATE_PENDING_SIG:-}" ]]; then
+        ABOX_CORE_TX_TERMINATE_PENDING_SIG="$sig"
+        ABOX_CORE_TX_TERMINATE_PENDING_CODE="$code"
+    fi
+    return 0
+}
+
+_core_tx_arm_rollback_critical_section() {
+    ABOX_CORE_TX_IN_ROLLBACK=1
+    trap '_core_tx_record_terminate_request HUP 129' HUP
+    trap '_core_tx_record_terminate_request INT 130' INT
+    trap '_core_tx_record_terminate_request TERM 143' TERM
+    return 0
 }
 
 install_core_upgrade_transaction_traps() {
@@ -71233,6 +72054,12 @@ install_core_upgrade_transaction_traps() {
 
 begin_core_upgrade_transaction() {
     ABOX_LAST_BACKUP=''
+    # F3: clear any stale critical-section state from an earlier
+    # upgrade (all rollback callers terminate, so this is hygiene
+    # for a later transaction in the same process).
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     auto_backup_silent 'all-core atomic upgrade' "$ABOX_DIR/backups"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg begin_core_upgrade_transaction_backup_failed)"
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
@@ -71268,6 +72095,9 @@ commit_core_upgrade_transaction() {
     ABOX_CORE_UPGRADE_TARGETS=''
     ABOX_CORE_UPGRADE_TMP=''
     ABOX_DIE_HOOK=''
+    ABOX_CORE_TX_IN_ROLLBACK=0
+    ABOX_CORE_TX_TERMINATE_PENDING_SIG=''
+    ABOX_CORE_TX_TERMINATE_PENDING_CODE=''
     restore_core_upgrade_transaction_traps
 }
 
@@ -75858,6 +76688,8 @@ main_loop() {
         fi
         clear
         _menu_banner
+        # F3 B1: menu-banner orphan report (read-only; never rebuilds).
+        singbox_orphan_banner_report || true
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_info_display

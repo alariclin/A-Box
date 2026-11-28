@@ -44488,10 +44488,81 @@ _removed_tags_absent_from_config() { # $1 = cfg, rest = tags
     return 0
 }
 
+# F4 (2026-11-28): manifest rows _remove_hy2_official deletes files
+# for: the unit file plus every recorded hysteria path under
+# /etc/hysteria. Prints one path per line. The binary row is never
+# listed: the binary survives (cores are kept by design) and its row
+# is the proof a later redeploy / orphan check needs
+# (core_binary_managed_registered). A missing/unreadable manifest
+# prints nothing (the caller treats that as "nothing to drop").
+_hy2_manifest_doomed_paths() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _u1='' _u2=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _u1='/etc/systemd/system/hysteria.service';
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then _u1='/etc/init.d/hysteria'; _u2='/etc/conf.d/hysteria'; fi
+    [[ -n "$_u1" ]] && printf '%s\n' "$_u1"
+    [[ -n "$_u2" ]] && printf '%s\n' "$_u2"
+    awk -F'\t' '$2=="hysteria" && ($3=="/etc/hysteria" || index($3, "/etc/hysteria/")==1) {print $3}' "$_mf" 2>/dev/null || true
+    return 0
+}
+
+# F4: true only when the manifest holds no hysteria row outside the
+# set {surviving binary} ∪ {rows _remove_hy2_official deletes}.
+# A missing/unreadable manifest is unprovable and returns 1 (fail
+# closed); a row for any other path refuses as well.
+_hy2_manifest_only_binary_or_doomed() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _u1='' _u2=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _u1='/etc/systemd/system/hysteria.service';
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then _u1='/etc/init.d/hysteria'; _u2='/etc/conf.d/hysteria'; fi
+    awk -F'\t' -v u1="$_u1" -v u2="$_u2" '$2=="hysteria" && $3!="/usr/local/bin/hysteria" && $3!="/etc/hysteria" && index($3, "/etc/hysteria/")!=1 && $3!=u1 && $3!=u2 {found=1; exit} END {exit found+0}' "$_mf" 2>/dev/null
+}
+
+# F4: the surviving binary is ours only when the manifest records it
+# (row present, regular file) or when it is absent altogether. A
+# present but unrecorded binary is foreign residue. A
+# missing/unreadable manifest cannot prove anything (fail closed).
+# The row's hash is deliberately not re-checked here: this branch
+# deletes nothing but already-absent paths and links, and a
+# redeploy re-records the binary with its live hash.
+_hy2_binary_residue_is_ours() {
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    if [[ ! -e /usr/local/bin/hysteria && ! -L /usr/local/bin/hysteria ]]; then return 0; fi
+    [[ -f /usr/local/bin/hysteria && ! -L /usr/local/bin/hysteria ]] || return 1
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    awk -F'\t' '$2=="hysteria" && $3=="/usr/local/bin/hysteria" {found=1; exit} END {exit !found+0}' "$_mf" 2>/dev/null
+}
+
 _remove_hy2_official() {
     # Destructive: only ever remove a hysteria install whose service
     # unit is A-Box-managed. A foreign official install shares the
     # same name and paths and must not be deleted by name alone.
+    # F4 (2026-11-28): idempotent repeat (and self-heal for rows a
+    # pre-fix uninstall leaked). A second uninstall finds no unit and
+    # no config dir; when the manifest holds nothing beyond the
+    # surviving binary row and the rows this uninstall deletes, there
+    # is nothing left to uninstall: drop any such stale rows, remove
+    # leftover links, return 0. The binary must either be recorded
+    # (row present, regular file) or absent; a binary with no manifest
+    # row is foreign residue and falls through to the refusal below,
+    # as does a missing/unreadable manifest (fail closed).
+    local _hy2_gone=0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        [[ ! -e /etc/systemd/system/hysteria.service && ! -L /etc/systemd/system/hysteria.service ]] && _hy2_gone=1
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        [[ ! -e /etc/init.d/hysteria && ! -L /etc/init.d/hysteria && ! -e /etc/conf.d/hysteria && ! -L /etc/conf.d/hysteria ]] && _hy2_gone=1
+    fi
+    if (( _hy2_gone == 1 )) && [[ ! -e /etc/hysteria && ! -L /etc/hysteria ]] \
+        && _hy2_manifest_only_binary_or_doomed && _hy2_binary_residue_is_ours; then
+        # Both helpers are best-effort here: nothing destructive
+        # remains in this state, so a drop failure must not turn a
+        # completed uninstall into a reported failure.
+        local -a _hy2_stale=()
+        mapfile -t _hy2_stale < <(_hy2_manifest_doomed_paths) || true
+        (( ${#_hy2_stale[@]} > 0 )) && _manifest_drop_paths "${_hy2_stale[@]}" || true
+        rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+        return 0
+    fi
     if ! abox_owns_service hysteria; then
         msg "${YELLOW}[!] $(tr_msg hy2_skip_foreign)${NC}"
         return 1
@@ -44535,6 +44606,16 @@ _remove_hy2_official() {
     # (cleanup-first ordering is the retry mechanism; no persisted
     # cleanup record is needed). Never report this as a stop failure.
     remove_hy2_official_hop_rules || return 1
+    # F4 (2026-11-28): collect the manifest rows this uninstall is
+    # about to orphan, BEFORE deleting anything (the TUIC/L4-cert
+    # contract: only rows for paths this uninstall actually deletes).
+    # The binary row is deliberately NOT collected: the binary
+    # survives (cores are kept by design) and its row is the proof a
+    # later redeploy / orphan check needs. A missing/unreadable
+    # manifest simply collects nothing; the drop below is
+    # best-effort.
+    local -a _hy2_manifest_doomed=()
+    mapfile -t _hy2_manifest_doomed < <(_hy2_manifest_doomed_paths) || true
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service || return 1
@@ -44551,6 +44632,18 @@ _remove_hy2_official() {
     hy2_hop_xtables_lock_revoke || return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+    # F4 (2026-11-28): the files above are gone; their manifest rows
+    # must go with them (the L4 observation: 6 rows survived the
+    # uninstall). Only the collected rows are dropped, so the
+    # surviving binary row stays. Best-effort (rc 0, same contract as
+    # the TUIC/L4-cert call sites): the deletion already happened, and
+    # a stale row is low-severity drift that must never turn a
+    # completed uninstall into a reported failure -- and a failure
+    # here must not leave the uninstall un-retryable (the ownership
+    # guard would refuse the retry as foreign). The no-op branch at
+    # the top of this function heals any rows a pre-fix uninstall
+    # already leaked.
+    (( ${#_hy2_manifest_doomed[@]} > 0 )) && _manifest_drop_paths "${_hy2_manifest_doomed[@]}" || true
     # R38-M1: propagate a failed registry removal (the caller
     # reports the Hy2 removal as failed); the old unconditional
     # `return 0` reported a surviving credential registry as deleted.
@@ -77363,6 +77456,17 @@ EOF_W2F1
         _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
+        # F4 (follow-up 20261128): official-hysteria uninstall must
+        # drop the manifest rows for the files it deletes (the L4
+        # observation: 6 rows survived), keep the surviving binary
+        # row, and be an idempotent no-op on repeat. Wiring only --
+        # the end states are proven by fixture-hy2manifest-f4.sh.
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths' || { echo 'FAIL: F4 _remove_hy2_official must drop the manifest rows for the files it deletes'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_doomed_paths' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed manifest rows before deleting'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_only_binary_or_doomed' || { echo 'FAIL: F4 _remove_hy2_official must gate the idempotent repeat on the manifest state'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_binary_residue_is_ours' || { echo 'FAIL: F4 _remove_hy2_official must prove the surviving binary is ours before a no-op repeat'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official 'mapfile -t _hy2_manifest_doomed' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed rows before deleting files'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths "${_hy2_manifest_doomed[@]}"' || { echo 'FAIL: F4 _remove_hy2_official must drop exactly the collected rows after the deletion'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi

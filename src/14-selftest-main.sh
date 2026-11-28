@@ -3292,6 +3292,17 @@ EOF_W2F1
         _clear_hy2_nonport_env_vars >/dev/null 2>&1 || { echo 'FAIL: L4 Hy2 .env cleanup must skip (rc 0) on a structurally bad config'; failures=$((failures + 1)); }
         _w2_env=$(sed -n 's/^HY2_DOMAIN=//p' "$_w2d/.env" | head -n 1 | tr -d '"')
         [[ "$_w2_env" == 'example.com' ]] || { echo 'FAIL: L4 Hy2 keys must be kept on a structurally bad config'; failures=$((failures + 1)); }
+        # F4 (follow-up 20261128): official-hysteria uninstall must
+        # drop the manifest rows for the files it deletes (the L4
+        # observation: 6 rows survived), keep the surviving binary
+        # row, and be an idempotent no-op on repeat. Wiring only --
+        # the end states are proven by fixture-hy2manifest-f4.sh.
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths' || { echo 'FAIL: F4 _remove_hy2_official must drop the manifest rows for the files it deletes'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_doomed_paths' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed manifest rows before deleting'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_manifest_only_binary_or_doomed' || { echo 'FAIL: F4 _remove_hy2_official must gate the idempotent repeat on the manifest state'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_hy2_binary_residue_is_ours' || { echo 'FAIL: F4 _remove_hy2_official must prove the surviving binary is ours before a no-op repeat'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official 'mapfile -t _hy2_manifest_doomed' || { echo 'FAIL: F4 _remove_hy2_official must collect the doomed rows before deleting files'; failures=$((failures + 1)); }
+        g2_func_contains _remove_hy2_official '_manifest_drop_paths "${_hy2_manifest_doomed[@]}"' || { echo 'FAIL: F4 _remove_hy2_official must drop exactly the collected rows after the deletion'; failures=$((failures + 1)); }
         # Post-delete verification helper.
         printf '{"inbounds":[{"tag":"vision","protocol":"vless","port":443}]}' > "$_w2d/xray.json"
         if _removed_tags_absent_from_config "$_w2d/xray.json" vision; then echo 'FAIL: W2-FAIL-1 present tag must fail verification'; failures=$((failures + 1)); fi
